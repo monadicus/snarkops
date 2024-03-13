@@ -1,0 +1,27 @@
+[package]
+name = "snarkos-aot"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+aleo-std = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+colored = { workspace = true }
+indexmap = { workspace = true }
+indicatif = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+snarkos-cli = { workspace = true }
+snarkvm = { workspace = true }
+tracing = { workspace = true }
+tracing-flame = "0.2.0"
+tracing-subscriber = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+tikv-jemallocator = "0.5"
