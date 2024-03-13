@@ -504,7 +504,6 @@ impl Commands {
 
                     // No addresses passed, generate private keys at runtime
                     (None, Some(num)) => (0..num)
-                        .into_iter()
                         .map(|_| Address::try_from(PrivateKey::<Network>::new(&mut rng)?))
                         .collect::<Result<Vec<_>>>()?,
 
@@ -521,7 +520,7 @@ impl Commands {
                     .progress_count(to.len() as u64)
                     .map(|addr| {
                         make_transaction_proof::<_, _, AleoV0>(
-                            &ledger.vm(),
+                            ledger.vm(),
                             *addr,
                             per_account,
                             from,
