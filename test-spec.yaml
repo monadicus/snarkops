@@ -1,0 +1,254 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+name: private tx, 500 rounds, 4 accounts
+description: |
+  This ledger was built to test private transactions
+
+# storage information to be run for this test
+storage:
+  genesis: ./testing/0001/genesis.block
+  ledger: ./testing/0001/ledger
+
+# a source for account information from this test
+accounts:
+  committee: ./testing/0001/committee.json
+  accounts: ./testing/0001/additional-accounts.json
+
+# instructions for generating this test
+generate:
+  path: ./testing/0001
+  # genesis generation
+  genesis:
+    output: genesis.block
+    seed: 0
+    committee: 5
+    committee-balances: 10_000_000_000_000
+    committee-output: committee.json
+    additional-accounts: 10
+    additional-balances: 100_000_000_000
+    additional-output: additional-accounts.json
+  # ledger setup
+  ledger:
+    output: ledger
+    blocks: 100
+    transactions:
+      total: 1000
+      per-block: 10
+
+  # ahead of time transaction generation
+  transactions:
+    - file: bulk.json
+      total: 1000
+      amount: 5_000
+      sources: [committee.0]
+      destinations: [accounts.*]
+
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+# ADDITIONAL storage information to be run for this test
+# this will run a second test with the same topology but different ledger
+name: public tx, 500 rounds, 800 accounts
+description: |
+  This ledger was built to test a large volume of accounts
+
+storage:
+  genesis: ./testing/0002/genesis.block
+  ledger: ./testing/0002/ledger
+accounts:
+  committee: ./testing/0002/committee.json
+  accounts: ./testing/0002/additional-accounts.json
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+
+# node topology
+nodes:
+  validator/1:
+    key: committee.0
+    height: 100
+    validators: [validator/2]
+    peers: []
+
+  validator/2:
+    key: committee.0
+    height: 150
+    validators: [validator/1]
+    peers: []
+
+  client/1:
+    height: 0 # empty ledger
+    peers: [validator/1, validator/2]
+
+  client/2:
+    height: null # null ledger - create ledger when the node is started
+    peers: [client/1]
+
+  # creates a group of nodes, all with the same configuration
+  # each client will be named `client/my-cluster-0`, `client/my-cluster-1`, ...
+  client/my-cluster:
+    replicas: 5
+    height: 0
+    validators: [validator/1]
+
+  prover/1:
+    key: accounts.0
+    height: 0
+    peers: [client/1]
+
+---
+version: infrastructure.snarkos.testing.monadic.us/v1
+
+### CONCEPT: providers as docker hosts
+
+providers.beta:
+
+### CONCEPT: providers as node targets
+
+# providers are the locations for where nodes can be run
+# providers include address mappings for specifying how a node will refer to another node
+
+# providers have two main modes:
+# host mode: run nodes as processes on this machine, using host networking
+# guest mode: spawn nodes as VMs or containers, using bridge or guest networking
+
+# TODO: things to consider:
+# - maybe providers are pools of slots for nodes to run in
+
+providers.alpha:
+  # local provider runs the nodes as child processes on the same machine
+  # networking between providers has to be defined in the `addresses` section
+  - name: localhost
+    mode: host
+    addresses:
+      local: 127.0.0.1 # address other nodes with the same provider will use to connect
+      my-datacenter: public # public address will be used when nodes in `my-datacenter` provider connect
+      default: null # cannot connect from other providers
+    provider: localhost
+    nodes:
+      validator/1:
+        bft: 5000:15030 # --bft=0.0.0.0:5000 is passed, but external port is 15030
+        node: 4130
+      # automatically determine ports for this node
+      validator/2: auto
+
+    # pool of port mappings for this node
+    ports:
+      - 5002:15032
+      - 5003:15033
+      - 4131:14132
+      - 4132:14133
+      - 6000
+
+  - name: docker
+    mode: guest
+    provider: docker
+    nodes:
+      # spin up nodes but don't provide external addresses for them
+      # may need to reconsider how port forwarding/mapping works per-machine
+      client/1: default
+      client/2: default
+
+  - name: docker2
+    mode: guest
+    provider: docker
+    nodes:
+      # spin up nodes but don't provide external addresses for them
+      # may need to reconsider how port forwarding/mapping works per-machine
+      client/1: default
+      client/2: default
+
+  # ssh provider runs the nodes via ssh on a remote machine
+  - name: my-datacenter
+    mode: host
+    # addresses other nodes will use to connect to this node
+    addresses:
+      local: 127.0.0.1
+      default: 11.12.13.14
+    provider: ssh
+    spec:
+      host: myinstance.foo.bar
+      username: ubuntu
+      key: ~/.ssh/id_ed25519
+    nodes:
+      - client/1
+      - client/2
+
+---
+version: timeline.snarkos.testing.monadic.us/v1
+
+# a timeline is a series of events that occur during the test
+
+timeline:
+  # online will bring the node online. all nodes are offline by default
+  - online: [validator/1, validator/2]
+    duration: 10s
+
+  # client/1 will go online after 10 seconds
+  - online: [client/1]
+    duration: 1m
+
+  # after 1 minute, the entire network will shutdown
+  - offline: all
+
+  # .await forces the step to wait until the condition is met rather than applying the change immediately
+  - online.await: all
+  - offline.await: all
+
+  # when these nodes come back online, their configurations will be different
+  - connections:
+      validator/1: []
+      validator/2: [client/1]
+
+    # reset this validator's ledger height
+    height:
+      validator/1: 0
+
+  # wait for 5 blocks to be produced (technically impossible with all nodes offline. may want to add a check for this or end the test if nothing happens after a few seconds)
+  - duration: 5
+
+  # start firing 100 transactions total at a rate of 5 per second
+  # this will not halt execution unless `duration:` is specified alongside `cannons:`
+  - cannons:
+      - target: validator/1
+        source: ./testing/0001/pool.json
+        total: 100
+        tps: 5
+
+  # after all nodes have shutdown, all nodes will come back online with initial configured peers
+  - online: all
+    duration: 5s
+
+---
+version: timeline.snarkos.testing.monadic.us/v1
+
+# additional timelines can be defined for additional tests
+
+timeline:
+  - online: all
+    # this timeline will until a node reaches block height 100
+    duration: 100
+
+---
+version: outcomes.snarkos.testing.monadic.us/v1
+
+# expected outcomes for the test
+metrics:
+  network/average-tps: 10
+  client/sync-speed: 20
+  validator/sync-speed: 20
+
+---
+NOTES: |-
+  need to create a service for running snarkos that does the following:
+  - gather CPU/MEM/Storage facts about the runner machine
+  - syncs latest ledger, genesis, and keys to the node from the control plane
+  - modifies the ledger and genesis files to be the latest files
+  - consumes a JSON/yaml config and converts into snarkos cli flags
+  - start/stop snarkos in the desired mode
+  - return latest state, logs, and metrics of the node
+
+DREAMS: |-
+  control plane node is a webrtc signaling server,
+  clients in the swarm can interact via tunneling node traffic through the signaling server
