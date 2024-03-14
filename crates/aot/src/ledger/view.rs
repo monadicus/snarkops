@@ -14,7 +14,7 @@ impl View {
                 println!("{:#?}", ledger.get_block(block_height)?);
             }
             View::Balance { address } => {
-                let addr = Address::<Network>::from_str(&address)?;
+                let addr = Address::from_str(&address)?;
 
                 println!("{address} balance {}", util::get_balance(addr, &ledger)?);
             }

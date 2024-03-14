@@ -10,20 +10,15 @@ use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use snarkos_cli::commands::{load_or_compute_genesis, DEVELOPMENT_MODE_RNG_SEED};
 use snarkvm::{
-    console::{account::PrivateKey, types::Address},
-    ledger::{
-        committee::{Committee, MIN_VALIDATOR_STAKE},
-        store::helpers::rocksdb::ConsensusDB,
-        Ledger,
-    },
+    ledger::committee::{Committee, MIN_VALIDATOR_STAKE},
     prelude::Network as _,
     utilities::ToBytes,
 };
 
-use crate::types::Network;
+use crate::types::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Balances(IndexMap<Address<Network>, u64>);
+pub struct Balances(IndexMap<Address, u64>);
 impl FromStr for Balances {
     type Err = serde_json::Error;
 
@@ -34,9 +29,10 @@ impl FromStr for Balances {
 
 #[derive(Debug, Parser)]
 pub struct Genesis {
-    /// The private key to use when generating the genesis block. Generates one randomly if not passed.
+    /// The private key to use when generating the genesis block. Generates one
+    /// randomly if not passed.
     #[clap(name = "genesis-key", short, long)]
-    genesis_key: Option<PrivateKey<Network>>,
+    genesis_key: Option<PrivateKey>,
     /// Where to write the genesis block to.
     #[clap(name = "output", short, long, default_value = "genesis.block")]
     output: PathBuf,
@@ -46,26 +42,32 @@ pub struct Genesis {
     /// Additional number of accounts that aren't validators to add balances to.
     #[clap(name = "additional-accounts", long, default_value_t = 0)]
     additional_accounts: u16,
-    /// The balance to add to the number of accounts specified by additional-accounts.
+    /// The balance to add to the number of accounts specified by
+    /// additional-accounts.
     #[clap(
         name = "additional-accounts-balance",
         long,
         default_value_t = 100_000_000
     )]
     additional_accounts_balance: u64,
-    /// A place to write out the additionally generated accounts by --additional-accounts.
+    /// A place to write out the additionally generated accounts by
+    /// --additional-accounts.
     #[clap(name = "additional-accounts-file", long)]
     additional_accounts_file: Option<PathBuf>,
-    /// The seed to use when generating committee private keys and the genesis block. If unpassed, uses DEVELOPMENT_MODE_RNG_SEED.
+    /// The seed to use when generating committee private keys and the genesis
+    /// block. If unpassed, uses DEVELOPMENT_MODE_RNG_SEED.
     #[clap(name = "seed", long)]
     seed: Option<u64>,
-    /// The bonded balance each bonded address receives. Not used if `--bonded-balances` is passed.
+    /// The bonded balance each bonded address receives. Not used if
+    /// `--bonded-balances` is passed.
     #[clap(name = "bonded-balance", long, default_value_t = 10_000_000_000_000)]
     bonded_balance: u64,
-    /// An optional map from address to bonded balance. Overrides `--bonded-balance` and `--committee-size`.
+    /// An optional map from address to bonded balance. Overrides
+    /// `--bonded-balance` and `--committee-size`.
     #[clap(name = "bonded-balances", long)]
     bonded_balances: Option<Balances>,
-    /// A place to optionally write out the generated committee private keys JSON.
+    /// A place to optionally write out the generated committee private keys
+    /// JSON.
     #[clap(name = "committee-file", long)]
     committee_file: Option<PathBuf>,
     /// Optionally initialize a ledger as well.
@@ -80,7 +82,7 @@ impl Genesis {
         // Generate a genesis key if one was not passed.
         let genesis_key = match self.genesis_key {
             Some(genesis_key) => genesis_key,
-            None => PrivateKey::<Network>::new(&mut rng)?,
+            None => PrivateKey::new(&mut rng)?,
         };
 
         let genesis_addr = Address::try_from(&genesis_key)?;
@@ -126,7 +128,7 @@ impl Genesis {
                     let (key, addr) = match i {
                         0 => (genesis_key, genesis_addr),
                         _ => {
-                            let key = PrivateKey::<Network>::new(&mut rng)?;
+                            let key = PrivateKey::new(&mut rng)?;
                             let addr = Address::try_from(&key)?;
 
                             (key, addr)
@@ -154,9 +156,10 @@ impl Genesis {
         // Add additional accounts to the public balances
         let accounts = (0..self.additional_accounts)
             .map(|_| {
-                // Repeatedly regenerate key/addresses, ensuring they are not in `bonded_balances`.
+                // Repeatedly regenerate key/addresses, ensuring they are not in
+                // `bonded_balances`.
                 let (key, addr) = loop {
-                    let key = PrivateKey::<Network>::new(&mut rng)?;
+                    let key = PrivateKey::new(&mut rng)?;
                     let addr = Address::try_from(&key)?;
                     if !bonded_balances.contains_key(&addr) {
                         break (key, addr);
@@ -183,7 +186,8 @@ impl Genesis {
             }
         }
 
-        // Check if the sum of committee stakes and public balances equals the total starting supply.
+        // Check if the sum of committee stakes and public balances equals the total
+        // starting supply.
         let public_balances_sum: u64 = public_balances.values().sum();
         if committee.total_stake() + public_balances_sum != Network::STARTING_SUPPLY {
             println!(
@@ -299,10 +303,7 @@ impl Genesis {
 
         // Initialize the ledger if a path was given.
         if let Some(ledger) = self.ledger {
-            Ledger::<_, ConsensusDB<_>>::load(
-                block.to_owned(),
-                StorageMode::Custom(ledger.to_owned()),
-            )?;
+            DbLedger::load(block.to_owned(), StorageMode::Custom(ledger.to_owned()))?;
             println!(
                 "Initialized a ledger at {}.",
                 ledger.display().to_string().yellow()

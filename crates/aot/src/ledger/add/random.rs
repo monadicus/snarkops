@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Args)]
 pub struct Random {
     #[arg(long)]
-    block_private_key: Option<PrivateKey<Network>>,
+    block_private_key: Option<PrivateKey>,
     #[arg(required = true, long)]
     private_keys: PrivateKeys,
     #[arg(short, long, default_value_t = 5)]
@@ -14,7 +14,8 @@ pub struct Random {
     /// Maximumnumber of transactions per block.
     #[arg(long, default_value_t = 1024)]
     max_per_block: usize,
-    /// Maximum transaction credit transfer. If unspecified, maximum is entire account balance.
+    /// Maximum transaction credit transfer. If unspecified, maximum is entire
+    /// account balance.
     #[arg(long)]
     max_tx_credits: Option<u64>,
 }
@@ -24,10 +25,10 @@ impl Random {
         // TODO: do this for each block?
         let block_private_key = match self.block_private_key {
             Some(key) => key,
-            None => PrivateKey::<Network>::new(rng)?,
+            None => PrivateKey::new(rng)?,
         };
 
-        let max_transactions = VM::<Network, Db>::MAXIMUM_CONFIRMED_TRANSACTIONS;
+        let max_transactions = VM::MAXIMUM_CONFIRMED_TRANSACTIONS;
 
         ensure!(
             self.min_per_block <= max_transactions,

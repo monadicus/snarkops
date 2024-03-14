@@ -7,12 +7,7 @@ use rand::{seq::SliceRandom, thread_rng, CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
-use snarkvm::{
-    circuit::AleoV0,
-    console::{account::PrivateKey, types::Address},
-    ledger::Transaction,
-    synthesizer::VM,
-};
+use snarkvm::{circuit::AleoV0, ledger::Transaction};
 use tracing::{span, Level};
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -41,25 +36,6 @@ pub struct Ledger {
 
     #[command(subcommand)]
     pub command: Commands,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct TxOperation {
-    from: PrivateKey<Network>,
-    to: Address<Network>,
-    amount: u64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-/// This wrapper allows for '--operations=[{}, {}]' instead of '--operations {} --operations {}'
-pub struct TxOperations(pub Vec<TxOperation>);
-
-impl FromStr for TxOperations {
-    type Err = serde_json::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_str(s)
-    }
 }
 
 // Helper macro for making clap args that are comma-separated
@@ -93,13 +69,13 @@ macro_rules! comma_separated {
 }
 
 comma_separated! {
-    PrivateKeys(PrivateKey<Network>);
-    Accounts(Address<Network>);
+    PrivateKeys(PrivateKey);
+    Accounts(Address);
 }
 
 impl PrivateKeys {
     /// Returns a random 2 or 3 private keys.
-    fn random_accounts<R: Rng + CryptoRng>(&self, rng: &mut R) -> Vec<PrivateKey<Network>> {
+    fn random_accounts<R: Rng + CryptoRng>(&self, rng: &mut R) -> Vec<PrivateKey> {
         let num = rng.gen_range(2..=3);
         let chosen = self.0.choose_multiple(rng, num);
 
@@ -110,6 +86,7 @@ impl PrivateKeys {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     Init(init::Init),
+    #[clap(subcommand)]
     Tx(tx::Tx),
     #[clap(subcommand)]
     Add(add::Add),
@@ -151,7 +128,8 @@ impl Ledger {
 
             Commands::Tx(tx) => {
                 // load the ledger into memory
-                // the secret sauce is `ConsensusMemory`, which tells snarkvm to keep the ledger in memory only
+                // the secret sauce is `ConsensusMemory`, which tells snarkvm to keep the ledger
+                // in memory only
                 let ledger = util::open_ledger(genesis, ledger)?;
                 tx.parse(&ledger)
             }
