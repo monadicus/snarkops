@@ -9,25 +9,26 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
 use snarkvm::{
     circuit::AleoV0,
-    console::{account::PrivateKey, network::MainnetV0, types::Address},
-    ledger::{
-        store::helpers::{memory::ConsensusMemory, rocksdb::ConsensusDB},
-        Transaction,
-    },
+    console::{account::PrivateKey, types::Address},
+    ledger::Transaction,
     synthesizer::VM,
 };
 use tracing::{span, Level};
 use tracing_subscriber::layer::SubscriberExt;
 
 use self::util::{add_transaction_blocks, make_transaction_proof};
+use crate::types::*;
 
+mod add;
+mod distribute;
+mod init;
+mod truncate;
+mod tx;
 mod util;
-
-type Network = MainnetV0;
-type Db = ConsensusDB<Network>;
+mod view;
 
 #[derive(Debug, Args)]
-pub struct Command {
+pub struct Ledger {
     #[arg(long)]
     pub enable_profiling: bool,
 
@@ -108,71 +109,17 @@ impl PrivateKeys {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    Init,
-    Tx {
-        #[arg(required = true, long)]
-        operations: TxOperations,
-    },
-    AddRandom {
-        #[arg(long)]
-        block_private_key: Option<PrivateKey<Network>>,
-        #[arg(required = true, long)]
-        private_keys: PrivateKeys,
-        #[arg(short, long, default_value_t = 5)]
-        num_blocks: u8,
-        /// Minimum number of transactions per block.
-        #[arg(long, default_value_t = 128)]
-        min_per_block: usize,
-        /// Maximumnumber of transactions per block.
-        #[arg(long, default_value_t = 1024)]
-        max_per_block: usize,
-        /// Maximum transaction credit transfer. If unspecified, maximum is entire account balance.
-        #[arg(long)]
-        max_tx_credits: Option<u64>,
-    },
-    Add {
-        /// The private key to use when generating the block.
-        #[arg(name = "private-key", long)]
-        private_key: Option<PrivateKey<Network>>,
-        /// The number of transactions to add per block.
-        #[arg(name = "txs-per-block", long)]
-        txs_per_block: Option<usize>,
-    },
-    View {
-        /// The block height to view.
-        block_height: u32,
-    },
-    ViewAccountBalance {
-        /// The address's balance to view.
-        address: String,
-    },
-    Distribute {
-        /// The private key in which to distribute credits from.
-        #[arg(required = true, long)]
-        from: PrivateKey<Network>,
-        /// A comma-separated list of addresses to distribute credits to. This or `--num-accounts` must be passed.
-        #[arg(long, conflicts_with = "num_accounts")]
-        to: Option<Accounts>,
-        /// The number of new addresses to generate and distribute credits to. This or `--to` must be passed.
-        #[arg(long, conflicts_with = "to")]
-        num_accounts: Option<u32>,
-        /// The amount of microcredits to distribute.
-        #[arg(long)]
-        amount: u64,
-    },
-    Truncate(#[clap(flatten)] TruncateArgGroup),
+    Init(init::Init),
+    Tx(tx::Tx),
+    #[clap(subcommand)]
+    Add(add::Add),
+    #[clap(subcommand)]
+    View(view::View),
+    Distribute(distribute::Distribute),
+    Truncate(truncate::Truncate),
 }
 
-#[derive(Debug, Args)]
-#[group(required = true, multiple = false)]
-pub struct TruncateArgGroup {
-    #[arg(long)]
-    height: Option<u32>,
-    #[arg(long)]
-    amount: Option<u32>,
-}
-
-impl Command {
+impl Ledger {
     pub fn parse(self) -> Result<()> {
         // Initialize logging.
         let fmt_layer = tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr);
@@ -192,343 +139,41 @@ impl Command {
         tracing::subscriber::set_global_default(subscriber).unwrap();
 
         // Common arguments
-        let Command {
+        let Ledger {
             genesis, ledger, ..
         } = self;
 
         match self.command {
-            Commands::Init => {
-                let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
-                let genesis_block = ledger.get_block(0)?;
-
-                println!(
-                    "Ledger written, genesis block hash: {}",
-                    genesis_block.hash()
-                );
-
-                Ok(())
+            Commands::Init(init) => {
+                let ledger = util::open_ledger(genesis, ledger)?;
+                init.parse(&ledger)
             }
 
-            Commands::Tx { operations } => {
+            Commands::Tx(tx) => {
                 // load the ledger into memory
                 // the secret sauce is `ConsensusMemory`, which tells snarkvm to keep the ledger in memory only
-                let ledger =
-                    util::open_ledger::<Network, ConsensusMemory<Network>>(genesis, ledger)?;
-
-                let progress_bar = ProgressBar::new(operations.0.len() as u64);
-                progress_bar.tick();
-
-                let gen_txs = operations
-                    .0
-                    // rayon for free parallelism
-                    .into_par_iter()
-                    // generate proofs
-                    .map(|op| {
-                        util::make_transaction_proof::<_, _, AleoV0>(
-                            ledger.vm(),
-                            op.to,
-                            op.amount,
-                            op.from,
-                            None,
-                        )
-                    })
-                    // discard failed transactions
-                    .filter_map(Result::ok)
-                    // print each transaction to stdout
-                    .inspect(|proof| {
-                        println!(
-                            "{}",
-                            serde_json::to_string(&proof).expect("serialize proof")
-                        )
-                    })
-                    // progress bar
-                    .progress_with(progress_bar)
-                    // take the count of succeeeded proofs
-                    .count();
-
-                eprintln!("Wrote {} transactions.", gen_txs);
-                Ok(())
-            }
-
-            Commands::AddRandom {
-                block_private_key,
-                private_keys,
-                num_blocks,
-                min_per_block,
-                max_per_block,
-                max_tx_credits,
-            } => {
-                let mut rng = ChaChaRng::from_entropy();
-
-                let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
-
-                // TODO: do this for each block?
-                let block_private_key = match block_private_key {
-                    Some(key) => key,
-                    None => PrivateKey::<Network>::new(&mut rng)?,
-                };
-
-                let max_transactions = VM::<Network, Db>::MAXIMUM_CONFIRMED_TRANSACTIONS;
-
-                ensure!(
-                    min_per_block <= max_transactions,
-                    "minimum is above max block txs (max is {max_transactions})"
-                );
-
-                ensure!(
-                    max_per_block <= max_transactions,
-                    "maximum is above max block txs (max is {max_transactions})"
-                );
-
-                let mut total_txs = 0;
-                let mut gen_txs = 0;
-
-                for _ in 0..num_blocks {
-                    let num_tx_per_block = rng.gen_range(min_per_block..=max_per_block);
-                    total_txs += num_tx_per_block;
-
-                    let tx_span = span!(Level::INFO, "tx generation");
-                    let txs = (0..num_tx_per_block)
-                        .into_par_iter()
-                        .progress_count(num_tx_per_block as u64)
-                        .map(|_| {
-                            let _enter = tx_span.enter();
-
-                            let mut rng = ChaChaRng::from_rng(thread_rng())?;
-
-                            let keys = private_keys.random_accounts(&mut rng);
-
-                            let from = Address::try_from(keys[1])?;
-                            let amount = match max_tx_credits {
-                                Some(amount) => rng.gen_range(1..amount),
-                                None => rng.gen_range(1..util::get_balance(from, &ledger)?),
-                            };
-
-                            let to = Address::try_from(keys[0])?;
-
-                            let proof_span = span!(Level::INFO, "tx generation proof");
-                            let _enter = proof_span.enter();
-
-                            util::make_transaction_proof::<_, _, AleoV0>(
-                                ledger.vm(),
-                                to,
-                                amount,
-                                keys[1],
-                                keys.get(2).copied(),
-                            )
-                        })
-                        .filter_map(Result::ok)
-                        .collect::<Vec<_>>();
-
-                    gen_txs += txs.len();
-                    let target_block = ledger.prepare_advance_to_next_beacon_block(
-                        &block_private_key,
-                        vec![],
-                        vec![],
-                        txs,
-                        &mut rng,
-                    )?;
-
-                    ledger.advance_to_next_block(&target_block)?;
-                }
-
-                println!(
-                    "Generated {gen_txs} transactions ({} failed)",
-                    total_txs - gen_txs
-                );
-
-                Ok(())
-            }
-
-            Commands::Add {
-                private_key,
-                txs_per_block,
-            } => {
-                let mut rng = ChaChaRng::from_entropy();
-
-                let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
-
-                // Ensure we aren't trying to stick too many transactions into a block
-                let per_block_max = VM::<Network, Db>::MAXIMUM_CONFIRMED_TRANSACTIONS;
-                let per_block = txs_per_block.unwrap_or(per_block_max);
-                ensure!(
-                    per_block <= per_block_max,
-                    "too many transactions per block (max is {})",
-                    per_block_max
-                );
-
-                // Get the block private key
-                let private_key = match private_key {
-                    Some(pk) => pk,
-                    None => PrivateKey::new(&mut rng)?,
-                };
-
-                // Stdin line buffer
-                let mut buf = String::new();
-
-                // Transaction buffer
-                let mut tx_buf: Vec<Transaction<Network>> = Vec::with_capacity(per_block);
-
-                // Macro to commit a block into the buffer
-                // This can't trivially be a closure because of... you guessed it... the borrow checker
-                let mut num_blocks = 0;
-                macro_rules! commit_block {
-                    () => {
-                        let buf_size = tx_buf.len();
-                        let block = util::add_block_with_transactions(
-                            &ledger,
-                            private_key,
-                            std::mem::replace(&mut tx_buf, Vec::with_capacity(per_block)),
-                            &mut rng,
-                        )?;
-
-                        println!(
-                            "Inserted a block with {buf_size} transactions to the ledger (hash: {})",
-                            block.hash()
-                        );
-                        num_blocks += 1;
-                    };
-                }
-
-                loop {
-                    // Clear the buffer
-                    buf.clear();
-
-                    // Read a line, and match on how many characters we read
-                    match std::io::stdin().read_line(&mut buf)? {
-                        // We've reached EOF
-                        0 => {
-                            if !tx_buf.is_empty() {
-                                commit_block!();
-                            }
-                            break;
-                        }
-
-                        // Not at EOF
-                        _ => {
-                            // Remove newline from buffer
-                            buf.pop();
-
-                            // Skip if buffer is now empty
-                            if buf.is_empty() {
-                                continue;
-                            }
-
-                            // Deserialize the transaction
-                            let Ok(tx) = serde_json::from_str(&buf) else {
-                                eprintln!("Failed to deserialize transaction: {buf}");
-                                continue;
-                            };
-
-                            // Commit if the buffer is now big enough
-                            tx_buf.push(tx);
-                            if tx_buf.len() >= per_block {
-                                commit_block!();
-                            }
-                        }
-                    }
-                }
-
-                println!("Inserted {num_blocks} blocks into the ledger");
-                Ok(())
-            }
-
-            Commands::View { block_height } => {
-                let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
-
-                // Print information about the ledger
-                println!("{:#?}", ledger.get_block(block_height)?);
-                Ok(())
-            }
-
-            Commands::ViewAccountBalance { address } => {
                 let ledger = util::open_ledger(genesis, ledger)?;
-                let addr = Address::<Network>::from_str(&address)?;
-
-                println!("{address} balance {}", util::get_balance(addr, &ledger)?);
-                Ok(())
+                tx.parse(&ledger)
             }
 
-            Commands::Distribute {
-                from,
-                to,
-                num_accounts,
-                amount,
-            } => {
-                let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
-                let mut rng = ChaChaRng::from_entropy();
-
-                // Determine the accounts to distribute to
-                let to = match (to, num_accounts) {
-                    // Addresses explicitly passed
-                    (Some(to), None) => to.0,
-
-                    // No addresses passed, generate private keys at runtime
-                    (None, Some(num)) => (0..num)
-                        .map(|_| Address::try_from(PrivateKey::<Network>::new(&mut rng)?))
-                        .collect::<Result<Vec<_>>>()?,
-
-                    // Cannot pass both/neither
-                    _ => bail!("must specify only ONE of --to and --num-accounts"),
-                };
-
-                let max_transactions = VM::<Network, Db>::MAXIMUM_CONFIRMED_TRANSACTIONS;
-                let per_account = amount / to.len() as u64;
-
-                // Generate a transaction for each address
-                let transactions = to
-                    .iter()
-                    .progress_count(to.len() as u64)
-                    .map(|addr| {
-                        make_transaction_proof::<_, _, AleoV0>(
-                            ledger.vm(),
-                            *addr,
-                            per_account,
-                            from,
-                            None,
-                        )
-                    })
-                    .filter_map(Result::ok)
-                    .collect::<Vec<_>>();
-
-                // Add the transactions into blocks
-                let num_blocks = add_transaction_blocks(
-                    &ledger,
-                    from,
-                    &transactions,
-                    max_transactions,
-                    &mut rng,
-                )?;
-
-                println!(
-                    "Created {num_blocks} from {} transactions ({} failed).",
-                    transactions.len(),
-                    to.len() - transactions.len()
-                );
-
-                Ok(())
+            Commands::Add(add) => {
+                let ledger = util::open_ledger(genesis, ledger)?;
+                add.parse(&ledger)
             }
 
-            Commands::Truncate(TruncateArgGroup { height, amount }) => {
-                let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
+            Commands::View(view) => {
+                let ledger = util::open_ledger(genesis, ledger)?;
+                view.parse(&ledger)
+            }
 
-                let amount = match (height, amount) {
-                    (Some(height), None) => ledger.latest_height() - height,
-                    (None, Some(amount)) => amount,
+            Commands::Distribute(distribute) => {
+                let ledger = util::open_ledger(genesis, ledger)?;
+                distribute.parse(&ledger)
+            }
 
-                    // Clap should prevent this case
-                    _ => unreachable!(),
-                };
-
-                ledger.vm().block_store().remove_last_n(amount)?;
-
-                // TODO: is latest_height accurate here?
-                println!(
-                    "Removed {amount} blocks from the ledger (new height is {}).",
-                    ledger.latest_height()
-                );
-
-                Ok(())
+            Commands::Truncate(truncate) => {
+                let ledger = util::open_ledger(genesis, ledger)?;
+                truncate.parse(&ledger)
             }
         }
     }

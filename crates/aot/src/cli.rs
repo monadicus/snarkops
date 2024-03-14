@@ -1,4 +1,4 @@
-use crate::ledger::Command as Ledger;
+use crate::ledger::Ledger;
 use anyhow::Result;
 use clap::Parser;
 

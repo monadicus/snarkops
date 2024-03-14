@@ -10,17 +10,20 @@ use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use snarkos_cli::commands::{load_or_compute_genesis, DEVELOPMENT_MODE_RNG_SEED};
 use snarkvm::{
-    console::{account::PrivateKey, network::MainnetV0, program::Network, types::Address},
+    console::{account::PrivateKey, types::Address},
     ledger::{
         committee::{Committee, MIN_VALIDATOR_STAKE},
         store::helpers::rocksdb::ConsensusDB,
         Ledger,
     },
+    prelude::Network as _,
     utilities::ToBytes,
 };
 
+use crate::types::Network;
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Balances(IndexMap<Address<MainnetV0>, u64>);
+pub struct Balances(IndexMap<Address<Network>, u64>);
 impl FromStr for Balances {
     type Err = serde_json::Error;
 
@@ -33,7 +36,7 @@ impl FromStr for Balances {
 pub struct Genesis {
     /// The private key to use when generating the genesis block. Generates one randomly if not passed.
     #[clap(name = "genesis-key", short, long)]
-    genesis_key: Option<PrivateKey<MainnetV0>>,
+    genesis_key: Option<PrivateKey<Network>>,
     /// Where to write the genesis block to.
     #[clap(name = "output", short, long, default_value = "genesis.block")]
     output: PathBuf,
@@ -77,7 +80,7 @@ impl Genesis {
         // Generate a genesis key if one was not passed.
         let genesis_key = match self.genesis_key {
             Some(genesis_key) => genesis_key,
-            None => PrivateKey::<MainnetV0>::new(&mut rng)?,
+            None => PrivateKey::<Network>::new(&mut rng)?,
         };
 
         let genesis_addr = Address::try_from(&genesis_key)?;
@@ -123,7 +126,7 @@ impl Genesis {
                     let (key, addr) = match i {
                         0 => (genesis_key, genesis_addr),
                         _ => {
-                            let key = PrivateKey::<MainnetV0>::new(&mut rng)?;
+                            let key = PrivateKey::<Network>::new(&mut rng)?;
                             let addr = Address::try_from(&key)?;
 
                             (key, addr)
@@ -146,14 +149,14 @@ impl Genesis {
         };
 
         // Construct the committee.
-        let committee = Committee::<MainnetV0>::new(0u64, members)?;
+        let committee = Committee::<Network>::new(0u64, members)?;
 
         // Add additional accounts to the public balances
         let accounts = (0..self.additional_accounts)
             .map(|_| {
                 // Repeatedly regenerate key/addresses, ensuring they are not in `bonded_balances`.
                 let (key, addr) = loop {
-                    let key = PrivateKey::<MainnetV0>::new(&mut rng)?;
+                    let key = PrivateKey::<Network>::new(&mut rng)?;
                     let addr = Address::try_from(&key)?;
                     if !bonded_balances.contains_key(&addr) {
                         break (key, addr);
@@ -166,7 +169,7 @@ impl Genesis {
             .collect::<Result<IndexMap<_, _>>>()?;
 
         // Calculate the public balance per validator.
-        let remaining_balance = MainnetV0::STARTING_SUPPLY
+        let remaining_balance = Network::STARTING_SUPPLY
             .saturating_sub(committee.total_stake())
             .saturating_sub(public_balances.values().sum());
 
@@ -182,12 +185,12 @@ impl Genesis {
 
         // Check if the sum of committee stakes and public balances equals the total starting supply.
         let public_balances_sum: u64 = public_balances.values().sum();
-        if committee.total_stake() + public_balances_sum != MainnetV0::STARTING_SUPPLY {
+        if committee.total_stake() + public_balances_sum != Network::STARTING_SUPPLY {
             println!(
                 "Sum of committee stakes and public balances does not equal total starting supply:
                                 {} + {public_balances_sum} != {}",
                 committee.total_stake(),
-                MainnetV0::STARTING_SUPPLY
+                Network::STARTING_SUPPLY
             );
         }
 

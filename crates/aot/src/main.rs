@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod genesis;
 pub mod ledger;
+pub mod types;
 
 use std::process::exit;
 
