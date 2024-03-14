@@ -30,14 +30,16 @@ type Db = ConsensusDB<Network>;
 pub struct Command {
     #[arg(long)]
     pub enable_profiling: bool,
+
+    /// A path to the genesis block to initialize the ledger from.
+    #[arg(required = true, short, long, default_value = "./genesis.block")]
+    genesis: PathBuf,
+    /// The ledger from which to view a block.
+    #[arg(required = true, short, long, default_value = "./ledger")]
+    ledger: PathBuf,
+
     #[command(subcommand)]
     pub command: Commands,
-}
-
-impl Command {
-    pub fn parse(self) -> Result<()> {
-        self.command.parse(self.enable_profiling)
-    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -106,27 +108,12 @@ impl PrivateKeys {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    Init {
-        /// A path to the genesis block to initialize the ledger from.
-        #[arg(required = true, short, long)]
-        genesis: PathBuf,
-        /// A destination path for the ledger directory.
-        #[arg(required = true, short, long)]
-        output: PathBuf,
-    },
+    Init,
     Tx {
-        #[arg(required = true, short, long, default_value = "./genesis.block")]
-        genesis: PathBuf,
-        #[arg(required = true, short, long)]
-        ledger: PathBuf,
         #[arg(required = true, long)]
         operations: TxOperations,
     },
     AddRandom {
-        #[arg(required = true, short, long, default_value = "./genesis.block")]
-        genesis: PathBuf,
-        #[arg(required = true, short, long)]
-        ledger: PathBuf,
         #[arg(long)]
         block_private_key: Option<PrivateKey<Network>>,
         #[arg(required = true, long)]
@@ -144,12 +131,6 @@ pub enum Commands {
         max_tx_credits: Option<u64>,
     },
     Add {
-        /// A path to the genesis block to initialize the ledger from.
-        #[arg(required = true, short, long, default_value = "./genesis.block")]
-        genesis: PathBuf,
-        /// A destination path for the ledger directory.
-        #[arg(required = true, short, long)]
-        ledger: PathBuf,
         /// The private key to use when generating the block.
         #[arg(name = "private-key", long)]
         private_key: Option<PrivateKey<Network>>,
@@ -158,53 +139,45 @@ pub enum Commands {
         txs_per_block: Option<usize>,
     },
     View {
-        /// A path to the genesis block to initialize the ledger from.
-        #[arg(required = true, short, long, default_value = "./genesis.block")]
-        genesis: PathBuf,
-        /// The ledger from which to view a block.
-        #[arg(required = true, short, long)]
-        ledger: PathBuf,
         /// The block height to view.
         block_height: u32,
     },
     ViewAccountBalance {
-        /// A path to the genesis block to initialize the ledger from.
-        #[arg(required = true, short, long, default_value = "./genesis.block")]
-        genesis: PathBuf,
-        /// The ledger from which to view a block.
-        #[arg(required = true, short, long)]
-        ledger: PathBuf,
         /// The address's balance to view.
         address: String,
     },
     Distribute {
-        /// A path to the genesis block to initialize the ledger from.
-        #[arg(required = true, short, long, default_value = "./genesis.block")]
-        genesis: PathBuf,
-        /// The ledger from which to view a block.
-        #[arg(required = true, short, long)]
-        ledger: PathBuf,
         /// The private key in which to distribute credits from.
         #[arg(required = true, long)]
         from: PrivateKey<Network>,
         /// A comma-separated list of addresses to distribute credits to. This or `--num-accounts` must be passed.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "num_accounts")]
         to: Option<Accounts>,
         /// The number of new addresses to generate and distribute credits to. This or `--to` must be passed.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "to")]
         num_accounts: Option<u32>,
         /// The amount of microcredits to distribute.
         #[arg(long)]
         amount: u64,
     },
+    Truncate(#[clap(flatten)] TruncateArgGroup),
 }
 
-impl Commands {
-    pub fn parse(self, enable_profiling: bool) -> Result<()> {
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct TruncateArgGroup {
+    #[arg(long)]
+    height: Option<u32>,
+    #[arg(long)]
+    amount: Option<u32>,
+}
+
+impl Command {
+    pub fn parse(self) -> Result<()> {
         // Initialize logging.
         let fmt_layer = tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr);
 
-        let (flame_layer, _guard) = if enable_profiling {
+        let (flame_layer, _guard) = if self.enable_profiling {
             let (flame_layer, guard) =
                 tracing_flame::FlameLayer::with_file("./tracing.folded").unwrap();
             (Some(flame_layer), Some(guard))
@@ -215,11 +188,17 @@ impl Commands {
         let subscriber = tracing_subscriber::registry::Registry::default()
             .with(fmt_layer)
             .with(flame_layer);
+
         tracing::subscriber::set_global_default(subscriber).unwrap();
 
-        match self {
-            Commands::Init { genesis, output } => {
-                let ledger = util::open_ledger::<Network, Db>(genesis, output)?;
+        // Common arguments
+        let Command {
+            genesis, ledger, ..
+        } = self;
+
+        match self.command {
+            Commands::Init => {
+                let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
                 let genesis_block = ledger.get_block(0)?;
 
                 println!(
@@ -230,11 +209,7 @@ impl Commands {
                 Ok(())
             }
 
-            Commands::Tx {
-                genesis,
-                ledger,
-                operations,
-            } => {
+            Commands::Tx { operations } => {
                 // load the ledger into memory
                 // the secret sauce is `ConsensusMemory`, which tells snarkvm to keep the ledger in memory only
                 let ledger =
@@ -276,8 +251,6 @@ impl Commands {
             }
 
             Commands::AddRandom {
-                genesis,
-                ledger,
                 block_private_key,
                 private_keys,
                 num_blocks,
@@ -368,8 +341,6 @@ impl Commands {
             }
 
             Commands::Add {
-                genesis,
-                ledger,
                 private_key,
                 txs_per_block,
             } => {
@@ -462,11 +433,7 @@ impl Commands {
                 Ok(())
             }
 
-            Commands::View {
-                genesis,
-                ledger,
-                block_height,
-            } => {
+            Commands::View { block_height } => {
                 let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
 
                 // Print information about the ledger
@@ -474,11 +441,7 @@ impl Commands {
                 Ok(())
             }
 
-            Commands::ViewAccountBalance {
-                genesis,
-                ledger,
-                address,
-            } => {
+            Commands::ViewAccountBalance { address } => {
                 let ledger = util::open_ledger(genesis, ledger)?;
                 let addr = Address::<Network>::from_str(&address)?;
 
@@ -487,8 +450,6 @@ impl Commands {
             }
 
             Commands::Distribute {
-                genesis,
-                ledger,
                 from,
                 to,
                 num_accounts,
@@ -543,6 +504,28 @@ impl Commands {
                     "Created {num_blocks} from {} transactions ({} failed).",
                     transactions.len(),
                     to.len() - transactions.len()
+                );
+
+                Ok(())
+            }
+
+            Commands::Truncate(TruncateArgGroup { height, amount }) => {
+                let ledger = util::open_ledger::<Network, Db>(genesis, ledger)?;
+
+                let amount = match (height, amount) {
+                    (Some(height), None) => ledger.latest_height() - height,
+                    (None, Some(amount)) => amount,
+
+                    // Clap should prevent this case
+                    _ => unreachable!(),
+                };
+
+                ledger.vm().block_store().remove_last_n(amount)?;
+
+                // TODO: is latest_height accurate here?
+                println!(
+                    "Removed {amount} blocks from the ledger (new height is {}).",
+                    ledger.latest_height()
                 );
 
                 Ok(())

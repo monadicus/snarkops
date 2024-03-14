@@ -22,7 +22,7 @@ $BINARY genesis --committee-size 3 --committee-file $COMMITTEE --output $GENESIS
 GENESIS_PK=$(pk 0)
 
 # setup the ledger
-$BINARY ledger init --genesis $GENESIS --output $LEDGER
+$BINARY ledger --genesis $GENESIS --ledger $LEDGER init
 
 echo "Start a validator with \`scripts/validator.sh 0\`"
 echo "Broadcast some transactions with \`scripts/tx_cannon.sh\`"

@@ -46,5 +46,5 @@ OPERATIONS=$(jq -r -n \
   { "from": $genesis_pk, "to": $addr_2, "amount": 500 }
 ]')
 
-$BINARY ledger tx -g $GENESIS -l $LEDGER --operations "$OPERATIONS" \
-  | $BINARY ledger add -g $GENESIS -l $LEDGER --txs-per-block $TXS_PER_BLOCK
+$BINARY ledger -g $GENESIS -l $LEDGER tx --operations "$OPERATIONS" \
+  | $BINARY ledger -g $GENESIS -l $LEDGER add --txs-per-block $TXS_PER_BLOCK

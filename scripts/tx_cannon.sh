@@ -23,7 +23,7 @@ OPERATIONS=$(jq -r -n \
 ]')
 
 
-$BINARY ledger tx -g $GENESIS -l $LEDGER --operations "$OPERATIONS" --output $TRANSACTIONS
+$BINARY ledger -g $GENESIS -l $LEDGER tx --operations "$OPERATIONS" --output $TRANSACTIONS
 
 # emit 3 transactions
 curl -H "Content-Type: application/json" -d "$(cat $TRANSACTIONS | jq ".[0]")" \
