@@ -5,7 +5,8 @@ use axum::{extract::State, response::IntoResponse, routing::get, Router};
 use axum_typed_websockets::{Codec, Message, WebSocket, WebSocketUpgrade};
 use serde::{de::DeserializeOwned, Serialize};
 use snot_common::prelude::*;
-use tokio::sync::mpsc;
+use tokio::{select, sync::mpsc};
+use tracing::info;
 
 use crate::state::{Agent, GlobalState};
 
@@ -59,16 +60,34 @@ async fn handle_socket(mut socket: Socket, state: AppState) {
     let id = agent.id();
 
     // register the agent with the agent pool
-    state.pool.write().await.insert(id, agent);
+    {
+        let mut pool = state.pool.write().await;
+        pool.insert(id, agent);
+        info!(
+            "new agent connected (id {id}); pool is now {} nodes",
+            pool.len()
+        );
+    }
 
-    while let Some(message) = rx.recv().await {
-        if let Err(_) = socket.send(Message::Item(message)).await {
-            break;
+    loop {
+        // wait for either the socket to send a message, or for the agent channel to be
+        // trying to send a message
+        select! {
+            Some(Err(_)) | None = socket.recv() => break,
+            Some(message) = rx.recv() => {
+                if let Err(_) = socket.send(Message::Item(message)).await {
+                    break;
+                }
+            }
         }
     }
 
     // remove the node from the node pool
-    state.pool.write().await.remove(&id);
+    {
+        let mut pool = state.pool.write().await;
+        pool.remove(&id);
+        info!("agent {id} disconnected; pool is now {} nodes", pool.len());
+    }
 }
 
 struct BinaryCodec;
