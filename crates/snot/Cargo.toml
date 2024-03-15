@@ -1,5 +1,5 @@
 [package]
-name = "snarkos-test-infra"
+name = "snot"
 version = "0.1.0"
 edition = "2021"
 

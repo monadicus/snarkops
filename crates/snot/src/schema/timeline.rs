@@ -24,18 +24,6 @@ pub struct TimelineEvent {
 
     #[serde(flatten)]
     pub actions: Actions,
-    // pub online: Option<NodeTarget>,
-    // pub offline: Option<NodeTarget>,
-
-    // #[serde(rename = "online.await")]
-    // pub online_await: Option<NodeTarget>,
-
-    // #[serde(rename = "offline.await")]
-    // pub offline_await: Option<NodeTarget>,
-
-    // // TODO: connections, not really sure what this is about
-    // pub height: Option<IndexMap<String, u64>>,
-    // pub cannons: Option<Vec<TxCannon>>,
 }
 
 #[derive(Debug, Clone)]
