@@ -2915,21 +2915,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "snarkos-test-infra"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "duration-str",
- "indexmap",
- "lazy_static",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "snarkos-aot",
-]
-
-[[package]]
 name = "snarkvm"
 version = "0.16.19"
 dependencies = [
@@ -3700,6 +3685,21 @@ dependencies = [
  "proc-macro2",
  "quote 1.0.35",
  "syn 2.0.52",
+]
+
+[[package]]
+name = "snot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "duration-str",
+ "indexmap",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "snarkos-aot",
 ]
 
 [[package]]
