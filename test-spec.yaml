@@ -306,6 +306,8 @@ NOTES: |-
 DREAMS: |-
   control plane node is a webrtc signaling server,
   clients in the swarm can interact via tunneling node traffic through the signaling server
+  
+  agents can download genesis block/ledger/snarkOS binary from other agents, instead of only the control plane
 
 ARCHITECTURE: |-
   components:

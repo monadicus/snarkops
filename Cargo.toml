@@ -1,10 +1,11 @@
 [workspace]
-members = ["crates/aot", "crates/snot", "crates/snot-agent", "crates/snot-cli"]
+members = ["crates/aot", "crates/snot", "crates/snot-agent", "crates/snot-cli", "crates/snot-common"]
 resolver = "2"
 
 [workspace.dependencies]
 aleo-std = "=0.1.24"
 anyhow = "1"
+bincode = "1.3"
 clap = { version = "4.5", features = ["derive"] }
 colored = "2"
 indexmap = { version = "2.2", features = ["serde"] }
