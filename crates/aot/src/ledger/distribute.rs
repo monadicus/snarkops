@@ -1,4 +1,12 @@
-use super::*;
+use anyhow::{bail, Result};
+use clap::Args;
+use indicatif::ProgressIterator;
+use rand::SeedableRng;
+use rand_chacha::ChaChaRng;
+use snarkvm::circuit::AleoV0;
+
+use super::Accounts;
+use crate::{ledger::util, Address, DbLedger, PrivateKey, VM};
 
 #[derive(Debug, Args)]
 pub struct Distribute {
@@ -44,7 +52,7 @@ impl Distribute {
             .iter()
             .progress_count(to.len() as u64)
             .map(|addr| {
-                make_transaction_proof::<_, _, AleoV0>(
+                util::make_transaction_proof::<_, _, AleoV0>(
                     ledger.vm(),
                     *addr,
                     per_account,
@@ -56,7 +64,7 @@ impl Distribute {
             .collect::<Vec<_>>();
 
         // Add the transactions into blocks
-        let num_blocks = add_transaction_blocks(
+        let num_blocks = util::add_transaction_blocks(
             &ledger,
             self.from,
             &transactions,

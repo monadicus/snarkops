@@ -1,3 +1,7 @@
+pub mod cli;
+pub mod genesis;
+pub mod ledger;
+
 use snarkvm::{
     console::network::MainnetV0,
     ledger::{

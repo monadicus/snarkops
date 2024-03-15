@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub mod infrastructure;
 pub mod nodes;
@@ -18,7 +18,7 @@ pub fn deserialize_document(str: &str) -> Result<Vec<ItemDocument>, serde_yaml::
 }
 
 /// A document representing all item types.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "version")]
 pub enum ItemDocument {
     #[serde(rename = "storage.snarkos.testing.monadic.us/v1")]

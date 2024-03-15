@@ -22,12 +22,12 @@ generate:
   genesis:
     output: genesis.block
     seed: 0
-    committee: 5
+    committee-size: 5
     committee-balances: 10_000_000_000_000
     committee-output: committee.json
     additional-accounts: 10
-    additional-balances: 100_000_000_000
-    additional-output: additional-accounts.json
+    additional-accounts-balance: 100_000_000_000
+    additional-accounts-output: additional-accounts.json
   # ledger setup
   ledger:
     output: ledger

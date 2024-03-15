@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
+use serde_clap_deserialize::serde_clap_default;
 use snarkos_cli::commands::{load_or_compute_genesis, DEVELOPMENT_MODE_RNG_SEED};
 use snarkvm::{
     ledger::committee::{Committee, MIN_VALIDATOR_STAKE},
@@ -15,7 +16,7 @@ use snarkvm::{
     utilities::ToBytes,
 };
 
-use crate::types::*;
+use crate::{Address, DbLedger, Network, PrivateKey};
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Balances(IndexMap<Address, u64>);
@@ -27,52 +28,67 @@ impl FromStr for Balances {
     }
 }
 
-#[derive(Debug, Parser)]
+#[serde_clap_default]
+#[derive(Debug, Clone, Parser, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct Genesis {
     /// The private key to use when generating the genesis block. Generates one
     /// randomly if not passed.
     #[clap(name = "genesis-key", short, long)]
-    genesis_key: Option<PrivateKey>,
+    #[serde(rename = "key")]
+    pub genesis_key: Option<PrivateKey>,
+
     /// Where to write the genesis block to.
-    #[clap(name = "output", short, long, default_value = "genesis.block")]
-    output: PathBuf,
+    #[clap(name = "output", short, long)]
+    #[serde_clap_default(PathBuf::from("genesis.block"))]
+    pub output: PathBuf,
+
     /// The committee size. Not used if --bonded-balances is set.
-    #[clap(name = "committee-size", long, default_value_t = 4)]
-    committee_size: u16,
+    #[clap(name = "committee-size", long)]
+    #[serde_clap_default(4)]
+    pub committee_size: u16,
+
+    /// A place to optionally write out the generated committee private keys
+    /// JSON.
+    #[clap(name = "committee-output", long)]
+    pub committee_output: Option<PathBuf>,
+
     /// Additional number of accounts that aren't validators to add balances to.
-    #[clap(name = "additional-accounts", long, default_value_t = 0)]
-    additional_accounts: u16,
+    #[clap(name = "additional-accounts", long)]
+    #[serde_clap_default(0)]
+    pub additional_accounts: u16,
+
     /// The balance to add to the number of accounts specified by
     /// additional-accounts.
-    #[clap(
-        name = "additional-accounts-balance",
-        long,
-        default_value_t = 100_000_000
-    )]
-    additional_accounts_balance: u64,
+    #[clap(name = "additional-accounts-balance", long)]
+    #[serde_clap_default(100_000_000)]
+    pub additional_accounts_balance: u64,
+
     /// A place to write out the additionally generated accounts by
     /// --additional-accounts.
-    #[clap(name = "additional-accounts-file", long)]
-    additional_accounts_file: Option<PathBuf>,
+    #[clap(name = "additional-accounts-output", long)]
+    pub additional_accounts_output: Option<PathBuf>,
+
     /// The seed to use when generating committee private keys and the genesis
     /// block. If unpassed, uses DEVELOPMENT_MODE_RNG_SEED.
     #[clap(name = "seed", long)]
-    seed: Option<u64>,
+    pub seed: Option<u64>,
+
     /// The bonded balance each bonded address receives. Not used if
     /// `--bonded-balances` is passed.
-    #[clap(name = "bonded-balance", long, default_value_t = 10_000_000_000_000)]
-    bonded_balance: u64,
+    #[clap(name = "bonded-balance", long)]
+    #[serde_clap_default(10_000_000_000_000)]
+    pub bonded_balance: u64,
+
     /// An optional map from address to bonded balance. Overrides
     /// `--bonded-balance` and `--committee-size`.
     #[clap(name = "bonded-balances", long)]
-    bonded_balances: Option<Balances>,
-    /// A place to optionally write out the generated committee private keys
-    /// JSON.
-    #[clap(name = "committee-file", long)]
-    committee_file: Option<PathBuf>,
+    pub bonded_balances: Option<Balances>,
+
     /// Optionally initialize a ledger as well.
     #[clap(name = "ledger", long)]
-    ledger: Option<PathBuf>,
+    #[serde(skip)]
+    pub ledger: Option<PathBuf>,
 }
 
 impl Genesis {
@@ -234,7 +250,7 @@ impl Genesis {
             self.output.display().to_string().yellow()
         );
 
-        match (self.additional_accounts, self.additional_accounts_file) {
+        match (self.additional_accounts, self.additional_accounts_output) {
             // Don't display anything if we didn't make any additional accounts.
             (0, _) => (),
 
@@ -270,7 +286,7 @@ impl Genesis {
         }
 
         // Display committee information if we generated it.
-        match (committee_members, self.committee_file) {
+        match (committee_members, self.committee_output) {
             // file was passed
             (Some(committee_members), Some(committee_file)) => {
                 let file = fs::File::options()

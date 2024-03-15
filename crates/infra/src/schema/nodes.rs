@@ -1,8 +1,8 @@
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// A document describing the node infrastructure for a test.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Document {
     // TODO: is there a way to deserialize whether or not this is a client/validator by its name?
     pub nodes: IndexMap<String, Node>,
@@ -10,7 +10,7 @@ pub struct Document {
 
 // TODO: could use some more clarification on some of these fields
 /// A node in the testing infrastructure.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Node {
     /// When specified, creates a group of nodes, all with the same
     /// configuration. A a a a a a a a a

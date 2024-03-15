@@ -2373,6 +2373,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-clap-deserialize"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43fc67570d6c72bda4a5cf743a26dddbce2ff8bbf7064d48a4cb5ceb5803be13"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.35",
+ "syn 2.0.52",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2563,6 +2574,7 @@ dependencies = [
  "rand_chacha",
  "rayon",
  "serde",
+ "serde-clap-deserialize",
  "serde_json",
  "snarkos-cli",
  "snarkvm",
@@ -2906,11 +2918,13 @@ dependencies = [
 name = "snarkos-test-infra"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "duration-str",
  "indexmap",
  "serde",
  "serde_json",
  "serde_yaml",
+ "snarkos-aot",
 ]
 
 [[package]]

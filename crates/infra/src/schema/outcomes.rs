@@ -1,8 +1,8 @@
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// A document describing a test's expected outcomes.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Document {
     pub metrics: Metrics,
 }

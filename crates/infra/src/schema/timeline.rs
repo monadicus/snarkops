@@ -1,16 +1,16 @@
 use std::{fmt, path::PathBuf, time::Duration};
 
 use indexmap::IndexMap;
-use serde::{de::Visitor, Deserialize, Serialize};
+use serde::{de::Visitor, Deserialize};
 
 /// A document describing a test's event timeline.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Document {
     pub timeline: Vec<TimelineEvent>,
 }
 
 /// An event in the test timeline.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TimelineEvent {
     pub duration: Option<EventDuration>,
     pub online: Option<NodeTarget>,
@@ -28,7 +28,7 @@ pub struct TimelineEvent {
 }
 
 /// A target for an event.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum NodeTarget {
     Some(Vec<String>),
     All,
@@ -74,7 +74,7 @@ impl<'de> Deserialize<'de> for NodeTarget {
     }
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub enum EventDuration {
     Time(Duration),
     Blocks(u64),
@@ -115,7 +115,7 @@ impl<'de> Deserialize<'de> for EventDuration {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TxCannon {
     pub target: String,
     pub source: PathBuf,

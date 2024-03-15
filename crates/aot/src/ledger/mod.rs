@@ -1,25 +1,18 @@
 use std::{ops::Deref, path::PathBuf, str::FromStr};
 
-use anyhow::{bail, ensure, Result};
+use anyhow::Result;
 use clap::{Args, Subcommand};
-use indicatif::{ParallelProgressIterator, ProgressBar, ProgressIterator};
-use rand::{seq::SliceRandom, CryptoRng, Rng, SeedableRng};
-use rand_chacha::ChaChaRng;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use serde::Deserialize;
-use snarkvm::{circuit::AleoV0, ledger::Transaction};
-use tracing_subscriber::layer::SubscriberExt;
+use rand::{seq::SliceRandom, CryptoRng, Rng};
 
-use self::util::{add_transaction_blocks, make_transaction_proof};
-use crate::types::*;
+use crate::{Address, PrivateKey};
 
-mod add;
-mod distribute;
-mod init;
-mod truncate;
-mod tx;
-mod util;
-mod view;
+pub mod add;
+pub mod distribute;
+pub mod init;
+pub mod truncate;
+pub mod tx;
+pub mod util;
+pub mod view;
 
 #[derive(Debug, Args)]
 pub struct Ledger {
@@ -28,10 +21,11 @@ pub struct Ledger {
 
     /// A path to the genesis block to initialize the ledger from.
     #[arg(required = true, short, long, default_value = "./genesis.block")]
-    genesis: PathBuf,
+    pub genesis: PathBuf,
+
     /// The ledger from which to view a block.
     #[arg(required = true, short, long, default_value = "./ledger")]
-    ledger: PathBuf,
+    pub ledger: PathBuf,
 
     #[command(subcommand)]
     pub command: Commands,
@@ -97,23 +91,6 @@ pub enum Commands {
 
 impl Ledger {
     pub fn parse(self) -> Result<()> {
-        // Initialize logging.
-        let fmt_layer = tracing_subscriber::fmt::Layer::default().with_writer(std::io::stderr);
-
-        let (flame_layer, _guard) = if self.enable_profiling {
-            let (flame_layer, guard) =
-                tracing_flame::FlameLayer::with_file("./tracing.folded").unwrap();
-            (Some(flame_layer), Some(guard))
-        } else {
-            (None, None)
-        };
-
-        let subscriber = tracing_subscriber::registry::Registry::default()
-            .with(fmt_layer)
-            .with(flame_layer);
-
-        tracing::subscriber::set_global_default(subscriber).unwrap();
-
         // Common arguments
         let Ledger {
             genesis, ledger, ..

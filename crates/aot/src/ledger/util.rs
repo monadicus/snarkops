@@ -150,12 +150,12 @@ pub fn add_transaction_blocks<N: Network, C: ConsensusStorage<N>, R: Rng + Crypt
     Ok(count)
 }
 
-pub fn gen_n_tx<'a, C: ConsensusStorage<super::Network>>(
-    ledger: &'a Ledger<super::Network, C>,
+pub fn gen_n_tx<'a, C: ConsensusStorage<crate::Network>>(
+    ledger: &'a Ledger<crate::Network, C>,
     private_keys: &'a PrivateKeys,
     num_tx: u64,
     max_tx_credits: Option<u64>,
-) -> impl ParallelIterator<Item = Result<Transaction<super::Network>>> + 'a {
+) -> impl ParallelIterator<Item = Result<Transaction<crate::Network>>> + 'a {
     let tx_span = span!(Level::INFO, "tx generation");
     (0..num_tx)
         .into_par_iter()

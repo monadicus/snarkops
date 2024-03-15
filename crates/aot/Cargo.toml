@@ -17,6 +17,7 @@ rand_chacha = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde-clap-deserialize = "0.1.0"
 snarkos-cli = { workspace = true }
 snarkvm = { workspace = true }
 tracing = { workspace = true }
