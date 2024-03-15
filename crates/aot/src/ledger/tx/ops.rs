@@ -2,8 +2,7 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use clap::Args;
-use indicatif::{ParallelProgressIterator, ProgressBar};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use indicatif::{ProgressBar, ProgressIterator};
 use serde::Deserialize;
 use snarkvm::circuit::AleoV0;
 
@@ -44,7 +43,7 @@ impl FromOps {
             .operations
             .0
             // rayon for free parallelism
-            .into_par_iter()
+            .into_iter()
             // generate proofs
             .map(|op| {
                 util::make_transaction_proof::<_, _, AleoV0>(

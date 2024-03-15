@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::Args;
-use indicatif::ProgressBar;
-use rayon::iter::ParallelIterator;
+use indicatif::{ProgressBar, ProgressIterator};
 
 use crate::{
     ledger::{util, PrivateKeys},
@@ -21,9 +20,9 @@ impl Num {
 
         while count < self.num as usize {
             let remainder = self.num - count as u64;
-            eprintln!("Attempting to gen {remainder} transactions.");
             let progress_bar = ProgressBar::new(remainder);
             progress_bar.tick();
+            eprintln!("Attempting to gen {remainder} transactions.");
 
             count += util::gen_n_tx(ledger, &self.private_keys, remainder, None)
                 .filter_map(Result::ok) // discard failed transactions
@@ -34,7 +33,7 @@ impl Num {
                         serde_json::to_string(&proof).expect("serialize proof")
                     )
                 })
-                // progress bar
+                .map(drop)
                 .progress_with(progress_bar)
                 // take the count of succeeeded proofs
                 .count();

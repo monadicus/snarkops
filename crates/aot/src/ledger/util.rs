@@ -2,10 +2,8 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
-use indicatif::ParallelProgressIterator;
 use rand::{thread_rng, CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use snarkvm::{
     circuit::{Aleo, AleoV0},
     console::{
@@ -155,35 +153,32 @@ pub fn gen_n_tx<'a, C: ConsensusStorage<crate::Network>>(
     private_keys: &'a PrivateKeys,
     num_tx: u64,
     max_tx_credits: Option<u64>,
-) -> impl ParallelIterator<Item = Result<Transaction<crate::Network>>> + 'a {
+) -> impl Iterator<Item = Result<Transaction<crate::Network>>> + 'a {
     let tx_span = span!(Level::INFO, "tx generation");
-    (0..num_tx)
-        .into_par_iter()
-        .progress_count(num_tx)
-        .map(move |_| {
-            let _enter = tx_span.enter();
+    (0..num_tx).into_iter().map(move |_| {
+        let _enter = tx_span.enter();
 
-            let mut rng = ChaChaRng::from_rng(thread_rng())?;
+        let mut rng = ChaChaRng::from_rng(thread_rng())?;
 
-            let keys = private_keys.random_accounts(&mut rng);
+        let keys = private_keys.random_accounts(&mut rng);
 
-            let from = Address::try_from(keys[1])?;
-            let amount = match max_tx_credits {
-                Some(amount) => rng.gen_range(1..amount),
-                None => rng.gen_range(1..get_balance(from, ledger)?),
-            };
+        let from = Address::try_from(keys[1])?;
+        let amount = match max_tx_credits {
+            Some(amount) => rng.gen_range(1..amount),
+            None => rng.gen_range(1..get_balance(from, ledger)? / 2),
+        };
 
-            let to = Address::try_from(keys[0])?;
+        let to = Address::try_from(keys[0])?;
 
-            let proof_span = span!(Level::INFO, "tx generation proof");
-            let _enter = proof_span.enter();
+        let proof_span = span!(Level::INFO, "tx generation proof");
+        let _enter = proof_span.enter();
 
-            make_transaction_proof::<_, _, AleoV0>(
-                ledger.vm(),
-                to,
-                amount,
-                keys[1],
-                keys.get(2).copied(),
-            )
-        })
+        make_transaction_proof::<_, _, AleoV0>(
+            ledger.vm(),
+            to,
+            amount,
+            keys[1],
+            keys.get(2).copied(),
+        )
+    })
 }
