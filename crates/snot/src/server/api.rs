@@ -10,7 +10,7 @@ use snot_common::state::{DesiredState, NodeType};
 
 use super::AppState;
 
-pub(super) fn api() -> Router<AppState> {
+pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/foo", get(|| async { "bar" }))
         .route("/agents", get(get_agents))

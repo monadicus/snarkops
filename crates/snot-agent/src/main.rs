@@ -15,6 +15,11 @@ async fn main() {
     // TODO: ability to disconnect temporarily from the control plane (wait for it
     // to start)
 
+    // TODO: download snarkos binary from control plane (respect last-modified to
+    // avoid downloading)
+    // TODO: current ledger/genesis block/snarkos binary/etc.
+    // should be stored in the current working directory
+
     while let Ok(msg) = ws_stream.next().await.unwrap() {
         match msg {
             Message::Binary(payload) => {

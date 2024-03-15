@@ -10,7 +10,8 @@ use tracing::info;
 
 use crate::state::{Agent, GlobalState};
 
-mod routes;
+mod api;
+mod content;
 
 type Socket = WebSocket<ServerMessage, ClientMessage, BinaryCodec>;
 type SocketUpgrade = WebSocketUpgrade<ServerMessage, ClientMessage, BinaryCodec>;
@@ -22,8 +23,8 @@ pub async fn start() -> Result<()> {
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
-        .nest("/api", routes::api()) // TODO: authorization
-        // TODO: file serving (binaries, ledger, blocks, etc.)
+        .nest("/api", api::routes()) // TODO: authorization
+        .nest("/content", content::routes())
         .with_state(Arc::new(state));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1234").await?;
