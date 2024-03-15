@@ -8,4 +8,6 @@ client = []
 server = []
 
 [dependencies]
+lazy_static = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
