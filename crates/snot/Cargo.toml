@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+axum = "0.7.4"
 duration-str = { version = "0.7", default-features = false }
 indexmap = { workspace = true }
 lazy_static = { workspace = true }
@@ -13,3 +14,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 snarkos-aot = { path = "../aot" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -3692,6 +3692,7 @@ name = "snot"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "duration-str",
  "indexmap",
  "lazy_static",
@@ -3700,7 +3701,18 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "snarkos-aot",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
+
+[[package]]
+name = "snot-agent"
+version = "0.1.0"
+
+[[package]]
+name = "snot-cli"
+version = "0.1.0"
 
 [[package]]
 name = "socket2"

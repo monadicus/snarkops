@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/aot", "crates/snot"]
+members = ["crates/aot", "crates/snot", "crates/snot-agent", "crates/snot-cli"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -17,6 +17,7 @@ regex = "1.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 

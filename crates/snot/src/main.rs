@@ -1,28 +1,19 @@
+use tracing_subscriber::prelude::*;
+
 pub mod schema;
 pub mod storage;
 
-fn main() {
-    // let item_raw = "
-    // version: storage.snarkos.testing.monadic.us/v1
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .try_init()
+        .unwrap();
 
-    // name: test name
-    // description: test description
-    // ";
+    // TODO: REST api for interacting with CLI/web
 
-    // let item: ItemDocument =
-    // serde_yaml::from_str(item_raw).expect("deserialize");
+    // TODO: possibly need authorization for the REST server for MVP?
 
-    // println!("{:#?}", item);
-    // println!("\n{}", serde_yaml::to_string(&item).expect("serialize"));
-
-    // println!("{:#?}", serde_yaml::from_str::<NodeTarget>("all").unwrap())
-    // println!("{:#?}", serde_yaml::from_str::<EventDuration>("1").unwrap())
-    let item_raw = "
-    output: \"foo\"
-    ";
-
-    println!(
-        "{:#?}",
-        serde_yaml::from_str::<snarkos_aot::genesis::Genesis>(item_raw).unwrap()
-    );
+    // TODO ws server for talking to runners, runners get data from control
+    // plane thru HTTP, not ws
 }
