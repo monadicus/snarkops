@@ -22,12 +22,12 @@ generate:
   genesis:
     output: genesis.block
     seed: 0
-    committee-size: 5
+    committee: 5
     committee-balances: 10_000_000_000_000
     committee-output: committee.json
     additional-accounts: 10
-    additional-accounts-balance: 100_000_000_000
-    additional-accounts-output: additional-accounts.json
+    additional-balances: 100_000_000_000
+    additional-output: additional-accounts.json
   # ledger setup
   ledger:
     output: ledger
@@ -62,6 +62,33 @@ accounts:
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
+
+name: my example topology
+description: |
+  this has too few validators to work as a network
+
+# additional nodes that can be used as validators/peers
+external:
+  validator/1@canarynet:
+    bft: 11.12.13.14:5000
+    node: 11.12.13.14:4130
+
+  validator/1@devnet:
+    bft: 11.12.13.14:5000
+    node: 11.12.13.14:4130
+
+# validator/*[@local]
+# validator/*@*
+# */*@*
+
+# all
+# */*
+# [*/*]
+# validator/1
+# validator/*
+# */1
+# [validator/1]
+# [validator/1-*]
 
 # node topology
 nodes:
@@ -185,25 +212,50 @@ timeline:
   - online: [validator/1, validator/2]
     duration: 10s
 
-  # client/1 will go online after 10 seconds
+  # client/1 will go online, and wait 1 minute
   - online: [client/1]
     duration: 1m
 
-  # after 1 minute, the entire network will shutdown
-  - offline: all
+  # after 1 minute has passed, the entire network will shutdown
+  - offline: */*
+  - offline: */*
 
   # .await forces the step to wait until the condition is met rather than applying the change immediately
-  - online.await: all
-  - offline.await: all
+  - online.await: */*
+  - offline.await: */*
+    # wait at most 10 seconds for the nodes to go offline or kill the test
+    timeout: 10s
 
   # when these nodes come back online, their configurations will be different
-  - connections:
+  - peers:
       validator/1: []
       validator/2: [client/1]
-
-    # reset this validator's ledger height
+  - validators:
+      client/*: [validator/1]
+    # modify the height of offline nodes
     height:
-      validator/1: 0
+      validator/*: 0 # reset all validators ledger height
+      prover/2: 100 # set prover 2 to block 100
+      client/*: -5 # rollback the ledger 5 blocks
+      client/1: -1hr # rollback the ledger by an hour (based on block timestamp deltas)
+
+  - config:
+    - nodes: [validator/1, validator/2]
+      peers: []
+      height: 0 # reset ledger completely
+    - nodes: [client/*]
+      validators: [validator/1, validator/2]
+      height: -5 # rollback the ledger 5 blocks
+    - nodes: [prover/2]
+      height: 100 # set prover 2 to block 100
+    - nodes: [client/1]
+      height: -1hr # rollback the ledger by an hour (based on block timestamp deltas)
+    
+    - nodes: client/*
+      peers: []
+      height: 0 # reset ledger completely
+      
+
 
   # wait for 5 blocks to be produced (technically impossible with all nodes offline. may want to add a check for this or end the test if nothing happens after a few seconds)
   - duration: 5
@@ -211,13 +263,13 @@ timeline:
   # start firing 100 transactions total at a rate of 5 per second
   # this will not halt execution unless `duration:` is specified alongside `cannons:`
   - cannons:
-      - target: validator/1
+      - nodes: validator/1
         source: ./testing/0001/pool.json
         total: 100
         tps: 5
 
   # after all nodes have shutdown, all nodes will come back online with initial configured peers
-  - online: all
+  - online: */*
     duration: 5s
 
 ---
@@ -226,7 +278,7 @@ version: timeline.snarkos.testing.monadic.us/v1
 # additional timelines can be defined for additional tests
 
 timeline:
-  - online: all
+  - online: */*
     # this timeline will until a node reaches block height 100
     duration: 100
 
@@ -239,16 +291,88 @@ metrics:
   client/sync-speed: 20
   validator/sync-speed: 20
 
+
 ---
 NOTES: |-
   need to create a service for running snarkos that does the following:
-  - gather CPU/MEM/Storage facts about the runner machine
+  - gather CPU/MEM/Storage/latency facts about the runner machine
   - syncs latest ledger, genesis, and keys to the node from the control plane
   - modifies the ledger and genesis files to be the latest files
   - consumes a JSON/yaml config and converts into snarkos cli flags
   - start/stop snarkos in the desired mode
   - return latest state, logs, and metrics of the node
+  - generate transactions given the current genesis/ledger and stream the output back
 
 DREAMS: |-
   control plane node is a webrtc signaling server,
   clients in the swarm can interact via tunneling node traffic through the signaling server
+
+ARCHITECTURE: |-
+  components:
+    - worker (node):
+      - is launched with:
+        - available ports
+        - available modes (validator/client/prover)
+        - region/zone label
+        - auth token for control plane
+
+      - gathers information about the worker machine
+      - syncs latest ledger, genesis, and keys to the node from the control plane
+      - updates node configuration for peers/validators/ports 
+      - applies modifications to the ledger for testing sync
+      - starts/stops the node
+      - upload logs and metrics to the control plane
+      - generates transactions/(solutions?) given a ledger/genesis block
+      - receive transactions and post them to the current node
+      - [maybe] tunnel TCP node traffic through webrtc to avoid port forwarding/firewalls
+
+    - control plane:
+      - connects to workers and orchestrates their operating state
+      - view status of workers
+      - aggregates logs/metrics from workers
+      - manages the state of running tests
+      - receives test bundles and runs them on pools of workers
+      - instances of a test output artifacts (logs&metrics)
+      - run a tx cannon on a given ledger/genesis
+      - emit transactions from a file to a specific node
+      - [maybe] function as a signaling server between peers
+
+      implementation details:
+        maintain the state of all workers
+        when a worker's state changes, emit the event to the worker
+        allow workers to query the control plane for the current state
+        
+        timeline actions will can update the state for workers
+        timeline actions can wait for collective worker state to meet expectations (maybe with timeout?)
+
+
+    - cli
+      - communicates with the control plane
+      - tests:
+        - creates test bundles from files
+        - uploads to control plane
+        - monitors test state
+      - view live logs/metrics from runners (through the control plane)
+      - interfaces 
+
+  MVP:
+    worker: 
+      copy latest ledger/genesis/config
+      start/stop a snarkos node given the config
+      truncate/reset ledger
+      receive transaction and broadcast to the running node
+      generate and upload transactions
+
+
+
+    control plane:
+      start a single active test
+      walk through the timeline
+      configure nodes based on the test topology (get correct IPs and ports)
+      gather logs
+
+
+    cli:
+      upload a test bundle to control plane
+      monitor & download results from control plane
+      request transaction generation from pool given a genesis+ledger

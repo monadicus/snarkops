@@ -1,7 +1,10 @@
 use std::{fmt, path::PathBuf, time::Duration};
 
 use indexmap::IndexMap;
-use serde::{de::Visitor, Deserialize};
+use serde::{
+    de::{Error, Visitor},
+    Deserialize, Deserializer,
+};
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
@@ -12,19 +15,93 @@ pub struct Document {
 /// An event in the test timeline.
 #[derive(Deserialize, Debug, Clone)]
 pub struct TimelineEvent {
+    /// The event will run for at least the given duration
     pub duration: Option<EventDuration>,
-    pub online: Option<NodeTarget>,
-    pub offline: Option<NodeTarget>,
 
-    #[serde(rename = "online.await")]
-    pub online_await: Option<NodeTarget>,
+    /// An awaited action will error if it does not occur within the given
+    /// duration
+    pub timeout: Option<EventDuration>,
 
-    #[serde(rename = "offline.await")]
-    pub offline_await: Option<NodeTarget>,
+    #[serde(flatten)]
+    pub actions: Actions,
+    // pub online: Option<NodeTarget>,
+    // pub offline: Option<NodeTarget>,
 
-    // TODO: connections, not really sure what this is about
-    pub height: Option<IndexMap<String, u64>>,
-    pub cannons: Option<Vec<TxCannon>>,
+    // #[serde(rename = "online.await")]
+    // pub online_await: Option<NodeTarget>,
+
+    // #[serde(rename = "offline.await")]
+    // pub offline_await: Option<NodeTarget>,
+
+    // // TODO: connections, not really sure what this is about
+    // pub height: Option<IndexMap<String, u64>>,
+    // pub cannons: Option<Vec<TxCannon>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Actions(Vec<ActionInstance>);
+
+#[derive(Debug, Clone)]
+pub struct ActionInstance {
+    pub action: Action,
+    pub awaited: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum Action {
+    /// Update the given nodes to an online state
+    Online(NodeTarget),
+    /// Update the given nodes to an offline state
+    Offline(NodeTarget),
+    /// Fire transactions from a source file at a target node
+    Cannon(Vec<TxCannon>),
+    /// Set the height of some nodes' ledgers
+    Height(IndexMap<String, u64>),
+}
+
+struct ActionsVisitor;
+
+impl<'de> Visitor<'de> for ActionsVisitor {
+    type Value = Actions;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("possibly awaited action map")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let mut buf = vec![];
+
+        while let Some(key) = map.next_key::<&str>()? {
+            // determine if this action is being awaited
+            let (key, awaited) = match key {
+                key if key.ends_with(".await") => (key.split_at(key.len() - 6).0, true),
+                _ => (key, false),
+            };
+
+            buf.push(ActionInstance {
+                awaited,
+                action: match key {
+                    "online" => Action::Online(map.next_value()?),
+                    "offline" => Action::Offline(map.next_value()?),
+                    "cannon" => Action::Cannon(map.next_value()?),
+                    "height" => Action::Height(map.next_value()?),
+
+                    _ => return Err(A::Error::custom(format!("unsupported action {key}"))),
+                },
+            });
+        }
+
+        Ok(Actions(buf))
+    }
+}
+
+impl<'de> Deserialize<'de> for Actions {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_map(ActionsVisitor)
+    }
 }
 
 /// A target for an event.
@@ -66,10 +143,7 @@ impl<'de> Visitor<'de> for NodeTargetVisitor {
 }
 
 impl<'de> Deserialize<'de> for NodeTarget {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_any(NodeTargetVisitor)
     }
 }
@@ -107,10 +181,7 @@ impl<'de> Visitor<'de> for EventDurationVisitor {
 }
 
 impl<'de> Deserialize<'de> for EventDuration {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_any(EventDurationVisitor)
     }
 }

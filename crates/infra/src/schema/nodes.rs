@@ -1,11 +1,26 @@
+use std::net::SocketAddr;
+
 use indexmap::IndexMap;
 use serde::Deserialize;
+
+use super::{NodeKey, NodeTargets};
 
 /// A document describing the node infrastructure for a test.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Document {
-    // TODO: is there a way to deserialize whether or not this is a client/validator by its name?
-    pub nodes: IndexMap<String, Node>,
+    #[serde(default)]
+    pub external: IndexMap<NodeKey, ExternalNode>,
+
+    #[serde(default)]
+    pub nodes: IndexMap<NodeKey, Node>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ExternalNode {
+    // NOTE: these fields must be validated at runtime, because validators require `bft` to be set,
+    // and non-validators require `node` to be set
+    pub bft: Option<SocketAddr>,
+    pub node: Option<SocketAddr>,
 }
 
 // TODO: could use some more clarification on some of these fields
@@ -24,6 +39,9 @@ pub struct Node {
     /// * When zero, the ledger is empty and only the genesis block is
     ///   inherited.
     pub height: Option<usize>,
-    pub validators: Option<Vec<String>>,
-    pub peers: Option<Vec<String>>,
+
+    #[serde(default)]
+    pub validators: NodeTargets,
+    #[serde(default)]
+    pub peers: NodeTargets,
 }

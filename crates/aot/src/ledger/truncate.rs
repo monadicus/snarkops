@@ -10,6 +10,8 @@ pub struct Truncate {
     height: Option<u32>,
     #[arg(long)]
     amount: Option<u32>,
+    // TODO: duration based truncation (blocks within a duration before now)
+    // TODO: timestamp based truncation (blocks after a certain date)
 }
 
 impl Truncate {
