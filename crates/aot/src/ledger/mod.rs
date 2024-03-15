@@ -3,12 +3,11 @@ use std::{ops::Deref, path::PathBuf, str::FromStr};
 use anyhow::{bail, ensure, Result};
 use clap::{Args, Subcommand};
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressIterator};
-use rand::{seq::SliceRandom, thread_rng, CryptoRng, Rng, SeedableRng};
+use rand::{seq::SliceRandom, CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
 use snarkvm::{circuit::AleoV0, ledger::Transaction};
-use tracing::{span, Level};
 use tracing_subscriber::layer::SubscriberExt;
 
 use self::util::{add_transaction_blocks, make_transaction_proof};

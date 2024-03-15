@@ -47,38 +47,14 @@ impl Random {
             let num_tx_per_block = rng.gen_range(self.min_per_block..=self.max_per_block);
             total_txs += num_tx_per_block;
 
-            let tx_span = span!(Level::INFO, "tx generation");
-            let txs = (0..num_tx_per_block)
-                .into_par_iter()
-                .progress_count(num_tx_per_block as u64)
-                .map(|_| {
-                    let _enter = tx_span.enter();
-
-                    let mut rng = ChaChaRng::from_rng(thread_rng())?;
-
-                    let keys = self.private_keys.random_accounts(&mut rng);
-
-                    let from = Address::try_from(keys[1])?;
-                    let amount = match self.max_tx_credits {
-                        Some(amount) => rng.gen_range(1..amount),
-                        None => rng.gen_range(1..util::get_balance(from, &ledger)?),
-                    };
-
-                    let to = Address::try_from(keys[0])?;
-
-                    let proof_span = span!(Level::INFO, "tx generation proof");
-                    let _enter = proof_span.enter();
-
-                    util::make_transaction_proof::<_, _, AleoV0>(
-                        ledger.vm(),
-                        to,
-                        amount,
-                        keys[1],
-                        keys.get(2).copied(),
-                    )
-                })
-                .filter_map(Result::ok)
-                .collect::<Vec<_>>();
+            let txs = util::gen_n_tx(
+                ledger,
+                &self.private_keys,
+                num_tx_per_block as u64,
+                self.max_tx_credits,
+            )
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
 
             gen_txs += txs.len();
             let target_block = ledger.prepare_advance_to_next_beacon_block(

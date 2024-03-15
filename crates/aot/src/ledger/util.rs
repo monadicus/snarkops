@@ -2,22 +2,25 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
-use rand::{CryptoRng, Rng};
+use indicatif::ParallelProgressIterator;
+use rand::{thread_rng, CryptoRng, Rng, SeedableRng};
+use rand_chacha::ChaChaRng;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use snarkvm::{
-    circuit::Aleo,
+    circuit::{Aleo, AleoV0},
     console::{
         account::PrivateKey,
-        program::{Identifier, Literal, Network, Plaintext, ProgramID, Value},
+        program::{Identifier, Literal, Plaintext, ProgramID, Value},
         types::{Address, U64},
     },
-    ledger::{
-        query::Query,
-        store::{helpers::rocksdb::ConsensusDB, ConsensusStorage},
-        Block, Ledger, Transaction,
-    },
-    synthesizer::{process::execution_cost, VM},
+    ledger::{query::Query, store::ConsensusStorage, Block, Ledger, Transaction},
+    prelude::{execution_cost, Network},
+    synthesizer::VM,
     utilities::FromBytes,
 };
+use tracing::{span, Level};
+
+use super::*;
 
 #[tracing::instrument]
 pub fn open_ledger<N: Network, C: ConsensusStorage<N>>(
@@ -88,9 +91,9 @@ pub fn make_transaction_proof<N: Network, C: ConsensusStorage<N>, A: Aleo<Networ
     Transaction::<N>::from_execution(execution, Some(fee))
 }
 
-pub fn get_balance<N: Network>(
+pub fn get_balance<N: Network, C: ConsensusStorage<N>>(
     addr: Address<N>,
-    ledger: &Ledger<N, ConsensusDB<N>>,
+    ledger: &Ledger<N, C>,
 ) -> Result<u64> {
     let balance = ledger.vm().finalize_store().get_value_confirmed(
         ProgramID::try_from("credits.aleo")?,
@@ -105,8 +108,8 @@ pub fn get_balance<N: Network>(
     }
 }
 
-pub fn add_block_with_transactions<N: Network, S: ConsensusStorage<N>, R: Rng + CryptoRng>(
-    ledger: &Ledger<N, S>,
+pub fn add_block_with_transactions<N: Network, C: ConsensusStorage<N>, R: Rng + CryptoRng>(
+    ledger: &Ledger<N, C>,
     private_key: PrivateKey<N>,
     transactions: Vec<Transaction<N>>,
     rng: &mut R,
@@ -122,8 +125,8 @@ pub fn add_block_with_transactions<N: Network, S: ConsensusStorage<N>, R: Rng + 
     Ok(block)
 }
 
-pub fn add_transaction_blocks<N: Network, S: ConsensusStorage<N>, R: Rng + CryptoRng>(
-    ledger: &Ledger<N, S>,
+pub fn add_transaction_blocks<N: Network, C: ConsensusStorage<N>, R: Rng + CryptoRng>(
+    ledger: &Ledger<N, C>,
     private_key: PrivateKey<N>,
     transactions: &[Transaction<N>],
     per_block: usize,
@@ -145,4 +148,42 @@ pub fn add_transaction_blocks<N: Network, S: ConsensusStorage<N>, R: Rng + Crypt
     }
 
     Ok(count)
+}
+
+pub fn gen_n_tx<'a, C: ConsensusStorage<super::Network>>(
+    ledger: &'a Ledger<super::Network, C>,
+    private_keys: &'a PrivateKeys,
+    num_tx: u64,
+    max_tx_credits: Option<u64>,
+) -> impl ParallelIterator<Item = Result<Transaction<super::Network>>> + 'a {
+    let tx_span = span!(Level::INFO, "tx generation");
+    (0..num_tx)
+        .into_par_iter()
+        .progress_count(num_tx)
+        .map(move |_| {
+            let _enter = tx_span.enter();
+
+            let mut rng = ChaChaRng::from_rng(thread_rng())?;
+
+            let keys = private_keys.random_accounts(&mut rng);
+
+            let from = Address::try_from(keys[1])?;
+            let amount = match max_tx_credits {
+                Some(amount) => rng.gen_range(1..amount),
+                None => rng.gen_range(1..get_balance(from, ledger)?),
+            };
+
+            let to = Address::try_from(keys[0])?;
+
+            let proof_span = span!(Level::INFO, "tx generation proof");
+            let _enter = proof_span.enter();
+
+            make_transaction_proof::<_, _, AleoV0>(
+                ledger.vm(),
+                to,
+                amount,
+                keys[1],
+                keys.get(2).copied(),
+            )
+        })
 }
