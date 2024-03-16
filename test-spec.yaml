@@ -262,6 +262,22 @@ timeline:
   # wait for 5 blocks to be produced (technically impossible with all nodes offline. may want to add a check for this or end the test if nothing happens after a few seconds)
   - duration: 5
 
+  - expect-height.await:
+    validator/1: 500 # wait until validator 1 to be at block 500
+    client/1: '+500' # wait for the client to sync 500 blocks
+
+
+  # wait for all nodes to sync 500 blocks, starting at the beginning
+  # 
+  - config.await:
+    - nodes: client/*
+      height: 0
+  - duration:
+      nodes: client/*
+      height-delta: 500 # 5 
+      height: 600
+    timeout: 2500s # {{block_time * 500 / 2 + 60}}s
+
   # start firing 100 transactions total at a rate of 5 per second
   # this will not halt execution unless `duration:` is specified alongside `cannons:`
   - cannons:

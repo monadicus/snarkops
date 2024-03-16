@@ -3,7 +3,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use snot_common::{message::ServerMessage, state::DesiredState};
+use snot_common::{message::ServerMessage, state::NodeState};
 use tokio::sync::{mpsc, RwLock};
 
 /// The global state for the control plane.
@@ -19,7 +19,7 @@ pub struct GlobalState {
 pub struct Agent {
     id: usize,
     tx: mpsc::Sender<ServerMessage>,
-    state: DesiredState, // TODO: revert state if set state fails
+    state: Option<NodeState>, // TODO: revert state if set state fails
 }
 
 type SendResult = Result<(), mpsc::error::SendError<ServerMessage>>;
@@ -42,14 +42,14 @@ impl Agent {
     }
 
     /// The current desired state of this agent.
-    pub fn state(&self) -> &DesiredState {
-        &self.state
+    pub fn state(&self) -> Option<&NodeState> {
+        self.state.as_ref()
     }
 
     /// The current desired state of this agent, but owned, so that you can make
     /// edits to it before calling `set_state`.
-    pub fn state_owned(&self) -> DesiredState {
-        self.state.to_owned()
+    pub fn state_owned(&self) -> Option<NodeState> {
+        self.state.clone()
     }
 
     /// Attempts to set the desired state of this agent. Informs the agent that
@@ -58,15 +58,16 @@ impl Agent {
     /// agent event channel.
     ///
     /// TODO: this should probably wait until reconciliation.
-    pub async fn set_state(&mut self, new_state: DesiredState) -> SendResult {
-        let old_state = std::mem::replace(&mut self.state, new_state.to_owned());
+    pub async fn set_state(&mut self, new_state: NodeState) -> SendResult {
+        // TODO: redo this to work with new NodeState
+        // let old_state = std::mem::replace(&mut self.state, new_state.to_owned());
 
         // tell the agent to set its state to the new state
-        if let Err(e) = self.send(ServerMessage::SetState(new_state)).await {
-            // revert to old state if send fails
-            let _ = std::mem::replace(&mut self.state, old_state);
-            return Err(e);
-        }
+        // if let Err(e) = self.send(ServerMessage::StateReconcile(new_state)).await {
+        //     // revert to old state if send fails
+        //     let _ = std::mem::replace(&mut self.state, old_state);
+        //     return Err(e);
+        // }
 
         Ok(())
     }

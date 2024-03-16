@@ -4,50 +4,120 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{de::Error, Deserialize, Serialize};
 
-/// Desired state for an agent.
+type AgentId = usize;
+type StorageId = usize;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeState {
+    pub ty: NodeType,
+    pub storage: StorageId, // storage { genesis, ledger }
+    pub height: (usize, HeightRequest),
+
+    pub online: bool,
+    pub peers: Vec<AgentPeer>,
+    pub validators: Vec<AgentPeer>,
+}
+
+// // agent code
+// impl AgentState {
+//     async fn reconcile(&self, target: AgentState) {
+//         // assert that we can actually move from self to target
+//         // if not, return ReconcileFailed
+
+//         if self.peers != target.peers {
+//             if self.online {
+//                 self.turn_offline();
+//             }
+
+//             // make change to peers
+//             self.peers = target.peers;
+//             // make the change in snarkos
+
+//             // restore online state
+//         }
+
+//         // and do the rest of these fields
+
+//         // return StateReconciled(self)
+//     }
+// }
+
+// #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+// pub enum AgentState {
+//     Inventory,
+//     Node(ContextRequest, ConfigRequest),
+//     Cannon(/* config */),
+// }
+
+// /// Desired state for an agent's node.
+// #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+// pub struct ContextRequest {
+//     pub id: usize,
+//     pub ty: NodeType,
+//     pub storage: StorageId,
+//     pub starting_height: Option<u32>,
+// }
+
+// #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+// pub struct ConfigRequest {
+//     pub id: usize,
+//     pub online: bool,
+//     pub peers: Vec<AgentPeer>,
+//     pub validators: Vec<AgentPeer>,
+//     pub next_height: Option<HeightRequest>,
+// }
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct DesiredState {
-    pub online: bool,
-
-    // TODO: peer list
-    // TODO: validator list
-    // TODO: height
-    pub ty: Option<NodeType>,
+pub enum HeightRequest {
+    #[default]
+    Top,
+    Absolute(u32),
+    // the control plane doesn't know the heights the nodes are at
+    // TruncateHeight(u32),
+    // TruncateTime(i64),
 }
 
-/// The state reported by an agent.
-#[derive(Debug, Default, Clone, Serialize, Deserialize, Hash)]
-pub struct ResolvedState {
-    /// The timestamp of the last update.
-    pub timestamp: i64, // TODO: chrono
-
-    pub online: bool,
-    pub config_ty: Option<NodeType>,
-
-    pub genesis_hash: Option<String>,
-    pub config_peers: Option<Vec<SocketAddr>>,
-    pub config_validators: Option<Vec<SocketAddr>>,
-    pub snarkos_peers: Option<Vec<SocketAddr>>,
-    pub snarkos_validators: Option<Vec<SocketAddr>>,
-    pub block_height: Option<u32>,
-    pub block_timestamp: Option<i64>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AgentPeer {
+    Internal(AgentId),
+    External(SocketAddr),
 }
 
-impl DesiredState {
-    pub fn new() -> Self {
-        Self::default()
-    }
+// /// The state reported by an agent.
+// #[derive(Debug, Default, Clone, Serialize, Deserialize, Hash)]
+// pub struct ResolvedState {
+//     /// The timestamp of the last update.
+//     pub timestamp: i64, // TODO: chrono
 
-    pub fn with_online(mut self, online: bool) -> Self {
-        self.online = online;
-        self
-    }
+//     // pub online: bool,
+//     // pub config_ty: Option<NodeType>,
 
-    pub fn with_type(mut self, ty: Option<NodeType>) -> Self {
-        self.ty = ty;
-        self
-    }
-}
+//     pub current_state: State,
+
+//     pub genesis_hash: Option<String>,
+//     pub config_peers: Option<Vec<SocketAddr>>,
+//     pub config_validators: Option<Vec<SocketAddr>>,
+//     pub snarkos_peers: Option<Vec<SocketAddr>>,
+//     pub snarkos_validators: Option<Vec<SocketAddr>>,
+//     pub block_height: Option<u32>,
+//     pub block_timestamp: Option<i64>,
+// }
+
+// impl ConfigRequest {
+//     pub fn new() -> Self {
+//         Self::default()
+//     }
+
+//     pub fn with_online(mut self, online: bool) -> Self {
+//         self.online = online;
+//         self
+//     }
+
+//     pub fn with_type(mut self, ty: Option<NodeType>) -> Self {
+//         self.ty = ty;
+//         self
+//     }
+// }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct NodeKey {

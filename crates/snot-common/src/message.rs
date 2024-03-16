@@ -1,16 +1,20 @@
 #[cfg(any(feature = "server", feature = "client"))]
 use serde::{Deserialize, Serialize};
 
-use crate::state::DesiredState;
+use crate::state::NodeState;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "server", derive(Serialize))]
 #[cfg_attr(feature = "client", derive(Deserialize))]
 pub enum ServerMessage {
-    SetState(DesiredState),
+    StateReconcile(NodeState),
 }
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "server", derive(Deserialize))]
 #[cfg_attr(feature = "client", derive(Serialize))]
-pub enum ClientMessage {}
+pub enum ClientMessage {
+    StateReconciled,
+    StateReconcileFail(String),
+    // RequestPeerAddress,
+}
