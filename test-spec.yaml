@@ -72,10 +72,12 @@ external:
   validator/1@canarynet:
     bft: 11.12.13.14:5000
     node: 11.12.13.14:4130
+    rest: 11.12.13.14:3030
 
   validator/1@devnet:
     bft: 11.12.13.14:5000
     node: 11.12.13.14:4130
+    rest: 11.12.13.14:3030
 
 # validator/*[@local]
 # validator/*@*

@@ -23,7 +23,7 @@ pub async fn start() -> Result<()> {
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
-        .nest("/api", api::routes()) // TODO: authorization
+        .nest("/api/v1", api::routes()) // TODO: authorization
         .nest("/content", content::routes())
         .with_state(Arc::new(state));
 

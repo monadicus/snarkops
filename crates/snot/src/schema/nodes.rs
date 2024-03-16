@@ -19,8 +19,10 @@ pub struct Document {
 pub struct ExternalNode {
     // NOTE: these fields must be validated at runtime, because validators require `bft` to be set,
     // and non-validators require `node` to be set
+    // rest is required to be a target of the tx-cannon
     pub bft: Option<SocketAddr>,
     pub node: Option<SocketAddr>,
+    pub rest: Option<SocketAddr>,
 }
 
 // TODO: could use some more clarification on some of these fields

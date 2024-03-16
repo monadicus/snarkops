@@ -7,7 +7,10 @@ edition = "2021"
 
 [dependencies]
 bincode = { workspace = true }
+clap = { workspace = true }
 futures-util = "0.3.30"
 snot-common = { path = "../snot-common", features = ["client"] }
 tokio = { workspace = true }
 tokio-tungstenite = "0.21.0"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

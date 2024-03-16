@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{net::SocketAddr, str::FromStr};
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -8,7 +8,29 @@ use serde::{de::Error, Deserialize, Serialize};
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DesiredState {
     pub online: bool,
+
+    // TODO: peer list
+    // TODO: validator list
+    // TODO: height
     pub ty: Option<NodeType>,
+}
+
+/// The state reported by an agent.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Hash)]
+pub struct ResolvedState {
+    /// The timestamp of the last update.
+    pub timestamp: i64, // TODO: chrono
+
+    pub online: bool,
+    pub config_ty: Option<NodeType>,
+
+    pub genesis_hash: Option<String>,
+    pub config_peers: Option<Vec<SocketAddr>>,
+    pub config_validators: Option<Vec<SocketAddr>>,
+    pub snarkos_peers: Option<Vec<SocketAddr>>,
+    pub snarkos_validators: Option<Vec<SocketAddr>>,
+    pub block_height: Option<u32>,
+    pub block_timestamp: Option<i64>,
 }
 
 impl DesiredState {

@@ -3751,10 +3751,13 @@ name = "snot-agent"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "clap",
  "futures-util",
  "snot-common",
  "tokio",
  "tokio-tungstenite",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
