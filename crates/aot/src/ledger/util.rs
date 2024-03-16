@@ -2,16 +2,17 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
+use indexmap::IndexMap;
 use rand::{thread_rng, CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use snarkvm::{
     circuit::{Aleo, AleoV0},
     console::{
-        account::PrivateKey,
-        program::{Identifier, Literal, Plaintext, ProgramID, Value},
-        types::{Address, U64},
+        account::{PrivateKey, ViewKey},
+        program::{Ciphertext, Identifier, Literal, Plaintext, ProgramID, Record, Value},
+        types::{Address, Field, U64},
     },
-    ledger::{query::Query, store::ConsensusStorage, Block, Ledger, Transaction},
+    ledger::{query::Query, store::ConsensusStorage, Block, Execution, Fee, Ledger, Transaction},
     prelude::{execution_cost, Network},
     synthesizer::VM,
     utilities::FromBytes,
@@ -30,7 +31,48 @@ pub fn open_ledger<N: Network, C: ConsensusStorage<N>>(
     Ledger::load(genesis_block, StorageMode::Custom(ledger_path))
 }
 
-pub fn make_transaction_proof<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
+pub fn prove_credits<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
+    locator: &'static str,
+    vm: &VM<N, C>,
+    private_key: PrivateKey<N>,
+    inputs: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = impl TryInto<Value<N>>>>,
+) -> Result<Execution<N>> {
+    let rng = &mut rand::thread_rng();
+
+    // authorize the transfer execution
+    let auth = vm.authorize(
+        &private_key,
+        ProgramID::from_str("credits.aleo")?,
+        Identifier::from_str(locator)?,
+        inputs,
+        rng,
+    )?;
+
+    // assemble the proof
+    let (_, mut trace) = vm.process().read().execute::<A, _>(auth, rng)?;
+    trace.prepare(Query::from(vm.block_store()).clone())?;
+    trace.prove_execution::<A, _>(&format!("credits.aleo/{locator}"), rng)
+}
+
+pub fn prove_fee<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
+    vm: &VM<N, C>,
+    private_key: &PrivateKey<N>,
+    min_fee: u64,
+    execution_id: Field<N>,
+) -> Result<Fee<N>> {
+    let rng = &mut rand::thread_rng();
+
+    // authorize the fee execution
+    let auth = vm.authorize_fee_public(private_key, min_fee, 0, execution_id, rng)?;
+
+    // assemble the proof
+    let (_, mut trace) = vm.process().read().execute::<A, _>(auth, rng)?;
+    trace.prepare(Query::from(vm.block_store()).clone())?;
+    trace.prove_fee::<A, _>(rng)
+}
+
+pub fn public_transaction<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
+    locator: &'static str,
     vm: &VM<N, C>,
     address: Address<N>,
     amount_microcredits: u64,
@@ -45,48 +87,98 @@ pub fn make_transaction_proof<N: Network, C: ConsensusStorage<N>, A: Aleo<Networ
     let private_key_fee = private_key_fee.unwrap_or(private_key);
 
     // proof for the execution of the transfer function
-    let execution = {
-        // authorize the transfer execution
-        let authorization = vm.authorize(
-            &private_key,
-            ProgramID::from_str("credits.aleo")?,
-            Identifier::from_str("transfer_public")?,
-            vec![
-                Value::from_str(address.to_string().as_str())?,
-                Value::from(Literal::U64(U64::new(amount_microcredits))),
-            ]
-            .into_iter(),
-            rng,
-        )?;
-
-        // assemble the proof
-        let (_, mut trace) = vm.process().read().execute::<A, _>(authorization, rng)?;
-        trace.prepare(query.clone())?;
-        trace.prove_execution::<A, _>("credits.aleo/transfer_public", rng)?
-    };
+    let execution = prove_credits::<_, _, A>(
+        locator,
+        vm,
+        private_key,
+        vec![
+            Value::from_str(address.to_string().as_str())?,
+            Value::from(Literal::U64(U64::new(amount_microcredits))),
+        ],
+    )?;
 
     // compute fee for the execution
     let (min_fee, _) = execution_cost(&vm.process().read(), &execution)?;
 
     // proof for the fee, authorizing the execution
-    let fee = {
-        // authorize the fee execution
-        let fee_authorization =
-        // This can have a separate private key because the fee is checked to be VALID
-        // and has the associated execution id.
-            vm.authorize_fee_public(&private_key_fee, min_fee, 0, execution.to_execution_id()?, rng)?;
-
-        // assemble the proof
-        let (_, mut trace) = vm
-            .process()
-            .read()
-            .execute::<A, _>(fee_authorization, rng)?;
-        trace.prepare(query)?;
-        trace.prove_fee::<A, _>(rng)?
-    };
+    let fee = prove_fee::<_, _, A>(vm, &private_key_fee, min_fee, execution.to_execution_id()?)?;
 
     // assemble the transaction
     Transaction::<N>::from_execution(execution, Some(fee))
+}
+
+pub fn make_transaction_proof<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
+    vm: &VM<N, C>,
+    address: Address<N>,
+    amount_microcredits: u64,
+    private_key: PrivateKey<N>,
+    private_key_fee: Option<PrivateKey<N>>,
+) -> Result<Transaction<N>> {
+    public_transaction::<_, _, A>(
+        "transfer_public",
+        vm,
+        address,
+        amount_microcredits,
+        private_key,
+        private_key_fee,
+    )
+}
+
+pub fn make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
+    vm: &VM<N, C>,
+    address: Address<N>,
+    amounts: Vec<u64>,
+    private_key: PrivateKey<N>,
+    private_key_fee: Option<PrivateKey<N>>,
+) -> Result<(Transaction<N>, Vec<Transaction<N>>)> {
+    let record_tx = public_transaction::<_, _, A>(
+        "transfer_public_to_private",
+        vm,
+        Address::try_from(private_key)?,
+        amounts.iter().sum(),
+        private_key,
+        private_key_fee,
+    )?;
+
+    // fee key falls back to the private key
+    let private_key_fee = private_key_fee.unwrap_or(private_key);
+
+    // Cannot fail because transfer_public_to_private always emits a record
+    let record_enc: Record<N, Ciphertext<N>> = record_tx.records().next().unwrap().1.clone();
+    // Decrypt the record
+    let record = record_enc.decrypt(&ViewKey::try_from(private_key)?)?;
+
+    let query = Query::from(vm.block_store());
+
+    let mut transactions = Vec::with_capacity(amounts.len());
+
+    for amount in amounts {
+        let rng = &mut rand::thread_rng();
+
+        // proof for the execution of the transfer function
+        let execution = prove_credits::<_, _, A>(
+            "transfer_private",
+            vm,
+            private_key,
+            vec![
+                Value::Record(record.clone()),
+                Value::from_str(address.to_string().as_str())?,
+                Value::from(Literal::U64(U64::new(amount))),
+            ],
+        )?;
+
+        // compute fee for the execution
+        let (min_fee, _) = execution_cost(&vm.process().read(), &execution)?;
+
+        // proof for the fee, authorizing the execution
+        let fee =
+            prove_fee::<_, _, A>(vm, &private_key_fee, min_fee, execution.to_execution_id()?)?;
+
+        // assemble the transaction
+        transactions.push(Transaction::<N>::from_execution(execution, Some(fee))?);
+    }
+
+    Ok((record_tx, transactions))
 }
 
 pub fn get_balance<N: Network, C: ConsensusStorage<N>>(
