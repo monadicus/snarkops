@@ -1,4 +1,4 @@
-use std::{ops::Deref, path::PathBuf, str::FromStr};
+use std::{net::SocketAddr, ops::Deref, path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -64,6 +64,7 @@ macro_rules! comma_separated {
 comma_separated! {
     PrivateKeys(PrivateKey);
     Accounts(Address);
+    Addrs(SocketAddr);
 }
 
 impl PrivateKeys {

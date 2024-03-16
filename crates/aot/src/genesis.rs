@@ -9,9 +9,12 @@ use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
-use snarkos_cli::commands::{load_or_compute_genesis, DEVELOPMENT_MODE_RNG_SEED};
+use snarkos_cli::commands::load_or_compute_genesis;
 use snarkvm::{
-    ledger::committee::{Committee, MIN_VALIDATOR_STAKE},
+    ledger::{
+        committee::{Committee, MIN_VALIDATOR_STAKE},
+        store::{helpers::memory::ConsensusMemory, ConsensusStore},
+    },
     prelude::Network as _,
     utilities::ToBytes,
 };
@@ -61,7 +64,7 @@ pub struct Genesis {
     /// The balance to add to the number of accounts specified by
     /// additional-accounts.
     #[clap(name = "additional-accounts-balance", long)]
-    #[serde_clap_default(100_000_000)]
+    #[serde_clap_default(100000000)] // 100_000_000
     pub additional_accounts_balance: u64,
 
     /// A place to write out the additionally generated accounts by
@@ -70,14 +73,14 @@ pub struct Genesis {
     pub additional_accounts_output: Option<PathBuf>,
 
     /// The seed to use when generating committee private keys and the genesis
-    /// block. If unpassed, uses DEVELOPMENT_MODE_RNG_SEED.
+    /// block. If unpassed, uses DEVELOPMENT_MODE_RNG_SEED (1234567890u64).
     #[clap(name = "seed", long)]
     pub seed: Option<u64>,
 
     /// The bonded balance each bonded address receives. Not used if
     /// `--bonded-balances` is passed.
     #[clap(name = "bonded-balance", long)]
-    #[serde_clap_default(10_000_000_000_000)]
+    #[serde_clap_default(10000000000000)] // 10_000_000_000_000
     pub bonded_balance: u64,
 
     /// An optional map from address to bonded balance. Overrides
@@ -93,7 +96,7 @@ pub struct Genesis {
 
 impl Genesis {
     pub fn parse(self) -> Result<()> {
-        let mut rng = ChaChaRng::seed_from_u64(self.seed.unwrap_or(DEVELOPMENT_MODE_RNG_SEED));
+        let mut rng = ChaChaRng::seed_from_u64(self.seed.unwrap_or(1234567890u64));
 
         // Generate a genesis key if one was not passed.
         let genesis_key = match self.genesis_key {
@@ -121,7 +124,7 @@ impl Genesis {
                         "Validator stake is too low: {balance} < {MIN_VALIDATOR_STAKE}",
                     );
 
-                    bonded_balances.insert(*addr, (*addr, *balance));
+                    bonded_balances.insert(*addr, (*addr, *addr, *balance));
                     members.insert(*addr, (*balance, true));
                 }
 
@@ -152,7 +155,7 @@ impl Genesis {
                     };
 
                     committee_members.insert(addr, (key, self.bonded_balance));
-                    bonded_balances.insert(addr, (addr, self.bonded_balance));
+                    bonded_balances.insert(addr, (addr, addr, self.bonded_balance));
                     members.insert(addr, (self.bonded_balance, true));
                     public_balances.insert(addr, self.bonded_balance);
                 }
@@ -216,13 +219,20 @@ impl Genesis {
 
         // Construct the genesis block.
         let compute_span = tracing::span!(tracing::Level::ERROR, "compute span").entered();
-        let block = load_or_compute_genesis(
-            genesis_key,
+
+        // Initialize a new VM.
+        let vm = VM::from(ConsensusStore::<Network, ConsensusMemory<_>>::open(Some(
+            0,
+        ))?)?;
+        // Initialize the genesis block.
+        let block = vm.genesis_quorum(
+            &genesis_key,
             committee,
             public_balances,
             bonded_balances,
-            &mut rng,
+            rng,
         )?;
+
         compute_span.exit();
 
         println!();

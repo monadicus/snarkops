@@ -134,6 +134,19 @@ pub enum NodeType {
     Prover,
 }
 
+impl FromStr for NodeType {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "client" => Ok(Self::Client),
+            "validator" => Ok(Self::Validator),
+            "prover" => Ok(Self::Prover),
+            _ => Err("invalid node type string"),
+        }
+    }
+}
+
 lazy_static! {
     static ref NODE_KEY_REGEX: Regex = Regex::new(
         r"^(?P<ty>client|validator|prover)\/(?P<id>[A-Za-z0-9\-]+)(?:@(?P<ns>[A-Za-z0-9\-]+))?$"
@@ -150,12 +163,7 @@ impl FromStr for NodeKey {
         };
 
         // match the type
-        let ty = match &captures["ty"] {
-            "client" => NodeType::Client,
-            "validator" => NodeType::Validator,
-            "prover" => NodeType::Prover,
-            _ => unreachable!(),
-        };
+        let ty = NodeType::from_str(&captures["ty"]).unwrap();
 
         // match the node ID
         let id = String::from(&captures["id"]);

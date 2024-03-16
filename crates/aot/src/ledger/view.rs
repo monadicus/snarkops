@@ -2,8 +2,9 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use clap::Subcommand;
+use snarkvm::console::account::ViewKey;
 
-use crate::{ledger::util, Address, DbLedger};
+use crate::{ledger::util, Address, DbLedger, PrivateKey};
 
 #[derive(Debug, Subcommand)]
 pub enum View {

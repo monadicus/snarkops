@@ -18,7 +18,7 @@ pk() { cat $COMMITTEE | jq "[.[][0]][$1]" -r; }
 addr() { cat $COMMITTEE | jq "(. | keys)[$1]" -r; }
 
 # generate the genesis block
-$BINARY genesis --committee-size 3 --committee-file $COMMITTEE --output $GENESIS --bonded-balance 10000000000000
+$BINARY genesis --committee-size 3 --committee-output $COMMITTEE --output $GENESIS --bonded-balance 10000000000000
 GENESIS_PK=$(pk 0)
 
 # setup the ledger
