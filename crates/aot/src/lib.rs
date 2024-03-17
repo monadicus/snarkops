@@ -1,7 +1,9 @@
 pub mod cli;
 pub mod genesis;
 pub mod ledger;
-pub mod node;
+
+#[cfg(feature = "node")]
+pub mod runner;
 
 use snarkvm::{
     console::network::MainnetV0,
@@ -12,6 +14,7 @@ use snarkvm::{
 };
 
 pub type Network = MainnetV0;
+pub type TransactionID = <Network as snarkvm::prelude::Network>::TransactionID;
 pub type Db = ConsensusDB<Network>;
 pub type MemoryLedger = Ledger<Network, ConsensusMemory<Network>>;
 pub type DbLedger = Ledger<Network, Db>;

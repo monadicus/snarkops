@@ -7,6 +7,7 @@ use crate::{ledger::util, Address, DbLedger};
 
 #[derive(Debug, Subcommand)]
 pub enum View {
+    Top,
     Block { block_height: u32 },
     Balance { address: String },
 }
@@ -18,10 +19,13 @@ impl View {
                 // Print information about the ledger
                 println!("{:#?}", ledger.get_block(block_height)?);
             }
+            View::Top => {
+                println!("{:#?}", ledger.latest_block());
+            }
             View::Balance { address } => {
                 let addr = Address::from_str(&address)?;
 
-                println!("{address} balance {}", util::get_balance(addr, &ledger)?);
+                println!("{address} balance {}", util::get_balance(addr, ledger)?);
             }
         }
         Ok(())

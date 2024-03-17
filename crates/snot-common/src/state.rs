@@ -6,16 +6,62 @@ use serde::{de::Error, Deserialize, Serialize};
 
 type AgentId = usize;
 type StorageId = usize;
+type CannonSourceId = usize;
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub enum AgentState {
+    #[default]
+    Inventory,
+    Node(StorageId, NodeState),
+    Cannon(StorageId, CannonState),
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
     pub ty: NodeType,
-    pub storage: StorageId, // storage { genesis, ledger }
+    pub private_key: String,
     pub height: (usize, HeightRequest),
 
     pub online: bool,
     pub peers: Vec<AgentPeer>,
     pub validators: Vec<AgentPeer>,
+}
+
+/// Transaction cannon modes.
+/// When a target node is specified, it MUST have REST ports available for
+/// both broadcasting and for checking if a transaction has been confirmed for
+/// private transactions (record must exist before transfer_private can be run)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CannonState {
+    /// Generate transactions and submit them to the control-plane
+    AheadOfTime {
+        mode: TxGenMode,
+        pks: Vec<String>,
+        addrs: Vec<String>,
+    },
+    /// Generate transactions in realtime and submit them to a target node
+    Realtime {
+        target: AgentPeer,
+        mode: TxGenMode,
+        pks: Vec<String>,
+        addrs: Vec<String>,
+    },
+    /// Playback transactions from a file to a target node
+    Playback {
+        target: AgentPeer,
+        // number of transactions per second to emit
+        rate: u16,
+        // total number of transactions to emit
+        total: u32,
+        source: CannonSourceId,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TxGenMode {
+    All,
+    OnlyPrivate,
+    OnlyPublic,
 }
 
 // // agent code

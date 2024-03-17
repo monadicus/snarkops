@@ -3,7 +3,10 @@ use clap::Args;
 use rand::{CryptoRng, Rng};
 
 use crate::{
-    ledger::{util, PrivateKeys},
+    ledger::{
+        util::{self, CannonTx},
+        PrivateKeys,
+    },
     DbLedger, PrivateKey, VM,
 };
 
@@ -61,6 +64,12 @@ impl Random {
                 self.max_tx_credits,
             )
             .filter_map(Result::ok)
+            .map(|tx| match tx {
+                CannonTx::Standalone(tx) => tx,
+                // TODO: ensure these transactions can be appended in the same block as the record
+                // TODO: otherwise, will need to push these into the next block
+                CannonTx::Dependent(_, tx) => tx,
+            })
             .collect::<Vec<_>>();
 
             gen_txs += txs.len();

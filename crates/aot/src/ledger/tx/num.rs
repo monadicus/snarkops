@@ -27,11 +27,19 @@ impl Num {
             count += util::gen_n_tx(ledger, &self.private_keys, remainder, None)
                 .filter_map(Result::ok) // discard failed transactions
                 // print each transaction to stdout
-                .inspect(|proof| {
-                    println!(
-                        "{}",
-                        serde_json::to_string(&proof).expect("serialize proof")
-                    )
+                .inspect(|proof| match proof {
+                    util::CannonTx::Standalone(tx) => {
+                        println!(
+                            "null\t{}",
+                            serde_json::to_string(&tx).expect("serialize proof")
+                        );
+                    }
+                    util::CannonTx::Dependent(id, tx) => {
+                        println!(
+                            "{id}\t{}",
+                            serde_json::to_string(&tx).expect("serialize proof")
+                        );
+                    }
                 })
                 .map(drop)
                 .progress_with(progress_bar)

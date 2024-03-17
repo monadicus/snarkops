@@ -65,7 +65,7 @@ impl Distribute {
 
         // Add the transactions into blocks
         let num_blocks = util::add_transaction_blocks(
-            &ledger,
+            ledger,
             self.from,
             &transactions,
             max_transactions,

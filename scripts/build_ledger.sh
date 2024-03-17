@@ -9,6 +9,7 @@ mkdir -p tests/$NAME
 
 GENESIS=tests/$NAME/genesis.block
 COMMITTEE=tests/$NAME/committee.json
+ACCOUNTS=tests/$NAME/accounts.json
 TRANSACTIONS=tests/$NAME/tx.json
 LEDGER=tests/$NAME/ledger
 
@@ -18,7 +19,13 @@ pk() { cat $COMMITTEE | jq "[.[][0]][$1]" -r; }
 addr() { cat $COMMITTEE | jq "(. | keys)[$1]" -r; }
 
 # generate the genesis block
-$BINARY genesis --committee-size 3 --committee-output $COMMITTEE --output $GENESIS --bonded-balance 10000000000000
+$BINARY genesis \
+  --committee-size 4 \
+  --committee-output $COMMITTEE \
+  --output $GENESIS \
+  --bonded-balance 10000000000000 \
+  --additional-accounts 100 \
+  --additional-accounts-output $ACCOUNTS
 GENESIS_PK=$(pk 0)
 
 # setup the ledger

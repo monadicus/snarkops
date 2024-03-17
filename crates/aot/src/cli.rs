@@ -2,7 +2,9 @@ use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::layer::SubscriberExt;
 
-use crate::{genesis::Genesis, ledger::Ledger, node::Runner};
+#[cfg(feature = "node")]
+use crate::runner::Runner;
+use crate::{genesis::Genesis, ledger::Ledger};
 
 #[derive(Debug, Parser)]
 #[clap(name = "snarkOS AoT", author = "MONADIC.US")]
@@ -18,6 +20,7 @@ pub struct Cli {
 pub enum Command {
     Genesis(Genesis),
     Ledger(Ledger),
+    #[cfg(feature = "node")]
     Run(Runner),
 }
 
@@ -42,6 +45,7 @@ impl Cli {
         match self.command {
             Command::Genesis(command) => command.parse(),
             Command::Ledger(command) => command.parse(),
+            #[cfg(feature = "node")]
             Command::Run(command) => command.parse(),
         }
     }
