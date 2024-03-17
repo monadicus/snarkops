@@ -9,7 +9,6 @@ use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
-use snarkos_cli::commands::load_or_compute_genesis;
 use snarkvm::{
     ledger::{
         committee::{Committee, MIN_VALIDATOR_STAKE},
@@ -221,16 +220,16 @@ impl Genesis {
         let compute_span = tracing::span!(tracing::Level::ERROR, "compute span").entered();
 
         // Initialize a new VM.
-        let vm = VM::from(ConsensusStore::<Network, ConsensusMemory<_>>::open(Some(
-            0,
-        ))?)?;
+        let vm = snarkvm::synthesizer::VM::from(
+            ConsensusStore::<Network, ConsensusMemory<_>>::open(Some(0))?,
+        )?;
         // Initialize the genesis block.
         let block = vm.genesis_quorum(
             &genesis_key,
             committee,
             public_balances,
             bonded_balances,
-            rng,
+            &mut rng,
         )?;
 
         compute_span.exit();

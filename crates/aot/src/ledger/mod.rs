@@ -34,16 +34,19 @@ pub struct Ledger {
 // Helper macro for making clap args that are comma-separated
 macro_rules! comma_separated {
     { $name:ident ( $item:ty ) ; } => {
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
         pub struct $name(Vec<$item>);
 
         impl FromStr for $name {
-            type Err = <$item as FromStr>::Err;
+					type Err = anyhow::Error;
 
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                Ok(Self(s.split(',').map(<$item>::from_str).collect::<Result<Vec<_>>>()?))
-            }
-        }
+					fn from_str(s: &str) -> Result<Self, Self::Err> {
+							Ok(Self(s.split(',')
+											 .map(|i| <$item>::from_str(i))
+											 .collect::<Result<Vec<_>, <$item as FromStr>::Err>>()
+											 .map_err(anyhow::Error::from)?))
+					}
+			}
 
         impl Deref for $name {
             type Target = Vec<$item>;

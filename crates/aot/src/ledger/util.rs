@@ -2,7 +2,6 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
-use indexmap::IndexMap;
 use rand::{thread_rng, CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use snarkvm::{
@@ -79,9 +78,9 @@ pub fn public_transaction<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = 
     private_key: PrivateKey<N>,
     private_key_fee: Option<PrivateKey<N>>,
 ) -> Result<Transaction<N>> {
-    let rng = &mut rand::thread_rng();
+    // let rng = &mut rand::thread_rng();
 
-    let query = Query::from(vm.block_store());
+    // let query = Query::from(vm.block_store());
 
     // fee key falls back to the private key
     let private_key_fee = private_key_fee.unwrap_or(private_key);
@@ -148,12 +147,12 @@ pub fn make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Ale
     // Decrypt the record
     let record = record_enc.decrypt(&ViewKey::try_from(private_key)?)?;
 
-    let query = Query::from(vm.block_store());
+    // let query = Query::from(vm.block_store());
 
     let mut transactions = Vec::with_capacity(amounts.len());
 
     for amount in amounts {
-        let rng = &mut rand::thread_rng();
+        // let rng = &mut rand::thread_rng();
 
         // proof for the execution of the transfer function
         let execution = prove_credits::<_, _, A>(
