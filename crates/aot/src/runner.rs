@@ -59,6 +59,7 @@ pub struct Runner {
     #[clap(long = "rest-rps")]
     #[serde_clap_default(1000)]
     pub rest_rps: u32,
+    // TODO: --verbosity - see snarkos-cli::helpers::initialize_logger
 }
 
 impl Runner {
@@ -75,7 +76,7 @@ impl Runner {
         let account = Account::try_from(self.private_key)?;
 
         let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
-        let storage_mode = StorageMode::Custom(self.genesis);
+        let storage_mode = StorageMode::Custom(self.ledger);
 
         // snarkos_node::metrics::initialize_metrics();
 
@@ -113,6 +114,9 @@ impl Runner {
                 .await?;
             }
         };
+
+        // snarkos will close itself if this is not here...
+        std::future::pending::<()>().await;
 
         Ok(())
     }
