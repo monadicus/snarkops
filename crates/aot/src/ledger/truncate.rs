@@ -26,10 +26,12 @@ impl Truncate {
 
         ledger.vm().block_store().remove_last_n(amount)?;
 
-        // TODO: is latest_height accurate here?
         println!(
             "Removed {amount} blocks from the ledger (new height is {}).",
-            ledger.latest_height()
+            ledger
+                .latest_height()
+                .checked_sub(amount)
+                .unwrap_or_default()
         );
 
         Ok(())

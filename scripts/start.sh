@@ -39,6 +39,7 @@ $BINARY run --type $MODE \
   --node "413$INDEX" \
   --genesis $GENESIS \
   --ledger $STORAGE \
+  --log "${TEST_PATH}/${MODE}_${INDEX}.log" \
   --private-key $(pk 0) \
   --peers "127.0.0.1:4130,127.0.0.1:4131,127.0.0.1:4132,127.0.0.1:4133,127.0.0.1:4134" \
   --validators "127.0.0.1:5000,127.0.0.1:5001,127.0.0.1:5002,127.0.0.1:5003"
