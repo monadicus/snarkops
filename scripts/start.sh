@@ -27,6 +27,9 @@ LEDGER=$TEST_PATH/ledger
 pk() { cat $COMMITTEE | jq "[.[][0]][$INDEX]" -r; }
 
 STORAGE="${LEDGER}_${MODE}_${INDEX}"
+
+# delete the old ledger
+rm -rf $STORAGE
 cp -r $LEDGER $STORAGE
 
 
