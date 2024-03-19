@@ -36,7 +36,8 @@ impl Stdin {
         let mut buf = String::new();
 
         // Transaction buffer
-        // TODO: convert this into a TxCannon type and ensure all Dependent transactions are added in separate blocks
+        // TODO: convert this into a TxCannon type and ensure all Dependent transactions
+        // are added in separate blocks
         let mut tx_buf: Vec<Transaction<Network>> = Vec::with_capacity(per_block);
 
         // Macro to commit a block into the buffer

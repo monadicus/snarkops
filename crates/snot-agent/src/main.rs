@@ -1,18 +1,24 @@
 mod agent;
 mod cli;
+mod rpc;
 
 use std::{env, time::Duration};
 
 use clap::Parser;
 use cli::{Cli, ENV_ENDPOINT, ENV_ENDPOINT_DEFAULT};
+use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
+use snot_common::rpc::{AgentService, RpcTransport};
+use tarpc::server::Channel;
 use tokio::{
     select,
     signal::unix::{signal, Signal, SignalKind},
 };
-use tokio_tungstenite::{connect_async, tungstenite::http::Uri};
+use tokio_tungstenite::{connect_async, tungstenite, tungstenite::http::Uri};
 use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::rpc::AgentRpcServer;
 
 #[tokio::main]
 async fn main() {
@@ -26,10 +32,28 @@ async fn main() {
         .try_init()
         .unwrap();
 
-    // TODO: clap args to specify where control plane is
-    // TODO: TLS
     let args = Cli::parse();
 
+    // create rpc channels
+    let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
+
+    // initialize and start the rpc server
+    let rpc_server = tarpc::server::BaseChannel::with_defaults(server_transport);
+    tokio::spawn(
+        rpc_server
+            .execute(AgentRpcServer.serve())
+            .for_each(|r| async move {
+                tokio::spawn(r);
+            }),
+    );
+
+    // TODO(rpc): in order for RPC servers to work in *both* directions, we will
+    // need to multiplex the messages sent by tarpc with a wrapping type so that we
+    // can properly deserialize them and direct them to the right channels (as in,
+    // directing requests from the control plane [agent is server] to the right
+    // channel versus responses from the control plane [control plane is server])
+
+    // get the WS endpoint
     let endpoint = args
         .endpoint
         .or_else(|| {
@@ -46,6 +70,7 @@ async fn main() {
         .build()
         .unwrap();
 
+    // get the interrupt signals to break the stream connection
     let mut interrupt = Signals::new(&[SignalKind::terminate(), SignalKind::interrupt()]);
 
     'process: loop {
@@ -68,22 +93,37 @@ async fn main() {
             let mut terminating = false;
 
             'event: loop {
-                let msg = select! {
+                select! {
+                    // terminate if an interrupt was triggered
                     _ = interrupt.recv_any() => {
                         terminating = true;
                         break 'event;
                     }
 
-                    msg = ws_stream.next() => match msg {
-                        Some(Ok(msg)) => msg,
-                        _ => {
+                    // handle outgoing responses
+                    msg = server_response_out.recv() => {
+                        let msg = msg.expect("internal RPC channel closed");
+                        if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bincode::serialize(&msg).expect("failed to serialize response"))).await {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
+                    }
+
+                    // handle incoming messages
+                    msg = ws_stream.next() => match msg {
+                        Some(Ok(tungstenite::Message::Binary(bin))) => {
+                            let msg = bincode::deserialize(&bin).expect("deserialize"); // TODO: don't panic
+                            server_request_in.send(msg).expect("internal RPC channel closed");
+                        }
+
+                        None | Some(Err(_)) => {
+                            error!("The connection to the control plane was interrupted");
+                            break 'event;
+                        }
+
+                        _ => (),
                     },
                 };
-
-                // TODO: do something with msg
             }
 
             if terminating {

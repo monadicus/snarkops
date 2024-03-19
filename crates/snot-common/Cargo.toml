@@ -8,6 +8,9 @@ client = []
 server = []
 
 [dependencies]
+futures.workspace = true
 lazy_static.workspace = true
 regex.workspace = true
 serde.workspace = true
+tarpc.workspace = true
+tokio.workspace = true

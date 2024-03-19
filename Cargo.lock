@@ -575,6 +575,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-channel"
+version = "0.5.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab3db02a9c5b5121e1e42fbdb1aeb65f5e02624cc58c43f2884c6ccac0b82f95"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-deque"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -677,7 +686,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
 dependencies = [
  "cfg-if",
- "hashbrown",
+ "hashbrown 0.14.3",
  "lock_api",
  "once_cell",
  "parking_lot_core",
@@ -1036,7 +1045,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 0.2.12",
- "indexmap",
+ "indexmap 2.2.5",
  "slab",
  "tokio",
  "tokio-util",
@@ -1055,12 +1064,18 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 1.1.0",
- "indexmap",
+ "indexmap 2.2.5",
  "slab",
  "tokio",
  "tokio-util",
  "tracing",
 ]
+
+[[package]]
+name = "hashbrown"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "hashbrown"
@@ -1189,6 +1204,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
+name = "humantime"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
+
+[[package]]
 name = "hyper"
 version = "0.14.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1273,12 +1294,22 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
+version = "1.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
+dependencies = [
+ "autocfg",
+ "hashbrown 0.12.3",
+]
+
+[[package]]
+name = "indexmap"
 version = "2.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b0b929d511467233429c45a44ac1dcaa21ba0f5ba11e4879e6ed28ddb4f9df4"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.14.3",
  "rayon",
  "serde",
 ]
@@ -1469,7 +1500,7 @@ version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3262e75e648fce39813cb56ac41f3c3e3f65217ebf3844d818d1f9398cfb0dc"
 dependencies = [
- "hashbrown",
+ "hashbrown 0.14.3",
 ]
 
 [[package]]
@@ -1734,6 +1765,49 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "opentelemetry"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69d6c3d7288a106c0a363e4b0e8d308058d56902adefb16f4936f417ffef086e"
+dependencies = [
+ "opentelemetry_api",
+ "opentelemetry_sdk",
+]
+
+[[package]]
+name = "opentelemetry_api"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c24f96e21e7acc813c7a8394ee94978929db2bcc46cf6b5014fc612bf7760c22"
+dependencies = [
+ "futures-channel",
+ "futures-util",
+ "indexmap 1.9.3",
+ "js-sys",
+ "once_cell",
+ "pin-project-lite",
+ "thiserror",
+]
+
+[[package]]
+name = "opentelemetry_sdk"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ca41c4933371b61c2a2f214bf16931499af4ec90543604ec828f7a625c09113"
+dependencies = [
+ "async-trait",
+ "crossbeam-channel",
+ "futures-channel",
+ "futures-executor",
+ "futures-util",
+ "once_cell",
+ "opentelemetry_api",
+ "percent-encoding",
+ "rand",
+ "thiserror",
 ]
 
 [[package]]
@@ -2320,7 +2394,7 @@ version = "1.0.114"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5f09b1bd632ef549eaa9f60a1f8de742bdbc698e6cee2095fc84dde5f549ae0"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "itoa",
  "ryu",
  "serde",
@@ -2354,7 +2428,7 @@ version = "0.9.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd075d994154d4a774f95b51fb96bdc2832b0ea48425c92546073816cda1f2f"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "itoa",
  "ryu",
  "serde",
@@ -2483,7 +2557,7 @@ dependencies = [
  "clap",
  "colored",
  "crossterm",
- "indexmap",
+ "indexmap 2.2.5",
  "indicatif",
  "rand",
  "rand_chacha",
@@ -2511,7 +2585,7 @@ dependencies = [
  "async-trait",
  "colored",
  "futures-util",
- "indexmap",
+ "indexmap 2.2.5",
  "num_cpus",
  "once_cell",
  "parking_lot",
@@ -2544,7 +2618,7 @@ dependencies = [
  "bytes",
  "colored",
  "futures",
- "indexmap",
+ "indexmap 2.2.5",
  "parking_lot",
  "rand",
  "rayon",
@@ -2570,7 +2644,7 @@ version = "2.2.7"
 dependencies = [
  "anyhow",
  "bytes",
- "indexmap",
+ "indexmap 2.2.5",
  "rayon",
  "serde",
  "snarkos-node-sync-locators",
@@ -2584,7 +2658,7 @@ name = "snarkos-node-bft-ledger-service"
 version = "2.2.7"
 dependencies = [
  "async-trait",
- "indexmap",
+ "indexmap 2.2.5",
  "lru",
  "parking_lot",
  "rand",
@@ -2598,7 +2672,7 @@ name = "snarkos-node-bft-storage-service"
 version = "2.2.7"
 dependencies = [
  "aleo-std",
- "indexmap",
+ "indexmap 2.2.5",
  "parking_lot",
  "snarkvm",
  "tracing",
@@ -2629,7 +2703,7 @@ dependencies = [
  "aleo-std",
  "anyhow",
  "colored",
- "indexmap",
+ "indexmap 2.2.5",
  "lru",
  "parking_lot",
  "rand",
@@ -2650,7 +2724,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "http 1.1.0",
- "indexmap",
+ "indexmap 2.2.5",
  "jsonwebtoken",
  "once_cell",
  "parking_lot",
@@ -2679,7 +2753,7 @@ dependencies = [
  "bytes",
  "colored",
  "futures",
- "indexmap",
+ "indexmap 2.2.5",
  "linked-hash-map",
  "parking_lot",
  "rand",
@@ -2703,7 +2777,7 @@ version = "2.2.7"
 dependencies = [
  "anyhow",
  "bytes",
- "indexmap",
+ "indexmap 2.2.5",
  "rayon",
  "serde",
  "snarkos-node-bft-events",
@@ -2719,7 +2793,7 @@ name = "snarkos-node-sync"
 version = "2.2.7"
 dependencies = [
  "anyhow",
- "indexmap",
+ "indexmap 2.2.5",
  "itertools 0.12.1",
  "once_cell",
  "parking_lot",
@@ -2746,7 +2820,7 @@ name = "snarkos-node-sync-locators"
 version = "2.2.7"
 dependencies = [
  "anyhow",
- "indexmap",
+ "indexmap 2.2.5",
  "serde",
  "snarkvm",
  "tracing",
@@ -2775,7 +2849,7 @@ dependencies = [
  "clap",
  "colored",
  "dotenvy",
- "indexmap",
+ "indexmap 2.2.5",
  "num-format",
  "once_cell",
  "parking_lot",
@@ -2803,9 +2877,9 @@ dependencies = [
  "blake2",
  "cfg-if",
  "fxhash",
- "hashbrown",
+ "hashbrown 0.14.3",
  "hex",
- "indexmap",
+ "indexmap 2.2.5",
  "itertools 0.11.0",
  "num-traits",
  "parking_lot",
@@ -2868,7 +2942,7 @@ dependencies = [
 name = "snarkvm-circuit-environment"
 version = "0.16.19"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "itertools 0.11.0",
  "nom",
  "num-traits",
@@ -3044,7 +3118,7 @@ name = "snarkvm-console-network"
 version = "0.16.19"
 dependencies = [
  "anyhow",
- "indexmap",
+ "indexmap 2.2.5",
  "itertools 0.11.0",
  "lazy_static",
  "once_cell",
@@ -3084,7 +3158,7 @@ version = "0.16.19"
 dependencies = [
  "enum_index",
  "enum_index_derive",
- "indexmap",
+ "indexmap 2.2.5",
  "num-derive",
  "num-traits",
  "once_cell",
@@ -3213,7 +3287,7 @@ version = "0.16.19"
 dependencies = [
  "aleo-std",
  "anyhow",
- "indexmap",
+ "indexmap 2.2.5",
  "parking_lot",
  "rand",
  "rayon",
@@ -3245,7 +3319,7 @@ dependencies = [
 name = "snarkvm-ledger-block"
 version = "0.16.19"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "rayon",
  "serde_json",
  "snarkvm-console",
@@ -3267,7 +3341,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "blake2",
- "indexmap",
+ "indexmap 2.2.5",
  "rayon",
  "serde_json",
  "snarkvm-algorithms",
@@ -3282,7 +3356,7 @@ dependencies = [
 name = "snarkvm-ledger-committee"
 version = "0.16.19"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "serde_json",
  "snarkvm-console",
  "snarkvm-ledger-narwhal-batch-header",
@@ -3304,7 +3378,7 @@ dependencies = [
 name = "snarkvm-ledger-narwhal-batch-certificate"
 version = "0.16.19"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "rayon",
  "serde_json",
  "snarkvm-console",
@@ -3316,7 +3390,7 @@ dependencies = [
 name = "snarkvm-ledger-narwhal-batch-header"
 version = "0.16.19"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "serde_json",
  "snarkvm-console",
  "snarkvm-ledger-narwhal-transmission-id",
@@ -3336,7 +3410,7 @@ dependencies = [
 name = "snarkvm-ledger-narwhal-subdag"
 version = "0.16.19"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "rayon",
  "serde_json",
  "snarkvm-console",
@@ -3385,7 +3459,7 @@ dependencies = [
  "aleo-std-storage",
  "anyhow",
  "bincode",
- "indexmap",
+ "indexmap 2.2.5",
  "once_cell",
  "parking_lot",
  "rayon",
@@ -3414,7 +3488,7 @@ dependencies = [
  "colored",
  "curl",
  "hex",
- "indexmap",
+ "indexmap 2.2.5",
  "itertools 0.11.0",
  "lazy_static",
  "parking_lot",
@@ -3433,7 +3507,7 @@ version = "0.16.19"
 dependencies = [
  "aleo-std",
  "anyhow",
- "indexmap",
+ "indexmap 2.2.5",
  "itertools 0.11.0",
  "lru",
  "parking_lot",
@@ -3458,7 +3532,7 @@ version = "0.16.19"
 dependencies = [
  "aleo-std",
  "colored",
- "indexmap",
+ "indexmap 2.2.5",
  "once_cell",
  "parking_lot",
  "rand",
@@ -3478,7 +3552,7 @@ dependencies = [
 name = "snarkvm-synthesizer-program"
 version = "0.16.19"
 dependencies = [
- "indexmap",
+ "indexmap 2.2.5",
  "paste",
  "rand",
  "rand_chacha",
@@ -3537,7 +3611,7 @@ dependencies = [
  "axum-typed-websockets",
  "bincode",
  "duration-str",
- "indexmap",
+ "indexmap 2.2.5",
  "lazy_static",
  "regex",
  "serde",
@@ -3557,8 +3631,10 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "clap",
+ "futures",
  "futures-util",
  "snot-common",
+ "tarpc",
  "tokio",
  "tokio-tungstenite",
  "tracing",
@@ -3573,9 +3649,12 @@ version = "0.1.0"
 name = "snot-common"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "lazy_static",
  "regex",
  "serde",
+ "tarpc",
+ "tokio",
 ]
 
 [[package]]
@@ -3602,6 +3681,12 @@ checksum = "d96d2d1d716fb500937168cc09353ffdc7a012be8475ac7308e1bdf0e3923300"
 dependencies = [
  "lock_api",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"
@@ -3682,6 +3767,40 @@ checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "tarpc"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93a1870169fb9490fb3b37df7f50782986475c33cb90955f9f9b9ae659124200"
+dependencies = [
+ "anyhow",
+ "fnv",
+ "futures",
+ "humantime",
+ "opentelemetry",
+ "pin-project",
+ "rand",
+ "serde",
+ "static_assertions",
+ "tarpc-plugins",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-opentelemetry",
+]
+
+[[package]]
+name = "tarpc-plugins"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8302bea2fb8a2b01b025d23414b0b4ed32a783b95e5d818c3320a8bc4baada"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.35",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -3874,6 +3993,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "pin-project-lite",
+ "slab",
  "tokio",
  "tracing",
 ]
@@ -4000,6 +4120,19 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-opentelemetry"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21ebb87a95ea13271332df069020513ab70bdb5637ca42d6e492dc3bbbad48de"
+dependencies = [
+ "once_cell",
+ "opentelemetry",
+ "tracing",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]

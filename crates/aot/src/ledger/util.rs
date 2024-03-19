@@ -293,7 +293,8 @@ pub fn gen_n_tx<'a, C: ConsensusStorage<crate::Network>>(
                 )
                 .map(|tx| vec![CannonTx::Standalone(tx)])
             } else {
-                // Generate private transactions 30% of the time (they require generating N + 1 transactions)
+                // Generate private transactions 30% of the time (they require generating N + 1
+                // transactions)
 
                 let (record_tx, transfer_tx) = make_transaction_proof_private::<_, _, AleoV0>(
                     ledger,
