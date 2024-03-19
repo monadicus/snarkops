@@ -4,7 +4,8 @@ use std::{
 };
 
 use futures::{Sink, Stream};
-use tarpc::transport::channel::ChannelError;
+use tarpc::{client::RpcError, transport::channel::ChannelError};
+use thiserror::Error;
 use tokio::sync::mpsc;
 
 use crate::state::AgentState;
@@ -14,6 +15,14 @@ use crate::state::AgentState;
 pub trait AgentService {
     async fn reconcile(to: AgentState) -> Result<(), ()>; // TODO: return type
     async fn test_reverse_string(msg: String) -> String;
+}
+
+#[derive(Error, Debug)]
+pub enum RpcErrorOr<O = ()> {
+    #[error(transparent)]
+    RpcError(#[from] RpcError),
+    #[error("an error occurred")]
+    Other(O),
 }
 
 pub struct RpcTransport<In, Out> {

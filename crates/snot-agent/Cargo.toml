@@ -10,7 +10,7 @@ bincode.workspace = true
 clap.workspace = true
 futures.workspace = true
 futures-util = "0.3.30"
-snot-common = { path = "../snot-common", features = ["client"] }
+snot-common = { path = "../snot-common" }
 tarpc.workspace = true
 tokio.workspace = true
 tokio-tungstenite = "0.21.0"

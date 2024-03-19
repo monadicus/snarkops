@@ -103,7 +103,8 @@ async fn main() {
                     // handle outgoing responses
                     msg = server_response_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
-                        if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bincode::serialize(&msg).expect("failed to serialize response"))).await {
+                        let bin = bincode::serialize(&msg).expect("failed to serialize response");
+                        if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bin)).await {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
@@ -112,6 +113,7 @@ async fn main() {
                     // handle incoming messages
                     msg = ws_stream.next() => match msg {
                         Some(Ok(tungstenite::Message::Binary(bin))) => {
+                            info!("got a binary message in!");
                             let msg = bincode::deserialize(&bin).expect("deserialize"); // TODO: don't panic
                             server_request_in.send(msg).expect("internal RPC channel closed");
                         }
@@ -121,7 +123,9 @@ async fn main() {
                             break 'event;
                         }
 
-                        _ => (),
+                        Some(Ok(o)) => {
+                            println!("{o:#?}");
+                        }
                     },
                 };
             }

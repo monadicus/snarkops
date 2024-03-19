@@ -1,20 +1,24 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{extract::State, response::IntoResponse, routing::get, Router};
-use axum_typed_websockets::{Codec, Message, WebSocket, WebSocketUpgrade};
-use serde::{de::DeserializeOwned, Serialize};
+use axum::{
+    extract::{
+        ws::{Message, WebSocket},
+        State, WebSocketUpgrade,
+    },
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
 use snot_common::prelude::*;
-use tokio::{select, sync::mpsc};
+use tarpc::context;
+use tokio::select;
 use tracing::info;
 
 use crate::state::{Agent, GlobalState};
 
 mod api;
 mod content;
-
-type Socket = WebSocket<ServerMessage, ClientMessage, BinaryCodec>;
-type SocketUpgrade = WebSocketUpgrade<ServerMessage, ClientMessage, BinaryCodec>;
 
 type AppState = Arc<GlobalState>;
 
@@ -33,11 +37,14 @@ pub async fn start() -> Result<()> {
     Ok(())
 }
 
-async fn agent_ws_handler(ws: SocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
+async fn agent_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
-async fn handle_socket(mut socket: Socket, state: AppState) {
+async fn handle_socket(mut socket: WebSocket, state: AppState) {
     // TODO
     // the server will add all known nodes to a "pool" of nodes. the server can then
     // dynamically assign a node to be whatever type it needs to be when the desired
@@ -55,10 +62,21 @@ async fn handle_socket(mut socket: Socket, state: AppState) {
     // TODO: the client should provide us with some information about itself (num
     // cpus, etc.) before we categorize it and add it as an agent to the agent pool
 
-    let (tx, mut rx) = mpsc::channel(10 /* ? */);
+    // set up the RPC client
+    let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
+    let client =
+        AgentServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
-    let agent = Agent::new(tx);
+    let agent = Agent::new(client);
     let id = agent.id();
+
+    let test_client = agent.client();
+    tokio::spawn(async move {
+        test_client
+            .reconcile(AgentState::Inventory)
+            .await
+            .expect("reconcilation");
+    });
 
     // register the agent with the agent pool
     {
@@ -71,12 +89,25 @@ async fn handle_socket(mut socket: Socket, state: AppState) {
     }
 
     loop {
-        // wait for either the socket to send a message, or for the agent channel to be
-        // trying to send a message
+        // TODO: multiplex for bi-directional RPC
         select! {
-            Some(Err(_)) | None = socket.recv() => break,
-            Some(message) = rx.recv() => {
-                if let Err(_) = socket.send(Message::Item(message)).await {
+            // handle incoming messages
+            msg = socket.recv() => {
+                match msg {
+                    Some(Err(_)) | None => break,
+                    Some(Ok(Message::Binary(bin))) => {
+                        let msg = bincode::deserialize(&bin).expect("deserialize incoming message");
+                        client_response_in.send(msg).expect("internal RPC channel closed");
+                    }
+                    _ => (),
+                }
+            }
+
+            // handle outgoing messages
+            msg = client_request_out.recv() => {
+                let msg = msg.expect("internal RPC channel closed");
+                let bin = bincode::serialize(&msg).expect("failed to serialize request");
+                if let Err(_) = socket.send(Message::Binary(bin)).await {
                     break;
                 }
             }
@@ -88,19 +119,5 @@ async fn handle_socket(mut socket: Socket, state: AppState) {
         let mut pool = state.pool.write().await;
         pool.remove(&id);
         info!("agent {id} disconnected; pool is now {} nodes", pool.len());
-    }
-}
-
-struct BinaryCodec;
-
-impl Codec for BinaryCodec {
-    type Error = bincode::Error;
-
-    fn decode<R: DeserializeOwned>(buf: Vec<u8>) -> Result<R, Self::Error> {
-        bincode::deserialize(&buf)
-    }
-
-    fn encode<S: Serialize>(msg: S) -> Result<Vec<u8>, Self::Error> {
-        bincode::serialize(&msg)
     }
 }

@@ -283,17 +283,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "axum-typed-websockets"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df537817c0dc8ddccc7a4d479ea5d23438baf6f7ea97c583ac2256a75ff742fd"
-dependencies = [
- "axum",
- "futures-util",
- "serde",
-]
-
-[[package]]
 name = "backtrace"
 version = "0.3.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3608,7 +3597,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "axum-typed-websockets",
  "bincode",
  "duration-str",
  "indexmap 2.2.5",
@@ -3619,6 +3607,7 @@ dependencies = [
  "serde_yaml",
  "snarkos-aot",
  "snot-common",
+ "tarpc",
  "tokio",
  "tower-http",
  "tracing",
@@ -3654,6 +3643,7 @@ dependencies = [
  "regex",
  "serde",
  "tarpc",
+ "thiserror",
  "tokio",
 ]
 
