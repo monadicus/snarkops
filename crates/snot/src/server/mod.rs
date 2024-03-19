@@ -10,15 +10,21 @@ use axum::{
     routing::get,
     Router,
 };
+use futures_util::stream::StreamExt;
 use snot_common::prelude::*;
-use tarpc::context;
+use tarpc::server::Channel;
 use tokio::select;
-use tracing::info;
+use tracing::{info, warn};
 
-use crate::state::{Agent, GlobalState};
+use self::rpc::ControlRpcServer;
+use crate::{
+    server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
+    state::{Agent, GlobalState},
+};
 
 mod api;
 mod content;
+mod rpc;
 
 type AppState = Arc<GlobalState>;
 
@@ -45,38 +51,38 @@ async fn agent_ws_handler(
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
-    // TODO
-    // the server will add all known nodes to a "pool" of nodes. the server can then
-    // dynamically assign a node to be whatever type it needs to be when the desired
-    // state changes.
-    //
-    // when a test is started on the server, it will associate each `nodes` (from
-    // the test definition) with a particular node in the node pool. the server will
-    // tell the node what state it now expects it to have (for example, telling it
-    // that it is an offline validator with some ledger and some block height), and
-    // the agent will synchronize with that state. that is, the server doesn't
-    // necessarily tell the agents to do *something*, the server just shows the
-    // agents a desired final state and the agents work to reach that final state by
-    // starting/stopping snarkOS and altering the local ledger.
+    // TODO: the handshake should include a JWT with the known agent ID, or the
+    // control plane should prescribe the agent with a new ID and JWT
 
     // TODO: the client should provide us with some information about itself (num
     // cpus, etc.) before we categorize it and add it as an agent to the agent pool
 
-    // set up the RPC client
+    // set up the RPC channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
+    let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
+
+    // set up the client, facing the agent server
     let client =
         AgentServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
     let agent = Agent::new(client);
     let id = agent.id();
 
-    let test_client = agent.client();
-    tokio::spawn(async move {
-        test_client
-            .reconcile(AgentState::Inventory)
-            .await
-            .expect("reconcilation");
-    });
+    // set up the server, for incoming RPC requests
+    let server = tarpc::server::BaseChannel::with_defaults(server_transport);
+    let server_handle = tokio::spawn(
+        server
+            .execute(
+                ControlRpcServer {
+                    state: state.to_owned(),
+                    agent: id,
+                }
+                .serve(),
+            )
+            .for_each(|r| async move {
+                tokio::spawn(r);
+            }),
+    );
 
     // register the agent with the agent pool
     {
@@ -89,30 +95,51 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     }
 
     loop {
-        // TODO: multiplex for bi-directional RPC
         select! {
             // handle incoming messages
             msg = socket.recv() => {
                 match msg {
                     Some(Err(_)) | None => break,
                     Some(Ok(Message::Binary(bin))) => {
-                        let msg = bincode::deserialize(&bin).expect("deserialize incoming message");
-                        client_response_in.send(msg).expect("internal RPC channel closed");
+                        let msg = match bincode::deserialize(&bin) {
+                            Ok(msg) => msg,
+                            Err(e) => {
+                                warn!("failed to deserialize a message from agent {id}: {e}");
+                                continue;
+                            }
+                        };
+
+                        match msg {
+                            MuxedMessageIncoming::Control(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
+                            MuxedMessageIncoming::Agent(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
+                        }
                     }
                     _ => (),
                 }
             }
 
-            // handle outgoing messages
+            // handle outgoing requests
             msg = client_request_out.recv() => {
                 let msg = msg.expect("internal RPC channel closed");
-                let bin = bincode::serialize(&msg).expect("failed to serialize request");
+                let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize request");
+                if let Err(_) = socket.send(Message::Binary(bin)).await {
+                    break;
+                }
+            }
+
+            // handle outgoing responses
+            msg = server_response_out.recv() => {
+                let msg = msg.expect("internal RPC channel closed");
+                let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize response");
                 if let Err(_) = socket.send(Message::Binary(bin)).await {
                     break;
                 }
             }
         }
     }
+
+    // abort the RPC server handle
+    server_handle.abort();
 
     // remove the node from the node pool
     {

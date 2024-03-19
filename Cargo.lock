@@ -3599,6 +3599,7 @@ dependencies = [
  "axum",
  "bincode",
  "duration-str",
+ "futures-util",
  "indexmap 2.2.5",
  "lazy_static",
  "regex",

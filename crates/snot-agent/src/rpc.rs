@@ -1,8 +1,20 @@
-use std::time::Duration;
-
-use snot_common::{rpc::AgentService, state::AgentState};
-use tarpc::context;
+use snot_common::{
+    rpc::{
+        AgentService, AgentServiceRequest, AgentServiceResponse, ControlServiceRequest,
+        ControlServiceResponse, MuxMessage,
+    },
+    state::AgentState,
+};
+use tarpc::{context, ClientMessage, Response};
 use tracing::info;
+
+/// A multiplexed message, incoming on the websocket.
+pub type MuxedMessageIncoming =
+    MuxMessage<Response<ControlServiceResponse>, ClientMessage<AgentServiceRequest>>;
+
+/// A multiplexed message, outgoing on the websocket.
+pub type MuxedMessageOutgoing =
+    MuxMessage<ClientMessage<ControlServiceRequest>, Response<AgentServiceResponse>>;
 
 #[derive(Clone)]
 pub struct AgentRpcServer;
@@ -12,10 +24,5 @@ impl AgentService for AgentRpcServer {
         info!("I've been asked to reconcile to {state:#?}");
 
         Ok(())
-    }
-
-    async fn test_reverse_string(self, _: context::Context, msg: String) -> String {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        msg.chars().rev().collect()
     }
 }

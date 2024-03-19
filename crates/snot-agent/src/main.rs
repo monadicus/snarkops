@@ -8,17 +8,17 @@ use clap::Parser;
 use cli::{Cli, ENV_ENDPOINT, ENV_ENDPOINT_DEFAULT};
 use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
-use snot_common::rpc::{AgentService, RpcTransport};
+use snot_common::rpc::{AgentService, ControlServiceClient, RpcTransport};
 use tarpc::server::Channel;
 use tokio::{
     select,
     signal::unix::{signal, Signal, SignalKind},
 };
 use tokio_tungstenite::{connect_async, tungstenite, tungstenite::http::Uri};
-use tracing::{error, info, level_filters::LevelFilter};
+use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::rpc::AgentRpcServer;
+use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing};
 
 #[tokio::main]
 async fn main() {
@@ -35,13 +35,18 @@ async fn main() {
     let args = Cli::parse();
 
     // create rpc channels
+    let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
     let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
+
+    // set up the client, facing the control plane
+    let _client =
+        ControlServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
     // initialize and start the rpc server
     let rpc_server = tarpc::server::BaseChannel::with_defaults(server_transport);
     tokio::spawn(
         rpc_server
-            .execute(AgentRpcServer.serve())
+            .execute(AgentRpcServer.serve()) // TODO: RPC server needs state, like process state
             .for_each(|r| async move {
                 tokio::spawn(r);
             }),
@@ -103,7 +108,17 @@ async fn main() {
                     // handle outgoing responses
                     msg = server_response_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
-                        let bin = bincode::serialize(&msg).expect("failed to serialize response");
+                        let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize response");
+                        if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bin)).await {
+                            error!("The connection to the control plane was interrupted");
+                            break 'event;
+                        }
+                    }
+
+                    // handle outgoing requests
+                    msg = client_request_out.recv() => {
+                        let msg = msg.expect("internal RPC channel closed");
+                        let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize request");
                         if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bin)).await {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
@@ -113,9 +128,15 @@ async fn main() {
                     // handle incoming messages
                     msg = ws_stream.next() => match msg {
                         Some(Ok(tungstenite::Message::Binary(bin))) => {
-                            info!("got a binary message in!");
-                            let msg = bincode::deserialize(&bin).expect("deserialize"); // TODO: don't panic
-                            server_request_in.send(msg).expect("internal RPC channel closed");
+                            let Ok(msg) = bincode::deserialize(&bin) else {
+                                warn!("failed to deserialize a message from the control plane");
+                                continue;
+                            };
+
+                            match msg {
+                                MuxedMessageIncoming::Agent(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
+                                MuxedMessageIncoming::Control(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
+                            }
                         }
 
                         None | Some(Err(_)) => {

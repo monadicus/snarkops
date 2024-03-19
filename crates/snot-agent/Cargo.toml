@@ -9,7 +9,7 @@ edition = "2021"
 bincode.workspace = true
 clap.workspace = true
 futures.workspace = true
-futures-util = "0.3.30"
+futures-util.workspace = true
 snot-common = { path = "../snot-common" }
 tarpc.workspace = true
 tokio.workspace = true
