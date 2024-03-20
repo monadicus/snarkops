@@ -8,13 +8,17 @@ use clap::Parser;
 use cli::{Cli, ENV_ENDPOINT, ENV_ENDPOINT_DEFAULT};
 use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
+use http::{HeaderValue, Request};
 use snot_common::rpc::{AgentService, ControlServiceClient, RpcTransport};
 use tarpc::server::Channel;
 use tokio::{
     select,
     signal::unix::{signal, Signal, SignalKind},
 };
-use tokio_tungstenite::{connect_async, tungstenite, tungstenite::http::Uri};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{self, client::IntoClientRequest, http::Uri},
+};
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -26,7 +30,9 @@ async fn main() {
         .with(
             tracing_subscriber::EnvFilter::builder()
                 .with_default_directive(LevelFilter::INFO.into())
-                .parse_lossy(""),
+                .parse_lossy("")
+                .add_directive("tarpc::client=ERROR".parse().unwrap())
+                .add_directive("tarpc::server=ERROR".parse().unwrap()),
         )
         .with(tracing_subscriber::fmt::layer())
         .try_init()
@@ -80,10 +86,23 @@ async fn main() {
 
     'process: loop {
         'connection: {
+            // TODO: use cached JWT
+            let jwt = tokio::fs::read_to_string("./jwt.txt").await.ok();
+
+            // attach JWT if we have one
+            let mut req = ws_uri.to_owned().into_client_request().unwrap();
+            if let Some(jwt) = jwt {
+                req.headers_mut().insert(
+                    "Authorization",
+                    HeaderValue::from_bytes(format!("Bearer {jwt}").as_bytes())
+                        .expect("attach authorization header"),
+                );
+            }
+
             let (mut ws_stream, _) = select! {
                 _ = interrupt.recv_any() => break 'process,
 
-                res = connect_async(&ws_uri) => match res {
+                res = connect_async(req) => match res {
                     Ok(c) => c,
                     Err(e) => {
                         // TODO: print error

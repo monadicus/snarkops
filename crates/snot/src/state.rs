@@ -1,8 +1,10 @@
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicUsize, Ordering},
+    time::Instant,
 };
 
+use jwt::SignWithKey;
 use snot_common::{
     rpc::{AgentServiceClient, RpcErrorOr},
     state::{AgentState, NodeState},
@@ -10,10 +12,14 @@ use snot_common::{
 use tarpc::context;
 use tokio::sync::RwLock;
 
+use crate::server::jwt::{Claims, JWT_NONCE, JWT_SECRET};
+
+pub type AgentId = usize;
+
 /// The global state for the control plane.
 #[derive(Default)]
 pub struct GlobalState {
-    pub pool: RwLock<HashMap<usize, Agent>>,
+    pub pool: RwLock<HashMap<AgentId, Agent>>,
     // TODO: when tests are running, there should be (bi-directional?) map between agent ID and
     // assigned NodeKey (like validator/1)
 }
@@ -21,8 +27,9 @@ pub struct GlobalState {
 /// An active agent, known by the control plane.
 #[derive(Debug)]
 pub struct Agent {
-    id: usize,
-    rpc: AgentServiceClient,
+    id: AgentId,
+    claims: Claims,
+    connection: AgentConnection,
     state: Option<NodeState>,
 }
 
@@ -31,13 +38,21 @@ pub struct AgentClient(AgentServiceClient);
 impl Agent {
     pub fn new(rpc: AgentServiceClient) -> Self {
         static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
         let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+
         Self {
             id,
-            rpc,
+            claims: Claims {
+                id,
+                nonce: *JWT_NONCE,
+            },
+            connection: AgentConnection::Online(rpc),
             state: Default::default(),
         }
+    }
+
+    pub fn is_connected(&self) -> bool {
+        matches!(self.connection, AgentConnection::Online(_))
     }
 
     /// The ID of this agent.
@@ -50,15 +65,33 @@ impl Agent {
         self.state.as_ref()
     }
 
-    /// The current desired state of this agent, but owned, so that you can make
-    /// edits to it before calling `set_state`.
-    pub fn state_owned(&self) -> Option<NodeState> {
-        self.state.clone()
+    pub fn claims(&self) -> &Claims {
+        &self.claims
+    }
+
+    pub fn sign_jwt(&self) -> String {
+        self.claims.to_owned().sign_with_key(&*JWT_SECRET).unwrap()
     }
 
     /// Get an owned copy of the RPC client for making reconcilation calls.
-    pub fn client(&self) -> AgentClient {
-        AgentClient(self.rpc.to_owned())
+    /// `None` if the client is not currently connected.
+    pub fn client(&self) -> Option<AgentClient> {
+        match self.connection {
+            AgentConnection::Online(ref rpc) => Some(AgentClient(rpc.to_owned())),
+            _ => None,
+        }
+    }
+
+    /// Forcibly remove the RPC connection to this client. Called when an agent
+    /// disconnects.
+    pub fn mark_disconnected(&mut self) {
+        self.connection = AgentConnection::Offline {
+            since: Instant::now(),
+        };
+    }
+
+    pub fn mark_connected(&mut self, client: AgentServiceClient) {
+        self.connection = AgentConnection::Online(client);
     }
 }
 
@@ -69,4 +102,10 @@ impl AgentClient {
             .await?
             .map_err(|_| RpcErrorOr::Other(()))
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum AgentConnection {
+    Online(AgentServiceClient),
+    Offline { since: Instant },
 }

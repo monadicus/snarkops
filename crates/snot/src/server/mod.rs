@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use ::jwt::VerifyWithKey;
 use anyhow::Result;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
         State, WebSocketUpgrade,
     },
+    http::HeaderMap,
     response::IntoResponse,
     routing::get,
     Router,
@@ -16,7 +18,10 @@ use tarpc::server::Channel;
 use tokio::select;
 use tracing::{info, warn};
 
-use self::rpc::ControlRpcServer;
+use self::{
+    jwt::{Claims, JWT_NONCE, JWT_SECRET},
+    rpc::ControlRpcServer,
+};
 use crate::{
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
     state::{Agent, GlobalState},
@@ -24,6 +29,7 @@ use crate::{
 
 mod api;
 mod content;
+pub mod jwt;
 mod rpc;
 
 type AppState = Arc<GlobalState>;
@@ -45,14 +51,35 @@ pub async fn start() -> Result<()> {
 
 async fn agent_ws_handler(
     ws: WebSocketUpgrade,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, state))
+    ws.on_upgrade(|socket| handle_socket(socket, headers, state))
 }
 
-async fn handle_socket(mut socket: WebSocket, state: AppState) {
-    // TODO: the handshake should include a JWT with the known agent ID, or the
-    // control plane should prescribe the agent with a new ID and JWT
+async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppState) {
+    let claims = headers
+        .get("Authorization")
+        .and_then(|auth| -> Option<Claims> {
+            let auth = auth.to_str().ok()?;
+            if !auth.starts_with("Bearer ") {
+                return None;
+            }
+
+            let token = &auth[7..];
+
+            // get claims out of the specified JWT
+            token.verify_with_key(&*JWT_SECRET).ok()
+        })
+        .filter(|claims| {
+            // ensure the nonce is correct
+            if claims.nonce == *JWT_NONCE {
+                true
+            } else {
+                warn!("connecting agent specified invalid JWT nonce");
+                false
+            }
+        });
 
     // TODO: the client should provide us with some information about itself (num
     // cpus, etc.) before we categorize it and add it as an agent to the agent pool
@@ -65,8 +92,55 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let client =
         AgentServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
-    let agent = Agent::new(client);
-    let id = agent.id();
+    let id: usize = 'insertion: {
+        let mut pool = state.pool.write().await;
+
+        // attempt to reconnect if claims were passed
+        'reconnect: {
+            if let Some(claims) = claims {
+                let Some(agent) = pool.get_mut(&claims.id) else {
+                    warn!("connecting agent is trying to identify as an unrecognized agent");
+                    break 'reconnect;
+                };
+
+                if agent.is_connected() {
+                    warn!("connecting agent is trying to identify as an already-connected agent");
+                    break 'reconnect;
+                }
+
+                agent.mark_connected(client);
+
+                let id = agent.id();
+                info!("agent {id} reconnected");
+                break 'insertion id;
+            }
+        }
+
+        // otherwise, we need to create an agent and give it a new JWT
+
+        // create a new agent
+        let agent = Agent::new(client.to_owned());
+
+        // sign the jwt and send it to the agent
+        let signed_jwt = agent.sign_jwt();
+        tokio::spawn(async move {
+            // we do this in a separate task because we don't want to hold up pool insertion
+            if let Err(e) = client.keep_jwt(tarpc::context::current(), signed_jwt).await {
+                warn!("failed to inform client of JWT: {e}");
+            }
+        });
+
+        // insert a new agent into the pool
+        let id = agent.id();
+        pool.insert(id, agent);
+
+        info!(
+            "new agent connected (id {id}); pool is now {} nodes",
+            pool.len()
+        );
+
+        id
+    };
 
     // set up the server, for incoming RPC requests
     let server = tarpc::server::BaseChannel::with_defaults(server_transport);
@@ -83,16 +157,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                 tokio::spawn(r);
             }),
     );
-
-    // register the agent with the agent pool
-    {
-        let mut pool = state.pool.write().await;
-        pool.insert(id, agent);
-        info!(
-            "new agent connected (id {id}); pool is now {} nodes",
-            pool.len()
-        );
-    }
 
     loop {
         select! {
@@ -141,10 +205,15 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     // abort the RPC server handle
     server_handle.abort();
 
-    // remove the node from the node pool
+    // remove the client from the agent in the agent pool
     {
+        // TODO: remove agent after 10 minutes of inactivity
+
         let mut pool = state.pool.write().await;
-        pool.remove(&id);
-        info!("agent {id} disconnected; pool is now {} nodes", pool.len());
+        if let Some(agent) = pool.get_mut(&id) {
+            agent.mark_disconnected();
+        }
+
+        info!("agent {id} disconnected");
     }
 }

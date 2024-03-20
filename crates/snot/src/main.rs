@@ -12,7 +12,9 @@ async fn main() {
         .with(
             tracing_subscriber::EnvFilter::builder()
                 .with_default_directive(LevelFilter::INFO.into())
-                .parse_lossy(""),
+                .parse_lossy("")
+                .add_directive("tarpc::client=ERROR".parse().unwrap())
+                .add_directive("tarpc::server=ERROR".parse().unwrap()),
         )
         .with(tracing_subscriber::fmt::layer())
         .try_init()
