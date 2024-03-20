@@ -1,14 +1,18 @@
-mod agent;
 mod cli;
 mod rpc;
+mod state;
 
-use std::{env, time::Duration};
+use std::{
+    env,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use clap::Parser;
 use cli::{Cli, ENV_ENDPOINT, ENV_ENDPOINT_DEFAULT};
 use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
-use http::{HeaderValue, Request};
+use http::HeaderValue;
 use snot_common::rpc::{AgentService, ControlServiceClient, RpcTransport};
 use tarpc::server::Channel;
 use tokio::{
@@ -23,6 +27,7 @@ use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing};
+use crate::state::GlobalState;
 
 #[tokio::main]
 async fn main() {
@@ -40,6 +45,15 @@ async fn main() {
 
     let args = Cli::parse();
 
+    // get the JWT from the file, if possible
+    // TODO: change this file path
+    let jwt = tokio::fs::read_to_string("./jwt.txt").await.ok();
+
+    // create the client state
+    let state = Arc::new(GlobalState {
+        jwt: Mutex::new(jwt),
+    });
+
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
     let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
@@ -52,7 +66,12 @@ async fn main() {
     let rpc_server = tarpc::server::BaseChannel::with_defaults(server_transport);
     tokio::spawn(
         rpc_server
-            .execute(AgentRpcServer.serve()) // TODO: RPC server needs state, like process state
+            .execute(
+                AgentRpcServer {
+                    state: state.to_owned(),
+                }
+                .serve(),
+            )
             .for_each(|r| async move {
                 tokio::spawn(r);
             }),
@@ -86,17 +105,18 @@ async fn main() {
 
     'process: loop {
         'connection: {
-            // TODO: use cached JWT
-            let jwt = tokio::fs::read_to_string("./jwt.txt").await.ok();
+            let mut req = ws_uri.to_owned().into_client_request().unwrap();
 
             // attach JWT if we have one
-            let mut req = ws_uri.to_owned().into_client_request().unwrap();
-            if let Some(jwt) = jwt {
-                req.headers_mut().insert(
-                    "Authorization",
-                    HeaderValue::from_bytes(format!("Bearer {jwt}").as_bytes())
-                        .expect("attach authorization header"),
-                );
+            {
+                let jwt = state.jwt.lock().expect("failed to acquire jwt");
+                if let Some(jwt) = jwt.as_deref() {
+                    req.headers_mut().insert(
+                        "Authorization",
+                        HeaderValue::from_bytes(format!("Bearer {jwt}").as_bytes())
+                            .expect("attach authorization header"),
+                    );
+                }
             }
 
             let (mut ws_stream, _) = select! {
@@ -105,7 +125,6 @@ async fn main() {
                 res = connect_async(req) => match res {
                     Ok(c) => c,
                     Err(e) => {
-                        // TODO: print error
                         error!("An error occurred establishing the connection: {e}");
                         break 'connection;
                     },
