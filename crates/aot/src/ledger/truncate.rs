@@ -24,7 +24,62 @@ impl Truncate {
             _ => unreachable!(),
         };
 
+        ledger.vm().block_store().abort_atomic();
+        ledger.vm().finalize_store().abort_atomic();
+        dbg!(
+            ledger
+                .vm()
+                .finalize_store()
+                .committee_store()
+                .current_round(),
+            ledger
+                .vm()
+                .finalize_store()
+                .committee_store()
+                .current_height(),
+            ledger
+                .vm()
+                .block_store()
+                .heights()
+                .collect::<Vec<_>>()
+                .pop()
+        );
+
+        let current_height = dbg!(ledger.latest_height());
+        let target_height = dbg!(current_height.saturating_sub(amount) + 1);
+
+        // wipe out N blocks/
         ledger.vm().block_store().remove_last_n(amount)?;
+
+        // remove committee store rounds
+        (target_height..=current_height)
+            .rev()
+            .try_for_each(|height| {
+                ledger
+                    .vm()
+                    .finalize_store()
+                    .committee_store()
+                    .remove(dbg!(height))
+            })?;
+
+        dbg!(
+            ledger
+                .vm()
+                .finalize_store()
+                .committee_store()
+                .current_round(),
+            ledger
+                .vm()
+                .finalize_store()
+                .committee_store()
+                .current_height(),
+            ledger
+                .vm()
+                .block_store()
+                .heights()
+                .collect::<Vec<_>>()
+                .pop()
+        );
 
         println!(
             "Removed {amount} blocks from the ledger (new height is {}).",

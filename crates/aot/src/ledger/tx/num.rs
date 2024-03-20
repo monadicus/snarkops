@@ -29,16 +29,13 @@ impl Num {
                 // print each transaction to stdout
                 .inspect(|proof| match proof {
                     util::CannonTx::Standalone(tx) => {
-                        println!(
-                            "null\t{}",
-                            serde_json::to_string(&tx).expect("serialize proof")
-                        );
+                        println!("{}", serde_json::to_string(&tx).expect("serialize proof"));
                     }
                     util::CannonTx::Dependent(id, tx) => {
-                        println!(
-                            "{id}\t{}",
-                            serde_json::to_string(&tx).expect("serialize proof")
-                        );
+                        // println!(
+                        //     "{id}\t{}",
+                        //     serde_json::to_string(&tx).expect("serialize proof")
+                        // );
                     }
                 })
                 .map(drop)

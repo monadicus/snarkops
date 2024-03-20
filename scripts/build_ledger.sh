@@ -20,11 +20,11 @@ addr() { cat $COMMITTEE | jq "(. | keys)[$1]" -r; }
 
 # generate the genesis block
 $BINARY genesis \
-  --committee-size 4 \
+  --committee-size 6 \
   --committee-output $COMMITTEE \
   --output $GENESIS \
   --bonded-balance 10000000000000 \
-  --additional-accounts 100 \
+  --additional-accounts 5 \
   --additional-accounts-output $ACCOUNTS
 GENESIS_PK=$(pk 0)
 
