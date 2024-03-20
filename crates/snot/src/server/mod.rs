@@ -13,7 +13,10 @@ use axum::{
     Router,
 };
 use futures_util::stream::StreamExt;
-use snot_common::prelude::*;
+use snot_common::{
+    prelude::*,
+    rpc::{agent::AgentServiceClient, control::ControlService},
+};
 use tarpc::server::Channel;
 use tokio::select;
 use tracing::{info, warn};
@@ -23,6 +26,7 @@ use self::{
     rpc::ControlRpcServer,
 };
 use crate::{
+    cli::Cli,
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
     state::{Agent, GlobalState},
 };
@@ -34,13 +38,16 @@ mod rpc;
 
 type AppState = Arc<GlobalState>;
 
-pub async fn start() -> Result<()> {
-    let state = GlobalState::default();
+pub async fn start(cli: Cli) -> Result<()> {
+    let state = GlobalState {
+        cli,
+        pool: Default::default(),
+    };
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
-        .nest("/api/v1", api::routes()) // TODO: authorization
-        .nest("/content", content::routes())
+        .nest("/api/v1", api::routes())
+        .nest("/content", content::init_routes(&state).await)
         .with_state(Arc::new(state));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1234").await?;

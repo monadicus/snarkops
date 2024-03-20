@@ -1,6 +1,9 @@
+use clap::Parser;
+use cli::Cli;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::prelude::*;
 
+pub mod cli;
 pub mod schema;
 pub mod server;
 pub mod state;
@@ -20,12 +23,7 @@ async fn main() {
         .try_init()
         .unwrap();
 
-    // TODO: REST api for interacting with CLI/web
+    let cli = Cli::parse();
 
-    // TODO: possibly need authorization for the REST server for MVP?
-
-    // TODO ws server for talking to runners, runners get data from control
-    // plane thru HTTP, not ws
-
-    server::start().await.expect("start server");
+    server::start(cli).await.expect("start server");
 }

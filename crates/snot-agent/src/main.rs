@@ -4,6 +4,7 @@ mod state;
 
 use std::{
     env,
+    path::Path,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -13,9 +14,10 @@ use cli::{Cli, ENV_ENDPOINT, ENV_ENDPOINT_DEFAULT};
 use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::HeaderValue;
-use snot_common::rpc::{AgentService, ControlServiceClient, RpcTransport};
+use snot_common::rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport};
 use tarpc::server::Channel;
 use tokio::{
+    io::AsyncWriteExt,
     select,
     signal::unix::{signal, Signal, SignalKind},
 };
@@ -26,7 +28,9 @@ use tokio_tungstenite::{
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing};
+use crate::rpc::{
+    AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing, JWT_FILE, SNARKOS_FILE,
+};
 use crate::state::GlobalState;
 
 #[tokio::main]
@@ -45,13 +49,45 @@ async fn main() {
 
     let args = Cli::parse();
 
+    // get the endpoint
+    let endpoint = args
+        .endpoint
+        .or_else(|| {
+            env::var(ENV_ENDPOINT)
+                .ok()
+                .and_then(|s| s.as_str().parse().ok())
+        })
+        .unwrap_or(ENV_ENDPOINT_DEFAULT);
+
+    let ws_uri = Uri::builder()
+        .scheme("ws")
+        .authority(endpoint.to_string())
+        .path_and_query("/agent")
+        .build()
+        .unwrap();
+
+    // create the data directory
+    tokio::fs::create_dir_all(&args.path)
+        .await
+        .expect("failed to create data path");
+
     // get the JWT from the file, if possible
-    // TODO: change this file path
-    let jwt = tokio::fs::read_to_string("./jwt.txt").await.ok();
+    let jwt = tokio::fs::read_to_string(args.path.join(JWT_FILE))
+        .await
+        .ok();
+
+    // download the snarkOS binary
+    check_binary(&format!("http://{endpoint}"), &args.path.join(SNARKOS_FILE)) // TODO: http(s)?
+        .await
+        .expect("failed to acquire snarkOS binary");
 
     // create the client state
     let state = Arc::new(GlobalState {
+        cli: args,
         jwt: Mutex::new(jwt),
+        agent_state: Default::default(),
+        reconcilation_handle: Default::default(),
+        child: Default::default(),
     });
 
     // create rpc channels
@@ -76,29 +112,6 @@ async fn main() {
                 tokio::spawn(r);
             }),
     );
-
-    // TODO(rpc): in order for RPC servers to work in *both* directions, we will
-    // need to multiplex the messages sent by tarpc with a wrapping type so that we
-    // can properly deserialize them and direct them to the right channels (as in,
-    // directing requests from the control plane [agent is server] to the right
-    // channel versus responses from the control plane [control plane is server])
-
-    // get the WS endpoint
-    let endpoint = args
-        .endpoint
-        .or_else(|| {
-            env::var(ENV_ENDPOINT)
-                .ok()
-                .and_then(|s| s.as_str().parse().ok())
-        })
-        .unwrap_or(ENV_ENDPOINT_DEFAULT);
-
-    let ws_uri = Uri::builder()
-        .scheme("ws")
-        .authority(endpoint.to_string())
-        .path_and_query("/agent")
-        .build()
-        .unwrap();
 
     // get the interrupt signals to break the stream connection
     let mut interrupt = Signals::new(&[SignalKind::terminate(), SignalKind::interrupt()]);
@@ -228,4 +241,57 @@ impl Signals {
 
         futs.next().await;
     }
+}
+
+async fn check_binary(base_url: &str, path: &Path) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+
+    // check if we already have an up-to-date binary
+    let loc = format!("{base_url}/content/snarkos");
+    if !should_download_binary(&client, &loc, path)
+        .await
+        .unwrap_or(true)
+    {
+        return Ok(());
+    }
+
+    // download the binary
+    let mut file = tokio::fs::File::create(path).await?;
+    let mut stream = client.get(&loc).send().await?.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        file.write_all(&chunk?).await?;
+    }
+
+    Ok(())
+}
+
+async fn should_download_binary(
+    client: &reqwest::Client,
+    loc: &str,
+    path: &Path,
+) -> anyhow::Result<bool> {
+    Ok(match tokio::fs::metadata(&path).await {
+        Ok(meta) => {
+            // check last modified
+            let res = client.head(loc).send().await?;
+
+            let Some(last_modified_header) = res.headers().get(http::header::LAST_MODIFIED) else {
+                return Ok(true);
+            };
+
+            let remote_last_modified = httpdate::parse_http_date(last_modified_header.to_str()?)?;
+            let local_last_modified = meta.modified()?;
+
+            if remote_last_modified > local_last_modified {
+                info!("binary update is available, downloading...");
+                true
+            } else {
+                false
+            }
+        }
+
+        // no existing file, unconditionally download binary
+        Err(_) => true,
+    })
 }

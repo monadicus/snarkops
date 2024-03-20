@@ -1,6 +1,7 @@
 use snot_common::rpc::{
-    AgentServiceRequest, AgentServiceResponse, ControlService, ControlServiceRequest,
-    ControlServiceResponse, MuxMessage,
+    agent::{AgentServiceRequest, AgentServiceResponse},
+    control::{ControlService, ControlServiceRequest, ControlServiceResponse},
+    MuxMessage,
 };
 use tarpc::{context, ClientMessage, Response};
 

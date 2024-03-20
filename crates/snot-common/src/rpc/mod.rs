@@ -5,40 +5,16 @@ use std::{
 
 use futures::{Sink, Stream};
 use serde::{Deserialize, Serialize};
-use tarpc::{client::RpcError, transport::channel::ChannelError};
-use thiserror::Error;
+use tarpc::transport::channel::ChannelError;
 use tokio::sync::mpsc;
 
-use crate::state::AgentState;
+pub mod agent;
+pub mod control;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MuxMessage<Control, Agent> {
     Control(Control),
     Agent(Agent),
-}
-
-/// The RPC service that agents implement as a server.
-#[tarpc::service]
-pub trait AgentService {
-    /// Control plane instructs the agent to use a JWT when reconnecting later.
-    async fn keep_jwt(jwt: String);
-
-    /// Control plane instructs the agent to reconcile towards a particular
-    /// state.
-    async fn reconcile(to: AgentState) -> Result<(), ()>; // TODO: return type
-}
-
-#[tarpc::service]
-pub trait ControlService {
-    async fn placeholder() -> String;
-}
-
-#[derive(Error, Debug)]
-pub enum RpcErrorOr<O = ()> {
-    #[error(transparent)]
-    RpcError(#[from] RpcError),
-    #[error("an error occurred")]
-    Other(O),
 }
 
 pub struct RpcTransport<In, Out> {

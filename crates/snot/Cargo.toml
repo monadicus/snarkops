@@ -5,8 +5,10 @@ edition = "2021"
 
 [dependencies]
 anyhow.workspace = true
+async-tar.workspace = true
 axum = { version = "0.7.4", features = ["ws"] }
 bincode.workspace = true
+clap.workspace = true
 duration-str = { version = "0.7", default-features = false }
 futures-util.workspace = true
 hmac = "0.12.1"

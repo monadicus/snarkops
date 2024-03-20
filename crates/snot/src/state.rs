@@ -6,19 +6,23 @@ use std::{
 
 use jwt::SignWithKey;
 use snot_common::{
-    rpc::{AgentServiceClient, RpcErrorOr},
+    rpc::agent::{AgentServiceClient, ReconcileError},
     state::{AgentState, NodeState},
 };
-use tarpc::context;
+use tarpc::{client::RpcError, context};
 use tokio::sync::RwLock;
 
-use crate::server::jwt::{Claims, JWT_NONCE, JWT_SECRET};
+use crate::{
+    cli::Cli,
+    server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
+};
 
 pub type AgentId = usize;
 
 /// The global state for the control plane.
-#[derive(Default)]
+#[derive(Debug)]
 pub struct GlobalState {
+    pub cli: Cli,
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     // TODO: when tests are running, there should be (bi-directional?) map between agent ID and
     // assigned NodeKey (like validator/1)
@@ -96,11 +100,8 @@ impl Agent {
 }
 
 impl AgentClient {
-    pub async fn reconcile(&self, to: AgentState) -> Result<(), RpcErrorOr> {
-        self.0
-            .reconcile(context::current(), to)
-            .await?
-            .map_err(|_| RpcErrorOr::Other(()))
+    pub async fn reconcile(&self, to: AgentState) -> Result<Result<(), ReconcileError>, RpcError> {
+        self.0.reconcile(context::current(), to).await
     }
 }
 
