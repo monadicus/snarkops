@@ -34,11 +34,6 @@ pub struct Runner {
     #[clap(long = "private-key")]
     pub private_key: PrivateKey,
 
-    /// A path to the log file
-    #[clap(long = "log")]
-    #[serde_clap_default(PathBuf::from("snarkos.log"))]
-    pub log: PathBuf,
-
     /// Specify the IP address and port for the node server
     #[clap(long = "node")]
     #[serde_clap_default(4130)]

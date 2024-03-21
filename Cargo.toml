@@ -33,6 +33,7 @@ tarpc = { version = "0.34", features = ["tokio1", "serde1"] }
 thiserror = "1.0"
 tokio = { version = "1", features = ["full", "macros"] }
 tracing = "0.1"
+tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 nix = { version = "0.28", features = ["process"] }
 

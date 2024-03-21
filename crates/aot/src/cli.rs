@@ -1,11 +1,13 @@
-use anyhow::Result;
-use clap::Parser;
-use crossterm::tty::IsTty;
 use std::{
     fs::File,
     io::{self, BufWriter},
     path::PathBuf,
 };
+
+use anyhow::Result;
+use clap::Parser;
+use crossterm::tty::IsTty;
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_flame::FlushGuard;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
@@ -48,7 +50,7 @@ impl Cli {
     /// 5 => info, debug, trace, snarkos_node_router=trace
     /// 6 => info, debug, trace, snarkos_node_tcp=trace
     /// ```
-    pub fn init_logger(&self) -> Option<FlushGuard<BufWriter<File>>> {
+    pub fn init_logger(&self) -> (Option<FlushGuard<BufWriter<File>>>, Vec<WorkerGuard>) {
         let verbosity = self.verbosity;
 
         match verbosity {
@@ -101,6 +103,7 @@ impl Cli {
         });
 
         let mut layers = vec![];
+        let mut guards = vec![];
 
         let guard = if self.enable_profiling {
             let (flame_layer, guard) =
@@ -111,7 +114,7 @@ impl Cli {
             None
         };
 
-        if let Some(logfile) = &self.log {
+        if let Some(logfile) = self.log.as_ref() {
             // Create the directories tree for a logfile if it doesn't exist.
             let logfile_dir = logfile
                 .parent()
@@ -120,19 +123,16 @@ impl Cli {
                 std::fs::create_dir_all(logfile_dir)
                 .expect("Failed to create a directories: '{logfile_dir}', please check if user has permissions");
             }
-            // Create a file to write logs to.
-            // TODO: log rotation
-            let logfile = File::options()
-                .append(true)
-                .create(true)
-                .open(logfile)
-                .expect("Failed to open the file for writing logs");
+
+            let file_appender = tracing_appender::rolling::daily(&logfile_dir, logfile);
+            let (non_blocking, file_guard) = tracing_appender::non_blocking(file_appender);
+            guards.push(file_guard);
 
             // Add layer redirecting logs to the file
             layers.push(
                 tracing_subscriber::fmt::Layer::default()
                     .with_ansi(false)
-                    .with_writer(logfile)
+                    .with_writer(non_blocking)
                     .with_filter(filter2)
                     .boxed(),
             );
@@ -141,27 +141,34 @@ impl Cli {
         // Initialize tracing.
         // Add layer using LogWriter for stdout / terminal
         if matches!(self.command, Command::Run(_)) {
+            let (stdout, g) = tracing_appender::non_blocking(io::stdout());
+            guards.push(g);
+
             layers.push(
                 tracing_subscriber::fmt::Layer::default()
                     .with_ansi(io::stdout().is_tty())
+                    .with_writer(stdout)
                     .with_filter(filter)
                     .boxed(),
             );
         } else {
+            let (stderr, g) = tracing_appender::non_blocking(io::stderr());
+            guards.push(g);
             layers.push(
                 tracing_subscriber::fmt::Layer::default()
-                    .with_writer(io::stderr)
+                    .with_writer(stderr)
                     .boxed(),
             );
-        }
+        };
 
         let subscriber = tracing_subscriber::registry::Registry::default().with(layers);
+
         tracing::subscriber::set_global_default(subscriber).unwrap();
-        guard
+        (guard, guards)
     }
 
     pub fn run(self) -> Result<()> {
-        self.init_logger();
+        let _guards = self.init_logger();
 
         match self.command {
             Command::Genesis(command) => command.parse(),
