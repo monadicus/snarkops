@@ -4,25 +4,17 @@ use std::{
 };
 
 use futures::{Sink, Stream};
-use tarpc::{client::RpcError, transport::channel::ChannelError};
-use thiserror::Error;
+use serde::{Deserialize, Serialize};
+use tarpc::transport::channel::ChannelError;
 use tokio::sync::mpsc;
 
-use crate::state::AgentState;
+pub mod agent;
+pub mod control;
 
-/// The RPC service that agents implement as a server.
-#[tarpc::service]
-pub trait AgentService {
-    async fn reconcile(to: AgentState) -> Result<(), ()>; // TODO: return type
-    async fn test_reverse_string(msg: String) -> String;
-}
-
-#[derive(Error, Debug)]
-pub enum RpcErrorOr<O = ()> {
-    #[error(transparent)]
-    RpcError(#[from] RpcError),
-    #[error("an error occurred")]
-    Other(O),
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MuxMessage<Control, Agent> {
+    Control(Control),
+    Agent(Agent),
 }
 
 pub struct RpcTransport<In, Out> {

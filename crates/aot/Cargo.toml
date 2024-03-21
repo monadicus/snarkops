@@ -16,10 +16,12 @@ clap.workspace = true
 colored.workspace = true
 indexmap.workspace = true
 indicatif.workspace = true
+lazy_static.workspace = true
 nix.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
 rayon.workspace = true
+reqwest = { workspace = true, features = ["blocking", "json"] }
 serde-clap-deserialize = "0.1.0"
 serde.workspace = true
 serde_json.workspace = true

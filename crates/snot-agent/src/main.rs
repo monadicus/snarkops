@@ -1,24 +1,37 @@
-mod agent;
 mod cli;
 mod rpc;
+mod state;
 
-use std::{env, time::Duration};
+use std::{
+    env,
+    path::Path,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use clap::Parser;
 use cli::{Cli, ENV_ENDPOINT, ENV_ENDPOINT_DEFAULT};
 use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
-use snot_common::rpc::{AgentService, RpcTransport};
+use http::HeaderValue;
+use snot_common::rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport};
 use tarpc::server::Channel;
 use tokio::{
+    io::AsyncWriteExt,
     select,
     signal::unix::{signal, Signal, SignalKind},
 };
-use tokio_tungstenite::{connect_async, tungstenite, tungstenite::http::Uri};
-use tracing::{error, info, level_filters::LevelFilter};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{self, client::IntoClientRequest, http::Uri},
+};
+use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::rpc::AgentRpcServer;
+use crate::rpc::{
+    AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing, JWT_FILE, SNARKOS_FILE,
+};
+use crate::state::GlobalState;
 
 #[tokio::main]
 async fn main() {
@@ -26,7 +39,9 @@ async fn main() {
         .with(
             tracing_subscriber::EnvFilter::builder()
                 .with_default_directive(LevelFilter::INFO.into())
-                .parse_lossy(""),
+                .parse_lossy("")
+                .add_directive("tarpc::client=ERROR".parse().unwrap())
+                .add_directive("tarpc::server=ERROR".parse().unwrap()),
         )
         .with(tracing_subscriber::fmt::layer())
         .try_init()
@@ -34,26 +49,7 @@ async fn main() {
 
     let args = Cli::parse();
 
-    // create rpc channels
-    let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
-
-    // initialize and start the rpc server
-    let rpc_server = tarpc::server::BaseChannel::with_defaults(server_transport);
-    tokio::spawn(
-        rpc_server
-            .execute(AgentRpcServer.serve())
-            .for_each(|r| async move {
-                tokio::spawn(r);
-            }),
-    );
-
-    // TODO(rpc): in order for RPC servers to work in *both* directions, we will
-    // need to multiplex the messages sent by tarpc with a wrapping type so that we
-    // can properly deserialize them and direct them to the right channels (as in,
-    // directing requests from the control plane [agent is server] to the right
-    // channel versus responses from the control plane [control plane is server])
-
-    // get the WS endpoint
+    // get the endpoint
     let endpoint = args
         .endpoint
         .or_else(|| {
@@ -70,18 +66,79 @@ async fn main() {
         .build()
         .unwrap();
 
+    // create the data directory
+    tokio::fs::create_dir_all(&args.path)
+        .await
+        .expect("failed to create data path");
+
+    // get the JWT from the file, if possible
+    let jwt = tokio::fs::read_to_string(args.path.join(JWT_FILE))
+        .await
+        .ok();
+
+    // download the snarkOS binary
+    check_binary(&format!("http://{endpoint}"), &args.path.join(SNARKOS_FILE)) // TODO: http(s)?
+        .await
+        .expect("failed to acquire snarkOS binary");
+
+    // create the client state
+    let state = Arc::new(GlobalState {
+        cli: args,
+        endpoint,
+        jwt: Mutex::new(jwt),
+        agent_state: Default::default(),
+        reconcilation_handle: Default::default(),
+        child: Default::default(),
+    });
+
+    // create rpc channels
+    let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
+    let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
+
+    // set up the client, facing the control plane
+    let _client =
+        ControlServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
+
+    // initialize and start the rpc server
+    let rpc_server = tarpc::server::BaseChannel::with_defaults(server_transport);
+    tokio::spawn(
+        rpc_server
+            .execute(
+                AgentRpcServer {
+                    state: state.to_owned(),
+                }
+                .serve(),
+            )
+            .for_each(|r| async move {
+                tokio::spawn(r);
+            }),
+    );
+
     // get the interrupt signals to break the stream connection
     let mut interrupt = Signals::new(&[SignalKind::terminate(), SignalKind::interrupt()]);
 
     'process: loop {
         'connection: {
+            let mut req = ws_uri.to_owned().into_client_request().unwrap();
+
+            // attach JWT if we have one
+            {
+                let jwt = state.jwt.lock().expect("failed to acquire jwt");
+                if let Some(jwt) = jwt.as_deref() {
+                    req.headers_mut().insert(
+                        "Authorization",
+                        HeaderValue::from_bytes(format!("Bearer {jwt}").as_bytes())
+                            .expect("attach authorization header"),
+                    );
+                }
+            }
+
             let (mut ws_stream, _) = select! {
                 _ = interrupt.recv_any() => break 'process,
 
-                res = connect_async(&ws_uri) => match res {
+                res = connect_async(req) => match res {
                     Ok(c) => c,
                     Err(e) => {
-                        // TODO: print error
                         error!("An error occurred establishing the connection: {e}");
                         break 'connection;
                     },
@@ -103,7 +160,17 @@ async fn main() {
                     // handle outgoing responses
                     msg = server_response_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
-                        let bin = bincode::serialize(&msg).expect("failed to serialize response");
+                        let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize response");
+                        if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bin)).await {
+                            error!("The connection to the control plane was interrupted");
+                            break 'event;
+                        }
+                    }
+
+                    // handle outgoing requests
+                    msg = client_request_out.recv() => {
+                        let msg = msg.expect("internal RPC channel closed");
+                        let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize request");
                         if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bin)).await {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
@@ -113,9 +180,15 @@ async fn main() {
                     // handle incoming messages
                     msg = ws_stream.next() => match msg {
                         Some(Ok(tungstenite::Message::Binary(bin))) => {
-                            info!("got a binary message in!");
-                            let msg = bincode::deserialize(&bin).expect("deserialize"); // TODO: don't panic
-                            server_request_in.send(msg).expect("internal RPC channel closed");
+                            let Ok(msg) = bincode::deserialize(&bin) else {
+                                warn!("failed to deserialize a message from the control plane");
+                                continue;
+                            };
+
+                            match msg {
+                                MuxedMessageIncoming::Agent(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
+                                MuxedMessageIncoming::Control(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
+                            }
                         }
 
                         None | Some(Err(_)) => {
@@ -169,4 +242,57 @@ impl Signals {
 
         futs.next().await;
     }
+}
+
+async fn check_binary(base_url: &str, path: &Path) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+
+    // check if we already have an up-to-date binary
+    let loc = format!("{base_url}/content/snarkos");
+    if !should_download_binary(&client, &loc, path)
+        .await
+        .unwrap_or(true)
+    {
+        return Ok(());
+    }
+
+    // download the binary
+    let mut file = tokio::fs::File::create(path).await?;
+    let mut stream = client.get(&loc).send().await?.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        file.write_all(&chunk?).await?;
+    }
+
+    Ok(())
+}
+
+async fn should_download_binary(
+    client: &reqwest::Client,
+    loc: &str,
+    path: &Path,
+) -> anyhow::Result<bool> {
+    Ok(match tokio::fs::metadata(&path).await {
+        Ok(meta) => {
+            // check last modified
+            let res = client.head(loc).send().await?;
+
+            let Some(last_modified_header) = res.headers().get(http::header::LAST_MODIFIED) else {
+                return Ok(true);
+            };
+
+            let remote_last_modified = httpdate::parse_http_date(last_modified_header.to_str()?)?;
+            let local_last_modified = meta.modified()?;
+
+            if remote_last_modified > local_last_modified {
+                info!("binary update is available, downloading...");
+                true
+            } else {
+                false
+            }
+        }
+
+        // no existing file, unconditionally download binary
+        Err(_) => true,
+    })
 }

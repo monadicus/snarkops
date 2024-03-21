@@ -14,9 +14,8 @@ pub struct Cli {
     /// Control plane endpoint address
     pub endpoint: Option<SocketAddr>,
 
-    #[arg(long)]
+    #[arg(long, default_value = "./snot-data")]
     /// Path to the directory containing the stored data and configuration
-    pub path: Option<PathBuf>,
+    pub path: PathBuf,
     // TODO: specify allowed modes
-    // TODO: auth token env or arg
 }

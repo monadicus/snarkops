@@ -123,7 +123,7 @@ pub enum HeightRequest {
     // TruncateTime(i64),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum AgentPeer {
     Internal(AgentId),
     External(SocketAddr),
@@ -178,6 +178,16 @@ pub enum NodeType {
     Client,
     Validator,
     Prover,
+}
+
+impl NodeType {
+    pub fn flag(self) -> &'static str {
+        match self {
+            Self::Client => "--client",
+            Self::Validator => "--validator",
+            Self::Prover => "--prover",
+        }
+    }
 }
 
 impl FromStr for NodeType {

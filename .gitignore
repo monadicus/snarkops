@@ -1,2 +1,4 @@
 **/target/
 /tests
+/snot-control-data
+/snot-data

@@ -30,7 +30,7 @@ pub struct ExternalNode {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Node {
     /// When specified, creates a group of nodes, all with the same
-    /// configuration. A a a a a a a a a
+    /// configuration.
     pub replicas: Option<usize>,
     /// The private key to start the node with. When unspecified, a random
     /// private key is generated at runtime.

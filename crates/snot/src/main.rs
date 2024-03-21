@@ -1,10 +1,13 @@
+use clap::Parser;
+use cli::Cli;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::prelude::*;
 
+pub mod cli;
 pub mod schema;
 pub mod server;
 pub mod state;
-pub mod storage;
+pub mod testing;
 
 #[tokio::main]
 async fn main() {
@@ -12,18 +15,15 @@ async fn main() {
         .with(
             tracing_subscriber::EnvFilter::builder()
                 .with_default_directive(LevelFilter::INFO.into())
-                .parse_lossy(""),
+                .parse_lossy("")
+                .add_directive("tarpc::client=ERROR".parse().unwrap())
+                .add_directive("tarpc::server=ERROR".parse().unwrap()),
         )
         .with(tracing_subscriber::fmt::layer())
         .try_init()
         .unwrap();
 
-    // TODO: REST api for interacting with CLI/web
+    let cli = Cli::parse();
 
-    // TODO: possibly need authorization for the REST server for MVP?
-
-    // TODO ws server for talking to runners, runners get data from control
-    // plane thru HTTP, not ws
-
-    server::start().await.expect("start server");
+    server::start(cli).await.expect("start server");
 }

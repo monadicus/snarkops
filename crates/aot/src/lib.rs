@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod credits;
 pub mod genesis;
 pub mod ledger;
 
@@ -28,3 +29,8 @@ pub type Ciphertext = snarkvm::console::program::Ciphertext<Network>;
 pub type PTRecord = snarkvm::console::program::Record<Network, Plaintext>;
 pub type CTRecord = snarkvm::console::program::Record<Network, Ciphertext>;
 pub type ViewKey = snarkvm::console::account::ViewKey<Network>;
+pub type Value = snarkvm::console::program::Value<Network>;
+pub type Literal = snarkvm::console::program::Literal<Network>;
+pub type Authorization = snarkvm::synthesizer::Authorization<Network>;
+pub type Aleo = snarkvm::circuit::AleoV0;
+pub type Transaction = snarkvm::ledger::Transaction<Network>;
