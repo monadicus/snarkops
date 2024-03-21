@@ -10,11 +10,10 @@ use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
 use snarkvm::{
-    circuit::AleoV0,
     ledger::{
-        committee::{Committee, MIN_VALIDATOR_STAKE},
+        committee::MIN_VALIDATOR_STAKE,
         store::{helpers::memory::ConsensusMemory, ConsensusStore},
-        Block, Header, Ratify, Solutions, Transaction,
+        Header, Ratify, Solutions,
     },
     prelude::Network as _,
     synthesizer::program::FinalizeGlobalState,
@@ -22,8 +21,8 @@ use snarkvm::{
 };
 
 use crate::{
-    ledger::util::public_transaction, Address, CTRecord, DbLedger, MemVM, Network, PTRecord,
-    PrivateKey, ViewKey,
+    ledger::util::public_transaction, Address, Aleo, Block, CTRecord, Committee, DbLedger, MemVM,
+    Network, PTRecord, PrivateKey, Transaction, ViewKey,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -72,6 +71,11 @@ pub struct Genesis {
     #[serde_clap_default(100000000)] // 100_000_000
     pub additional_accounts_balance: u64,
 
+    /// If --additional-accounts is passed you can additionally add an amount to
+    /// give them in a record.
+    #[clap(name = "additional-accounts-record-balance", long)]
+    pub additional_accounts_record_balance: Option<u64>,
+
     /// A place to write out the additionally generated accounts by
     /// --additional-accounts.
     #[clap(name = "additional-accounts-output", long)]
@@ -99,101 +103,81 @@ pub struct Genesis {
     pub ledger: Option<PathBuf>,
 }
 
-// /// Returns a new genesis block for a quorum chain.
-// pub fn genesis_quorum<R: Rng + CryptoRng>(
-//     vm: &MemVM,
-//     private_key: &PrivateKey,
-//     committee: Committee<Network>,
-//     public_balances: IndexMap<Address, u64>,
-//     bonded_balances: IndexMap<Address, (Address, Address, u64)>,
-//     transactions: Vec<Transaction<Network>>,
-//     rng: &mut R,
-// ) -> Result<Block<Network>> {
-//     // Retrieve the total stake.
-//     let total_stake = committee.total_stake();
-//     // Compute the account supply.
-//     let account_supply = public_balances.values().try_fold(0u64, |acc, x| {
-//         acc.checked_add(*x).ok_or(anyhow!("Invalid account supply"))
-//     })?;
-//     // Compute the total supply.
-//     let total_supply = total_stake
-//         .checked_add(account_supply)
-//         .ok_or_else(|| anyhow!("Invalid total supply"))?;
-//     // Ensure the total supply matches.
-//     ensure!(
-//         total_supply == Network::STARTING_SUPPLY,
-//         "Invalid total supply. Found {total_supply}, expected {}",
-//         Network::STARTING_SUPPLY
-//     );
+/// Returns a new genesis block for a quorum chain.
+pub fn genesis_quorum<R: Rng + CryptoRng>(
+    vm: &MemVM,
+    private_key: &PrivateKey,
+    committee: Committee,
+    public_balances: IndexMap<Address, u64>,
+    bonded_balances: IndexMap<Address, (Address, Address, u64)>,
+    transactions: Vec<Transaction>,
+    rng: &mut R,
+) -> Result<Block> {
+    // Retrieve the total stake.
+    let total_stake = committee.total_stake();
+    // Compute the account supply.
+    let account_supply = public_balances.values().try_fold(0u64, |acc, x| {
+        acc.checked_add(*x).ok_or(anyhow!("Invalid account supply"))
+    })?;
+    // Compute the total supply.
+    let total_supply = total_stake
+        .checked_add(account_supply)
+        .ok_or_else(|| anyhow!("Invalid total supply"))?;
+    // Ensure the total supply matches.
+    ensure!(
+        total_supply == Network::STARTING_SUPPLY,
+        "Invalid total supply. Found {total_supply}, expected {}",
+        Network::STARTING_SUPPLY
+    );
 
-//     // Prepare the caller.
-//     // let caller = Address::try_from(private_key)?;
-//     // // Prepare the locator.
-//     // let locator = ("credits.aleo", "transfer_public_to_private");
-//     // // Prepare the amount for each call to the function.
-//     // let amount = MIN_VALIDATOR_STAKE;
-//     // // Prepare the function inputs.
-//     // let inputs = [caller.to_string(), format!("{amount}_u64")];
+    // Prepare the ratifications.
+    let ratifications = vec![Ratify::Genesis(
+        Box::new(committee),
+        Box::new(public_balances),
+        Box::new(bonded_balances),
+    )];
+    // Prepare the solutions.
+    let solutions = Solutions::from(None);
+    // The genesis block
+    // Prepare the aborted solution IDs.
+    let aborted_solution_ids = vec![];
 
-//     // Prepare the ratifications.
-//     let ratifications = vec![Ratify::Genesis(
-//         Box::new(committee),
-//         Box::new(public_balances),
-//         Box::new(bonded_balances),
-//     )];
-//     // Prepare the solutions.
-//     let solutions = Solutions::<Network>::from(None); // The genesis block
-// does not require solutions.
-// // Prepare the aborted solution IDs.     let aborted_solution_ids = vec![];
-//     // Prepare the transactions.
-//     // let mut transactions = (0..Block::<Network>::NUM_GENESIS_TRANSACTIONS)
-//     //     .map(|_| vm.execute(private_key, locator, inputs.iter(), None, 0,
-// None,     // rng))     .collect::<Result<Vec<_>, _>>()?;
-//     // transactions.extend(add_txs);
+    // Construct the finalize state.
+    let state = FinalizeGlobalState::new_genesis::<Network>()?;
+    // Speculate on the ratifications, solutions, and transactions.
+    let (ratifications, transactions, aborted_transaction_ids, ratified_finalize_operations) = vm
+        .speculate(
+        state,
+        None,
+        ratifications,
+        &solutions,
+        transactions.iter(),
+        rng,
+    )?;
+    ensure!(
+        aborted_transaction_ids.is_empty(),
+        "Failed to initialize a genesis block - found aborted transactionIDs"
+    );
 
-//     // Construct the finalize state.
-//     let state = FinalizeGlobalState::new_genesis::<Network>()?;
-//     // Speculate on the ratifications, solutions, and transactions.
-//     let (ratifications, transactions, aborted_transaction_ids,
-// ratified_finalize_operations) = vm         .speculate(
-//         state,
-//         None,
-//         ratifications,
-//         &solutions,
-//         transactions.iter(),
-//         rng,
-//     )?;
-//     ensure!(
-//         aborted_transaction_ids.is_empty(),
-//         "Failed to initialize a genesis block - found aborted transaction
-// IDs"     );
+    // Prepare the block header.
+    let header = Header::genesis(&ratifications, &transactions, ratified_finalize_operations)?; // Prepare the previous block hash.
+    let previous_hash = <Network as snarkvm::prelude::Network>::BlockHash::default();
 
-//     // Prepare the block header.
-//     let header = Header::genesis(&ratifications, &transactions,
-// ratified_finalize_operations)?;     // Prepare the previous block hash.
-//     let previous_hash = <Network as
-// snarkvm::prelude::Network>::BlockHash::default();
+    // Construct the block.
+    let block = Block::new_beacon(
+        private_key,
+        previous_hash,
+        header,
+        ratifications,
+        solutions,
+        aborted_solution_ids,
+        transactions,
+        aborted_transaction_ids,
+        rng,
+    )?;
 
-//     // Construct the block.
-//     let block = Block::new_beacon(
-//         private_key,
-//         previous_hash,
-//         header,
-//         ratifications,
-//         solutions,
-//         aborted_solution_ids,
-//         transactions,
-//         aborted_transaction_ids,
-//         rng,
-//     )?;
-//     // Ensure the block is valid genesis block.
-//     // Disabled so we can AOT records
-//     // match block.is_genesis() {
-//     //     true => Ok(block),
-//     //     false => bail!("Failed to initialize a genesis block"),
-//     // }
-//     Ok(block)
-// }
+    Ok(block)
+}
 
 impl Genesis {
     pub fn parse(self) -> Result<()> {
@@ -271,10 +255,11 @@ impl Genesis {
         };
 
         // Construct the committee.
-        let committee = Committee::<Network>::new(0u64, members)?;
+        let committee = Committee::new(0u64, members)?;
 
         // Add additional accounts to the public balances
-        let accounts = (0..self.additional_accounts)
+        let accounts: IndexMap<Address, (PrivateKey, u64, Option<PTRecord>)> = (0..self
+            .additional_accounts)
             .map(|_| {
                 // Repeatedly regenerate key/addresses, ensuring they are not in
                 // `bonded_balances`.
@@ -287,7 +272,7 @@ impl Genesis {
                 };
 
                 public_balances.insert(addr, self.additional_accounts_balance);
-                Ok((addr, (key, self.additional_accounts_balance)))
+                Ok((addr, (key, self.additional_accounts_balance, None)))
             })
             .collect::<Result<IndexMap<_, _>>>()?;
 
@@ -327,37 +312,39 @@ impl Genesis {
         )?;
 
         // region: Genesis Records
-        // let mut txs: Vec<Transaction<Network>> = Vec::with_capacity(accounts.len());
-        // let accounts: IndexMap<Address, (PrivateKey, u64, PTRecord)> = accounts
-        //     .into_iter()
-        //     .map(|(addr, (key, balance))| {
-        //         let record_tx = public_transaction::<_, _, AleoV0>(
-        //             "transfer_public_to_private",
-        //             &vm,
-        //             addr,
-        //             self.additional_accounts_balance,
-        //             key,
-        //             None,
-        //         )?;
-        //         // Cannot fail because transfer_public_to_private always emits a
-        // record.         let record_enc: CTRecord =
-        // record_tx.records().next().unwrap().1.clone();         // Decrypt the
-        // record.         let record =
-        // record_enc.decrypt(&ViewKey::try_from(key)?)?;
+        let mut txs = Vec::with_capacity(accounts.len());
+        let accounts: IndexMap<Address, (PrivateKey, u64, Option<PTRecord>)> = accounts
+            .into_iter()
+            .map(|(addr, (key, balance, _))| {
+                let record_tx = public_transaction::<_, _, Aleo>(
+                    "transfer_public_to_private",
+                    &vm,
+                    addr,
+                    self.additional_accounts_balance,
+                    key,
+                    None,
+                )?;
+                // Cannot fail because transfer_public_to_private always emits a
+                // record.
+                let record_enc: CTRecord = record_tx.records().next().unwrap().1.clone();
+                // Decrypt the record.
+                let record = record_enc.decrypt(&ViewKey::try_from(key)?)?;
 
-        //         txs.push(record_tx);
-        //         Ok((addr, (key, balance, record)))
-        //     })
-        //     .collect::<Result<_>>()?;
+                txs.push(record_tx);
+                Ok((addr, (key, balance, Some(record))))
+            })
+            .collect::<Result<_>>()?;
 
         // endregion: Genesis Recordszs
 
         // Initialize the genesis block.
-        let block = vm.genesis_quorum(
+        let block = genesis_quorum(
+            &vm,
             &genesis_key,
             committee,
             public_balances,
             bonded_balances,
+            txs,
             &mut rng,
         )?;
 
@@ -413,7 +400,7 @@ impl Genesis {
                     "Additional accounts (each given {} balance):",
                     self.additional_accounts_balance
                 );
-                for (addr, (key, _)) in accounts {
+                for (addr, (key, _, _)) in accounts {
                     println!(
                         "\t{}: {}",
                         addr.to_string().yellow(),

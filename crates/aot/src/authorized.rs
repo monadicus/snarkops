@@ -4,8 +4,9 @@ use snarkvm::prelude::{
     de, Deserialize, DeserializeExt, Deserializer, Serialize, SerializeStruct, Serializer,
 };
 
-use super::PROCESS;
-use crate::{Aleo, Authorization, DbLedger, Network, PrivateKey, Transaction, Value};
+use crate::{
+    credits::PROCESS, Aleo, Authorization, DbLedger, Network, PrivateKey, Transaction, Value,
+};
 
 pub struct Authorized {
     /// The authorization for the main function execution.
@@ -14,6 +15,11 @@ pub struct Authorized {
     fee: Option<Authorization>,
     /// Whether to broadcast the transaction.
     broadcast: bool,
+}
+
+pub enum ExecutionMode {
+    Local(Option<String>),
+    Remote(String),
 }
 
 impl Authorized {
@@ -66,7 +72,7 @@ impl Authorized {
     }
 
     /// Executes the authorization, returning the resulting transaction.
-    pub fn execute(self, api_url: &str) -> Result<Transaction> {
+    pub fn execute_remote(self, api_url: &str) -> Result<Transaction> {
         // Execute the authorization.
         let response = reqwest::blocking::Client::new()
             .post(format!("{api_url}/execute"))
@@ -88,11 +94,27 @@ impl Authorized {
         self,
         ledger: &DbLedger,
         rng: &mut R,
+        query: Option<String>,
     ) -> Result<Transaction> {
+        let query = query.map(|q| q.try_into()).transpose()?;
+
         // Execute the transaction.
         ledger
             .vm()
-            .execute_authorization(self.function, self.fee, None, rng)
+            .execute_authorization(self.function, self.fee, query, rng)
+    }
+
+    pub fn execute<R: Rng + CryptoRng>(
+        self,
+        ledger: &DbLedger,
+        rng: &mut R,
+        mode: ExecutionMode,
+    ) -> Result<Transaction> {
+        // Execute the transaction.
+        match mode {
+            ExecutionMode::Local(query) => self.execute_local(ledger, rng, query),
+            ExecutionMode::Remote(ref api_url) => self.execute_remote(api_url),
+        }
     }
 }
 

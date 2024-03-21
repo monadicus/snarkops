@@ -10,10 +10,7 @@ use snarkvm::{
     synthesizer::Process,
 };
 
-use crate::{Address, Network, PrivateKey, Value};
-
-mod authorized;
-pub use authorized::*;
+use crate::{authorized::Authorized, Address, Network, PrivateKey, Value};
 
 lazy_static::lazy_static! {
     /// The main process.
