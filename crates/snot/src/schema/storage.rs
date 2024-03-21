@@ -103,10 +103,11 @@ impl Document {
         let id = String::from(self.id);
 
         // ensure this ID isn't already prepared
-        ensure!(
-            !state.storage.read().await.contains_right(&id),
-            "a storage with the id {id} has already been prepared"
-        );
+        if state.storage.read().await.contains_right(&id) {
+            // TODO: we probably don't want to warn here. instead, it would be nice to
+            // hash/checksum the storage to compare it with the conflicting storage
+            warn!("a storage with the id {id} has already been prepared");
+        }
 
         let mut base = state.cli.path.join("storage");
         base.push(&id);

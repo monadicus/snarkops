@@ -123,7 +123,7 @@ pub enum HeightRequest {
     // TruncateTime(i64),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum AgentPeer {
     Internal(AgentId),
     External(SocketAddr),

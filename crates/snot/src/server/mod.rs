@@ -41,6 +41,7 @@ pub async fn start(cli: Cli) -> Result<()> {
         cli,
         pool: Default::default(),
         storage: Default::default(),
+        test: Default::default(),
     };
 
     let app = Router::new()

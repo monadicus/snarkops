@@ -19,6 +19,7 @@ use tokio::sync::RwLock;
 use crate::{
     cli::Cli,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
+    testing::Test,
 };
 
 pub type AgentId = usize;
@@ -32,8 +33,7 @@ pub struct GlobalState {
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage: RwLock<BiMap<usize, String>>,
-    // TODO: when tests are running, there should be (bi-directional?) map between agent ID and
-    // assigned NodeKey (like validator/1)
+    pub test: RwLock<Option<Test>>,
 }
 
 /// An active agent, known by the control plane.
