@@ -2663,6 +2663,7 @@ version = "0.1.0"
 dependencies = [
  "aleo-std",
  "anyhow",
+ "bincode",
  "clap",
  "colored",
  "crossterm",
@@ -2674,6 +2675,7 @@ dependencies = [
  "rand_chacha",
  "rayon",
  "reqwest 0.12.0",
+ "rocksdb",
  "serde",
  "serde-clap-deserialize",
  "serde_json",

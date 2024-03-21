@@ -12,6 +12,7 @@ node = ["snarkos-node", "crossterm"]
 [dependencies]
 aleo-std.workspace = true
 anyhow.workspace = true
+bincode.workspace = true
 clap.workspace = true
 colored.workspace = true
 indexmap.workspace = true
@@ -34,6 +35,11 @@ tracing-flame = "0.2.0"
 tracing-subscriber.workspace = true
 tracing.workspace = true
 crossterm = { version = "0.27", optional = true }
+
+[dependencies.rocksdb]
+version = "0.21"
+default-features = false
+features = ["lz4"]
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 tikv-jemallocator = "0.5"

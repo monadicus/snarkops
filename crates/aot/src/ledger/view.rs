@@ -3,9 +3,20 @@ use std::str::FromStr;
 use anyhow::Result;
 use clap::Subcommand;
 use snarkvm::{
-    console::program::{Entry, Identifier, Literal, Plaintext},
-    ledger::RecordsFilter,
+    circuit::AleoV0,
+    console::{
+        network::MainnetV0,
+        program::{Entry, Identifier, Literal, Plaintext},
+    },
+    ledger::{
+        store::{
+            helpers::{MapRead, NestedMapRead},
+            BlockStorage, CommitteeStorage, FinalizeStorage,
+        },
+        RecordsFilter,
+    },
     prelude::Zero,
+    synthesizer::Program,
 };
 
 use crate::{ledger::util, Address, DbLedger, PrivateKey, ViewKey};

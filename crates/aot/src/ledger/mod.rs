@@ -1,8 +1,24 @@
-use std::{net::SocketAddr, ops::Deref, path::PathBuf, str::FromStr};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::Hasher,
+    net::SocketAddr,
+    ops::Deref,
+    path::PathBuf,
+    str::FromStr,
+};
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use rand::{seq::SliceRandom, CryptoRng, Rng};
+use serde::Serialize;
+use snarkvm::{
+    console::{network::MainnetV0, program::Network},
+    ledger::store::helpers::rocksdb::{
+        BFTMap, BlockMap, CommitteeMap, DeploymentMap, ExecutionMap, FeeMap, MapID, ProgramMap,
+        TransactionMap, TransitionInputMap, TransitionMap, TransitionOutputMap, PREFIX_LEN,
+    },
+};
+use tracing::warn;
 
 use crate::{Address, PrivateKey};
 
@@ -91,6 +107,17 @@ pub enum Commands {
     View(view::View),
     Distribute(distribute::Distribute),
     Truncate(truncate::Truncate),
+
+    /// A truncate that breaks the ledger
+    TruncateEvil {
+        amount: u32,
+    },
+
+    /// At the moment this can be used as a diff tool for snarkos' rocksdb
+    /// In the future, this should be able compare two rocksdbs and generate a patch
+    Yoink {
+        source: PathBuf,
+    },
 }
 
 impl Ledger {
@@ -130,6 +157,163 @@ impl Ledger {
             }
 
             Commands::Truncate(truncate) => truncate.parse(genesis, ledger),
+            Commands::TruncateEvil { amount } => {
+                let ledger = util::open_ledger(genesis, ledger)?;
+                ledger.vm().block_store().remove_last_n(amount)?;
+                Ok(())
+            }
+            Commands::Yoink { source } => {
+                let source_db = rocks_open(source)?;
+                // let dest_db = rocks_open(dest)?;
+
+                let mut map: HashMap<u16, usize> = HashMap::new();
+                let mut map_hashers: HashMap<u16, Box<dyn Hasher>> = HashMap::new();
+
+                source_db
+                    .iterator(rocksdb::IteratorMode::Start)
+                    .flatten()
+                    .for_each(|(key, value)| {
+                        if key.len() < PREFIX_LEN {
+                            return;
+                        }
+                        let (prefix, _) = key.split_at(PREFIX_LEN);
+                        let mut network_id = [0u8; 2];
+                        network_id.copy_from_slice(&prefix[0..2]);
+                        let network_id = u16::from_le_bytes(network_id);
+                        if network_id != MainnetV0::ID {
+                            warn!("bad network id: {network_id}");
+                            return;
+                        }
+
+                        let mut map_id = [0u8; 2];
+                        map_id.copy_from_slice(&prefix[2..4]);
+                        let map_id = u16::from_le_bytes(map_id);
+                        // if map_id != u16::from(MapID::Program(ProgramMap::KeyValueID)) {
+                        //     warn!("bad map id: {map_id}");
+                        //     return false;
+                        // }
+
+                        *map.entry(map_id).or_default() += 1;
+                        map_hashers
+                            .entry(map_id)
+                            .or_insert_with(|| Box::new(DefaultHasher::new()))
+                            .write(&value);
+                    });
+
+                #[rustfmt::skip]
+                let ids = vec![
+                    // BFT
+                    (MapID::BFT(BFTMap::Transmissions), "BFT(Transmissions)"),
+                    (MapID::Block(BlockMap::StateRoot), "Block(StateRoot)"),
+                    (MapID::Block(BlockMap::ReverseStateRoot), "Block(ReverseStateRoot)"),
+                    (MapID::Block(BlockMap::ID), "Block(ID)"),
+                    (MapID::Block(BlockMap::ReverseID), "Block(ReverseID)"),
+                    (MapID::Block(BlockMap::Header), "Block(Header)"),
+                    (MapID::Block(BlockMap::Authority), "Block(Authority)"),
+                    (MapID::Block(BlockMap::Certificate), "Block(Certificate)"),
+                    (MapID::Block(BlockMap::Ratifications), "Block(Ratifications)"),
+                    (MapID::Block(BlockMap::Solutions), "Block(Solutions)"),
+                    (MapID::Block(BlockMap::PuzzleCommitments), "Block(PuzzleCommitments)"),
+                    (MapID::Block(BlockMap::AbortedSolutionIDs), "Block(AbortedSolutionIDs)"),
+                    (MapID::Block(BlockMap::AbortedSolutionHeights), "Block(AbortedSolutionHeights)"),
+                    (MapID::Block(BlockMap::Transactions), "Block(Transactions)"),
+                    (MapID::Block(BlockMap::AbortedTransactionIDs), "Block(AbortedTransactionIDs)"),
+                    (MapID::Block(BlockMap::RejectedOrAbortedTransactionID), "Block(RejectedOrAbortedTransactionID)"),
+                    (MapID::Block(BlockMap::ConfirmedTransactions), "Block(ConfirmedTransactions)"),
+                    (MapID::Block(BlockMap::RejectedDeploymentOrExecution), "Block(RejectedDeploymentOrExecution)"),
+                    // Committee
+                    (MapID::Committee(CommitteeMap::CurrentRound), "Committee(CurrentRound)"),
+                    (MapID::Committee(CommitteeMap::RoundToHeight), "Committee(RoundToHeight)"),
+                    (MapID::Committee(CommitteeMap::Committee), "Committee(Committee)"),
+                    // Deployment
+                    (MapID::Deployment(DeploymentMap::ID), "Deployment(ID)"),
+                    (MapID::Deployment(DeploymentMap::Edition), "Deployment(Edition)"),
+                    (MapID::Deployment(DeploymentMap::ReverseID), "Deployment(ReverseID)"),
+                    (MapID::Deployment(DeploymentMap::Owner), "Deployment(Owner)"),
+                    (MapID::Deployment(DeploymentMap::Program), "Deployment(Program)"),
+                    (MapID::Deployment(DeploymentMap::VerifyingKey), "Deployment(VerifyingKey)"),
+                    (MapID::Deployment(DeploymentMap::Certificate), "Deployment(Certificate)"),
+                    // Execution
+                    (MapID::Execution(ExecutionMap::ID), "Execution(ID)"),
+                    (MapID::Execution(ExecutionMap::ReverseID), "Execution(ReverseID)"),
+                    (MapID::Execution(ExecutionMap::Inclusion), "Execution(Inclusion)"),
+                    // Fee
+                    (MapID::Fee(FeeMap::Fee), "Fee(Fee)"),
+                    (MapID::Fee(FeeMap::ReverseFee), "Fee(ReverseFee)"),
+                    // Input
+                    (MapID::TransitionInput(TransitionInputMap::ID), "TransitionInput(ID)"),
+                    (MapID::TransitionInput(TransitionInputMap::ReverseID), "TransitionInput(ReverseID)"),
+                    (MapID::TransitionInput(TransitionInputMap::Constant), "TransitionInput(Constant)"),
+                    (MapID::TransitionInput(TransitionInputMap::Public), "TransitionInput(Public)"),
+                    (MapID::TransitionInput(TransitionInputMap::Private), "TransitionInput(Private)"),
+                    (MapID::TransitionInput(TransitionInputMap::Record), "TransitionInput(Record)"),
+                    (MapID::TransitionInput(TransitionInputMap::RecordTag), "TransitionInput(RecordTag)"),
+                    (MapID::TransitionInput(TransitionInputMap::ExternalRecord), "TransitionInput(ExternalRecord)"),
+                    // Output
+                    (MapID::TransitionOutput(TransitionOutputMap::ID), "TransitionOutput(ID)"),
+                    (MapID::TransitionOutput(TransitionOutputMap::ReverseID), "TransitionOutput(ReverseID)"),
+                    (MapID::TransitionOutput(TransitionOutputMap::Constant), "TransitionOutput(Constant)"),
+                    (MapID::TransitionOutput(TransitionOutputMap::Public), "TransitionOutput(Public)"),
+                    (MapID::TransitionOutput(TransitionOutputMap::Private), "TransitionOutput(Private)"),
+                    (MapID::TransitionOutput(TransitionOutputMap::Record), "TransitionOutput(Record)"),
+                    (MapID::TransitionOutput(TransitionOutputMap::RecordNonce), "TransitionOutput(RecordNonce)"),
+                    (MapID::TransitionOutput(TransitionOutputMap::ExternalRecord), "TransitionOutput(ExternalRecord)"),
+                    (MapID::TransitionOutput(TransitionOutputMap::Future), "TransitionOutput(Future)"),
+                    // Transaction
+                    (MapID::Transaction(TransactionMap::ID), "Transaction(ID)"),
+                    // Transition
+                    (MapID::Transition(TransitionMap::Locator), "Transition(Locator)"),
+                    (MapID::Transition(TransitionMap::TPK), "Transition(TPK)"),
+                    (MapID::Transition(TransitionMap::ReverseTPK), "Transition(ReverseTPK)"),
+                    (MapID::Transition(TransitionMap::TCM), "Transition(TCM)"),
+                    (MapID::Transition(TransitionMap::ReverseTCM), "Transition(ReverseTCM)"),
+                    (MapID::Transition(TransitionMap::SCM), "Transition(SCM)"),
+                    // Program
+                    (MapID::Program(ProgramMap::ProgramID), "Program(ProgramID)"),
+                    (MapID::Program(ProgramMap::KeyValueID),"Program(KeyValueID)"),
+                ];
+
+                for (id, name) in ids {
+                    let count = map.get(&u16::from(id)).copied().unwrap_or_default();
+                    let hash = map_hashers
+                        .get(&u16::from(id))
+                        .map(|hasher| hasher.finish())
+                        .unwrap_or_default();
+                    println!("{name}: {count} -- {hash:x}");
+                }
+
+                Ok(())
+            }
         }
     }
+}
+
+fn rocks_open(dir: PathBuf) -> Result<rocksdb::DB> {
+    let mut options = rocksdb::Options::default();
+    options.set_compression_type(rocksdb::DBCompressionType::Lz4);
+
+    // Register the prefix length.
+    let prefix_extractor = rocksdb::SliceTransform::create_fixed_prefix(
+        snarkvm::ledger::store::helpers::rocksdb::PREFIX_LEN,
+    );
+    options.set_prefix_extractor(prefix_extractor);
+    options.increase_parallelism(2);
+    options.set_max_background_jobs(4);
+    options.create_if_missing(true);
+
+    let db = rocksdb::DB::open(&options, dir)?;
+
+    Ok(db)
+}
+
+fn _rocks_prefix(map_id: MapID) -> Vec<u8> {
+    let mut context = MainnetV0::ID.to_le_bytes().to_vec();
+    context.extend_from_slice(&(u16::from(map_id)).to_le_bytes());
+    context
+}
+
+fn _rocks_key<K: Serialize>(map_id: MapID, key: K) -> Vec<u8> {
+    let mut context = _rocks_prefix(map_id);
+    bincode::serialize_into(&mut context, &key).unwrap();
+    context
 }
