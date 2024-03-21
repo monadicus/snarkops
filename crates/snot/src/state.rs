@@ -1,9 +1,13 @@
 use std::{
     collections::HashMap,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::Instant,
 };
 
+use bimap::BiMap;
 use jwt::SignWithKey;
 use snot_common::{
     rpc::agent::{AgentServiceClient, ReconcileError},
@@ -19,11 +23,15 @@ use crate::{
 
 pub type AgentId = usize;
 
+pub type AppState = Arc<GlobalState>;
+
 /// The global state for the control plane.
 #[derive(Debug)]
 pub struct GlobalState {
     pub cli: Cli,
     pub pool: RwLock<HashMap<AgentId, Agent>>,
+    /// A map from ephemeral integer storage ID to actual storage ID.
+    pub storage: RwLock<BiMap<usize, String>>,
     // TODO: when tests are running, there should be (bi-directional?) map between agent ID and
     // assigned NodeKey (like validator/1)
 }

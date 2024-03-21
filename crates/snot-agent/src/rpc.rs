@@ -145,8 +145,10 @@ impl AgentService for AgentRpcServer {
                     .map_err(|_| ReconcileError::StorageAcquireError)?;
 
                 // stream the archive containing the storage
+                // use /api/storage here instead of /content/storage so that the control plane
+                // can redirect our integer storage_id into an actual string storage_id
                 let mut stream = reqwest::get(format!(
-                    "http://{}/content/storage/{storage_id}.tar.gz",
+                    "http://{}/api/storage/{storage_id}",
                     &state.endpoint
                 ))
                 .await
@@ -198,6 +200,8 @@ impl AgentService for AgentRpcServer {
                     // TODO: more args
                     command
                         .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .stdin(Stdio::null())
                         .arg("run")
                         .arg("--type")
                         .arg(node.ty.flag())
@@ -220,6 +224,7 @@ impl AgentService for AgentRpcServer {
                     let mut child = command.spawn().expect("failed to start child");
 
                     // start a new task to log stdout
+                    // TODO: probably also want to read stderr
                     let stdout = child.stdout.take().unwrap();
                     tokio::spawn(async move {
                         let child_span = tracing::span!(Level::INFO, "child process stdout");

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 axum = { version = "0.7.4", features = ["ws"] }
+bimap.workspace = true
 bincode.workspace = true
 clap.workspace = true
 duration-str = { version = "0.7", default-features = false }
@@ -21,7 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 sha2 = "0.10.8"
-snarkos-aot = { path = "../aot" }
+snarkos-aot = { path = "../aot", default-features = false }
 snot-common = { path = "../snot-common" }
 tarpc.workspace = true
 tokio.workspace = true

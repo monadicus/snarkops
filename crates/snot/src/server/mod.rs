@@ -28,7 +28,7 @@ use self::{
 use crate::{
     cli::Cli,
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{Agent, GlobalState},
+    state::{Agent, AppState, GlobalState},
 };
 
 mod api;
@@ -36,12 +36,11 @@ mod content;
 pub mod jwt;
 mod rpc;
 
-type AppState = Arc<GlobalState>;
-
 pub async fn start(cli: Cli) -> Result<()> {
     let state = GlobalState {
         cli,
         pool: Default::default(),
+        storage: Default::default(),
     };
 
     let app = Router::new()

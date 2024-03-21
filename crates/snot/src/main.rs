@@ -7,7 +7,6 @@ pub mod cli;
 pub mod schema;
 pub mod server;
 pub mod state;
-pub mod storage;
 
 #[tokio::main]
 async fn main() {

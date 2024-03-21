@@ -1,36 +1,22 @@
 ---
 version: storage.snarkos.testing.monadic.us/v1
 
+id: private-tx-500
 name: private tx, 500 rounds, 4 accounts
 description: |
   This ledger was built to test private transactions
 
-# storage information to be run for this test
-storage:
-  genesis: ./testing/0001/genesis.block
-  ledger: ./testing/0001/ledger
-
-# a source for account information from this test
-accounts:
-  committee: ./testing/0001/committee.json
-  accounts: ./testing/0001/additional-accounts.json
-
 # instructions for generating this test
 generate:
-  path: ./testing/0001
   # genesis generation
   genesis:
-    output: genesis.block
     seed: 0
     committee: 5
     committee-balances: 10_000_000_000_000
-    committee-output: committee.json
     additional-accounts: 10
     additional-balances: 100_000_000_000
-    additional-output: additional-accounts.json
   # ledger setup
   ledger:
-    output: ledger
     blocks: 100
     transactions:
       total: 1000
@@ -49,16 +35,10 @@ version: storage.snarkos.testing.monadic.us/v1
 
 # ADDITIONAL storage information to be run for this test
 # this will run a second test with the same topology but different ledger
+id: public-tx-500
 name: public tx, 500 rounds, 800 accounts
 description: |
   This ledger was built to test a large volume of accounts
-
-storage:
-  genesis: ./testing/0002/genesis.block
-  ledger: ./testing/0002/ledger
-accounts:
-  committee: ./testing/0002/committee.json
-  accounts: ./testing/0002/additional-accounts.json
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
