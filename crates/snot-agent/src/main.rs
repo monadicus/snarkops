@@ -84,6 +84,7 @@ async fn main() {
     // create the client state
     let state = Arc::new(GlobalState {
         cli: args,
+        endpoint,
         jwt: Mutex::new(jwt),
         agent_state: Default::default(),
         reconcilation_handle: Default::default(),

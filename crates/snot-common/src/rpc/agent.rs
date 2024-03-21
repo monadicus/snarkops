@@ -18,6 +18,8 @@ pub trait AgentService {
 pub enum ReconcileError {
     #[error("aborted by a more recent reconcilation request")]
     Aborted,
+    #[error("failed to download the specified storage")]
+    StorageAcquireError,
     #[error("unknown error")]
     Unknown,
 }

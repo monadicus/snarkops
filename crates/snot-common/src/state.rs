@@ -180,6 +180,16 @@ pub enum NodeType {
     Prover,
 }
 
+impl NodeType {
+    pub fn flag(self) -> &'static str {
+        match self {
+            Self::Client => "--client",
+            Self::Validator => "--validator",
+            Self::Prover => "--prover",
+        }
+    }
+}
+
 impl FromStr for NodeType {
     type Err = &'static str;
 

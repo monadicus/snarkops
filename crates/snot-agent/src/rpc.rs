@@ -1,21 +1,39 @@
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, process::Stdio, sync::Arc};
 
+use futures::StreamExt;
 use snot_common::{
     rpc::{
         agent::{AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError},
         control::{ControlServiceRequest, ControlServiceResponse},
         MuxMessage,
     },
-    state::{AgentState, NodeType},
+    state::AgentState,
 };
 use tarpc::{context, ClientMessage, Response};
-use tokio::process::Command;
-use tracing::{debug, warn};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    process::Command,
+};
+use tracing::{debug, info, warn, Level};
 
 use crate::state::AppState;
 
+/// The JWT file name.
 pub const JWT_FILE: &str = "jwt";
+/// The snarkOS binary file name.
 pub const SNARKOS_FILE: &str = "snarkos";
+/// The snarkOS log file name.
+pub const SNARKOS_LOG_FILE: &str = "snarkos.log";
+/// The genesis block file name.
+pub const SNARKOS_GENESIS_FILE: &str = "genesis.block";
+/// The base genesis block file name.
+pub const SNARKOS_GENESIS_BASE_FILE: &str = "genesis.block.base";
+/// The ledger directory name.
+pub const SNARKOS_LEDGER_DIR: &str = "ledger";
+/// The base ledger directory name.
+pub const SNARKOS_LEDGER_BASE_DIR: &str = "ledger.base";
+/// Temporary storage archive file name.
+pub const TEMP_STORAGE_FILE: &str = "storage.tar.gz";
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -69,15 +87,102 @@ impl AgentService for AgentRpcServer {
         let state = Arc::clone(&self.state);
         let handle = tokio::spawn(async move {
             // previous state cleanup
-            match state.agent_state.read().await.deref() {
-                // kill existing child if running
-                AgentState::Node(_, node) if node.online => {
-                    if let Some(mut child) = state.child.write().await.take() {
-                        child.kill().await.expect("failed to kill child process");
+            let old_state = {
+                let agent_state_lock = state.agent_state.read().await;
+                match agent_state_lock.deref() {
+                    // kill existing child if running
+                    AgentState::Node(_, node) if node.online => {
+                        if let Some(mut child) = state.child.write().await.take() {
+                            child.kill().await.expect("failed to kill child process");
+                        }
                     }
+
+                    _ => (),
                 }
 
-                _ => (),
+                agent_state_lock.deref().clone()
+            };
+
+            // download new storage if storage_id changed
+            'storage: {
+                match (&old_state, &target) {
+                    (AgentState::Node(old, _), AgentState::Node(new, _)) if old == new => {
+                        // same storage_id
+                        // TODO: check if we need to update the ledger height
+                        break 'storage;
+                    }
+
+                    _ => (),
+                }
+
+                // clean up old storage
+                let base_path = &state.cli.path;
+                let filenames = &[
+                    base_path.join(SNARKOS_GENESIS_FILE),
+                    base_path.join(SNARKOS_GENESIS_BASE_FILE),
+                ];
+                let directories = &[
+                    base_path.join(SNARKOS_LEDGER_DIR),
+                    base_path.join(SNARKOS_LEDGER_BASE_DIR),
+                ];
+
+                for filename in filenames {
+                    let _ = tokio::fs::remove_file(filename).await;
+                }
+                for dir in directories {
+                    let _ = tokio::fs::remove_dir_all(dir).await;
+                }
+
+                // download and decompress the storage
+                // skip if we don't need storage
+                let AgentState::Node(storage_id, _) = &target else {
+                    break 'storage;
+                };
+
+                // open a file for writing the archive
+                let mut file = tokio::fs::File::create(base_path.join(TEMP_STORAGE_FILE))
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                // stream the archive containing the storage
+                let mut stream = reqwest::get(format!(
+                    "http://{}/content/storage/{storage_id}.tar.gz",
+                    &state.endpoint
+                ))
+                .await
+                .map_err(|_| ReconcileError::StorageAcquireError)?
+                .bytes_stream();
+
+                // write the streamed archive to the file
+                while let Some(chunk) = stream.next().await {
+                    file.write_all(&chunk.map_err(|_| ReconcileError::StorageAcquireError)?)
+                        .await
+                        .map_err(|_| ReconcileError::StorageAcquireError)?;
+                }
+
+                let _ = (file, stream);
+
+                // use `tar` to decompress the storage
+                let mut tar_child = Command::new("tar")
+                    .current_dir(&base_path)
+                    .arg("-xzf")
+                    .arg(TEMP_STORAGE_FILE)
+                    .kill_on_drop(true)
+                    .spawn()
+                    .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                let status = tar_child
+                    .wait()
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                // unconditionally remove the tar regardless of success
+                let _ = tokio::fs::remove_file(base_path.join(TEMP_STORAGE_FILE)).await;
+
+                // return an error if the storage acquisition failed
+                if !status.success() {
+                    return Err(ReconcileError::StorageAcquireError);
+                }
             }
 
             // reconcile towards new state
@@ -86,32 +191,54 @@ impl AgentService for AgentRpcServer {
                 AgentState::Inventory => (),
 
                 // start snarkOS node when node
-                AgentState::Node(_storage_id, node) => {
-                    // TODO: refer to proper storage_id
-                    // TODO: we may want a separate, abortable task to handle the execution of this
-                    // child, so that we can properly track its stdout. we can use a similar
-                    // technique for this by storing a JoinHandle<()>/AbortHandle in the GlobalState
-                    // and aborting it when we want to kill the child.
-                    //
-                    // in order to kill the child when we drop the task that executes it, we can use
-                    // `Command::kill_on_drop`
-
+                AgentState::Node(_, node) => {
                     let mut child_lock = state.child.write().await;
-                    let child = Command::new(state.cli.path.join(SNARKOS_FILE))
-                        // TODO: more args
-                        .arg(match node.ty {
-                            NodeType::Client => "--client",
-                            NodeType::Prover => "--prover",
-                            NodeType::Validator => "--validator",
-                        })
-                        .spawn()
-                        .expect("failed to start child");
+                    let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
+
+                    // TODO: more args
+                    command
+                        .stdout(Stdio::piped())
+                        .arg("run")
+                        .arg("--type")
+                        .arg(node.ty.flag())
+                        .arg("--log")
+                        .arg(state.cli.path.join(SNARKOS_LOG_FILE))
+                        .arg("--genesis")
+                        .arg(state.cli.path.join(SNARKOS_GENESIS_FILE))
+                        .arg("--ledger")
+                        .arg(state.cli.path.join(SNARKOS_LEDGER_DIR));
+
+                    if !node.peers.is_empty() {
+                        // TODO: add peers
+
+                        // TODO: local caching of agent IDs, map agent ID to
+                        // IP/port
+                    }
+
+                    // TODO: same for validators
+
+                    let mut child = command.spawn().expect("failed to start child");
+
+                    // start a new task to log stdout
+                    let stdout = child.stdout.take().unwrap();
+                    tokio::spawn(async move {
+                        let child_span = tracing::span!(Level::INFO, "child process stdout");
+                        let _enter = child_span.enter();
+
+                        let mut reader = BufReader::new(stdout).lines();
+                        while let Ok(Some(line)) = reader.next_line().await {
+                            info!(line);
+                        }
+                    });
 
                     *child_lock = Some(child);
                 }
 
+                // TODO
                 AgentState::Cannon(_, _) => unimplemented!(),
             }
+
+            Ok(())
         });
 
         // update the mutex with our new handle and drop the lock
@@ -127,7 +254,7 @@ impl AgentService for AgentRpcServer {
                 return Err(ReconcileError::Aborted);
             }
 
-            Ok(()) => Ok(()),
+            Ok(inner) => inner,
             Err(e) => {
                 warn!("reconcilation task panicked: {e}");
                 Err(ReconcileError::Unknown)

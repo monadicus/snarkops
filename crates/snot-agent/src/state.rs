@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+};
 
 use snot_common::state::AgentState;
 use tokio::{
@@ -14,6 +17,7 @@ pub type AppState = Arc<GlobalState>;
 /// Global state for this agent runner.
 pub struct GlobalState {
     pub cli: Cli,
+    pub endpoint: SocketAddr,
     pub jwt: Mutex<Option<String>>,
     pub agent_state: RwLock<AgentState>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,

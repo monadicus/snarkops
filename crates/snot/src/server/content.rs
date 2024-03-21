@@ -13,10 +13,7 @@ pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
 
     Router::new()
         // the snarkOS binary
-        .route_service(
-            "/snarkos",
-            ServeFile::new("../snarkos/target/release/snarkos"),
-        )
+        .route_service("/snarkos", ServeFile::new("./target/release/snarkos-aot"))
         // ledger/block storage derived from tests (.tar.gz'd)
         .route_service("/storage", ServeDir::new(storage_path))
 }
