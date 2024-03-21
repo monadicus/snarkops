@@ -2,21 +2,50 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ['main']
   pull_request:
-    branches: [ "main" ]
+    branches: ['main']
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v4
+        with:
+          path: snarkos-test
+
+      - name: Checkout snarkOS
+        uses: actions/checkout@v4
+        with:
+          repository: monadicus/snarkOS
+          path: snarkos
+
+      - name: Checkout snarkVM
+        uses: actions/checkout@v4
+        with:
+          repository: monadicus/snarkVM
+          path: snarkvm
+
+      - name: Use mold linker
+        uses: rui314/setup-mold@v1
+        
+      - name: Install nightly and cranelift
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustc-codegen-cranelift-preview
+
+      - name: Build
+        working-directory: ./snarkos-test
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        run: cargo +nightly build --verbose
+
+      - name: Run tests
+        working-directory: ./snarkos-test
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        run: cargo +nightly test --verbose
