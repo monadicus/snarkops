@@ -232,11 +232,11 @@ timeline:
       height: 100 # set prover 2 to block 100
     - nodes: [client/1]
       height: -1hr # rollback the ledger by an hour (based on block timestamp deltas)
-    
+
     - nodes: client/*
       peers: []
       height: 0 # reset ledger completely
-      
+
 
 
   # wait for 5 blocks to be produced (technically impossible with all nodes offline. may want to add a check for this or end the test if nothing happens after a few seconds)
@@ -248,13 +248,13 @@ timeline:
 
 
   # wait for all nodes to sync 500 blocks, starting at the beginning
-  # 
+  #
   - config.await:
     - nodes: client/*
       height: 0
   - duration:
       nodes: client/*
-      height-delta: 500 # 5 
+      height-delta: 500 # 5
       height: 600
     timeout: 2500s # {{block_time * 500 / 2 + 60}}s
 
@@ -304,7 +304,7 @@ NOTES: |-
 DREAMS: |-
   control plane node is a webrtc signaling server,
   clients in the swarm can interact via tunneling node traffic through the signaling server
-  
+
   agents can download genesis block/ledger/snarkOS binary from other agents, instead of only the control plane
 
 ARCHITECTURE: |-
@@ -318,7 +318,7 @@ ARCHITECTURE: |-
 
       - gathers information about the worker machine
       - syncs latest ledger, genesis, and keys to the node from the control plane
-      - updates node configuration for peers/validators/ports 
+      - updates node configuration for peers/validators/ports
       - applies modifications to the ledger for testing sync
       - starts/stops the node
       - upload logs and metrics to the control plane
@@ -341,7 +341,7 @@ ARCHITECTURE: |-
         maintain the state of all workers
         when a worker's state changes, emit the event to the worker
         allow workers to query the control plane for the current state
-        
+
         timeline actions will can update the state for workers
         timeline actions can wait for collective worker state to meet expectations (maybe with timeout?)
 
@@ -353,10 +353,10 @@ ARCHITECTURE: |-
         - uploads to control plane
         - monitors test state
       - view live logs/metrics from runners (through the control plane)
-      - interfaces 
+      - interfaces
 
   MVP:
-    worker: 
+    agent:
       copy latest ledger/genesis/config
       start/stop a snarkos node given the config
       truncate/reset ledger
