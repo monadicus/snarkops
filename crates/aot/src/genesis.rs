@@ -258,7 +258,7 @@ impl Genesis {
         let committee = Committee::new(0u64, members)?;
 
         // Add additional accounts to the public balances
-        let accounts: IndexMap<Address, (PrivateKey, u64, Option<PTRecord>)> = (0..self
+        let mut accounts: IndexMap<Address, (PrivateKey, u64, Option<PTRecord>)> = (0..self
             .additional_accounts)
             .map(|_| {
                 // Repeatedly regenerate key/addresses, ensuring they are not in
@@ -271,8 +271,11 @@ impl Genesis {
                     }
                 };
 
-                public_balances.insert(addr, self.additional_accounts_balance);
-                Ok((addr, (key, self.additional_accounts_balance, None)))
+                let balance = self.additional_accounts_balance
+                    + self.additional_accounts_record_balance.unwrap_or(0);
+
+                public_balances.insert(addr, balance);
+                Ok((addr, (key, balance, None)))
             })
             .collect::<Result<IndexMap<_, _>>>()?;
 
@@ -313,27 +316,29 @@ impl Genesis {
 
         // region: Genesis Records
         let mut txs = Vec::with_capacity(accounts.len());
-        let accounts: IndexMap<Address, (PrivateKey, u64, Option<PTRecord>)> = accounts
-            .into_iter()
-            .map(|(addr, (key, balance, _))| {
-                let record_tx = public_transaction::<_, _, Aleo>(
-                    "transfer_public_to_private",
-                    &vm,
-                    addr,
-                    self.additional_accounts_balance,
-                    key,
-                    None,
-                )?;
-                // Cannot fail because transfer_public_to_private always emits a
-                // record.
-                let record_enc: CTRecord = record_tx.records().next().unwrap().1.clone();
-                // Decrypt the record.
-                let record = record_enc.decrypt(&ViewKey::try_from(key)?)?;
+        if let Some(record_balance) = self.additional_accounts_record_balance {
+            accounts = accounts
+                .into_iter()
+                .map(|(addr, (key, balance, _))| {
+                    let record_tx = public_transaction::<_, _, Aleo>(
+                        "transfer_public_to_private",
+                        &vm,
+                        addr,
+                        record_balance,
+                        key,
+                        None,
+                    )?;
+                    // Cannot fail because transfer_public_to_private always emits a
+                    // record.
+                    let record_enc: CTRecord = record_tx.records().next().unwrap().1.clone();
+                    // Decrypt the record.
+                    let record = record_enc.decrypt(&ViewKey::try_from(key)?)?;
 
-                txs.push(record_tx);
-                Ok((addr, (key, balance, Some(record))))
-            })
-            .collect::<Result<_>>()?;
+                    txs.push(record_tx);
+                    Ok((addr, (key, balance, Some(record))))
+                })
+                .collect::<Result<_>>()?;
+        }
 
         // endregion: Genesis Recordszs
 
