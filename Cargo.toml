@@ -41,3 +41,6 @@ snarkos-cli = { path = "../snarkos/cli" }
 snarkos-node = { path = "../snarkos/node" }
 snarkvm = { path = "../snarkvm", features = ["rocks"] }
 snot-common = { path = "./crates/snot-common" }
+
+[patch."https://github.com/AleoHQ/snarkVM.git"]
+snarkvm = { path = "../snarkvm" }

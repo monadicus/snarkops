@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           path: snarkos-test
 
@@ -22,17 +23,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: monadicus/snarkOS
+          ref: mainnet
           path: snarkos
 
       - name: Checkout snarkVM
         uses: actions/checkout@v4
         with:
           repository: monadicus/snarkVM
+          ref: mainnet
           path: snarkvm
 
       - name: Use mold linker
         uses: rui314/setup-mold@v1
-        
+
       - name: Install nightly and cranelift
         uses: dtolnay/rust-toolchain@nightly
         with:
