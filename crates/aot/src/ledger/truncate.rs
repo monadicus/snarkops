@@ -1,7 +1,17 @@
+use std::{os::fd::AsRawFd, path::PathBuf};
+
 use anyhow::Result;
 use clap::Args;
+use nix::{
+    sys::wait::waitpid,
+    unistd::{self, ForkResult},
+};
+use snarkvm::{
+    ledger::Block,
+    utilities::{FromBytes, ToBytes},
+};
 
-use crate::DbLedger;
+use crate::{ledger::util, DbLedger};
 
 #[derive(Debug, Args)]
 #[group(required = true, multiple = false)]
@@ -15,79 +25,74 @@ pub struct Truncate {
 }
 
 impl Truncate {
-    pub fn parse(self, ledger: &DbLedger) -> Result<()> {
-        let amount = match (self.height, self.amount) {
-            (Some(height), None) => ledger.latest_height() - height,
-            (None, Some(amount)) => amount,
+    pub fn parse(self, genesis: PathBuf, mut ledger: PathBuf) -> Result<()> {
+        let (read_fd, write_fd) = unistd::pipe()?;
 
-            // Clap should prevent this case
-            _ => unreachable!(),
-        };
+        match unsafe { unistd::fork() }? {
+            ForkResult::Parent { child, .. } => {
+                unistd::close(read_fd.as_raw_fd())?;
 
-        ledger.vm().block_store().abort_atomic();
-        ledger.vm().finalize_store().abort_atomic();
-        dbg!(
-            ledger
-                .vm()
-                .finalize_store()
-                .committee_store()
-                .current_round(),
-            ledger
-                .vm()
-                .finalize_store()
-                .committee_store()
-                .current_height(),
-            ledger
-                .vm()
-                .block_store()
-                .heights()
-                .collect::<Vec<_>>()
-                .pop()
-        );
+                let db_ledger: DbLedger = util::open_ledger(genesis, ledger)?;
 
-        let current_height = dbg!(ledger.latest_height());
-        let target_height = dbg!(current_height.saturating_sub(amount) + 1);
+                let amount = match (self.height, self.amount) {
+                    (Some(height), None) => db_ledger.latest_height() - height,
+                    (None, Some(amount)) => amount,
+                    // Clap should prevent this case
+                    _ => unreachable!(),
+                };
 
-        // wipe out N blocks/
-        ledger.vm().block_store().remove_last_n(amount)?;
+                let target_height = db_ledger.latest_height().saturating_sub(amount);
 
-        // remove committee store rounds
-        (target_height..=current_height)
-            .rev()
-            .try_for_each(|height| {
-                ledger
-                    .vm()
-                    .finalize_store()
-                    .committee_store()
-                    .remove(dbg!(height))
-            })?;
+                for i in 1..target_height {
+                    let block = db_ledger.get_block(i)?;
+                    let buf = block.to_bytes_le()?;
+                    tracing::info!("Writing block {i}... {}", buf.len());
 
-        dbg!(
-            ledger
-                .vm()
-                .finalize_store()
-                .committee_store()
-                .current_round(),
-            ledger
-                .vm()
-                .finalize_store()
-                .committee_store()
-                .current_height(),
-            ledger
-                .vm()
-                .block_store()
-                .heights()
-                .collect::<Vec<_>>()
-                .pop()
-        );
+                    unistd::write(&write_fd, &(buf.len() as u32).to_le_bytes())?;
+                    unistd::write(&write_fd, &buf)?;
+                }
 
-        println!(
-            "Removed {amount} blocks from the ledger (new height is {}).",
-            ledger
-                .latest_height()
-                .checked_sub(amount)
-                .unwrap_or_default()
-        );
+                unistd::write(&write_fd, &(0u32).to_le_bytes())?;
+                unistd::close(write_fd.as_raw_fd())?;
+
+                waitpid(child, None).unwrap();
+            }
+            ForkResult::Child => {
+                unistd::close(write_fd.as_raw_fd())?;
+
+                ledger.set_extension("new");
+                let db_ledger: DbLedger = util::open_ledger(genesis, ledger)?;
+                let read_fd = read_fd.as_raw_fd();
+
+                loop {
+                    let mut size_buf = [0u8; 4];
+                    unistd::read(read_fd, &mut size_buf)?;
+                    let amount = u32::from_le_bytes(size_buf);
+                    if amount == 0 {
+                        break;
+                    }
+
+                    let mut buf = vec![0u8; amount as usize];
+                    let mut read = 0;
+                    while read < amount as usize {
+                        read += unistd::read(read_fd, &mut buf[read..])?;
+                    }
+                    tracing::info!(
+                        "Reading block {}... {}",
+                        db_ledger.latest_height() + 1,
+                        buf.len()
+                    );
+
+                    let block = Block::from_bytes_le(&buf)?;
+                    db_ledger.advance_to_next_block(&block)?;
+                }
+
+                unistd::close(read_fd.as_raw_fd())?;
+                unsafe {
+                    nix::libc::_exit(0);
+                }
+            }
+        }
 
         Ok(())
     }

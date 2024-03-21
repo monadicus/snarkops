@@ -129,10 +129,7 @@ impl Ledger {
                 distribute.parse(&ledger)
             }
 
-            Commands::Truncate(truncate) => {
-                let ledger = util::open_ledger(genesis, ledger)?;
-                truncate.parse(&ledger)
-            }
+            Commands::Truncate(truncate) => truncate.parse(genesis, ledger),
         }
     }
 }

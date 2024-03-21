@@ -16,6 +16,7 @@ clap.workspace = true
 colored.workspace = true
 indexmap.workspace = true
 indicatif.workspace = true
+nix.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
 rayon.workspace = true
