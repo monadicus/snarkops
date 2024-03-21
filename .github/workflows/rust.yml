@@ -22,15 +22,13 @@ jobs:
       - name: Checkout snarkOS
         uses: actions/checkout@v4
         with:
-          repository: monadicus/snarkOS
-          ref: mainnet
+          repository: AleoNet/snarkOS
           path: snarkos
 
       - name: Checkout snarkVM
         uses: actions/checkout@v4
         with:
-          repository: monadicus/snarkVM
-          ref: mainnet
+          repository: AleoNet/snarkVM
           path: snarkvm
 
       - name: Use mold linker
