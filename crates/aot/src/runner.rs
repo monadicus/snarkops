@@ -1,5 +1,5 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
 };
 
@@ -18,13 +18,11 @@ use crate::{ledger::Addrs, Account, PrivateKey};
 #[derive(Debug, Args, Serialize, Deserialize)]
 pub struct Runner {
     /// A path to the genesis block to initialize the ledger from.
-    #[arg(required = true, short, long)]
-    #[serde_clap_default(PathBuf::from("genesis.block"))]
+    #[arg(required = true, short, long, default_value = "genesis.block")]
     pub genesis: PathBuf,
 
     /// The ledger from which to view a block.
-    #[arg(required = true, short, long)]
-    #[serde_clap_default(PathBuf::from("./ledger"))]
+    #[arg(required = true, short, long, default_value = "./ledger")]
     pub ledger: PathBuf,
 
     #[arg(required = true, name = "type", short, long)]
@@ -34,43 +32,37 @@ pub struct Runner {
     #[clap(long = "private-key")]
     pub private_key: PrivateKey,
 
+    #[clap(long = "bind_addr", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    pub bind_addr: IpAddr,
     /// Specify the IP address and port for the node server
-    #[clap(long = "node")]
-    #[serde_clap_default(4130)]
+    #[clap(long = "node", default_value_t = 4130)]
     pub node: u16,
     /// Specify the IP address and port for the BFT
-    #[clap(long = "bft")]
-    #[serde_clap_default(Some(5000))]
-    pub bft: Option<u16>,
+    #[clap(long = "bft", default_value_t = 5000)]
+    pub bft: u16,
+    /// Specify the IP address and port for the REST server
+    #[clap(long = "rest", default_value_t = 3030)]
+    pub rest: u16,
+
     /// Specify the IP address and port of the peer(s) to connect to
     #[clap(long = "peers")]
-    #[serde_clap_default(Default::default())]
     pub peers: Addrs,
     /// Specify the IP address and port of the validator(s) to connect to
     #[clap(long = "validators")]
-    #[serde_clap_default(Default::default())]
     pub validators: Addrs,
-    /// Specify the IP address and port for the REST server
-    #[clap(long = "rest")]
-    #[serde_clap_default(Some(3030))]
-    pub rest: Option<u16>,
     /// Specify the requests per second (RPS) rate limit per IP for the REST
     /// server
-    #[clap(long = "rest-rps")]
-    #[serde_clap_default(1000)]
+    #[clap(long = "rest-rps", default_value_t = 1000)]
     pub rest_rps: u32,
 }
 
 impl Runner {
     #[tokio::main]
     pub async fn parse(self) -> Result<()> {
-        let node_ip = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), self.node);
-        let rest_ip = self
-            .rest
-            .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port));
-        let bft_ip = self
-            .bft
-            .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port));
+        let bind_addr = self.bind_addr;
+        let node_ip = SocketAddr::new(bind_addr, self.node);
+        let rest_ip = SocketAddr::new(bind_addr, self.rest);
+        let bft_ip = SocketAddr::new(bind_addr, self.bft);
 
         let account = Account::try_from(self.private_key)?;
 
@@ -83,8 +75,8 @@ impl Runner {
             NodeType::Validator => {
                 Node::new_validator(
                     node_ip,
-                    bft_ip,
-                    rest_ip,
+                    Some(bft_ip),
+                    Some(rest_ip),
                     self.rest_rps,
                     account,
                     &self.peers,
@@ -103,7 +95,7 @@ impl Runner {
             NodeType::Client => {
                 Node::new_client(
                     node_ip,
-                    rest_ip,
+                    Some(rest_ip),
                     self.rest_rps,
                     account,
                     &self.peers,
