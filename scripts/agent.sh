@@ -15,7 +15,7 @@ DATA_PATH="$(pwd)/snot-data/$INDEX"
 echo "Starting ${DATA_PATH}"
 cargo run --release -p snot-agent -- \
   --path "$DATA_PATH" \
-  --bind_addr "0.0.0.0" \
+  --bind "0.0.0.0" \
   --bft "500$INDEX" \
   --rest "303$INDEX" \
   --node "413$INDEX"

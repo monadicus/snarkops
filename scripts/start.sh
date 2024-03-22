@@ -32,9 +32,10 @@ STORAGE="${LEDGER}_${MODE}_${INDEX}"
 rm -rf $STORAGE
 cp -r $LEDGER $STORAGE
 
-echo "Starting $MODE $INDEX" "${TEST_PATH}/${MODE}_${INDEX}.log" 
+echo "Starting $MODE $INDEX" "${TEST_PATH}/${MODE}_${INDEX}.log"
 $BINARY --log "${TEST_PATH}/${MODE}_${INDEX}.log" \
 	run --type $MODE \
+  --bind "0.0.0.0" \
   --bft "500$INDEX" \
   --rest "303$INDEX" \
   --node "413$INDEX" \
