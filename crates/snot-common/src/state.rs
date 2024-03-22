@@ -1,4 +1,8 @@
-use std::{net::SocketAddr, str::FromStr};
+use std::{
+    fmt::{Display, Write},
+    net::SocketAddr,
+    str::FromStr,
+};
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -190,6 +194,16 @@ impl NodeType {
     }
 }
 
+impl Display for NodeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Client => f.write_str("client"),
+            Self::Validator => f.write_str("validator"),
+            Self::Prover => f.write_str("prover"),
+        }
+    }
+}
+
 impl FromStr for NodeType {
     type Err = &'static str;
 
@@ -245,5 +259,17 @@ impl<'de> Deserialize<'de> for NodeKey {
     {
         let s = <&str>::deserialize(deserializer)?;
         Self::from_str(s).map_err(D::Error::custom)
+    }
+}
+
+impl Display for NodeKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.ty, self.id)?;
+        if let Some(ns) = &self.ns {
+            f.write_char('@')?;
+            f.write_str(&ns)?;
+        }
+
+        Ok(())
     }
 }

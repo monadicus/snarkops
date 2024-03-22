@@ -39,6 +39,7 @@ id: public-tx-500
 name: public tx, 500 rounds, 800 accounts
 description: |
   This ledger was built to test a large volume of accounts
+prefer_existing: true
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1

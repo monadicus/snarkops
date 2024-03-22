@@ -1,6 +1,5 @@
 use std::{ops::Deref, process::Stdio, sync::Arc};
 
-use futures::StreamExt;
 use snot_common::{
     rpc::{
         agent::{AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError},
@@ -11,12 +10,12 @@ use snot_common::{
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, BufReader},
     process::Command,
 };
 use tracing::{debug, info, warn, Level};
 
-use crate::state::AppState;
+use crate::{api, state::AppState};
 
 /// The JWT file name.
 pub const JWT_FILE: &str = "jwt";
@@ -33,7 +32,7 @@ pub const SNARKOS_LEDGER_DIR: &str = "ledger";
 /// The base ledger directory name.
 pub const SNARKOS_LEDGER_BASE_DIR: &str = "ledger.base";
 /// Temporary storage archive file name.
-pub const TEMP_STORAGE_FILE: &str = "storage.tar.gz";
+pub const LEDGER_STORAGE_FILE: &str = "ledger.tar.gz";
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -139,50 +138,53 @@ impl AgentService for AgentRpcServer {
                     break 'storage;
                 };
 
-                // open a file for writing the archive
-                let mut file = tokio::fs::File::create(base_path.join(TEMP_STORAGE_FILE))
+                let genesis_url = format!(
+                    "http://{}/api/storage/{storage_id}/genesis",
+                    &state.endpoint
+                );
+
+                let ledger_url =
+                    format!("http://{}/api/storage/{storage_id}/ledger", &state.endpoint);
+
+                // download the genesis block
+                api::download_file(genesis_url, base_path.join(SNARKOS_GENESIS_FILE))
                     .await
                     .map_err(|_| ReconcileError::StorageAcquireError)?;
 
-                // stream the archive containing the storage
-                // use /api/storage here instead of /content/storage so that the control plane
-                // can redirect our integer storage_id into an actual string storage_id
-                let mut stream = reqwest::get(format!(
-                    "http://{}/api/storage/{storage_id}",
-                    &state.endpoint
-                ))
-                .await
-                .map_err(|_| ReconcileError::StorageAcquireError)?
-                .bytes_stream();
+                // download the ledger
+                let mut fail = false;
 
-                // write the streamed archive to the file
-                while let Some(chunk) = stream.next().await {
-                    file.write_all(&chunk.map_err(|_| ReconcileError::StorageAcquireError)?)
+                if let Ok(Some(())) =
+                    api::download_file(ledger_url, base_path.join(LEDGER_STORAGE_FILE))
+                        .await
+                        .map_err(|_| ReconcileError::StorageAcquireError)
+                {
+                    // TODO: remove existing ledger probably
+
+                    // use `tar` to decompress the storage
+                    let mut tar_child = Command::new("tar")
+                        .current_dir(&base_path)
+                        .arg("-xzf")
+                        .arg(LEDGER_STORAGE_FILE)
+                        .kill_on_drop(true)
+                        .spawn()
+                        .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                    let status = tar_child
+                        .wait()
                         .await
                         .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                    if !status.success() {
+                        fail = true;
+                    }
                 }
 
-                let _ = (file, stream);
-
-                // use `tar` to decompress the storage
-                let mut tar_child = Command::new("tar")
-                    .current_dir(&base_path)
-                    .arg("-xzf")
-                    .arg(TEMP_STORAGE_FILE)
-                    .kill_on_drop(true)
-                    .spawn()
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
-
-                let status = tar_child
-                    .wait()
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
-
                 // unconditionally remove the tar regardless of success
-                let _ = tokio::fs::remove_file(base_path.join(TEMP_STORAGE_FILE)).await;
+                let _ = tokio::fs::remove_file(base_path.join(LEDGER_STORAGE_FILE)).await;
 
                 // return an error if the storage acquisition failed
-                if !status.success() {
+                if fail {
                     return Err(ReconcileError::StorageAcquireError);
                 }
             }

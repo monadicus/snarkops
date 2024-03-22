@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::ensure;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
+use tokio::process::Command;
 use tracing::warn;
 
 use crate::state::GlobalState;
@@ -16,6 +17,8 @@ pub struct Document {
     pub id: FilenameString,
     pub name: String,
     pub description: Option<String>,
+    /// Prefer using existing storage instead of generating new stuff.
+    pub prefer_existing: bool,
     pub generate: Option<StorageGeneration>,
 }
 
@@ -114,6 +117,8 @@ impl Document {
 
         let exists = matches!(tokio::fs::try_exists(&base).await, Ok(true));
 
+        // TODO: respect self.prefer_existing
+
         match self.generate {
             // generate the block and ledger if we have generation params
             Some(mut generation) => 'generate: {
@@ -126,19 +131,44 @@ impl Document {
 
                 generation.genesis = snarkos_aot::genesis::Genesis {
                     output: base.join("genesis.block"),
-                    ledger: Some(base.join("ledger")),
+                    ledger: None,
                     additional_accounts_output: Some(base.join("accounts.json")),
                     committee_output: Some(base.join("committee.json")),
                     ..generation.genesis
                 };
 
                 tokio::task::spawn_blocking(move || generation.genesis.parse()).await??;
+
+                // TODO: transactions
             }
 
             // no generation params passed
             None => {
                 // assert that an existing block and ledger exists
                 ensure!(exists, "the specified storage ID {id} doesn't exist, and no generation params were specified");
+            }
+        }
+
+        // tar the ledger so that it can be served to agents
+        // the genesis block is not compressed because it is already binary and might
+        // not be served independently
+        let ledger_exists = matches!(tokio::fs::try_exists(base.join("ledger")).await, Ok(true));
+        let ledger_tar_exists = matches!(
+            tokio::fs::try_exists(base.join("ledger.tar.gz")).await,
+            Ok(true)
+        );
+
+        if ledger_exists && !ledger_tar_exists {
+            let mut child = Command::new("tar")
+                .current_dir(&base)
+                .arg("-czf")
+                .arg("ledger.tar.gz")
+                .arg("ledger/")
+                .kill_on_drop(true)
+                .spawn()?;
+
+            if !child.wait().await.map(|s| s.success()).unwrap_or(false) {
+                warn!("failed to compress ledger");
             }
         }
 

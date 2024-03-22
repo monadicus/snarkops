@@ -1,3 +1,4 @@
+mod api;
 mod cli;
 mod rpc;
 mod state;

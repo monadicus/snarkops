@@ -7,6 +7,8 @@ pub mod ledger;
 #[cfg(feature = "node")]
 pub mod runner;
 
+use rand::SeedableRng;
+use rand_chacha::ChaChaRng;
 use snarkvm::{
     console::network::MainnetV0,
     ledger::{
@@ -59,3 +61,8 @@ pub type Literal = snarkvm::console::program::Literal<Network>;
 pub type Authorization = snarkvm::synthesizer::Authorization<Network>;
 pub type Block = snarkvm::ledger::Block<Network>;
 pub type Committee = snarkvm::ledger::committee::Committee<Network>;
+
+pub fn gen_private_key() -> anyhow::Result<PrivateKey> {
+    let mut rng = ChaChaRng::from_entropy();
+    PrivateKey::new(&mut rng)
+}

@@ -2,6 +2,8 @@ use std::net::SocketAddr;
 
 use indexmap::IndexMap;
 use serde::Deserialize;
+use snarkos_aot::gen_private_key;
+use snot_common::state::{HeightRequest, NodeState, NodeType};
 
 use super::{NodeKey, NodeTargets};
 
@@ -35,6 +37,8 @@ pub struct Node {
     /// The private key to start the node with. When unspecified, a random
     /// private key is generated at runtime.
     pub key: Option<String>,
+    /// The storage ID to use when starting the node.
+    pub storage: String,
     /// Height of ledger to inherit.
     ///
     /// * When null, a ledger is created when the node is started.
@@ -46,4 +50,26 @@ pub struct Node {
     pub validators: NodeTargets,
     #[serde(default)]
     pub peers: NodeTargets,
+}
+
+impl Node {
+    pub fn into_state(&self, ty: NodeType) -> NodeState {
+        NodeState {
+            ty,
+            private_key: self
+                .key
+                .clone()
+                .unwrap_or_else(|| gen_private_key().unwrap().to_string()),
+
+            // TODO
+            height: (0, HeightRequest::Top),
+
+            // TODO: should this be online?
+            online: true,
+            // TODO: resolve validators
+            validators: vec![],
+            // TODO: resolve peers
+            peers: vec![],
+        }
+    }
 }

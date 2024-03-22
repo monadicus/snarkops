@@ -5,26 +5,38 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use serde::Deserialize;
 use serde_json::json;
 
 use super::AppState;
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
-        .route("/storage/:id", get(redirect_storage))
+        .route("/storage/:id/:ty", get(redirect_storage))
         .route("/agents", get(get_agents))
     // .route("/test", post(post_test))
 }
 
+#[derive(Deserialize)]
+enum StorageType {
+    Genesis,
+    Ledger,
+}
+
 async fn redirect_storage(
-    Path(storage_id): Path<usize>,
+    Path((storage_id, ty)): Path<(usize, StorageType)>,
     State(state): State<AppState>,
 ) -> Response {
     let Some(real_id) = state.storage.read().await.get_by_left(&storage_id).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    Redirect::temporary(&format!("/content/storage/{real_id}.tar.gz")).into_response()
+    let filename = match ty {
+        StorageType::Genesis => "genesis.block",
+        StorageType::Ledger => "ledger.tar.gz",
+    };
+
+    Redirect::temporary(&format!("/content/storage/{real_id}/{filename}")).into_response()
 }
 
 async fn get_agents(State(state): State<AppState>) -> impl IntoResponse {
