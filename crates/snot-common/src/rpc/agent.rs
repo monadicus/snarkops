@@ -3,7 +3,9 @@ use std::net::IpAddr;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::state::AgentState;
+use crate::state::{AgentState, PortConfig};
+
+use super::control::ResolveError;
 
 /// The RPC service that agents implement as a server.
 #[tarpc::service]
@@ -12,7 +14,7 @@ pub trait AgentService {
     async fn keep_jwt(jwt: String);
 
     /// Control plane asks the agent for its external network address, along with local addrs.
-    async fn get_addrs() -> (Option<IpAddr>, Vec<IpAddr>);
+    async fn get_addrs() -> (PortConfig, Option<IpAddr>, Vec<IpAddr>);
 
     /// Control plane instructs the agent to reconcile towards a particular
     /// state.
@@ -25,6 +27,8 @@ pub enum ReconcileError {
     Aborted,
     #[error("failed to download the specified storage")]
     StorageAcquireError,
+    #[error("failed to resolve addresses of stated peers")]
+    ResolveAddrError(ResolveError),
     #[error("unknown error")]
     Unknown,
 }

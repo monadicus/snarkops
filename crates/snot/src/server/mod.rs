@@ -153,10 +153,11 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
     // fetch the agent's network addresses on connect/reconnect
     let state2 = state.clone();
     tokio::spawn(async move {
-        if let Ok((external, internal)) = client.get_addrs(tarpc::context::current()).await {
+        if let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await {
             let mut state = state2.pool.write().await;
             if let Some(agent) = state.get_mut(&id) {
-                info!("agent {id} addrs: {external:?} {internal:?}");
+                info!("agent {id} addrs: {external:?} {internal:?} @ {ports}");
+                agent.set_ports(ports);
                 agent.set_addrs(external, internal);
             }
         }

@@ -75,7 +75,7 @@ impl Test {
 
                     // delegate agents to become nodes
                     let pool = state.pool.read().await;
-                    let online_agents = pool.values().filter(|a| a.is_connected());
+                    let online_agents = pool.values().filter(|a| a.is_node_capable());
                     let num_online_agents = online_agents.clone().count();
 
                     ensure!(
@@ -92,7 +92,7 @@ impl Test {
                         test.initial_nodes
                             .keys()
                             .cloned()
-                            .zip(online_agents.map(|agent| AgentPeer::Internal(agent.id()))),
+                            .zip(online_agents.map(|agent| AgentPeer::Internal(agent.id(), 0))),
                     );
                 }
 
@@ -167,11 +167,11 @@ pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
         };
 
         // get the internal agent ID from the node key
-        let Some(AgentPeer::Internal(id)) = test.node_map.get_by_left(key) else {
+        let Some(AgentPeer::Internal(id, _)) = test.node_map.get_by_left(key) else {
             continue;
         };
 
-        let Some(agent) = pool_lock.get(&id) else {
+        let Some(agent) = pool_lock.get(id) else {
             continue;
         };
 

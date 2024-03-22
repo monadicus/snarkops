@@ -97,8 +97,17 @@ async fn main() {
         .await
         .expect("failed to acquire snarkOS binary");
 
+    // create rpc channels
+    let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
+    let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
+
+    // set up the client, facing the control plane
+    let client =
+        ControlServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
+
     // create the client state
     let state = Arc::new(GlobalState {
+        client,
         external_addr,
         internal_addrs,
         cli: args,
@@ -107,15 +116,8 @@ async fn main() {
         agent_state: Default::default(),
         reconcilation_handle: Default::default(),
         child: Default::default(),
+        resolved_addrs: Default::default(),
     });
-
-    // create rpc channels
-    let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
-    let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
-
-    // set up the client, facing the control plane
-    let _client =
-        ControlServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
     // initialize and start the rpc server
     let rpc_server = tarpc::server::BaseChannel::with_defaults(server_transport);

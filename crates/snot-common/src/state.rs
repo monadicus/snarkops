@@ -30,6 +30,23 @@ pub struct NodeState {
     pub validators: Vec<AgentPeer>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortConfig {
+    pub bft: u16,
+    pub node: u16,
+    pub rest: u16,
+}
+
+impl Display for PortConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "bft: {}, node: {}, rest: {}",
+            self.bft, self.node, self.rest
+        )
+    }
+}
+
 // // agent code
 // impl AgentState {
 //     async fn reconcile(&self, target: AgentState) {
@@ -91,8 +108,26 @@ pub enum HeightRequest {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum AgentPeer {
-    Internal(AgentId),
+    Internal(AgentId, u16),
     External(SocketAddr),
+}
+
+impl AgentPeer {
+    /// Get the port from the peer
+    pub fn port(&self) -> u16 {
+        match self {
+            Self::Internal(_, port) => *port,
+            Self::External(addr) => addr.port(),
+        }
+    }
+
+    /// Return a new peer with the given port.
+    pub fn with_port(&self, port: u16) -> Self {
+        match self {
+            Self::Internal(ip, _) => Self::Internal(*ip, port),
+            Self::External(addr) => Self::External(SocketAddr::new(addr.ip(), port)),
+        }
+    }
 }
 
 // /// The state reported by an agent.

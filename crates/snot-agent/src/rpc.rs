@@ -1,4 +1,4 @@
-use std::{net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
+use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
 use snot_common::{
     rpc::{
@@ -6,14 +6,14 @@ use snot_common::{
         control::{ControlServiceRequest, ControlServiceResponse},
         MuxMessage,
     },
-    state::AgentState,
+    state::{AgentId, AgentPeer, AgentState, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
 };
-use tracing::{debug, info, warn, Level};
+use tracing::{debug, error, info, warn, Level};
 
 use crate::{api, state::AppState};
 
@@ -226,14 +226,47 @@ impl AgentService for AgentRpcServer {
                         command.arg("--private-key").arg(pk);
                     }
 
-                    if !node.peers.is_empty() {
-                        // TODO: add peers
+                    // Find agents that do not have cached addresses
+                    let unresolved_addrs: HashSet<AgentId> = {
+                        let resolved_addrs = state.resolved_addrs.read().await;
+                        node.peers
+                            .iter()
+                            .chain(node.validators.iter())
+                            .filter_map(|p| {
+                                if let AgentPeer::Internal(id, _) = p {
+                                    resolved_addrs.contains_key(id).then_some(*id)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect()
+                    };
 
-                        // TODO: local caching of agent IDs, map agent ID to
-                        // IP/port
+                    // Fetch all unresolved addresses and update the cache
+                    if !unresolved_addrs.is_empty() {
+                        let new_addrs = state
+                            .client
+                            .resolve_addrs(context::current(), unresolved_addrs)
+                            .await
+                            .map_err(|err| {
+                                error!("rpc error while resolving addresses: {err}");
+                                ReconcileError::Unknown
+                            })?
+                            .map_err(ReconcileError::ResolveAddrError)?;
+                        state.resolved_addrs.write().await.extend(new_addrs);
                     }
 
-                    // TODO: same for validators
+                    if !node.peers.is_empty() {
+                        command
+                            .arg("--peers")
+                            .arg(state.agentpeers_to_cli(&node.peers).await.join(","));
+                    }
+
+                    if !node.validators.is_empty() {
+                        command
+                            .arg("--validators")
+                            .arg(state.agentpeers_to_cli(&node.validators).await.join(","));
+                    }
 
                     // TODO: ensure node is not killed if the reconciled state is the same
 
@@ -297,8 +330,15 @@ impl AgentService for AgentRpcServer {
         res
     }
 
-    #[doc = r" Control plane asks the agent for its external network address, along with local addrs."]
-    async fn get_addrs(self, _: context::Context) -> (Option<IpAddr>, Vec<IpAddr>) {
-        (self.state.external_addr, self.state.internal_addrs.clone())
+    async fn get_addrs(self, _: context::Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
+        (
+            PortConfig {
+                bft: self.state.cli.bft,
+                node: self.state.cli.node,
+                rest: self.state.cli.rest,
+            },
+            self.state.external_addr,
+            self.state.internal_addrs.clone(),
+        )
     }
 }
