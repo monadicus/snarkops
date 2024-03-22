@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use rand::{seq::SliceRandom, CryptoRng, Rng};
 
-use crate::{Address, PrivateKey};
+use crate::{authorized::Execute, Address, PrivateKey};
 
 pub mod add;
 pub mod distribute;
@@ -91,6 +91,7 @@ pub enum Commands {
     View(view::View),
     Distribute(distribute::Distribute),
     Truncate(truncate::Truncate),
+    Execute(Execute),
 }
 
 impl Ledger {
@@ -130,6 +131,16 @@ impl Ledger {
             }
 
             Commands::Truncate(truncate) => truncate.parse(genesis, ledger),
+            Commands::Execute(execute) => {
+                let ledger = util::open_ledger(genesis, ledger)?;
+                let tx = execute.authorization.execute_local(
+                    Some(&ledger),
+                    &mut rand::thread_rng(),
+                    None,
+                )?;
+                println!("{}", serde_json::to_string(&tx)?);
+                Ok(())
+            }
         }
     }
 }

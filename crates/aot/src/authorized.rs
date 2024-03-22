@@ -1,13 +1,23 @@
+use std::str::FromStr;
+
 use anyhow::{bail, Result};
+use clap::Args;
 use rand::{CryptoRng, Rng};
-use snarkvm::prelude::{
-    de, Deserialize, DeserializeExt, Deserializer, Serialize, SerializeStruct, Serializer,
+use snarkvm::{
+    ledger::{
+        query::Query,
+        store::{helpers::memory::ConsensusMemory, ConsensusStore},
+    },
+    prelude::{
+        de, Deserialize, DeserializeExt, Deserializer, Serialize, SerializeStruct, Serializer,
+    },
 };
 
 use crate::{
-    credits::PROCESS, Aleo, Authorization, DbLedger, Network, PrivateKey, Transaction, Value,
+    credits::PROCESS, Aleo, Authorization, DbLedger, MemVM, Network, PrivateKey, Transaction, Value,
 };
 
+#[derive(Clone, Debug)]
 pub struct Authorized {
     /// The authorization for the main function execution.
     function: Authorization,
@@ -17,9 +27,22 @@ pub struct Authorized {
     broadcast: bool,
 }
 
-pub enum ExecutionMode {
-    Local(Option<String>),
+pub enum ExecutionMode<'a> {
+    Local(Option<&'a DbLedger>, Option<String>),
     Remote(String),
+}
+
+#[derive(Debug, Args)]
+pub struct Execute {
+    pub authorization: Authorized,
+    #[arg(short, long)]
+    pub query: Option<String>,
+}
+
+impl Execute {
+    pub fn parse(self) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl Authorized {
@@ -92,27 +115,33 @@ impl Authorized {
     /// Executes the authorization locally, returning the resulting transaction.
     pub fn execute_local<R: Rng + CryptoRng>(
         self,
-        ledger: &DbLedger,
+        ledger: Option<&DbLedger>,
         rng: &mut R,
         query: Option<String>,
     ) -> Result<Transaction> {
-        let query = query.map(|q| q.try_into()).transpose()?;
-
         // Execute the transaction.
-        ledger
-            .vm()
-            .execute_authorization(self.function, self.fee, query, rng)
+        if let Some(ledger) = ledger {
+            let query = query.map(Query::REST);
+
+            ledger
+                .vm()
+                .execute_authorization(self.function, self.fee, query, rng)
+        } else {
+            let query = query.map(Query::REST);
+
+            let store = ConsensusStore::<crate::Network, ConsensusMemory<_>>::open(None)?;
+            MemVM::from(store)?.execute_authorization(self.function, self.fee, query, rng)
+        }
     }
 
     pub fn execute<R: Rng + CryptoRng>(
         self,
-        ledger: &DbLedger,
         rng: &mut R,
-        mode: ExecutionMode,
+        mode: ExecutionMode<'_>,
     ) -> Result<Transaction> {
         // Execute the transaction.
         match mode {
-            ExecutionMode::Local(query) => self.execute_local(ledger, rng, query),
+            ExecutionMode::Local(ledger, query) => self.execute_local(ledger, rng, query),
             ExecutionMode::Remote(ref api_url) => self.execute_remote(api_url),
         }
     }
@@ -155,5 +184,13 @@ impl<'de> Deserialize<'de> for Authorized {
             fee,
             broadcast,
         })
+    }
+}
+
+impl FromStr for Authorized {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        serde_json::from_str(s).map_err(anyhow::Error::from)
     }
 }

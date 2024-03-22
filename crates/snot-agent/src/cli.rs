@@ -29,5 +29,5 @@ pub struct Cli {
     /// Specify the IP address and port for the REST server
     #[clap(long = "rest", default_value = "3030")]
     pub rest: u16,
-    // TODO: specify allowed modes
+    // TODO: specify allowed modes (--validator --client --tx-gen)
 }

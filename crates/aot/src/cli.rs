@@ -13,7 +13,7 @@ use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
-use crate::{genesis::Genesis, ledger::Ledger};
+use crate::{authorized::Execute, credits::Authorize, genesis::Genesis, ledger::Ledger};
 
 #[derive(Debug, Parser)]
 #[clap(name = "snarkOS AoT", author = "MONADIC.US")]
@@ -36,6 +36,9 @@ pub enum Command {
     Ledger(Ledger),
     #[cfg(feature = "node")]
     Run(Runner),
+    Execute(Execute),
+    #[command(subcommand)]
+    Authorize(Authorize),
 }
 
 impl Cli {
@@ -175,6 +178,11 @@ impl Cli {
             Command::Ledger(command) => command.parse(),
             #[cfg(feature = "node")]
             Command::Run(command) => command.parse(),
+            Command::Execute(command) => command.parse(),
+            Command::Authorize(command) => {
+                println!("{}", serde_json::to_string(&command.parse()?)?);
+                Ok(())
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::Result;
+use clap::Parser;
 use rand::{CryptoRng, Rng};
 use snarkvm::{
     console::{
@@ -15,6 +16,43 @@ use crate::{authorized::Authorized, Address, Network, PrivateKey, Value};
 lazy_static::lazy_static! {
     /// The main process.
     pub(crate) static ref PROCESS: Process<Network> = Process::load().unwrap();
+}
+#[derive(Clone, Debug, Parser)]
+pub enum Authorize {
+    TransferPublic {
+        #[clap(required = true, long)]
+        private_key: PrivateKey,
+        #[clap(required = true, long)]
+        recipient: Address,
+        #[clap(required = true, short, long)]
+        amount: u64,
+        #[clap(long, default_value_t = 0)]
+        priority_fee: u64,
+        #[clap(long, default_value_t = false)]
+        broadcast: bool,
+    },
+}
+
+impl Authorize {
+    /// Initializes a new authorization.
+    pub fn parse(self) -> Result<Authorized> {
+        match self {
+            Self::TransferPublic {
+                private_key,
+                recipient,
+                amount,
+                priority_fee,
+                broadcast,
+            } => Credits::transfer_public(
+                private_key,
+                recipient,
+                amount,
+                priority_fee,
+                broadcast,
+                &mut rand::thread_rng(),
+            ),
+        }
+    }
 }
 
 pub struct Credits;
@@ -178,17 +216,13 @@ impl Credits {
     /// Returns a transaction that transfers public credits from the sender to
     /// the recipient.
     pub fn transfer_public(
-        private_key: &str,
-        recipient: &str,
+        private_key: PrivateKey,
+        recipient: Address,
         amount_in_microcredits: u64,
         priority_fee_in_microcredits: u64,
         broadcast: bool,
         rng: &mut (impl Rng + CryptoRng),
     ) -> Result<Authorized> {
-        // Initialize the private key.
-        let private_key = PrivateKey::from_str(private_key)?;
-        // Initialize the recipient.
-        let recipient = Address::from_str(recipient)?;
         // Initialize the amount in microcredits.
         let amount_in_microcredits = U64::new(amount_in_microcredits);
 
