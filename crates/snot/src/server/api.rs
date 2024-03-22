@@ -47,14 +47,23 @@ async fn get_agents(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn post_test_prepare(State(state): State<AppState>, body: String) -> Response {
-    let Ok(documents) = Test::deserialize(&body) else {
-        return StatusCode::BAD_REQUEST.into_response();
+    let documents = match Test::deserialize(&body) {
+        Ok(documents) => documents,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("{e}")})),
+            )
+                .into_response();
+        }
     };
 
     // TODO: some live state to report to the calling CLI or something would be
     // really nice
 
     // TODO: clean up existing test
+
+    // TODO: support concurrent tests + return test id
 
     match Test::prepare(documents, &state).await {
         Ok(_) => StatusCode::OK.into_response(),
