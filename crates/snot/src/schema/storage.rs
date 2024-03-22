@@ -1,6 +1,7 @@
 use std::{
     ops::Deref,
     path::PathBuf,
+    process::Stdio,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -29,7 +30,7 @@ pub struct StorageGeneration {
     pub path: PathBuf,
 
     // TODO: individually validate arguments, or just pass them like this?
-    pub genesis: snarkos_aot::genesis::Genesis,
+    pub genesis: GenesisGeneration,
     pub ledger: LedgerGeneration,
 
     #[serde(default)]
@@ -47,8 +48,29 @@ pub struct Transaction {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+pub struct GenesisGeneration {
+    pub output: PathBuf,
+}
+
+impl Default for GenesisGeneration {
+    fn default() -> Self {
+        Self {
+            output: PathBuf::from("genesis.block"),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct LedgerGeneration {
     pub output: PathBuf,
+}
+
+impl Default for LedgerGeneration {
+    fn default() -> Self {
+        Self {
+            output: PathBuf::from("ledger"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -129,15 +151,36 @@ impl Document {
                     break 'generate;
                 }
 
-                generation.genesis = snarkos_aot::genesis::Genesis {
+                generation.genesis = GenesisGeneration {
                     output: base.join("genesis.block"),
-                    ledger: None,
-                    additional_accounts_output: Some(base.join("accounts.json")),
-                    committee_output: Some(base.join("committee.json")),
-                    ..generation.genesis
                 };
+                // generation.genesis = snarkos_aot::genesis::Genesis {
+                //     output: base.join("genesis.block"),
+                //     ledger: None,
+                //     additional_accounts_output: Some(base.join("accounts.json")),
+                //     committee_output: Some(base.join("committee.json")),
+                //     ..generation.genesis
+                // };
 
-                tokio::task::spawn_blocking(move || generation.genesis.parse()).await??;
+                // generate the genesis block using the aot cli
+                Command::new("./target/release/snarkos-aot")
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .current_dir(&base)
+                    .arg("genesis")
+                    .arg("--output")
+                    .arg(&generation.genesis.output)
+                    .arg("--committee-size")
+                    .arg("5")
+                    .arg("--committee-output")
+                    .arg(base.join("committee.json"))
+                    .arg("--additional-accounts")
+                    .arg("5")
+                    .arg("--additional-accounts-output")
+                    .arg(base.join("accounts.json"))
+                    .spawn()?
+                    .wait()
+                    .await?;
 
                 // TODO: transactions
             }

@@ -70,10 +70,6 @@ impl AgentService for AgentRpcServer {
         _: context::Context,
         target: AgentState,
     ) -> Result<(), ReconcileError> {
-        if matches!(target, AgentState::Cannon(_, _)) {
-            unimplemented!("tx cannons are unimplemented");
-        }
-
         // acquire the handle lock
         let mut handle_container = self.state.reconcilation_handle.lock().await;
 
@@ -163,7 +159,7 @@ impl AgentService for AgentRpcServer {
 
                     // use `tar` to decompress the storage
                     let mut tar_child = Command::new("tar")
-                        .current_dir(&base_path)
+                        .current_dir(base_path)
                         .arg("-xzf")
                         .arg(LEDGER_STORAGE_FILE)
                         .kill_on_drop(true)
@@ -254,9 +250,6 @@ impl AgentService for AgentRpcServer {
 
                     *child_lock = Some(child);
                 }
-
-                // TODO
-                AgentState::Cannon(_, _) => unimplemented!(),
             }
 
             Ok(())

@@ -3737,7 +3737,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
- "snarkos-aot",
  "snot-common",
  "tarpc",
  "tokio",
