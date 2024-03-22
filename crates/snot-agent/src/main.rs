@@ -1,5 +1,6 @@
 mod api;
 mod cli;
+mod net;
 mod rpc;
 mod state;
 
@@ -12,7 +13,7 @@ use std::{
 
 use clap::Parser;
 use cli::{Cli, ENV_ENDPOINT, ENV_ENDPOINT_DEFAULT};
-use futures::SinkExt;
+use futures::{executor::block_on, SinkExt};
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::HeaderValue;
 use snot_common::rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport};
@@ -50,6 +51,20 @@ async fn main() {
 
     let args = Cli::parse();
 
+    // get the network interfaces available to this node
+    let internal_addrs = net::get_internal_addrs().expect("failed to get network interfaces");
+    let external_addr = args
+        .external
+        .then(|| block_on(net::get_external_addr()))
+        .flatten();
+    if let Some(addr) = external_addr {
+        info!("using external addr: {}", addr);
+    } else if args.external {
+        warn!("failed to get external address");
+    } else {
+        info!("skipping external addr");
+    }
+
     // get the endpoint
     let endpoint = args
         .endpoint
@@ -84,6 +99,8 @@ async fn main() {
 
     // create the client state
     let state = Arc::new(GlobalState {
+        external_addr,
+        internal_addrs,
         cli: args,
         endpoint,
         jwt: Mutex::new(jwt),

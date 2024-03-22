@@ -18,6 +18,12 @@ pub struct Cli {
     /// Path to the directory containing the stored data and configuration
     pub path: PathBuf,
 
+    #[arg(long, default_value_t = false)]
+    /// Enable the agent to fetch its external address. Necessary to determine
+    /// which agents are on shared networks, and for
+    /// external-to-external connections
+    pub external: bool,
+
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
     /// Specify the IP address and port for the node server

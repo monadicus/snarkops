@@ -1,5 +1,5 @@
 use std::{
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     sync::{Arc, Mutex},
 };
 
@@ -16,6 +16,8 @@ pub type AppState = Arc<GlobalState>;
 
 /// Global state for this agent runner.
 pub struct GlobalState {
+    pub external_addr: Option<IpAddr>,
+    pub internal_addrs: Vec<IpAddr>,
     pub cli: Cli,
     pub endpoint: SocketAddr,
     pub jwt: Mutex<Option<String>>,

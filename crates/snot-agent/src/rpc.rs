@@ -1,4 +1,4 @@
-use std::{ops::Deref, process::Stdio, sync::Arc};
+use std::{net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
 use snot_common::{
     rpc::{
@@ -295,5 +295,10 @@ impl AgentService for AgentRpcServer {
         self.state.reconcilation_handle.lock().await.take();
 
         res
+    }
+
+    #[doc = r" Control plane asks the agent for its external network address, along with local addrs."]
+    async fn get_addrs(self, _: context::Context) -> (Option<IpAddr>, Vec<IpAddr>) {
+        (self.state.external_addr, self.state.internal_addrs.clone())
     }
 }

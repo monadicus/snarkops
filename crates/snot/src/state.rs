@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    net::IpAddr,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -43,6 +44,9 @@ pub struct Agent {
     claims: Claims,
     connection: AgentConnection,
     state: AgentState,
+
+    /// The external address of the agent, along with its local addresses.
+    addrs: Option<(Option<IpAddr>, Vec<IpAddr>)>,
 }
 
 pub struct AgentClient(AgentServiceClient);
@@ -60,6 +64,7 @@ impl Agent {
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),
+            addrs: None,
         }
     }
 
@@ -117,6 +122,11 @@ impl Agent {
     /// and should only be called after an agent is reconciled.
     pub fn set_state(&mut self, state: AgentState) {
         self.state = state;
+    }
+
+    /// Set the external and internal addresses of the agent. This does **not** trigger a reconcile
+    pub fn set_addrs(&mut self, external_addr: Option<IpAddr>, internal_addrs: Vec<IpAddr>) {
+        self.addrs = Some((external_addr, internal_addrs));
     }
 }
 

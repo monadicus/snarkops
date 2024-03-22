@@ -100,6 +100,7 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
         AgentServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
     let id: usize = 'insertion: {
+        let client = client.clone();
         let mut pool = state.pool.write().await;
 
         // attempt to reconnect if claims were passed
@@ -144,13 +145,22 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
         let id = agent.id();
         pool.insert(id, agent);
 
-        info!(
-            "new agent connected (id {id}); pool is now {} nodes",
-            pool.len()
-        );
+        info!("agent {id} connected; pool is now {} nodes", pool.len());
 
         id
     };
+
+    // fetch the agent's network addresses on connect/reconnect
+    let state2 = state.clone();
+    tokio::spawn(async move {
+        if let Ok((external, internal)) = client.get_addrs(tarpc::context::current()).await {
+            let mut state = state2.pool.write().await;
+            if let Some(agent) = state.get_mut(&id) {
+                info!("agent {id} addrs: {external:?} {internal:?}");
+                agent.set_addrs(external, internal);
+            }
+        }
+    });
 
     // set up the server, for incoming RPC requests
     let server = tarpc::server::BaseChannel::with_defaults(server_transport);
