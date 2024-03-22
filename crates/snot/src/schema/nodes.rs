@@ -2,7 +2,6 @@ use std::net::SocketAddr;
 
 use indexmap::IndexMap;
 use serde::Deserialize;
-use snarkos_aot::gen_private_key;
 use snot_common::state::{HeightRequest, NodeState, NodeType};
 
 use super::{NodeKey, NodeTargets};
@@ -56,10 +55,7 @@ impl Node {
     pub fn into_state(&self, ty: NodeType) -> NodeState {
         NodeState {
             ty,
-            private_key: self
-                .key
-                .clone()
-                .unwrap_or_else(|| gen_private_key().unwrap().to_string()),
+            private_key: self.key.clone().unwrap_or_default(),
 
             // TODO
             height: (0, HeightRequest::Top),

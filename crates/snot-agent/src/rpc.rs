@@ -205,14 +205,28 @@ impl AgentService for AgentRpcServer {
                         .stderr(Stdio::piped())
                         .stdin(Stdio::null())
                         .arg("run")
-                        .arg("--type")
-                        .arg(node.ty.flag())
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
+                        .arg("--type")
+                        .arg(node.ty.flag())
+                        // storage configuration
                         .arg("--genesis")
                         .arg(state.cli.path.join(SNARKOS_GENESIS_FILE))
                         .arg("--ledger")
-                        .arg(state.cli.path.join(SNARKOS_LEDGER_DIR));
+                        .arg(state.cli.path.join(SNARKOS_LEDGER_DIR))
+                        // port configuration
+                        .arg("--bind")
+                        .arg(state.cli.bind_addr.to_string())
+                        .arg("--bft")
+                        .arg(state.cli.bft.to_string())
+                        .arg("--rest")
+                        .arg(state.cli.rest.to_string())
+                        .arg("--node")
+                        .arg(state.cli.node.to_string());
+
+                    if !node.private_key.is_empty() {
+                        command.arg("--private-key").arg(&node.private_key);
+                    }
 
                     if !node.peers.is_empty() {
                         // TODO: add peers
