@@ -110,6 +110,8 @@ impl AgentService for AgentRpcServer {
                     _ => (),
                 }
 
+                // TODO: download storage to a cache directory
+
                 // clean up old storage
                 let base_path = &state.cli.path;
                 let filenames = &[
@@ -233,22 +235,35 @@ impl AgentService for AgentRpcServer {
 
                     // TODO: same for validators
 
-                    let mut child = command.spawn().expect("failed to start child");
+                    // TODO: ensure node is not killed if the reconciled state is the same
 
-                    // start a new task to log stdout
-                    // TODO: probably also want to read stderr
-                    let stdout = child.stdout.take().unwrap();
-                    tokio::spawn(async move {
-                        let child_span = tracing::span!(Level::INFO, "child process stdout");
-                        let _enter = child_span.enter();
-
-                        let mut reader = BufReader::new(stdout).lines();
-                        while let Ok(Some(line)) = reader.next_line().await {
-                            info!(line);
+                    // ensure the previos node is properly killed
+                    if let Some(mut child) = child_lock.take() {
+                        if let Err(e) = child.kill().await {
+                            warn!("failed to kill old node: {e}")
                         }
-                    });
+                    }
 
-                    *child_lock = Some(child);
+                    if node.online {
+                        let mut child = command.spawn().expect("failed to start child");
+
+                        // start a new task to log stdout
+                        // TODO: probably also want to read stderr
+                        let stdout = child.stdout.take().unwrap();
+                        tokio::spawn(async move {
+                            let child_span = tracing::span!(Level::INFO, "child process stdout");
+                            let _enter = child_span.enter();
+
+                            let mut reader = BufReader::new(stdout).lines();
+                            while let Ok(Some(line)) = reader.next_line().await {
+                                info!(line);
+                            }
+                        });
+
+                        *child_lock = Some(child);
+
+                        // todo: check to ensure the node actually comes online by hitting the REST latest block
+                    }
                 }
             }
 

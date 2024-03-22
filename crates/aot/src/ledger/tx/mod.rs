@@ -6,6 +6,8 @@ use crate::MemoryLedger;
 mod num;
 mod ops;
 
+// TODO: convert this to an auth generator, parallelized
+
 #[derive(Debug, Subcommand)]
 pub enum Tx {
     FromOps(ops::FromOps),

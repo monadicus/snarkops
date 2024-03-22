@@ -127,7 +127,7 @@ impl Cli {
                 .expect("Failed to create a directories: '{logfile_dir}', please check if user has permissions");
             }
 
-            let file_appender = tracing_appender::rolling::daily(&logfile_dir, logfile);
+            let file_appender = tracing_appender::rolling::daily(logfile_dir, logfile);
             let (non_blocking, file_guard) = tracing_appender::non_blocking(file_appender);
             guards.push(file_guard);
 

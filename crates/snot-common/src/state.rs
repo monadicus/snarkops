@@ -8,8 +8,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{de::Error, Deserialize, Serialize};
 
-type AgentId = usize;
-type StorageId = usize;
+pub type AgentId = usize;
+pub type StorageId = usize;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub enum AgentState {
