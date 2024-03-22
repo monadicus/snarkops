@@ -7,6 +7,7 @@ use serde::{
     Deserialize,
 };
 use snot_common::state::{NodeKey, NodeType};
+use wildmatch::WildMatch;
 
 pub mod infrastructure;
 pub mod nodes;
@@ -184,6 +185,47 @@ impl From<NodeKey> for NodeTarget {
                 .ns
                 .map(NodeTargetNamespace::Literal)
                 .unwrap_or(NodeTargetNamespace::Local),
+        }
+    }
+}
+
+impl NodeTarget {
+    pub fn matches(&self, key: &NodeKey) -> bool {
+        (match self.ty {
+            NodeTargetType::All => true,
+            NodeTargetType::One(ty) => ty == key.ty,
+        }) && (match self.id {
+            NodeTargetId::All => true,
+            NodeTargetId::WildcardPattern(ref pattern) => WildMatch::new(pattern).matches(&key.id),
+            NodeTargetId::Literal(ref id) => &key.id == id,
+        }) && (match self.ns {
+            NodeTargetNamespace::All => true,
+            NodeTargetNamespace::Local => key.ns.is_none() || key.ns == Some("local".into()),
+            NodeTargetNamespace::Literal(ref ns) => {
+                key.ns.as_ref().map_or(false, |key_ns| key_ns == ns)
+            }
+        })
+    }
+}
+
+impl NodeTargets {
+    pub fn is_empty(&self) -> bool {
+        if matches!(self, &NodeTargets::None) {
+            return true;
+        }
+
+        if let NodeTargets::Many(targets) = self {
+            return targets.is_empty();
+        }
+
+        false
+    }
+
+    pub fn matches(&self, key: &NodeKey) -> bool {
+        match self {
+            NodeTargets::None => false,
+            NodeTargets::One(target) => target.matches(key),
+            NodeTargets::Many(targets) => targets.iter().any(|target| target.matches(key)),
         }
     }
 }

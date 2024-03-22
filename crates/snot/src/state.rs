@@ -35,6 +35,7 @@ pub struct GlobalState {
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage: RwLock<BiMap<usize, String>>,
+    // TODO: support concurrent tests
     pub test: RwLock<Option<Test>>,
 }
 

@@ -1,28 +1,49 @@
-use anyhow::{bail, ensure};
+use anyhow::{anyhow, bail, ensure};
 use bimap::BiMap;
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
-use snot_common::state::{AgentPeer, AgentState, NodeKey};
+use snot_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
 use tracing::{info, warn};
 
 use crate::{
-    schema::{nodes::Node, ItemDocument},
+    schema::{
+        nodes::{ExternalNode, Node},
+        ItemDocument, NodeTargets,
+    },
     state::GlobalState,
 };
 
 #[derive(Debug, Clone)]
 pub struct Test {
-    pub node_map: BiMap<NodeKey, AgentPeer>,
-    pub initial_nodes: IndexMap<NodeKey, Node>,
+    pub node_map: BiMap<NodeKey, TestPeer>,
+    pub initial_nodes: IndexMap<NodeKey, TestNode>,
     // TODO: GlobalStorage.storage should maybe be here instead
+}
+
+#[derive(Debug, Clone)]
+/// The effective test state of a node.
+pub enum TestNode {
+    Internal(Node),
+    External(ExternalNode),
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+/// A way of looking up a peer in the test state.
+/// Could technically use AgentPeer like this but it would have needless port information
+pub enum TestPeer {
+    Internal(AgentId),
+    External,
 }
 
 impl Test {
     /// Deserialize (YAML) many documents into a `Vec` of documents.
-    pub fn deserialize(str: &str) -> Result<Vec<ItemDocument>, serde_yaml::Error> {
+    pub fn deserialize(str: &str) -> Result<Vec<ItemDocument>, anyhow::Error> {
         serde_yaml::Deserializer::from_str(str)
-            .map(ItemDocument::deserialize)
+            .enumerate()
+            .map(|(i, doc)| {
+                ItemDocument::deserialize(doc).map_err(|e| anyhow!("document {i}: {e}"))
+            })
             .collect()
     }
 
@@ -64,14 +85,17 @@ impl Test {
 
                             match test.initial_nodes.entry(node_key) {
                                 Entry::Occupied(ent) => bail!("duplicate node key: {}", ent.key()),
-                                Entry::Vacant(ent) => ent.insert(doc_node.to_owned()),
+                                Entry::Vacant(ent) => {
+                                    // replace the key with a new one
+                                    let mut node = doc_node.to_owned();
+                                    if let Some(key) = node.key.take() {
+                                        node.key = Some(key.replace('$', &i.to_string()))
+                                    }
+                                    ent.insert(TestNode::Internal(node))
+                                }
                             };
                         }
                     }
-
-                    // TODO: external nodes
-                    // for (node_key, node) in nodes.external {
-                    // }
 
                     // delegate agents to become nodes
                     let pool = state.pool.read().await;
@@ -92,8 +116,24 @@ impl Test {
                         test.initial_nodes
                             .keys()
                             .cloned()
-                            .zip(online_agents.map(|agent| AgentPeer::Internal(agent.id(), 0))),
+                            .zip(online_agents.map(|agent| TestPeer::Internal(agent.id()))),
                     );
+
+                    // append external nodes to the node map
+
+                    for (node_key, node) in &nodes.external {
+                        match test.initial_nodes.entry(node_key.clone()) {
+                            Entry::Occupied(ent) => bail!("duplicate node key: {}", ent.key()),
+                            Entry::Vacant(ent) => ent.insert(TestNode::External(node.to_owned())),
+                        };
+                    }
+                    test.node_map.extend(
+                        nodes
+                            .external
+                            .keys()
+                            .cloned()
+                            .map(|k| (k, TestPeer::External)),
+                    )
                 }
 
                 _ => warn!("ignored unimplemented document type"),
@@ -151,49 +191,108 @@ impl Test {
 
 /// Reconcile all associated nodes with their initial state.
 pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
-    let test_lock = state.test.read().await;
-    let mut pool_lock = state.pool.write().await;
-    let storage_lock = state.storage.read().await;
-
-    let test = test_lock.as_ref().unwrap();
-
     let mut handles = vec![];
     let mut agent_ids = vec![];
-    for (key, node) in &test.initial_nodes {
-        // get the numeric storage ID from the string storage ID
-        let storage_id = match storage_lock.get_by_right(&node.storage) {
-            Some(id) => *id,
-            None => bail!("invalid storage ID specified for node"),
+    {
+        let test_lock = state.test.read().await;
+        let test = test_lock.as_ref().unwrap();
+        let storage_lock = state.storage.read().await;
+        let pool_lock = state.pool.read().await;
+
+        // Lookup agent peers given a node key
+        let node_to_agent = |key: &NodeKey, node: &TestPeer, is_validator: bool| {
+            // get the internal agent ID from the node key
+            match node {
+                // internal peers are mapped to internal agents
+                TestPeer::Internal(id) => {
+                    let Some(agent) = pool_lock.get(id) else {
+                        bail!("agent {id} not found in pool")
+                    };
+
+                    Ok(AgentPeer::Internal(
+                        *id,
+                        if is_validator {
+                            agent.bft_port()
+                        } else {
+                            agent.node_port()
+                        },
+                    ))
+                }
+                // external peers are mapped to external nodes
+                TestPeer::External => {
+                    let Some(TestNode::External(external)) = test.initial_nodes.get(key) else {
+                        bail!("external node with key {key} not found")
+                    };
+
+                    Ok(AgentPeer::External(if is_validator {
+                        external
+                            .bft
+                            .ok_or_else(|| anyhow!("external node {key} is missing BFT port"))?
+                    } else {
+                        external
+                            .node
+                            .ok_or_else(|| anyhow!("external node {key} is missing Node port"))?
+                    }))
+                }
+            }
         };
 
-        // get the internal agent ID from the node key
-        let Some(AgentPeer::Internal(id, _)) = test.node_map.get_by_left(key) else {
-            continue;
+        let matching_nodes = |key: &NodeKey, target: &NodeTargets, is_validator: bool| {
+            if target.is_empty() {
+                return Ok(vec![]);
+            }
+
+            // this can't really be cleverly optimized into
+            // a single lookup at the moment because we don't treat @local
+            // as a None namespace...
+            test.node_map
+                .iter()
+                .filter(|(k, _)| *k != key && target.matches(k))
+                .map(|(k, v)| node_to_agent(k, v, is_validator))
+                .collect()
         };
 
-        let Some(agent) = pool_lock.get(id) else {
-            continue;
-        };
+        for (key, node) in &test.initial_nodes {
+            let TestNode::Internal(node) = node else {
+                continue;
+            };
+            // get the numeric storage ID from the string storage ID
+            let storage_id = match storage_lock.get_by_right(&node.storage) {
+                Some(id) => *id,
+                None => bail!("invalid storage ID specified for node"),
+            };
 
-        let Some(client) = agent.client_owned() else {
-            continue;
-        };
+            // get the internal agent ID from the node key
+            let Some(TestPeer::Internal(id)) = test.node_map.get_by_left(key) else {
+                bail!("expected internal agent peer for node with key {key}")
+            };
 
-        let agent_state = AgentState::Node(storage_id, node.into_state(key.ty));
-        agent_ids.push(id);
-        handles.push(tokio::spawn(
-            async move { client.reconcile(agent_state).await },
-        ));
+            let Some(client) = pool_lock.get(id).and_then(|a| a.client_owned()) else {
+                continue;
+            };
+
+            // resolve the peers and validators
+            let mut node_state = node.into_state(key.ty);
+            node_state.peers = matching_nodes(key, &node.peers, false)?;
+            node_state.validators = matching_nodes(key, &node.validators, false)?;
+
+            let agent_state = AgentState::Node(storage_id, node_state);
+            agent_ids.push(*id);
+            handles.push(tokio::spawn(
+                async move { client.reconcile(agent_state).await },
+            ));
+        }
     }
 
     let num_attempted_reconciliations = handles.len();
     let reconciliations = join_all(handles).await;
 
+    let mut pool_lock = state.pool.write().await;
     let mut success = 0;
     for (agent_id, result) in agent_ids.into_iter().zip(reconciliations) {
         // safety: we acquired this before when building handles, agent_id wouldn't be
         // here if the corresponding agent didn't exist
-        let agent = pool_lock.get_mut(agent_id).unwrap();
+        let agent = pool_lock.get_mut(&agent_id).unwrap();
 
         match result {
             // oh god

@@ -204,7 +204,7 @@ dependencies = [
  "http 0.2.12",
  "log",
  "url",
- "wildmatch",
+ "wildmatch 1.1.0",
 ]
 
 [[package]]
@@ -3904,6 +3904,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "wildmatch 2.3.3",
 ]
 
 [[package]]
@@ -4783,6 +4784,12 @@ name = "wildmatch"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f44b95f62d34113cf558c93511ac93027e03e9c29a60dd0fd70e6e025c7270a"
+
+[[package]]
+name = "wildmatch"
+version = "2.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "939e59c1bc731542357fdaad98b209ef78c8743d652bb61439d16b16a79eb025"
 
 [[package]]
 name = "winapi"

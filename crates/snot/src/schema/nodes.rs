@@ -9,6 +9,9 @@ use super::{NodeKey, NodeTargets};
 /// A document describing the node infrastructure for a test.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Document {
+    pub name: String,
+    pub description: Option<String>,
+
     #[serde(default)]
     pub external: IndexMap<NodeKey, ExternalNode>,
 
@@ -30,6 +33,8 @@ pub struct ExternalNode {
 /// A node in the testing infrastructure.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Node {
+    #[serde(default)]
+    pub online: bool,
     /// When specified, creates a group of nodes, all with the same
     /// configuration.
     pub replicas: Option<usize>,
@@ -39,6 +44,7 @@ pub struct Node {
     // `Committee(usize)`, `Named(String)`, `Literal(String)`
     pub key: Option<String>,
     /// The storage ID to use when starting the node.
+    /// TODO: move this outside of the node. this is a setting for the swarm
     pub storage: String,
     /// Height of ledger to inherit.
     ///
@@ -62,11 +68,10 @@ impl Node {
             // TODO
             height: (0, HeightRequest::Top),
 
-            // TODO: should this be online?
-            online: true,
-            // TODO: resolve validators
+            online: self.online,
+
+            // these are resolved later
             validators: vec![],
-            // TODO: resolve peers
             peers: vec![],
         }
     }

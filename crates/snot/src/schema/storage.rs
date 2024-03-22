@@ -19,6 +19,7 @@ pub struct Document {
     pub name: String,
     pub description: Option<String>,
     /// Prefer using existing storage instead of generating new stuff.
+    #[serde(default)]
     pub prefer_existing: bool,
     pub generate: Option<StorageGeneration>,
 }
@@ -30,7 +31,9 @@ pub struct StorageGeneration {
     pub path: PathBuf,
 
     // TODO: individually validate arguments, or just pass them like this?
+    #[serde(default)]
     pub genesis: GenesisGeneration,
+    #[serde(default)]
     pub ledger: LedgerGeneration,
 
     #[serde(default)]

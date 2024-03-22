@@ -25,6 +25,7 @@ sha2 = "0.10.8"
 snot-common = { path = "../snot-common" }
 tarpc.workspace = true
 tokio.workspace = true
-tower-http = { version = "0.5.2", features = ["fs"] }
+tower-http = { version = "0.5.2", features = ["fs", "trace"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+wildmatch = "2.3.3"
