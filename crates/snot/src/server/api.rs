@@ -2,19 +2,21 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
-    routing::get,
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::Deserialize;
 use serde_json::json;
 
 use super::AppState;
+use crate::testing::Test;
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/storage/:id/:ty", get(redirect_storage))
         .route("/agents", get(get_agents))
-    // .route("/test", post(post_test))
+        .route("/test/prepare", post(post_test_prepare))
+        .route("/test", delete(delete_test))
 }
 
 #[derive(Deserialize)]
@@ -44,17 +46,29 @@ async fn get_agents(State(state): State<AppState>) -> impl IntoResponse {
     Json(json!({ "count": state.pool.read().await.len() }))
 }
 
-// async fn post_test(State(state): State<AppState>) -> impl IntoResponse {
-//     // just to test, this sets the desired state of all nodes to online
-// clients     let mut pool = state.pool.write().await;
+async fn post_test_prepare(State(state): State<AppState>, body: String) -> Response {
+    let Ok(documents) = Test::deserialize(&body) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
 
-// let desired_state = ConfigRequest::new()
-//     .with_online(true)
-//     .with_type(Some(NodeType::Client));
+    // TODO: some live state to report to the calling CLI or something would be
+    // really nice
 
-//     for agent in pool.values_mut() {
-//         agent.set_state(desired_state.to_owned()).await.unwrap();
-//     }
+    // TODO: clean up existing test
 
-//     StatusCode::OK
-// }
+    match Test::prepare(documents, &state).await {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("{e}") })),
+        )
+            .into_response(),
+    }
+}
+
+async fn delete_test(State(state): State<AppState>) -> impl IntoResponse {
+    match Test::cleanup(&state).await {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}

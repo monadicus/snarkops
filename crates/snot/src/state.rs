@@ -11,7 +11,7 @@ use bimap::BiMap;
 use jwt::SignWithKey;
 use snot_common::{
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentState, NodeState},
+    state::AgentState,
 };
 use tarpc::{client::RpcError, context};
 use tokio::sync::RwLock;
@@ -42,7 +42,7 @@ pub struct Agent {
     id: AgentId,
     claims: Claims,
     connection: AgentConnection,
-    state: Option<NodeState>,
+    state: AgentState,
 }
 
 pub struct AgentClient(AgentServiceClient);
@@ -72,9 +72,9 @@ impl Agent {
         self.id
     }
 
-    /// The current desired state of this agent.
-    pub fn state(&self) -> Option<&NodeState> {
-        self.state.as_ref()
+    /// The current state of this agent.
+    pub fn state(&self) -> &AgentState {
+        &self.state
     }
 
     pub fn claims(&self) -> &Claims {
@@ -85,9 +85,16 @@ impl Agent {
         self.claims.to_owned().sign_with_key(&*JWT_SECRET).unwrap()
     }
 
+    pub fn rpc(&self) -> Option<&AgentServiceClient> {
+        match self.connection {
+            AgentConnection::Online(ref rpc) => Some(rpc),
+            _ => None,
+        }
+    }
+
     /// Get an owned copy of the RPC client for making reconcilation calls.
     /// `None` if the client is not currently connected.
-    pub fn client(&self) -> Option<AgentClient> {
+    pub fn client_owned(&self) -> Option<AgentClient> {
         match self.connection {
             AgentConnection::Online(ref rpc) => Some(AgentClient(rpc.to_owned())),
             _ => None,
@@ -104,6 +111,12 @@ impl Agent {
 
     pub fn mark_connected(&mut self, client: AgentServiceClient) {
         self.connection = AgentConnection::Online(client);
+    }
+
+    /// Forcibly sets an agent's state. This does **not** reconcile the agent,
+    /// and should only be called after an agent is reconciled.
+    pub fn set_state(&mut self, state: AgentState) {
+        self.state = state;
     }
 }
 

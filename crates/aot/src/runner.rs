@@ -32,7 +32,7 @@ pub struct Runner {
     #[clap(long = "private-key")]
     pub private_key: PrivateKey,
 
-    #[clap(long = "bind_addr", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
     /// Specify the IP address and port for the node server
     #[clap(long = "node", default_value_t = 4130)]

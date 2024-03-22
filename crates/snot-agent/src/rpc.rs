@@ -220,8 +220,8 @@ impl AgentService for AgentRpcServer {
                         .arg("--node")
                         .arg(state.cli.node.to_string());
 
-                    if !node.private_key.is_empty() {
-                        command.arg("--private-key").arg(&node.private_key);
+                    if let Some(pk) = node.private_key {
+                        command.arg("--private-key").arg(pk);
                     }
 
                     if !node.peers.is_empty() {

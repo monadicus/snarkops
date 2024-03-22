@@ -35,6 +35,8 @@ pub struct Node {
     pub replicas: Option<usize>,
     /// The private key to start the node with. When unspecified, a random
     /// private key is generated at runtime.
+    // TODO: turn this into an enum with options like `None`, `Additional(usize)`,
+    // `Committee(usize)`, `Named(String)`, `Literal(String)`
     pub key: Option<String>,
     /// The storage ID to use when starting the node.
     pub storage: String,
@@ -55,7 +57,7 @@ impl Node {
     pub fn into_state(&self, ty: NodeType) -> NodeState {
         NodeState {
             ty,
-            private_key: self.key.clone().unwrap_or_default(),
+            private_key: self.key.clone(),
 
             // TODO
             height: (0, HeightRequest::Top),

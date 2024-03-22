@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use anyhow::{bail, ensure};
 use bimap::BiMap;
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
 use snot_common::state::{AgentPeer, AgentState, NodeKey};
@@ -111,66 +109,116 @@ impl Test {
 
         Ok(())
     }
+
+    pub async fn cleanup(state: &GlobalState) -> anyhow::Result<()> {
+        let mut state_lock = state.test.write().await;
+        let mut agents = state.pool.write().await;
+
+        *state_lock = None;
+
+        // reconcile all online agents
+        let handles = agents
+            .values()
+            .filter_map(|agent| agent.client_owned())
+            .map(|client| {
+                tokio::spawn(async move { client.reconcile(AgentState::Inventory).await })
+            });
+
+        let reconciliations = join_all(handles).await;
+
+        for (agent, result) in agents.values_mut().zip(reconciliations) {
+            match result {
+                // oh god
+                Ok(Ok(Ok(()))) => agent.set_state(AgentState::Inventory),
+
+                // reconcile error
+                Ok(Ok(Err(e))) => warn!(
+                    "agent {} experienced a reconcilation error: {e}",
+                    agent.id()
+                ),
+
+                // could be a tokio error or an RPC error
+                _ => warn!(
+                    "agent {} failed to cleanup for an unknown reason",
+                    agent.id()
+                ),
+            }
+        }
+
+        Ok(())
+    }
 }
 
-// TODO: this is SUPER ugly (and probably really inefficient)... let's move this
-// around or rewrite it later
 /// Reconcile all associated nodes with their initial state.
 pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
     let test_lock = state.test.read().await;
-    let pool_lock = state.pool.read().await;
+    let mut pool_lock = state.pool.write().await;
     let storage_lock = state.storage.read().await;
 
     let test = test_lock.as_ref().unwrap();
 
-    // the reason this needs to be kept as a new map is because we need to keep
-    // ownership of `client` for the duration of `FuturesUnordered`
-    let client_map = test
-        .initial_nodes
-        .keys()
-        .filter_map(|key| {
-            let agent_id = match test.node_map.get_by_left(key) {
-                Some(AgentPeer::Internal(id)) => id,
-                _ => return None,
-            };
-
-            let agent = pool_lock.get(&agent_id)?;
-            let client = agent.client()?;
-
-            Some((key, client))
-        })
-        .collect::<HashMap<_, _>>();
-
-    let mut tasks = FuturesUnordered::new();
-
-    for (key, client) in client_map.iter() {
-        // safety: the state must exist for this node key since we derived it above
-        let node = test.initial_nodes.get(*key).unwrap();
-
+    let mut handles = vec![];
+    let mut agent_ids = vec![];
+    for (key, node) in &test.initial_nodes {
+        // get the numeric storage ID from the string storage ID
         let storage_id = match storage_lock.get_by_right(&node.storage) {
             Some(id) => *id,
             None => bail!("invalid storage ID specified for node"),
         };
 
-        // derive states
-        let node_state = node.into_state(key.ty);
-        let agent_state = AgentState::Node(storage_id, node_state);
+        // get the internal agent ID from the node key
+        let Some(AgentPeer::Internal(id)) = test.node_map.get_by_left(key) else {
+            continue;
+        };
 
-        tasks.push(client.reconcile(agent_state));
+        let Some(agent) = pool_lock.get(&id) else {
+            continue;
+        };
+
+        let Some(client) = agent.client_owned() else {
+            continue;
+        };
+
+        let agent_state = AgentState::Node(storage_id, node.into_state(key.ty));
+        agent_ids.push(id);
+        handles.push(tokio::spawn(
+            async move { client.reconcile(agent_state).await },
+        ));
     }
 
+    let num_attempted_reconciliations = handles.len();
+    let reconciliations = join_all(handles).await;
+
     let mut success = 0;
-    while let Some(r) = tasks.next().await {
-        match r {
-            Ok(Ok(())) => success += 1,
-            Ok(Err(e)) => warn!("a node failed to reconcile: {e}"),
-            Err(e) => warn!("a reconcile request for a node failed: {e}"),
+    for (agent_id, result) in agent_ids.into_iter().zip(reconciliations) {
+        // safety: we acquired this before when building handles, agent_id wouldn't be
+        // here if the corresponding agent didn't exist
+        let agent = pool_lock.get_mut(agent_id).unwrap();
+
+        match result {
+            // oh god
+            Ok(Ok(Ok(()))) => {
+                agent.set_state(AgentState::Inventory);
+                success += 1;
+            }
+
+            // reconcile error
+            Ok(Ok(Err(e))) => warn!(
+                "agent {} experienced a reconcilation error: {e}",
+                agent.id()
+            ),
+
+            // could be a tokio error or an RPC error
+            _ => warn!(
+                "agent {} failed to reconcile for an unknown reason",
+                agent.id()
+            ),
         }
     }
 
     info!(
         "reconciliation result: {success}/{} nodes reconciled",
-        client_map.len()
+        num_attempted_reconciliations
     );
 
     Ok(())

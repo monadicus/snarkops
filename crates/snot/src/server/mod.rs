@@ -119,6 +119,9 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
 
                 let id = agent.id();
                 info!("agent {id} reconnected");
+
+                // TODO: probably want to reconcile with old state?
+
                 break 'insertion id;
             }
         }

@@ -22,7 +22,7 @@ pub enum AgentState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
     pub ty: NodeType,
-    pub private_key: String,
+    pub private_key: Option<String>,
     pub height: (usize, HeightRequest),
 
     pub online: bool,
