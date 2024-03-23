@@ -35,8 +35,9 @@ pub struct GlobalState {
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage: RwLock<BiMap<usize, String>>,
-    // TODO: support concurrent tests
-    pub test: RwLock<Option<Test>>,
+
+    pub tests_counter: AtomicUsize,
+    pub tests: RwLock<HashMap<usize, Test>>,
 }
 
 /// This is the representation of a public addr or a list of internal addrs.

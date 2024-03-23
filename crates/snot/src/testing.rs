@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use anyhow::{anyhow, bail, ensure};
 use bimap::BiMap;
 use futures_util::future::join_all;
@@ -54,10 +56,11 @@ impl Test {
     ///
     /// **This will error if the current test is not unset before calling to
     /// ensure tests are properly cleaned up.**
-    pub async fn prepare(documents: Vec<ItemDocument>, state: &GlobalState) -> anyhow::Result<()> {
-        ensure!(state.test.read().await.is_none());
-
-        let mut state_lock = state.test.write().await;
+    pub async fn prepare(
+        documents: Vec<ItemDocument>,
+        state: &GlobalState,
+    ) -> anyhow::Result<usize> {
+        let mut state_lock = state.tests.write().await;
 
         let Some(storage_id) = documents.iter().find_map(|s| match s {
             ItemDocument::Storage(storage) => Some(storage.id.clone()),
@@ -152,23 +155,25 @@ impl Test {
         }
 
         // set the test on the global state
-        *state_lock = Some(test);
+
+        let test_id = state.tests_counter.fetch_add(1, Ordering::Relaxed);
+        state_lock.insert(test_id, test);
         drop(state_lock);
 
         // reconcile the nodes
-        initial_reconcile(state).await?;
+        initial_reconcile(&test_id, state).await?;
 
-        Ok(())
+        Ok(test_id)
     }
 
     // TODO: cleanup by test id, rather than cleanup EVERY agent...
 
-    pub async fn cleanup(state: &GlobalState) -> anyhow::Result<()> {
+    pub async fn cleanup(id: &usize, state: &GlobalState) -> anyhow::Result<()> {
         // clear the test state
         {
             info!("clearing test state...");
-            let mut state_lock = state.test.write().await;
-            *state_lock = None;
+            let mut state_lock = state.tests.write().await;
+            state_lock.remove(id);
         }
 
         // reconcile all online agents
@@ -219,12 +224,14 @@ impl Test {
 }
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
+pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Result<()> {
     let mut handles = vec![];
     let mut agent_ids = vec![];
     {
-        let test_lock = state.test.read().await;
-        let test = test_lock.as_ref().unwrap();
+        let tests_lock = state.tests.read().await;
+        let test = tests_lock
+            .get(id)
+            .ok_or_else(|| anyhow!("test not found"))?;
 
         // get the numeric storage ID from the string storage ID
         let storage_id = {

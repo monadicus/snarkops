@@ -16,7 +16,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/storage/:id/:ty", get(redirect_storage))
         .route("/agents", get(get_agents))
         .route("/test/prepare", post(post_test_prepare))
-        .route("/test", delete(delete_test))
+        .route("/test/:id", delete(delete_test))
 }
 
 #[derive(Deserialize)]
@@ -67,7 +67,7 @@ async fn post_test_prepare(state: State<AppState>, body: String) -> Response {
     // TODO: support concurrent tests + return test id
 
     match Test::prepare(documents, &state).await {
-        Ok(_) => StatusCode::OK.into_response(),
+        Ok(test_id) => (StatusCode::OK, Json(json!({ "id": test_id }))).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("{e}") })),
@@ -76,8 +76,11 @@ async fn post_test_prepare(state: State<AppState>, body: String) -> Response {
     }
 }
 
-async fn delete_test(State(state): State<AppState>) -> impl IntoResponse {
-    match Test::cleanup(&state).await {
+async fn delete_test(
+    Path(test_id): Path<usize>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    match Test::cleanup(&test_id, &state).await {
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
