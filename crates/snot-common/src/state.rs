@@ -175,6 +175,7 @@ pub struct NodeKey {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum NodeType {
     Client,
     Validator,

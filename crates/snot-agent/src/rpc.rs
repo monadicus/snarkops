@@ -164,7 +164,7 @@ impl AgentService for AgentRpcServer {
                     // use `tar` to decompress the storage
                     let mut tar_child = Command::new("tar")
                         .current_dir(base_path)
-                        .arg("-xzf")
+                        .arg("xzf")
                         .arg(LEDGER_STORAGE_FILE)
                         .kill_on_drop(true)
                         .spawn()
@@ -199,16 +199,16 @@ impl AgentService for AgentRpcServer {
                     let mut child_lock = state.child.write().await;
                     let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
 
-                    // TODO: more args
                     command
+                        // .kill_on_drop(true)
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
-                        .stdin(Stdio::null())
-                        .arg("run")
+                        // .stdin(Stdio::null())
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
+                        .arg("run")
                         .arg("--type")
-                        .arg(node.ty.flag())
+                        .arg(node.ty.to_string())
                         // storage configuration
                         .arg("--genesis")
                         .arg(state.cli.path.join(SNARKOS_GENESIS_FILE))
@@ -246,6 +246,7 @@ impl AgentService for AgentRpcServer {
 
                     // Fetch all unresolved addresses and update the cache
                     if !unresolved_addrs.is_empty() {
+                        tracing::debug!("need to resolve addrs: {unresolved_addrs:?}");
                         let new_addrs = state
                             .client
                             .resolve_addrs(context::current(), unresolved_addrs)
@@ -255,6 +256,7 @@ impl AgentService for AgentRpcServer {
                                 ReconcileError::Unknown
                             })?
                             .map_err(ReconcileError::ResolveAddrError)?;
+                        tracing::debug!("resolved new addrs: {new_addrs:?}");
                         state.resolved_addrs.write().await.extend(new_addrs);
                     }
 
@@ -271,27 +273,44 @@ impl AgentService for AgentRpcServer {
                     }
 
                     // TODO: ensure node is not killed if the reconciled state is the same
-
                     // ensure the previos node is properly killed
                     if let Some(mut child) = child_lock.take() {
+                        tracing::debug!("killing old node process...");
                         if let Err(e) = child.kill().await {
                             warn!("failed to kill old node: {e}")
                         }
                     }
 
                     if node.online {
+                        tracing::trace!("spawning node process...");
+                        tracing::debug!("node command: {command:?}");
                         let mut child = command.spawn().expect("failed to start child");
 
                         // start a new task to log stdout
                         // TODO: probably also want to read stderr
-                        let stdout = child.stdout.take().unwrap();
+                        let stdout: tokio::process::ChildStdout = child.stdout.take().unwrap();
+                        let stderr: tokio::process::ChildStderr = child.stderr.take().unwrap();
+
                         tokio::spawn(async move {
                             let child_span = tracing::span!(Level::INFO, "child process stdout");
                             let _enter = child_span.enter();
 
-                            let mut reader = BufReader::new(stdout).lines();
-                            while let Ok(Some(line)) = reader.next_line().await {
-                                info!(line);
+                            let mut reader1 = BufReader::new(stdout).lines();
+                            let mut reader2 = BufReader::new(stderr).lines();
+
+                            loop {
+                                tokio::select! {
+                                    Ok(line) = reader1.next_line() => {
+                                        if let Some(line) = line {
+                                            info!(line);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    Ok(Some(line)) = reader2.next_line() => {
+                                            error!(line);
+                                    }
+                                }
                             }
                         });
 
@@ -299,6 +318,8 @@ impl AgentService for AgentRpcServer {
 
                         // todo: check to ensure the node actually comes online
                         // by hitting the REST latest block
+                    } else {
+                        tracing::debug!("skipping node spawn");
                     }
                 }
             }
