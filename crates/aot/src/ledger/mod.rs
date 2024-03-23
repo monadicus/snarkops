@@ -41,10 +41,14 @@ macro_rules! comma_separated {
 					type Err = anyhow::Error;
 
 					fn from_str(s: &str) -> Result<Self, Self::Err> {
-							Ok(Self(s.split(',')
-											 .map(|i| <$item>::from_str(i))
-											 .collect::<Result<Vec<_>, <$item as FromStr>::Err>>()
-											 .map_err(anyhow::Error::from)?))
+						if s.is_empty() {
+							return Ok(Self(Vec::new()));
+						}
+
+						Ok(Self(s.split(',')
+										 .map(|i| <$item>::from_str(i))
+										 .collect::<Result<Vec<_>, <$item as FromStr>::Err>>()
+										 .map_err(anyhow::Error::from)?))
 					}
 			}
 
