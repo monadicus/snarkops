@@ -70,11 +70,14 @@ impl AgentService for AgentRpcServer {
         _: context::Context,
         target: AgentState,
     ) -> Result<(), ReconcileError> {
+        info!("beginning reconcilation...");
+
         // acquire the handle lock
         let mut handle_container = self.state.reconcilation_handle.lock().await;
 
         // abort if we are already reconciling
         if let Some(handle) = handle_container.take() {
+            info!("aborting previous reconcilation task...");
             handle.abort();
         }
 
@@ -87,6 +90,7 @@ impl AgentService for AgentRpcServer {
                 match agent_state_lock.deref() {
                     // kill existing child if running
                     AgentState::Node(_, node) if node.online => {
+                        info!("cleaning up snarkos process...");
                         if let Some(mut child) = state.child.write().await.take() {
                             child.kill().await.expect("failed to kill child process");
                         }
@@ -190,7 +194,7 @@ impl AgentService for AgentRpcServer {
             }
 
             // reconcile towards new state
-            match target {
+            match target.clone() {
                 // do nothing on inventory state
                 AgentState::Inventory => (),
 
@@ -272,15 +276,6 @@ impl AgentService for AgentRpcServer {
                             .arg(state.agentpeers_to_cli(&node.validators).await.join(","));
                     }
 
-                    // TODO: ensure node is not killed if the reconciled state is the same
-                    // ensure the previos node is properly killed
-                    if let Some(mut child) = child_lock.take() {
-                        tracing::debug!("killing old node process...");
-                        if let Err(e) = child.kill().await {
-                            warn!("failed to kill old node: {e}")
-                        }
-                    }
-
                     if node.online {
                         tracing::trace!("spawning node process...");
                         tracing::debug!("node command: {command:?}");
@@ -323,6 +318,10 @@ impl AgentService for AgentRpcServer {
                     }
                 }
             }
+
+            // After completing the reconcilation, update the agent state
+            let mut agent_state = state.agent_state.write().await;
+            *agent_state = target;
 
             Ok(())
         });

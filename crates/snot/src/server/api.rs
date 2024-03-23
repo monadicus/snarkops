@@ -78,7 +78,11 @@ async fn post_test_prepare(State(state): State<AppState>, body: String) -> Respo
 
 async fn delete_test(State(state): State<AppState>) -> impl IntoResponse {
     match Test::cleanup(&state).await {
-        Ok(_) => StatusCode::OK,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("{e}") })),
+        )
+            .into_response(),
     }
 }

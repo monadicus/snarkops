@@ -151,40 +151,58 @@ impl Test {
         Ok(())
     }
 
-    pub async fn cleanup(state: &GlobalState) -> anyhow::Result<()> {
-        let mut state_lock = state.test.write().await;
-        let mut agents = state.pool.write().await;
+    // TODO: cleanup by test id, rather than cleanup EVERY agent...
 
-        *state_lock = None;
+    pub async fn cleanup(state: &GlobalState) -> anyhow::Result<()> {
+        // clear the test state
+        {
+            info!("clearing test state...");
+            let mut state_lock = state.test.write().await;
+            *state_lock = None;
+        }
 
         // reconcile all online agents
-        let handles = agents
-            .values()
-            .filter_map(|agent| agent.client_owned())
-            .map(|client| {
-                tokio::spawn(async move { client.reconcile(AgentState::Inventory).await })
-            });
+        let (ids, handles): (Vec<_>, Vec<_>) = {
+            let agents = state.pool.read().await;
+            agents
+                .values()
+                .filter_map(|agent| agent.client_owned().map(|client| (agent.id(), client)))
+                .map(|(id, client)| {
+                    (
+                        id,
+                        tokio::spawn(async move { client.reconcile(AgentState::Inventory).await }),
+                    )
+                })
+                .unzip()
+        };
 
+        info!("inventorying {} agents...", ids.len());
         let reconciliations = join_all(handles).await;
+        info!("reconcile done, updating agent states...");
 
-        for (agent, result) in agents.values_mut().zip(reconciliations) {
+        let mut agents = state.pool.write().await;
+        let mut success = 0;
+        let num_reconciles = ids.len();
+        for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
-                Ok(Ok(Ok(()))) => agent.set_state(AgentState::Inventory),
+                Ok(Ok(Ok(()))) => {
+                    if let Some(agent) = agents.get_mut(&id) {
+                        agent.set_state(AgentState::Inventory);
+                        success += 1;
+                    } else {
+                        warn!("agent {id} not found in pool after successful reconcile")
+                    }
+                }
 
                 // reconcile error
-                Ok(Ok(Err(e))) => warn!(
-                    "agent {} experienced a reconcilation error: {e}",
-                    agent.id()
-                ),
+                Ok(Ok(Err(e))) => warn!("agent {id} experienced a reconcilation error: {e}",),
 
                 // could be a tokio error or an RPC error
-                _ => warn!(
-                    "agent {} failed to cleanup for an unknown reason",
-                    agent.id()
-                ),
+                _ => warn!("agent {id} failed to cleanup for an unknown reason"),
             }
         }
+        info!("cleanup result: {success}/{num_reconciles} agents inventoried");
 
         Ok(())
     }
@@ -287,9 +305,9 @@ pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
 
     let num_attempted_reconciliations = handles.len();
 
-    tracing::trace!("waiting for reconcile...");
+    info!("waiting for reconcile...");
     let reconciliations = join_all(handles).await;
-    tracing::trace!("reconcile done, updating agent states...");
+    info!("reconcile done, updating agent states...");
 
     let mut pool_lock = state.pool.write().await;
     let mut success = 0;
