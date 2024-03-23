@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 use crate::{
     schema::{
-        nodes::{ExternalNode, Node},
+        nodes::{ExternalNode, KeySource, Node},
         storage::FilenameString,
         ItemDocument, NodeTargets,
     },
@@ -100,7 +100,7 @@ impl Test {
                                     // replace the key with a new one
                                     let mut node = doc_node.to_owned();
                                     if let Some(key) = node.key.take() {
-                                        node.key = Some(key.replace('$', &i.to_string()))
+                                        node.key = Some(key.with_index(i))
                                     }
                                     ent.insert(TestNode::Internal(node))
                                 }
@@ -313,6 +313,11 @@ pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
 
             // resolve the peers and validators
             let mut node_state = node.into_state(key.ty);
+            node_state.private_key = node.key.as_ref().map(|key| match key {
+                KeySource::Literal(pk) => pk.to_owned(),
+                KeySource::Committee(_i) => todo!(),
+                KeySource::Named(_, _) => todo!(),
+            });
             node_state.peers = matching_nodes(key, &node.peers, false)?;
             node_state.validators = matching_nodes(key, &node.validators, true)?;
 

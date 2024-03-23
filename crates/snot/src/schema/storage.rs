@@ -51,14 +51,23 @@ pub struct Transaction {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "kebab-case")]
 pub struct GenesisGeneration {
     pub output: PathBuf,
+    pub committee: usize,
+    pub committee_balances: usize,
+    pub additional_accounts: usize,
+    pub additional_balances: usize,
 }
 
 impl Default for GenesisGeneration {
     fn default() -> Self {
         Self {
             output: PathBuf::from("genesis.block"),
+            committee: 5,
+            committee_balances: 10_000_000_000_000,
+            additional_accounts: 5,
+            additional_balances: 100_000_000_000,
         }
     }
 }
@@ -158,15 +167,9 @@ impl Document {
                 }
 
                 generation.genesis = GenesisGeneration {
-                    output: base.join("genesis.block"),
+                    output: base.join(generation.genesis.output),
+                    ..generation.genesis
                 };
-                // generation.genesis = snarkos_aot::genesis::Genesis {
-                //     output: base.join("genesis.block"),
-                //     ledger: None,
-                //     additional_accounts_output: Some(base.join("accounts.json")),
-                //     committee_output: Some(base.join("committee.json")),
-                //     ..generation.genesis
-                // };
 
                 // generate the genesis block using the aot cli
                 let bin = std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
@@ -180,11 +183,11 @@ impl Document {
                     .arg("--output")
                     .arg(&generation.genesis.output)
                     .arg("--committee-size")
-                    .arg("5")
+                    .arg(generation.genesis.committee.to_string())
                     .arg("--committee-output")
                     .arg(base.join("committee.json"))
                     .arg("--additional-accounts")
-                    .arg("5")
+                    .arg(generation.genesis.additional_accounts.to_string())
                     .arg("--additional-accounts-output")
                     .arg(base.join("accounts.json"))
                     .arg("--ledger")

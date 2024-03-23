@@ -49,6 +49,7 @@ pub async fn start(cli: Cli) -> Result<()> {
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
+        // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
         .with_state(Arc::new(state))
         .layer(
