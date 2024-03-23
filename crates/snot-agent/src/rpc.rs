@@ -137,12 +137,14 @@ impl AgentService for AgentRpcServer {
                 };
 
                 let genesis_url = format!(
-                    "http://{}/api/storage/{storage_id}/genesis",
+                    "http://{}/api/v1/storage/{storage_id}/genesis",
                     &state.endpoint
                 );
 
-                let ledger_url =
-                    format!("http://{}/api/storage/{storage_id}/ledger", &state.endpoint);
+                let ledger_url = format!(
+                    "http://{}/api/v1/storage/{storage_id}/ledger",
+                    &state.endpoint
+                );
 
                 // download the genesis block
                 api::download_file(genesis_url, base_path.join(SNARKOS_GENESIS_FILE))
@@ -295,7 +297,8 @@ impl AgentService for AgentRpcServer {
 
                         *child_lock = Some(child);
 
-                        // todo: check to ensure the node actually comes online by hitting the REST latest block
+                        // todo: check to ensure the node actually comes online
+                        // by hitting the REST latest block
                     }
                 }
             }

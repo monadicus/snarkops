@@ -20,6 +20,7 @@ pub(super) fn routes() -> Router<AppState> {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
 enum StorageType {
     Genesis,
     Ledger,
