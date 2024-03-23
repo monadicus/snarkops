@@ -1,0 +1,28 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+# ADDITIONAL storage information to be run for this test
+# this will run a second test with the same topology but different ledger
+id: base
+name: base-ledger
+
+generate:
+  path: ./tests/base
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+
+name: 4-validators
+
+nodes:
+  # validator/test:
+  #   replicas: 4
+  #   key: committee.$
+  #   height: 0
+  #   validators: [validator/*]
+  #   peers: []
+  validator/0:
+    key: APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH
+    height: 0
+    validators: [validator/*]
+    peers: []
