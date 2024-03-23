@@ -1,4 +1,11 @@
-use std::{fs::File, io::Write, ops::Deref, path::PathBuf, sync::Arc};
+use std::{
+    fs::File,
+    io::Write,
+    net::{IpAddr, SocketAddr},
+    ops::Deref,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use anyhow::Result;
 use axum::{
@@ -20,6 +27,10 @@ pub struct LedgerQuery {
     #[arg(long, default_value = "3030")]
     /// Port to listen on for incoming messages
     pub port: u16,
+
+    #[arg(long, default_value = "0.0.0.0")]
+    // IP address to bind to
+    pub bind: IpAddr,
 
     #[arg(long)]
     /// When true, the POST /block endpoint will not be available
@@ -72,7 +83,7 @@ impl LedgerQuery {
             .route("/block", post(Self::add_block))
             .with_state(Arc::new(state));
 
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
+        let listener = tokio::net::TcpListener::bind(SocketAddr::new(self.bind, self.port)).await?;
         tracing::info!("listening on: {:?}", listener.local_addr().unwrap());
         axum::serve(listener, app).await?;
 

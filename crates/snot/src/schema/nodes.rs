@@ -48,9 +48,6 @@ pub struct Node {
     // TODO: turn this into an enum with options like `None`, `Additional(usize)`,
     // `Committee(usize)`, `Named(String)`, `Literal(String)`
     pub key: Option<String>,
-    /// The storage ID to use when starting the node.
-    /// TODO: move this outside of the node. this is a setting for the swarm
-    pub storage: String,
     /// Height of ledger to inherit.
     ///
     /// * When null, a ledger is created when the node is started.

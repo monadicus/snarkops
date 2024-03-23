@@ -9,6 +9,7 @@ use tracing::{info, warn};
 use crate::{
     schema::{
         nodes::{ExternalNode, Node},
+        storage::FilenameString,
         ItemDocument, NodeTargets,
     },
     state::GlobalState,
@@ -16,6 +17,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct Test {
+    pub storage_id: FilenameString,
     pub node_map: BiMap<NodeKey, TestPeer>,
     pub initial_nodes: IndexMap<NodeKey, TestNode>,
     // TODO: GlobalStorage.storage should maybe be here instead
@@ -57,7 +59,15 @@ impl Test {
 
         let mut state_lock = state.test.write().await;
 
+        let Some(storage_id) = documents.iter().find_map(|s| match s {
+            ItemDocument::Storage(storage) => Some(storage.id.clone()),
+            _ => None,
+        }) else {
+            bail!("no storage document found in test")
+        };
+
         let mut test = Test {
+            storage_id,
             node_map: Default::default(),
             initial_nodes: Default::default(),
         };
@@ -215,7 +225,16 @@ pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
     {
         let test_lock = state.test.read().await;
         let test = test_lock.as_ref().unwrap();
-        let storage_lock = state.storage.read().await;
+
+        // get the numeric storage ID from the string storage ID
+        let storage_id = {
+            let storage_lock = state.storage.read().await;
+            match storage_lock.get_by_right(test.storage_id.as_str()) {
+                Some(id) => *id,
+                None => bail!("invalid storage ID specified for node"),
+            }
+        };
+
         let pool_lock = state.pool.read().await;
 
         // Lookup agent peers given a node key
@@ -264,6 +283,13 @@ pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
             // this can't really be cleverly optimized into
             // a single lookup at the moment because we don't treat @local
             // as a None namespace...
+
+            // TODO: ensure @local is always parsed as None, then we can
+            // optimize each target in this to be a direct lookup
+            // instead of walking through each node
+
+            // alternatively, use a more efficient data structure for
+            // storing node keys
             test.node_map
                 .iter()
                 .filter(|(k, _)| *k != key && target.matches(k))
@@ -274,11 +300,6 @@ pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
         for (key, node) in &test.initial_nodes {
             let TestNode::Internal(node) = node else {
                 continue;
-            };
-            // get the numeric storage ID from the string storage ID
-            let storage_id = match storage_lock.get_by_right(&node.storage) {
-                Some(id) => *id,
-                None => bail!("invalid storage ID specified for node"),
             };
 
             // get the internal agent ID from the node key
