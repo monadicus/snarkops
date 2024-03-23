@@ -30,7 +30,8 @@ pub enum TestNode {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 /// A way of looking up a peer in the test state.
-/// Could technically use AgentPeer like this but it would have needless port information
+/// Could technically use AgentPeer like this but it would have needless port
+/// information
 pub enum TestPeer {
     Internal(AgentId),
     External,

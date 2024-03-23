@@ -152,6 +152,8 @@ impl Document {
                     // TODO: is this the behavior we want?
                     warn!("the specified storage ID {id} already exists, using that one instead");
                     break 'generate;
+                } else {
+                    tokio::fs::create_dir_all(&base).await?;
                 }
 
                 generation.genesis = GenesisGeneration {
