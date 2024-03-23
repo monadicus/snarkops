@@ -2824,6 +2824,7 @@ version = "0.1.0"
 dependencies = [
  "aleo-std",
  "anyhow",
+ "axum",
  "clap",
  "colored",
  "crossterm",
@@ -2844,6 +2845,7 @@ dependencies = [
  "snot-common",
  "tikv-jemallocator",
  "tokio",
+ "tower-http",
  "tracing",
  "tracing-appender",
  "tracing-flame",

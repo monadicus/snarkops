@@ -9,6 +9,7 @@ use crate::{authorized::Execute, Address, PrivateKey};
 pub mod add;
 pub mod distribute;
 pub mod init;
+pub mod query;
 pub mod truncate;
 pub mod tx;
 pub mod util;
@@ -96,6 +97,7 @@ pub enum Commands {
     Distribute(distribute::Distribute),
     Truncate(truncate::Truncate),
     Execute(Execute),
+    Query(query::LedgerQuery),
 }
 
 impl Ledger {
@@ -144,6 +146,11 @@ impl Ledger {
                 )?;
                 println!("{}", serde_json::to_string(&tx)?);
                 Ok(())
+            }
+
+            Commands::Query(query) => {
+                let ledger = util::open_ledger(genesis, ledger)?;
+                query.parse(&ledger)
             }
         }
     }
