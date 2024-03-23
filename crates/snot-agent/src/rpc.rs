@@ -1,4 +1,4 @@
-use std::{net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
+use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
 use snot_common::{
     rpc::{
@@ -6,14 +6,14 @@ use snot_common::{
         control::{ControlServiceRequest, ControlServiceResponse},
         MuxMessage,
     },
-    state::AgentState,
+    state::{AgentId, AgentPeer, AgentState, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
 };
-use tracing::{debug, info, warn, Level};
+use tracing::{debug, error, info, warn, Level};
 
 use crate::{api, state::AppState};
 
@@ -70,11 +70,14 @@ impl AgentService for AgentRpcServer {
         _: context::Context,
         target: AgentState,
     ) -> Result<(), ReconcileError> {
+        info!("beginning reconcilation...");
+
         // acquire the handle lock
         let mut handle_container = self.state.reconcilation_handle.lock().await;
 
         // abort if we are already reconciling
         if let Some(handle) = handle_container.take() {
+            info!("aborting previous reconcilation task...");
             handle.abort();
         }
 
@@ -87,6 +90,7 @@ impl AgentService for AgentRpcServer {
                 match agent_state_lock.deref() {
                     // kill existing child if running
                     AgentState::Node(_, node) if node.online => {
+                        info!("cleaning up snarkos process...");
                         if let Some(mut child) = state.child.write().await.take() {
                             child.kill().await.expect("failed to kill child process");
                         }
@@ -137,12 +141,14 @@ impl AgentService for AgentRpcServer {
                 };
 
                 let genesis_url = format!(
-                    "http://{}/api/storage/{storage_id}/genesis",
+                    "http://{}/api/v1/storage/{storage_id}/genesis",
                     &state.endpoint
                 );
 
-                let ledger_url =
-                    format!("http://{}/api/storage/{storage_id}/ledger", &state.endpoint);
+                let ledger_url = format!(
+                    "http://{}/api/v1/storage/{storage_id}/ledger",
+                    &state.endpoint
+                );
 
                 // download the genesis block
                 api::download_file(genesis_url, base_path.join(SNARKOS_GENESIS_FILE))
@@ -162,7 +168,7 @@ impl AgentService for AgentRpcServer {
                     // use `tar` to decompress the storage
                     let mut tar_child = Command::new("tar")
                         .current_dir(base_path)
-                        .arg("-xzf")
+                        .arg("xzf")
                         .arg(LEDGER_STORAGE_FILE)
                         .kill_on_drop(true)
                         .spawn()
@@ -188,7 +194,7 @@ impl AgentService for AgentRpcServer {
             }
 
             // reconcile towards new state
-            match target {
+            match target.clone() {
                 // do nothing on inventory state
                 AgentState::Inventory => (),
 
@@ -197,16 +203,16 @@ impl AgentService for AgentRpcServer {
                     let mut child_lock = state.child.write().await;
                     let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
 
-                    // TODO: more args
                     command
+                        // .kill_on_drop(true)
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
-                        .stdin(Stdio::null())
-                        .arg("run")
+                        // .stdin(Stdio::null())
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
+                        .arg("run")
                         .arg("--type")
-                        .arg(node.ty.flag())
+                        .arg(node.ty.to_string())
                         // storage configuration
                         .arg("--genesis")
                         .arg(state.cli.path.join(SNARKOS_GENESIS_FILE))
@@ -226,46 +232,96 @@ impl AgentService for AgentRpcServer {
                         command.arg("--private-key").arg(pk);
                     }
 
-                    if !node.peers.is_empty() {
-                        // TODO: add peers
+                    // Find agents that do not have cached addresses
+                    let unresolved_addrs: HashSet<AgentId> = {
+                        let resolved_addrs = state.resolved_addrs.read().await;
+                        node.peers
+                            .iter()
+                            .chain(node.validators.iter())
+                            .filter_map(|p| {
+                                if let AgentPeer::Internal(id, _) = p {
+                                    (!resolved_addrs.contains_key(id)).then_some(*id)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect()
+                    };
 
-                        // TODO: local caching of agent IDs, map agent ID to
-                        // IP/port
+                    // Fetch all unresolved addresses and update the cache
+                    if !unresolved_addrs.is_empty() {
+                        tracing::debug!("need to resolve addrs: {unresolved_addrs:?}");
+                        let new_addrs = state
+                            .client
+                            .resolve_addrs(context::current(), unresolved_addrs)
+                            .await
+                            .map_err(|err| {
+                                error!("rpc error while resolving addresses: {err}");
+                                ReconcileError::Unknown
+                            })?
+                            .map_err(ReconcileError::ResolveAddrError)?;
+                        tracing::debug!("resolved new addrs: {new_addrs:?}");
+                        state.resolved_addrs.write().await.extend(new_addrs);
                     }
 
-                    // TODO: same for validators
+                    if !node.peers.is_empty() {
+                        command
+                            .arg("--peers")
+                            .arg(state.agentpeers_to_cli(&node.peers).await.join(","));
+                    }
 
-                    // TODO: ensure node is not killed if the reconciled state is the same
-
-                    // ensure the previos node is properly killed
-                    if let Some(mut child) = child_lock.take() {
-                        if let Err(e) = child.kill().await {
-                            warn!("failed to kill old node: {e}")
-                        }
+                    if !node.validators.is_empty() {
+                        command
+                            .arg("--validators")
+                            .arg(state.agentpeers_to_cli(&node.validators).await.join(","));
                     }
 
                     if node.online {
+                        tracing::trace!("spawning node process...");
+                        tracing::debug!("node command: {command:?}");
                         let mut child = command.spawn().expect("failed to start child");
 
                         // start a new task to log stdout
                         // TODO: probably also want to read stderr
-                        let stdout = child.stdout.take().unwrap();
+                        let stdout: tokio::process::ChildStdout = child.stdout.take().unwrap();
+                        let stderr: tokio::process::ChildStderr = child.stderr.take().unwrap();
+
                         tokio::spawn(async move {
                             let child_span = tracing::span!(Level::INFO, "child process stdout");
                             let _enter = child_span.enter();
 
-                            let mut reader = BufReader::new(stdout).lines();
-                            while let Ok(Some(line)) = reader.next_line().await {
-                                info!(line);
+                            let mut reader1 = BufReader::new(stdout).lines();
+                            let mut reader2 = BufReader::new(stderr).lines();
+
+                            loop {
+                                tokio::select! {
+                                    Ok(line) = reader1.next_line() => {
+                                        if let Some(line) = line {
+                                            info!(line);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    Ok(Some(line)) = reader2.next_line() => {
+                                            error!(line);
+                                    }
+                                }
                             }
                         });
 
                         *child_lock = Some(child);
 
-                        // todo: check to ensure the node actually comes online by hitting the REST latest block
+                        // todo: check to ensure the node actually comes online
+                        // by hitting the REST latest block
+                    } else {
+                        tracing::debug!("skipping node spawn");
                     }
                 }
             }
+
+            // After completing the reconcilation, update the agent state
+            let mut agent_state = state.agent_state.write().await;
+            *agent_state = target;
 
             Ok(())
         });
@@ -297,8 +353,15 @@ impl AgentService for AgentRpcServer {
         res
     }
 
-    #[doc = r" Control plane asks the agent for its external network address, along with local addrs."]
-    async fn get_addrs(self, _: context::Context) -> (Option<IpAddr>, Vec<IpAddr>) {
-        (self.state.external_addr, self.state.internal_addrs.clone())
+    async fn get_addrs(self, _: context::Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
+        (
+            PortConfig {
+                bft: self.state.cli.bft,
+                node: self.state.cli.node,
+                rest: self.state.cli.rest,
+            },
+            self.state.external_addr,
+            self.state.internal_addrs.clone(),
+        )
     }
 }

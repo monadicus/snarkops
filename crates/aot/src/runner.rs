@@ -45,10 +45,10 @@ pub struct Runner {
     pub rest: u16,
 
     /// Specify the IP address and port of the peer(s) to connect to
-    #[clap(long = "peers")]
+    #[clap(long = "peers", default_value = "")]
     pub peers: Addrs,
     /// Specify the IP address and port of the validator(s) to connect to
-    #[clap(long = "validators")]
+    #[clap(long = "validators", default_value = "")]
     pub validators: Addrs,
     /// Specify the requests per second (RPS) rate limit per IP for the REST
     /// server

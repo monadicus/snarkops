@@ -1,14 +1,15 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use ::jwt::VerifyWithKey;
 use anyhow::Result;
 use axum::{
+    body::Body,
     extract::{
         ws::{Message, WebSocket},
         State, WebSocketUpgrade,
     },
-    http::HeaderMap,
-    response::IntoResponse,
+    http::{HeaderMap, Request},
+    response::{IntoResponse, Response},
     routing::get,
     Router,
 };
@@ -19,7 +20,8 @@ use snot_common::{
 };
 use tarpc::server::Channel;
 use tokio::select;
-use tracing::{info, warn};
+use tower_http::trace::{DefaultMakeSpan, TraceLayer};
+use tracing::{info, warn, Span};
 
 use self::{
     jwt::{Claims, JWT_NONCE, JWT_SECRET},
@@ -48,7 +50,18 @@ pub async fn start(cli: Cli) -> Result<()> {
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
         .nest("/content", content::init_routes(&state).await)
-        .with_state(Arc::new(state));
+        .with_state(Arc::new(state))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                .on_request(|request: &Request<Body>, _span: &Span| {
+                    tracing::info!("req {} - {}", request.method(), request.uri());
+                })
+                .on_response(|response: &Response, _latency: Duration, span: &Span| {
+                    span.record("status_code", &tracing::field::display(response.status()));
+                    tracing::info!("res {}", response.status())
+                }),
+        );
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1234").await?;
     axum::serve(listener, app).await?;
@@ -153,10 +166,11 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
     // fetch the agent's network addresses on connect/reconnect
     let state2 = state.clone();
     tokio::spawn(async move {
-        if let Ok((external, internal)) = client.get_addrs(tarpc::context::current()).await {
+        if let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await {
             let mut state = state2.pool.write().await;
             if let Some(agent) = state.get_mut(&id) {
-                info!("agent {id} addrs: {external:?} {internal:?}");
+                info!("agent {id} addrs: {external:?} {internal:?} @ {ports}");
+                agent.set_ports(ports);
                 agent.set_addrs(external, internal);
             }
         }

@@ -1,3 +1,5 @@
+use std::io;
+
 use clap::Parser;
 use cli::Cli;
 use tracing::level_filters::LevelFilter;
@@ -11,15 +13,32 @@ pub mod testing;
 
 #[tokio::main]
 async fn main() {
+    let env_filter = if cfg!(debug_assertions) {
+        tracing_subscriber::EnvFilter::builder().with_default_directive(LevelFilter::TRACE.into())
+    } else {
+        tracing_subscriber::EnvFilter::builder().with_default_directive(LevelFilter::INFO.into())
+    };
+
+    let env_filter = env_filter
+        .parse_lossy("")
+        .add_directive("tungstenite=off".parse().unwrap())
+        .add_directive("tokio_tungstenite=off".parse().unwrap())
+        .add_directive("tarpc::client=ERROR".parse().unwrap())
+        .add_directive("tarpc::server=ERROR".parse().unwrap());
+
+    let (stdout, _guard) = tracing_appender::non_blocking(io::stdout());
+
+    let output = tracing_subscriber::fmt::layer().with_writer(stdout);
+
+    let output = if cfg!(debug_assertions) {
+        output.with_file(true).with_line_number(true)
+    } else {
+        output
+    };
+
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .parse_lossy("")
-                .add_directive("tarpc::client=ERROR".parse().unwrap())
-                .add_directive("tarpc::server=ERROR".parse().unwrap()),
-        )
-        .with(tracing_subscriber::fmt::layer())
+        .with(env_filter)
+        .with(output)
         .try_init()
         .unwrap();
 

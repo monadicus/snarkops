@@ -12,6 +12,7 @@ use snarkvm::{
         de, Deserialize, DeserializeExt, Deserializer, Serialize, SerializeStruct, Serializer,
     },
 };
+use tracing::error;
 
 use crate::{
     credits::PROCESS, Aleo, Authorization, DbLedger, MemVM, Network, PrivateKey, Transaction, Value,
@@ -36,12 +37,45 @@ pub enum ExecutionMode<'a> {
 pub struct Execute {
     pub authorization: Authorized,
     #[arg(short, long)]
-    pub query: Option<String>,
+    pub query: String,
 }
 
 impl Execute {
     pub fn parse(self) -> Result<()> {
-        Ok(())
+        let broadcast = self.authorization.broadcast;
+        // execute the transaction
+        let tx = self.authorization.execute_local(
+            None,
+            &mut rand::thread_rng(),
+            Some(self.query.to_owned()),
+        )?;
+
+        if !broadcast {
+            println!("{}", serde_json::to_string(&tx)?);
+            return Ok(());
+        }
+
+        // Broadcast the transaction.
+        tracing::info!("broadcasting transaction...");
+        tracing::debug!("{}", serde_json::to_string(&tx)?);
+        let response = reqwest::blocking::Client::new()
+            .post(format!("{}/mainnet/transaction/broadcast", self.query))
+            .header("Content-Type", "application/json")
+            .json(&tx)
+            .send()?;
+
+        // Ensure the response is successful.
+        if response.status().is_success() {
+            // Return the transaction.
+            println!("{}", response.text()?);
+            Ok(())
+            // Return the error.
+        } else {
+            let status = response.status();
+            let err = response.text()?;
+            error!("broadcast failed with code {}: {}", status, err);
+            bail!(err)
+        }
     }
 }
 
@@ -100,7 +134,7 @@ impl Authorized {
         let response = reqwest::blocking::Client::new()
             .post(format!("{api_url}/execute"))
             .header("Content-Type", "application/json")
-            .body(serde_json::to_string(&self)?)
+            .json(&self)
             .send()?;
 
         // Ensure the response is successful.

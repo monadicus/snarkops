@@ -8,6 +8,8 @@ use clap::Parser;
 pub const ENV_ENDPOINT: &str = "SNOT_ENDPOINT";
 pub const ENV_ENDPOINT_DEFAULT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
 
+// TODO: allow agents to define preferred internal/external addrs
+
 #[derive(Debug, Parser)]
 pub struct Cli {
     #[arg(long)]

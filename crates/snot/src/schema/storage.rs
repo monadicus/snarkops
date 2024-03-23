@@ -19,6 +19,7 @@ pub struct Document {
     pub name: String,
     pub description: Option<String>,
     /// Prefer using existing storage instead of generating new stuff.
+    #[serde(default)]
     pub prefer_existing: bool,
     pub generate: Option<StorageGeneration>,
 }
@@ -30,7 +31,9 @@ pub struct StorageGeneration {
     pub path: PathBuf,
 
     // TODO: individually validate arguments, or just pass them like this?
+    #[serde(default)]
     pub genesis: GenesisGeneration,
+    #[serde(default)]
     pub ledger: LedgerGeneration,
 
     #[serde(default)]
@@ -149,6 +152,9 @@ impl Document {
                     // TODO: is this the behavior we want?
                     warn!("the specified storage ID {id} already exists, using that one instead");
                     break 'generate;
+                } else {
+                    tracing::debug!("generating storage for {id}");
+                    tokio::fs::create_dir_all(&base).await?;
                 }
 
                 generation.genesis = GenesisGeneration {
@@ -163,10 +169,13 @@ impl Document {
                 // };
 
                 // generate the genesis block using the aot cli
-                Command::new("./target/release/snarkos-aot")
+                let bin = std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../target/release/snarkos-aot"),
+                );
+                let res = Command::new(bin)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
-                    .current_dir(&base)
                     .arg("genesis")
                     .arg("--output")
                     .arg(&generation.genesis.output)
@@ -178,9 +187,43 @@ impl Document {
                     .arg("5")
                     .arg("--additional-accounts-output")
                     .arg(base.join("accounts.json"))
+                    .arg("--ledger")
+                    .arg(base.join("ledger"))
                     .spawn()?
                     .wait()
                     .await?;
+
+                if !res.success() {
+                    warn!("failed to run genesis generation command...");
+                }
+
+                if tokio::fs::try_exists(&generation.genesis.output)
+                    .await
+                    .is_err()
+                {
+                    anyhow::bail!("failed to generate {:#?}", generation.genesis.output);
+                }
+
+                let res = Command::new("tar")
+                    .current_dir(&base)
+                    .arg("czf")
+                    .arg("ledger.tar.gz") // TODO: move constants from client...
+                    .arg("ledger/*")
+                    .kill_on_drop(true)
+                    .spawn()?
+                    .wait()
+                    .await?;
+
+                if !res.success() {
+                    warn!("error running tar command...");
+                }
+
+                if tokio::fs::try_exists(&base.join("ledger.tar.gz"))
+                    .await
+                    .is_err()
+                {
+                    anyhow::bail!("failed to tar the ledger");
+                }
 
                 // TODO: transactions
             }

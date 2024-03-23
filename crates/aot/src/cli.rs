@@ -133,7 +133,7 @@ impl Cli {
 
             // Add layer redirecting logs to the file
             layers.push(
-                tracing_subscriber::fmt::Layer::default()
+                tracing_subscriber::fmt::layer()
                     .with_ansi(false)
                     .with_writer(non_blocking)
                     .with_filter(filter2)
@@ -148,7 +148,7 @@ impl Cli {
             guards.push(g);
 
             layers.push(
-                tracing_subscriber::fmt::Layer::default()
+                tracing_subscriber::fmt::layer()
                     .with_ansi(io::stdout().is_tty())
                     .with_writer(stdout)
                     .with_filter(filter)
@@ -157,11 +157,7 @@ impl Cli {
         } else {
             let (stderr, g) = tracing_appender::non_blocking(io::stderr());
             guards.push(g);
-            layers.push(
-                tracing_subscriber::fmt::Layer::default()
-                    .with_writer(stderr)
-                    .boxed(),
-            );
+            layers.push(tracing_subscriber::fmt::layer().with_writer(stderr).boxed());
         };
 
         let subscriber = tracing_subscriber::registry::Registry::default().with(layers);
