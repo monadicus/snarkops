@@ -13,9 +13,8 @@ use snot_common::{
 };
 use tarpc::{context, ClientMessage, Response};
 
-use crate::state::resolve_addrs;
-
 use super::AppState;
+use crate::state::resolve_addrs;
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -39,15 +38,15 @@ impl ControlService for ControlRpcServer {
     async fn resolve_addrs(
         self,
         _: context::Context,
-        peers: HashSet<AgentId>,
+        mut peers: HashSet<AgentId>,
     ) -> Result<HashMap<AgentId, IpAddr>, ResolveError> {
+        peers.insert(self.agent);
+
         let addr_map = self
             .state
             .get_addr_map(Some(&peers))
             .await
             .map_err(|_| ResolveError::AgentHasNoAddresses)?;
-        resolve_addrs(&addr_map, self.agent, &peers)
-            .await
-            .map_err(|_| ResolveError::AgentHasNoAddresses)
+        resolve_addrs(&addr_map, self.agent, &peers).map_err(|_| ResolveError::SourceAgentNotFound)
     }
 }

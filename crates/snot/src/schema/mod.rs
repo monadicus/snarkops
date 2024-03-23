@@ -202,7 +202,8 @@ impl NodeTarget {
             NodeTargetNamespace::All => true,
             NodeTargetNamespace::Local => key.ns.is_none() || key.ns == Some("local".into()),
             NodeTargetNamespace::Literal(ref ns) => {
-                key.ns.as_ref().map_or(false, |key_ns| key_ns == ns)
+                ns == "local" && key.ns.is_none()
+                    || key.ns.as_ref().map_or(false, |key_ns| key_ns == ns)
             }
         })
     }

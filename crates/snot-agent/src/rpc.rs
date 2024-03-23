@@ -236,7 +236,7 @@ impl AgentService for AgentRpcServer {
                             .chain(node.validators.iter())
                             .filter_map(|p| {
                                 if let AgentPeer::Internal(id, _) = p {
-                                    resolved_addrs.contains_key(id).then_some(*id)
+                                    (!resolved_addrs.contains_key(id)).then_some(*id)
                                 } else {
                                     None
                                 }

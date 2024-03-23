@@ -176,8 +176,6 @@ impl Document {
                 let res = Command::new(bin)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
-                    .arg("--log")
-                    .arg("genesis.log")
                     .arg("genesis")
                     .arg("--output")
                     .arg(&generation.genesis.output)

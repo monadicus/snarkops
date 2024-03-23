@@ -150,17 +150,20 @@ impl Agent {
         self.ports.as_ref().map(|p| p.bft).unwrap_or_default()
     }
 
-    // Gets the node port of the agent. Assumes the agent is ready, returns 0 if not.
+    // Gets the node port of the agent. Assumes the agent is ready, returns 0 if
+    // not.
     pub fn node_port(&self) -> u16 {
         self.ports.as_ref().map(|p| p.node).unwrap_or_default()
     }
 
-    // Gets the rest port of the agent. Assumes the agent is ready, returns 0 if not.
+    // Gets the rest port of the agent. Assumes the agent is ready, returns 0 if
+    // not.
     pub fn rest_port(&self) -> u16 {
         self.ports.as_ref().map(|p| p.rest).unwrap_or_default()
     }
 
-    /// Set the external and internal addresses of the agent. This does **not** trigger a reconcile
+    /// Set the external and internal addresses of the agent. This does **not**
+    /// trigger a reconcile
     pub fn set_addrs(&mut self, external_addr: Option<IpAddr>, internal_addrs: Vec<IpAddr>) {
         self.addrs = Some((external_addr, internal_addrs));
     }
@@ -182,7 +185,7 @@ pub type AddrMap = HashMap<AgentId, AgentAddrs>;
 
 /// Given a map of addresses, resolve the addresses of a set of peers relative
 /// to a source agent.
-pub async fn resolve_addrs(
+pub fn resolve_addrs(
     addr_map: &AddrMap,
     src: AgentId,
     peers: &HashSet<AgentId>,

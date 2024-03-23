@@ -275,7 +275,7 @@ pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
             // resolve the peers and validators
             let mut node_state = node.into_state(key.ty);
             node_state.peers = matching_nodes(key, &node.peers, false)?;
-            node_state.validators = matching_nodes(key, &node.validators, false)?;
+            node_state.validators = matching_nodes(key, &node.validators, true)?;
 
             let agent_state = AgentState::Node(storage_id, node_state);
             agent_ids.push(*id);
@@ -286,7 +286,10 @@ pub async fn initial_reconcile(state: &GlobalState) -> anyhow::Result<()> {
     }
 
     let num_attempted_reconciliations = handles.len();
+
+    tracing::trace!("waiting for reconcile...");
     let reconciliations = join_all(handles).await;
+    tracing::trace!("reconcile done, updating agent states...");
 
     let mut pool_lock = state.pool.write().await;
     let mut success = 0;
