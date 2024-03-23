@@ -6,6 +6,7 @@ mod state;
 
 use std::{
     env,
+    os::unix::fs::PermissionsExt,
     path::Path,
     sync::{Arc, Mutex},
     time::Duration,
@@ -37,15 +38,36 @@ use crate::state::GlobalState;
 
 #[tokio::main]
 async fn main() {
+    let (stdout, _guard) = tracing_appender::non_blocking(std::io::stdout());
+
+    let output: tracing_subscriber::fmt::Layer<
+        _,
+        tracing_subscriber::fmt::format::DefaultFields,
+        tracing_subscriber::fmt::format::Format,
+        tracing_appender::non_blocking::NonBlocking,
+    > = tracing_subscriber::fmt::layer().with_writer(stdout);
+
+    let output = if cfg!(debug_assertions) {
+        output.with_file(true).with_line_number(true)
+    } else {
+        output
+    };
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("RUST_LOG")
+                .with_default_directive(LevelFilter::TRACE.into())
                 .parse_lossy("")
+                .add_directive("neli=off".parse().unwrap())
+                .add_directive("hyper_util=off".parse().unwrap())
+                .add_directive("reqwest=off".parse().unwrap())
+                .add_directive("tungstenite=off".parse().unwrap())
+                .add_directive("tokio_tungstenite=off".parse().unwrap())
                 .add_directive("tarpc::client=ERROR".parse().unwrap())
                 .add_directive("tarpc::server=ERROR".parse().unwrap()),
         )
-        .with(tracing_subscriber::fmt::layer())
+        .with(output)
         .try_init()
         .unwrap();
 
@@ -283,6 +305,9 @@ async fn check_binary(base_url: &str, path: &Path) -> anyhow::Result<()> {
     while let Some(chunk) = stream.next().await {
         file.write_all(&chunk?).await?;
     }
+
+    // ensure the permissions are set
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
 
     Ok(())
 }

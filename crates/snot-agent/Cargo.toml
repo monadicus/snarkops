@@ -20,5 +20,6 @@ snot-common = { path = "../snot-common" }
 tarpc.workspace = true
 tokio.workspace = true
 tokio-tungstenite = "0.21.0"
+tracing-appender.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
