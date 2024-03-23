@@ -29,11 +29,16 @@ pub struct ExternalNode {
     pub rest: Option<SocketAddr>,
 }
 
+// zander forgive me -isaac
+fn please_be_online() -> bool {
+    true
+}
+
 // TODO: could use some more clarification on some of these fields
 /// A node in the testing infrastructure.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Node {
-    #[serde(default)]
+    #[serde(default = "please_be_online")]
     pub online: bool,
     /// When specified, creates a group of nodes, all with the same
     /// configuration.

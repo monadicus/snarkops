@@ -8,7 +8,7 @@ pub struct Cli {
     /// Control plane server port
     pub port: u16,
 
-    #[arg(long, default_value = "./snot-control-data")]
+    #[arg(long, default_value = "snot-control-data")]
     /// Path to the directory containing the stored data
     pub path: PathBuf,
 }
