@@ -19,6 +19,9 @@ pub trait AgentService {
     /// Control plane instructs the agent to reconcile towards a particular
     /// state.
     async fn reconcile(to: AgentState) -> Result<(), ReconcileError>;
+
+    /// Get the state root from the running node
+    async fn get_state_root() -> Result<String, AgentError>;
 }
 
 #[derive(Debug, Error, Serialize, Deserialize)]
@@ -31,4 +34,14 @@ pub enum ReconcileError {
     ResolveAddrError(ResolveError),
     #[error("unknown error")]
     Unknown,
+}
+
+#[derive(Debug, Error, Serialize, Deserialize)]
+pub enum AgentError {
+    #[error("invalid agent state")]
+    InvalidState,
+    #[error("failed to parse json")]
+    FailedToParseJson,
+    #[error("failed to make a request")]
+    FailedToMakeRequest,
 }

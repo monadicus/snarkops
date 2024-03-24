@@ -2,7 +2,9 @@ use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::A
 
 use snot_common::{
     rpc::{
-        agent::{AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError},
+        agent::{
+            AgentError, AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError,
+        },
         control::{ControlServiceRequest, ControlServiceResponse},
         MuxMessage,
     },
@@ -363,5 +365,26 @@ impl AgentService for AgentRpcServer {
             self.state.external_addr,
             self.state.internal_addrs.clone(),
         )
+    }
+
+    async fn get_state_root(self, _: context::Context) -> Result<String, AgentError> {
+        if !matches!(
+            self.state.agent_state.read().await.deref(),
+            AgentState::Node(_, _)
+        ) {
+            return Err(AgentError::InvalidState);
+        }
+
+        let url = format!(
+            "http://127.0.0.1:{}/mainnet/latest/stateRoot",
+            self.state.cli.rest
+        );
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?;
+        response
+            .json()
+            .await
+            .map_err(|_| AgentError::FailedToParseJson)
     }
 }

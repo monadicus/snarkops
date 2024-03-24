@@ -13,17 +13,18 @@ use bimap::BiMap;
 use jwt::SignWithKey;
 use snot_common::{
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentState, PortConfig},
+    state::{AgentState, NodeKey, PortConfig},
 };
 use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
 use tokio::sync::RwLock;
 
 use crate::{
+    cannon::TestCannon,
     cli::Cli,
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
-    testing::Test,
+    testing::{Test, TestPeer},
 };
 
 pub type AgentId = usize;
@@ -39,6 +40,7 @@ pub struct GlobalState {
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage_ids: RwLock<BiMap<usize, String>>,
     pub storage: RwLock<HashMap<usize, LoadedStorage>>,
+    pub cannons: RwLock<HashMap<usize, Arc<TestCannon>>>,
 
     pub tests_counter: AtomicUsize,
     pub tests: RwLock<HashMap<usize, Test>>,
@@ -183,6 +185,10 @@ impl AgentClient {
     pub async fn reconcile(&self, to: AgentState) -> Result<Result<(), ReconcileError>, RpcError> {
         self.0.reconcile(context::current(), to).await
     }
+
+    pub async fn get_state_root(&self) -> Result<String> {
+        Ok(self.0.get_state_root(context::current()).await??)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -254,5 +260,29 @@ impl GlobalState {
                 Ok((*id, addrs.clone()))
             })
             .collect()
+    }
+
+    /// Lookup an rpc client by agent id.
+    /// Locks pools for reading
+    pub async fn get_client(&self, id: AgentId) -> Option<AgentClient> {
+        self.pool
+            .read()
+            .await
+            .get(&id)
+            .and_then(|a| a.client_owned())
+    }
+
+    /// Lookup a test agent id by test id and node key.
+    /// Locks tests for reading
+    pub async fn get_test_agent(&self, test_id: usize, node: &NodeKey) -> Option<AgentId> {
+        self.tests
+            .read()
+            .await
+            .get(&test_id)
+            .and_then(|t| t.node_map.get_by_left(node))
+            .and_then(|id| match id {
+                TestPeer::Internal(id) => Some(*id),
+                TestPeer::External => None,
+            })
     }
 }

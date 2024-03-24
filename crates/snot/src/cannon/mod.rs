@@ -1,9 +1,20 @@
-use std::collections::{HashSet, VecDeque};
+pub mod router;
+pub mod sink;
+pub mod source;
 
-use snot_common::state::NodeKey;
-use tokio::process::Child;
+use std::sync::Arc;
 
-use crate::schema::NodeTargets;
+use anyhow::{bail, ensure, Result};
+
+use tokio::{
+    sync::{mpsc::UnboundedSender, Mutex as AsyncMutex},
+    task::AbortHandle,
+};
+use tracing::warn;
+
+use crate::{cannon::source::LedgerQueryService, state::GlobalState};
+
+use self::{sink::TxSink, source::TxSource};
 
 /*
 
@@ -34,112 +45,102 @@ burst mode??
 
 */
 
-/// Represents an instance of a local query service.
-#[derive(Debug)]
-struct LocalQueryService {
-    /// child process running the ledger query service
-    child: Child,
-    /// Ledger & genesis block to use
-    pub storage_id: usize,
-    /// port to host the service on (needs to be unused by other cannons and services)
-    /// this port will be use when forwarding requests to the local query service
-    pub port: u16,
-
-    // TODO debate this
-    /// An optional node to sync blocks from...
-    /// necessary for private tx mode in realtime mode as this will have to
-    /// sync from a node that has a valid ledger
-    ///
-    /// When present, the cannon will update the ledger service from this node
-    /// if the node is out of sync, it will corrupt the ledger...
-    pub sync_from: Option<(NodeKey, usize)>,
-}
-
-/// Used to determine the redirection for the following paths:
-/// /cannon/<id>/mainnet/latest/stateRoot
-/// /cannon/<id>/mainnet/transaction/broadcast
-#[derive(Debug)]
-enum LedgerQueryService {
-    /// Use the local ledger query service
-    Local(LocalQueryService),
-    /// Target a specific node (probably over rpc instead of reqwest lol...)
-    Node { target: NodeKey, test_id: usize },
-}
-
-/// Which service is providing the compute power for executing transactions
-#[derive(Debug)]
-enum ComputeTarget {
-    /// Use the agent pool to generate executions
-    AgentPool,
-    /// Use demox' API to generate executions
-    Demox,
-}
-
-#[derive(Debug, Hash, PartialEq, Eq)]
-pub enum CreditsTxMode {
-    BondPublic,
-    UnbondPublic,
-    TransferPublic,
-    TransferPublicToPrivate,
-    // cannot run these in aot mode
-    TransferPrivate,
-    TransferPrivateToPublic,
-}
-
-#[derive(Debug, Hash, PartialEq, Eq)]
-pub enum TxMode {
-    Credits(CreditsTxMode),
-    // TODO: Program(program, func, input types??)
-}
-
-#[derive(Debug)]
-enum TxSource {
-    /// Read transactions from a file
-    AoT {
-        storage_id: usize,
-        // filename for the tx list
-        name: String,
-    },
-    /// Generate transactions in real time
-    RealTime {
-        query: LedgerQueryService,
-        compute: ComputeTarget,
-
-        tx_modes: HashSet<TxMode>,
-
-        /// buffer of transactions to send
-        tx_buffer: VecDeque<String>,
-
-        /// how many transactions to buffer before firing a burst
-        min_buffer_size: usize,
-    },
-}
-
-#[derive(Debug)]
-enum TxSink {
-    /// Write transactions to a file
-    AoT {
-        storage_id: usize,
-        /// filename for the recording txs list
-        name: String,
-    },
-    /// Send transactions to nodes in a test
-    RealTime {
-        target: NodeTargets,
-        test_id: usize,
-
-        /// How long between each burst of transactions
-        burst_delay_ms: u32,
-        /// How many transactions to fire off in each burst
-        tx_per_burst: u32,
-        /// How long between each transaction in a burst
-        tx_delay_ms: u32,
-    },
-}
-
 /// Transaction cannon
 #[derive(Debug)]
 pub struct TestCannon {
+    // a copy of the global state
+    global_state: Arc<GlobalState>,
+
     source: TxSource,
     sink: TxSink,
+
+    /// channel to send transactions to the the task
+    tx_sender: UnboundedSender<String>,
+
+    /// The test_id associated with this cannon.
+    /// To point at an external node, create a topology with external node
+    test_id: Option<usize>,
+
+    // TODO: run the actual cannon in this task
+    task: AsyncMutex<AbortHandle>,
+}
+
+impl TestCannon {
+    pub fn new(
+        global_state: Arc<GlobalState>,
+        source: TxSource,
+        sink: TxSink,
+        test_id: Option<usize>,
+    ) -> Result<Self> {
+        ensure!(
+            (source.needs_test_id() || sink.needs_test_id()) != test_id.is_some(),
+            "Test ID must be provided if either source or sink requires it"
+        );
+
+        // TODO: maybe Arc<TxSource>, then pass it to this task
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let tx_sender = tx.clone();
+
+        let handle = tokio::spawn(async move {
+            // TODO: write tx to sink at desired rate
+            let _tx = rx.recv().await;
+
+            std::future::pending::<()>().await
+        });
+
+        Ok(Self {
+            global_state,
+            source,
+            sink,
+            test_id,
+            tx_sender,
+            task: AsyncMutex::new(handle.abort_handle()),
+        })
+    }
+
+    /// Called by axum to forward /cannon/<id>/mainnet/latest/stateRoot
+    /// to the ledger query service's /mainnet/latest/stateRoot
+    pub async fn proxy_state_root(&self) -> Result<String> {
+        match &self.source {
+            TxSource::RealTime { query, .. } => match query {
+                LedgerQueryService::Local(qs) => qs.get_state_root().await,
+                LedgerQueryService::Node(key) => {
+                    // test_id must be Some because LedgerQueryService::Node requires it
+                    let Some(agent_id) = self
+                        .global_state
+                        .get_test_agent(self.test_id.unwrap(), key)
+                        .await
+                    else {
+                        bail!("cannon target agent not found")
+                    };
+
+                    let Some(client) = self.global_state.get_client(agent_id).await else {
+                        bail!("cannon target agent is offline")
+                    };
+
+                    // call client's rpc method to get the state root
+                    // this will fail if the client is not running a node
+                    client.get_state_root().await
+                }
+            },
+            TxSource::AoTPlayback { .. } => {
+                bail!("cannon is configured to playback from file.")
+            }
+        }
+    }
+
+    /// Called by axum to forward /cannon/<id>/mainnet/transaction/broadcast
+    /// to the desired sink
+    pub fn proxy_broadcast(&self, body: String) -> Result<()> {
+        match &self.source {
+            TxSource::RealTime { .. } => {
+                self.tx_sender.send(body)?;
+            }
+            TxSource::AoTPlayback { .. } => {
+                warn!("cannon received broadcasted transaction in playback mode. ignoring.")
+            }
+        }
+        Ok(())
+    }
 }
