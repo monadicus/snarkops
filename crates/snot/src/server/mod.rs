@@ -18,6 +18,7 @@ use snot_common::{
     prelude::*,
     rpc::{agent::AgentServiceClient, control::ControlService},
 };
+use surrealdb::Surreal;
 use tarpc::server::Channel;
 use tokio::select;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
@@ -39,8 +40,12 @@ pub mod jwt;
 mod rpc;
 
 pub async fn start(cli: Cli) -> Result<()> {
+    let mut path = cli.path.clone();
+    path.push("data.db");
+    let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
     let state = GlobalState {
         cli,
+        db,
         pool: Default::default(),
         storage: Default::default(),
         tests_counter: Default::default(),

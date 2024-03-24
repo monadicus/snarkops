@@ -15,6 +15,7 @@ use snot_common::{
     rpc::agent::{AgentServiceClient, ReconcileError},
     state::{AgentState, PortConfig},
 };
+use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
 use tokio::sync::RwLock;
 
@@ -32,6 +33,7 @@ pub type AppState = Arc<GlobalState>;
 #[derive(Debug)]
 pub struct GlobalState {
     pub cli: Cli,
+    pub db: Surreal<Db>,
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage: RwLock<BiMap<usize, String>>,
