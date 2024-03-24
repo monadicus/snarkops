@@ -21,6 +21,8 @@ async fn main() {
 
     let env_filter = env_filter
         .parse_lossy("")
+        .add_directive("surrealdb_core=off".parse().unwrap())
+        .add_directive("surrealdb=off".parse().unwrap())
         .add_directive("tungstenite=off".parse().unwrap())
         .add_directive("tokio_tungstenite=off".parse().unwrap())
         .add_directive("tarpc::client=ERROR".parse().unwrap())
