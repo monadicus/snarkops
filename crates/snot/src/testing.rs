@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use anyhow::{anyhow, bail, ensure};
-use bimap::BiMap;
+use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
@@ -10,8 +10,7 @@ use tracing::{info, warn};
 
 use crate::{
     schema::{
-        nodes::{ExternalNode, KeySource, Node},
-        storage::FilenameString,
+        nodes::{ExternalNode, Node},
         ItemDocument, NodeTargets,
     },
     state::GlobalState,
@@ -19,7 +18,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct Test {
-    pub storage_id: FilenameString,
+    pub storage_id: usize,
     pub node_map: BiMap<NodeKey, TestPeer>,
     pub initial_nodes: IndexMap<NodeKey, TestNode>,
     // TODO: GlobalStorage.storage should maybe be here instead
@@ -62,22 +61,18 @@ impl Test {
     ) -> anyhow::Result<usize> {
         let mut state_lock = state.tests.write().await;
 
-        let Some(storage_id) = documents.iter().find_map(|s| match s {
-            ItemDocument::Storage(storage) => Some(storage.id.clone()),
-            _ => None,
-        }) else {
-            bail!("no storage document found in test")
-        };
-
-        let mut test = Test {
-            storage_id,
-            node_map: Default::default(),
-            initial_nodes: Default::default(),
-        };
+        let mut storage_id = None;
+        let mut node_map = BiHashMap::default();
+        let mut initial_nodes = IndexMap::default();
 
         for document in documents {
             match document {
-                ItemDocument::Storage(storage) => storage.prepare(state).await?,
+                ItemDocument::Storage(storage) => {
+                    let int_id = storage.prepare(state).await?;
+                    if storage_id.is_none() {
+                        storage_id = Some(int_id);
+                    }
+                }
                 ItemDocument::Nodes(nodes) => {
                     // flatten replicas
                     for (doc_node_key, mut doc_node) in nodes.nodes {
@@ -97,7 +92,7 @@ impl Test {
                             // nodes in flattened_nodes have replicas unset
                             doc_node.replicas.take();
 
-                            match test.initial_nodes.entry(node_key) {
+                            match initial_nodes.entry(node_key) {
                                 Entry::Occupied(ent) => bail!("duplicate node key: {}", ent.key()),
                                 Entry::Vacant(ent) => {
                                     // replace the key with a new one
@@ -117,7 +112,7 @@ impl Test {
                     let num_online_agents = online_agents.clone().count();
 
                     ensure!(
-                        num_online_agents >= test.initial_nodes.len(),
+                        num_online_agents >= initial_nodes.len(),
                         "not enough online agents to satisfy node topology"
                     );
 
@@ -126,8 +121,8 @@ impl Test {
                     // agent best suited to be a node,
                     // instead of naively picking an agent to fill the needs of
                     // a node
-                    test.node_map.extend(
-                        test.initial_nodes
+                    node_map.extend(
+                        initial_nodes
                             .keys()
                             .cloned()
                             .zip(online_agents.map(|agent| TestPeer::Internal(agent.id()))),
@@ -136,12 +131,12 @@ impl Test {
                     // append external nodes to the node map
 
                     for (node_key, node) in &nodes.external {
-                        match test.initial_nodes.entry(node_key.clone()) {
+                        match initial_nodes.entry(node_key.clone()) {
                             Entry::Occupied(ent) => bail!("duplicate node key: {}", ent.key()),
                             Entry::Vacant(ent) => ent.insert(TestNode::External(node.to_owned())),
                         };
                     }
-                    test.node_map.extend(
+                    node_map.extend(
                         nodes
                             .external
                             .keys()
@@ -154,7 +149,11 @@ impl Test {
             }
         }
 
-        // set the test on the global state
+        let test = Test {
+            storage_id: storage_id.ok_or_else(|| anyhow!("test is missing storage document"))?,
+            node_map,
+            initial_nodes,
+        };
 
         let test_id = state.tests_counter.fetch_add(1, Ordering::Relaxed);
         state_lock.insert(test_id, test);
@@ -165,8 +164,6 @@ impl Test {
 
         Ok(test_id)
     }
-
-    // TODO: cleanup by test id, rather than cleanup EVERY agent...
 
     pub async fn cleanup(id: &usize, state: &GlobalState) -> anyhow::Result<()> {
         // clear the test state
@@ -234,12 +231,11 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
             .ok_or_else(|| anyhow!("test not found"))?;
 
         // get the numeric storage ID from the string storage ID
-        let storage_id = {
-            let storage_lock = state.storage.read().await;
-            match storage_lock.get_by_right(test.storage_id.as_str()) {
-                Some(id) => *id,
-                None => bail!("invalid storage ID specified for node"),
-            }
+        let storage_id = test.storage_id;
+
+        // obtain the actual storage
+        let Some(storage) = state.storage.read().await.get(&storage_id).cloned() else {
+            bail!("test {id} storage {storage_id} not found...")
         };
 
         let pool_lock = state.pool.read().await;
@@ -320,11 +316,10 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
 
             // resolve the peers and validators
             let mut node_state = node.into_state(key.ty);
-            node_state.private_key = node.key.as_ref().map(|key| match key {
-                KeySource::Literal(pk) => pk.to_owned(),
-                KeySource::Committee(_i) => todo!(),
-                KeySource::Named(_, _) => todo!(),
-            });
+            node_state.private_key = node
+                .key
+                .as_ref()
+                .and_then(|key| storage.lookup_keysource(key));
             node_state.peers = matching_nodes(key, &node.peers, false)?;
             node_state.validators = matching_nodes(key, &node.validators, true)?;
 

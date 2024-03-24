@@ -1,16 +1,23 @@
 use std::{
+    collections::HashMap,
     ops::Deref,
     path::PathBuf,
     process::Stdio,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use anyhow::ensure;
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
+use anyhow::{anyhow, ensure};
+use indexmap::IndexMap;
+use serde::{
+    de::{DeserializeOwned, Visitor},
+    Deserialize, Deserializer, Serialize,
+};
 use tokio::process::Command;
 use tracing::warn;
 
 use crate::state::GlobalState;
+
+use super::nodes::KeySource;
 
 /// A storage document. Explains how storage for a test should be set up.
 #[derive(Deserialize, Debug, Clone)]
@@ -70,6 +77,21 @@ impl Default for GenesisGeneration {
             additional_balances: 100_000_000_000,
         }
     }
+}
+
+// IndexMap<addr, private_key>
+pub type AleoAddrMap = IndexMap<String, String>;
+
+#[derive(Debug, Clone)]
+pub struct LoadedStorage {
+    /// Storage ID
+    pub id: String,
+    /// Path to storage data
+    pub path: PathBuf,
+    /// committee lookup
+    pub committee: AleoAddrMap,
+    /// other accounts files lookup
+    pub accounts: HashMap<String, AleoAddrMap>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -134,13 +156,13 @@ impl From<FilenameString> for String {
 }
 
 impl Document {
-    pub async fn prepare(self, state: &GlobalState) -> anyhow::Result<()> {
+    pub async fn prepare(&self, state: &GlobalState) -> anyhow::Result<usize> {
         static STORAGE_ID_INT: AtomicUsize = AtomicUsize::new(0);
 
-        let id = String::from(self.id);
+        let id = String::from(self.id.clone());
 
         // ensure this ID isn't already prepared
-        if state.storage.read().await.contains_right(&id) {
+        if state.storage_ids.read().await.contains_right(&id) {
             // TODO: we probably don't want to warn here. instead, it would be nice to
             // hash/checksum the storage to compare it with the conflicting storage
             warn!("a storage with the id {id} has already been prepared");
@@ -153,7 +175,7 @@ impl Document {
 
         // TODO: respect self.prefer_existing
 
-        match self.generate {
+        match self.generate.clone() {
             // generate the block and ledger if we have generation params
             Some(mut generation) => 'generate: {
                 // warn if an existing block/ledger already exists
@@ -176,12 +198,13 @@ impl Document {
                     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                         .join("../../target/release/snarkos-aot"),
                 );
+                let output = base.join(&generation.genesis.output);
                 let res = Command::new(bin)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .arg("genesis")
                     .arg("--output")
-                    .arg(&generation.genesis.output)
+                    .arg(&output)
                     .arg("--committee-size")
                     .arg(generation.genesis.committee.to_string())
                     .arg("--committee-output")
@@ -200,11 +223,8 @@ impl Document {
                     warn!("failed to run genesis generation command...");
                 }
 
-                if tokio::fs::try_exists(&generation.genesis.output)
-                    .await
-                    .is_err()
-                {
-                    anyhow::bail!("failed to generate {:#?}", generation.genesis.output);
+                if tokio::fs::try_exists(&output).await.is_err() {
+                    anyhow::bail!("failed to generate {:#?}", output);
                 }
 
                 let res = Command::new("tar")
@@ -261,11 +281,67 @@ impl Document {
             }
         }
 
+        let mut accounts = HashMap::new();
+        accounts.insert(
+            "accounts".to_owned(),
+            read_to_addrs(pick_additional_addr, base.join("accounts.json")).await?,
+        );
+
+        // todo: maybe update the loaded storage in global state if the hash
+        // of the storage document is different I guess...
+        // that might interfere with running tests, so I don't know
+
         // add the prepared storage to the storage map
-        let mut storage_lock = state.storage.write().await;
+        let mut storage_lock = state.storage_ids.write().await;
         let int_id = STORAGE_ID_INT.fetch_add(1, Ordering::Relaxed);
         storage_lock.insert(int_id, id.to_owned());
 
-        Ok(())
+        let mut storage_lock = state.storage.write().await;
+        storage_lock.insert(
+            int_id,
+            LoadedStorage {
+                id: id.to_owned(),
+                path: base.clone(),
+                committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
+                accounts,
+            },
+        );
+
+        Ok(int_id)
+    }
+}
+
+fn pick_additional_addr(entry: (String, u64, Option<serde_json::Value>)) -> String {
+    entry.0
+}
+fn pick_commitee_addr(entry: (String, u64)) -> String {
+    entry.0
+}
+
+async fn read_to_addrs<T: DeserializeOwned>(
+    f: impl Fn(T) -> String,
+    file: PathBuf,
+) -> anyhow::Result<AleoAddrMap> {
+    let data = tokio::fs::read_to_string(&file)
+        .await
+        .map_err(|e| anyhow!("error reading balances {file:?}: {e}"))?;
+    let parsed: IndexMap<String, T> =
+        serde_json::from_str(&data).map_err(|e| anyhow!("error parsing balances {file:?}: {e}"))?;
+
+    Ok(parsed.into_iter().map(|(k, v)| (k, f(v))).collect())
+}
+
+impl LoadedStorage {
+    pub fn lookup_keysource(&self, key: &KeySource) -> Option<String> {
+        match key {
+            KeySource::Literal(pk) => Some(pk.clone()),
+            KeySource::Committee(Some(i)) => self.committee.get_index(*i).map(|(_, pk)| pk.clone()),
+            KeySource::Committee(None) => None,
+            KeySource::Named(name, Some(i)) => self
+                .accounts
+                .get(name)
+                .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone())),
+            KeySource::Named(_name, None) => None,
+        }
     }
 }

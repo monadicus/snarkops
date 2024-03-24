@@ -30,7 +30,13 @@ async fn redirect_storage(
     Path((storage_id, ty)): Path<(usize, StorageType)>,
     state: State<AppState>,
 ) -> Response {
-    let Some(real_id) = state.storage.read().await.get_by_left(&storage_id).cloned() else {
+    let Some(real_id) = state
+        .storage_ids
+        .read()
+        .await
+        .get_by_left(&storage_id)
+        .cloned()
+    else {
         return StatusCode::NOT_FOUND.into_response();
     };
 

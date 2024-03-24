@@ -47,6 +47,7 @@ pub async fn start(cli: Cli) -> Result<()> {
         cli,
         db,
         pool: Default::default(),
+        storage_ids: Default::default(),
         storage: Default::default(),
         tests_counter: Default::default(),
         tests: Default::default(),

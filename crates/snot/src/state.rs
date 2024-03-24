@@ -21,6 +21,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     cli::Cli,
+    schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
     testing::Test,
 };
@@ -36,7 +37,8 @@ pub struct GlobalState {
     pub db: Surreal<Db>,
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
-    pub storage: RwLock<BiMap<usize, String>>,
+    pub storage_ids: RwLock<BiMap<usize, String>>,
+    pub storage: RwLock<HashMap<usize, LoadedStorage>>,
 
     pub tests_counter: AtomicUsize,
     pub tests: RwLock<HashMap<usize, Test>>,
