@@ -93,6 +93,11 @@ impl Agent {
         external.is_some() || !internal.is_empty()
     }
 
+    /// Check if a test is inventory state
+    pub fn is_inventory(&self) -> bool {
+        matches!(self.state, AgentState::Inventory)
+    }
+
     /// The ID of this agent.
     pub fn id(&self) -> usize {
         self.id

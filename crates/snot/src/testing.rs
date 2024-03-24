@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering;
+use std::{fmt::Display, sync::atomic::Ordering};
 
 use anyhow::{anyhow, bail, ensure};
 use bimap::{BiHashMap, BiMap};
@@ -38,6 +38,15 @@ pub enum TestNode {
 pub enum TestPeer {
     Internal(AgentId),
     External,
+}
+
+impl Display for TestPeer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TestPeer::Internal(id) => write!(f, "agent {id}"),
+            TestPeer::External => write!(f, "external node"),
+        }
+    }
 }
 
 impl Test {
@@ -108,12 +117,14 @@ impl Test {
 
                     // delegate agents to become nodes
                     let pool = state.pool.read().await;
-                    let online_agents = pool.values().filter(|a| a.is_node_capable());
-                    let num_online_agents = online_agents.clone().count();
+                    let available_agent = pool
+                        .values()
+                        .filter(|a| a.is_node_capable() && a.is_inventory());
+                    let num_available_agents = available_agent.clone().count();
 
                     ensure!(
-                        num_online_agents >= initial_nodes.len(),
-                        "not enough online agents to satisfy node topology"
+                        num_available_agents >= initial_nodes.len(),
+                        "not enough available agents to satisfy node topology"
                     );
 
                     // TODO: remove this naive delegation, replace with
@@ -125,8 +136,13 @@ impl Test {
                         initial_nodes
                             .keys()
                             .cloned()
-                            .zip(online_agents.map(|agent| TestPeer::Internal(agent.id()))),
+                            .zip(available_agent.map(|agent| TestPeer::Internal(agent.id()))),
                     );
+
+                    info!("delegated {} nodes to agents", node_map.len());
+                    for (key, node) in &node_map {
+                        info!("node {key}: {node}");
+                    }
 
                     // append external nodes to the node map
 
@@ -167,18 +183,27 @@ impl Test {
 
     pub async fn cleanup(id: &usize, state: &GlobalState) -> anyhow::Result<()> {
         // clear the test state
-        {
-            info!("clearing test state...");
+        info!("clearing test {id} state...");
+        let Some(test) = ({
             let mut state_lock = state.tests.write().await;
-            state_lock.remove(id);
-        }
+            state_lock.remove(id)
+        }) else {
+            bail!("test {id} not found")
+        };
 
         // reconcile all online agents
         let (ids, handles): (Vec<_>, Vec<_>) = {
             let agents = state.pool.read().await;
-            agents
-                .values()
+            test.node_map
+                .right_values()
+                // find all agents associated with the test
+                .filter_map(|peer| match peer {
+                    TestPeer::Internal(id) => agents.get(id),
+                    _ => None,
+                })
+                // map the agents to rpc clients
                 .filter_map(|agent| agent.client_owned().map(|client| (agent.id(), client)))
+                // inventory reconcile the agents
                 .map(|(id, client)| {
                     (
                         id,
@@ -325,9 +350,12 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
 
             let agent_state = AgentState::Node(storage_id, node_state);
             agent_ids.push(*id);
-            handles.push(tokio::spawn(
-                async move { client.reconcile(agent_state).await },
-            ));
+            handles.push(tokio::spawn(async move {
+                client
+                    .reconcile(agent_state.clone())
+                    .await
+                    .map(|res| res.map(|_| agent_state))
+            }));
         }
     }
 
@@ -346,13 +374,13 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
 
         match result {
             // oh god
-            Ok(Ok(Ok(()))) => {
-                agent.set_state(AgentState::Inventory);
+            Ok(Ok(Ok(state))) => {
+                agent.set_state(state);
                 success += 1;
             }
 
             // reconcile error
-            Ok(Ok(Err(e))) => warn!(
+            Ok(Err(e)) => warn!(
                 "agent {} experienced a reconcilation error: {e}",
                 agent.id()
             ),
