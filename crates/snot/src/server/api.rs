@@ -70,8 +70,6 @@ async fn post_test_prepare(state: State<AppState>, body: String) -> Response {
 
     // TODO: clean up existing test
 
-    // TODO: support concurrent tests + return test id
-
     match Test::prepare(documents, &state).await {
         Ok(test_id) => (StatusCode::OK, Json(json!({ "id": test_id }))).into_response(),
         Err(e) => (
