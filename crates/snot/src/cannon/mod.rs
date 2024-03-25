@@ -109,10 +109,10 @@ impl TestCannon {
         duration: CannonDuration,
         test_id: usize,
     ) -> Result<Self> {
-        ensure!(
-            (source.needs_test_id() || sink.needs_test_id()) != test_id.is_some(),
-            "Test ID must be provided if either source or sink requires it"
-        );
+        // ensure!(
+        //     (source.needs_test_id() || sink.needs_test_id()) != test_id.is_some(),
+        //     "Test ID must be provided if either source or sink requires it"
+        // );
 
         // mapping with async is ugly and blocking_read is scary
         let env = {
@@ -186,9 +186,7 @@ impl TestCannon {
                 }
                 LedgerQueryService::Node(key) => {
                     // test_id must be Some because LedgerQueryService::Node requires it
-                    let Some(agent_id) =
-                        self.env.as_ref().and_then(|t| t.test.get_agent_by_key(key))
-                    else {
+                    let Some(agent_id) = self.env.test.get_agent_by_key(key) else {
                         bail!("cannon target agent not found")
                     };
 
