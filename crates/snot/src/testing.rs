@@ -1,4 +1,7 @@
-use std::{fmt::Display, sync::atomic::Ordering};
+use std::{
+    fmt::Display,
+    sync::{atomic::Ordering, Arc},
+};
 
 use anyhow::{anyhow, bail, ensure};
 use bimap::{BiHashMap, BiMap};
@@ -172,7 +175,7 @@ impl Test {
         };
 
         let test_id = state.tests_counter.fetch_add(1, Ordering::Relaxed);
-        state_lock.insert(test_id, test);
+        state_lock.insert(test_id, Arc::new(test));
         drop(state_lock);
 
         // reconcile the nodes
@@ -242,6 +245,14 @@ impl Test {
         info!("cleanup result: {success}/{num_reconciles} agents inventoried");
 
         Ok(())
+    }
+
+    /// Lookup a test agent id by node key.
+    pub fn get_agent_by_key(&self, key: &NodeKey) -> Option<AgentId> {
+        self.node_map.get_by_left(key).and_then(|id| match id {
+            TestPeer::Internal(id) => Some(*id),
+            TestPeer::External => None,
+        })
     }
 }
 
@@ -331,11 +342,11 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
             };
 
             // get the internal agent ID from the node key
-            let Some(TestPeer::Internal(id)) = test.node_map.get_by_left(key) else {
+            let Some(id) = test.get_agent_by_key(key) else {
                 bail!("expected internal agent peer for node with key {key}")
             };
 
-            let Some(client) = pool_lock.get(id).and_then(|a| a.client_owned()) else {
+            let Some(client) = pool_lock.get(&id).and_then(|a| a.client_owned()) else {
                 continue;
             };
 
@@ -349,7 +360,7 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
             node_state.validators = matching_nodes(key, &node.validators, true)?;
 
             let agent_state = AgentState::Node(storage_id, node_state);
-            agent_ids.push(*id);
+            agent_ids.push(id);
             handles.push(tokio::spawn(async move {
                 client
                     .reconcile(agent_state.clone())

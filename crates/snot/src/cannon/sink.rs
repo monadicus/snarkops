@@ -1,12 +1,11 @@
-use tokio::process::Child;
+use serde::Deserialize;
 
 use crate::schema::NodeTargets;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub enum TxSink {
     /// Write transactions to a file
     AoTRecord {
-        storage_id: usize,
         /// filename for the recording txs list
         name: String,
     },
@@ -14,10 +13,8 @@ pub enum TxSink {
     AoTAppend {
         // information for running .. another ledger service
         // solely for appending blocks to a ledger...
-        storage_id: usize,
-        child: Child,
-        port: u16,
-
+        // storage_id: usize,
+        // port: u16,
         /// Number of transactions per block
         tx_per_block: u32,
     },

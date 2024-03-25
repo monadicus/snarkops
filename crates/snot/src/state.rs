@@ -13,7 +13,7 @@ use bimap::BiMap;
 use jwt::SignWithKey;
 use snot_common::{
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentState, NodeKey, PortConfig},
+    state::{AgentState, PortConfig},
 };
 use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
@@ -24,7 +24,7 @@ use crate::{
     cli::Cli,
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
-    testing::{Test, TestPeer},
+    testing::Test,
 };
 
 pub type AgentId = usize;
@@ -39,11 +39,11 @@ pub struct GlobalState {
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage_ids: RwLock<BiMap<usize, String>>,
-    pub storage: RwLock<HashMap<usize, LoadedStorage>>,
+    pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
     pub cannons: RwLock<HashMap<usize, Arc<TestCannon>>>,
 
     pub tests_counter: AtomicUsize,
-    pub tests: RwLock<HashMap<usize, Test>>,
+    pub tests: RwLock<HashMap<usize, Arc<Test>>>,
 }
 
 /// This is the representation of a public addr or a list of internal addrs.
@@ -270,19 +270,5 @@ impl GlobalState {
             .await
             .get(&id)
             .and_then(|a| a.client_owned())
-    }
-
-    /// Lookup a test agent id by test id and node key.
-    /// Locks tests for reading
-    pub async fn get_test_agent(&self, test_id: usize, node: &NodeKey) -> Option<AgentId> {
-        self.tests
-            .read()
-            .await
-            .get(&test_id)
-            .and_then(|t| t.node_map.get_by_left(node))
-            .and_then(|id| match id {
-                TestPeer::Internal(id) => Some(*id),
-                TestPeer::External => None,
-            })
     }
 }

@@ -1,19 +1,19 @@
 use std::collections::HashSet;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use serde::Deserialize;
 use snot_common::state::NodeKey;
-use tokio::process::Child;
+
+use super::net::get_available_port;
 
 /// Represents an instance of a local query service.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct LocalQueryService {
-    /// child process running the ledger query service
-    child: Child,
     /// Ledger & genesis block to use
-    pub storage_id: usize,
+    // pub storage_id: usize,
     /// port to host the service on (needs to be unused by other cannons and services)
     /// this port will be use when forwarding requests to the local query service
-    pub port: u16,
+    // pub port: u16,
 
     // TODO debate this
     /// An optional node to sync blocks from...
@@ -31,8 +31,8 @@ impl LocalQueryService {
     // TODO: cache this when sync_from is false
     /// Fetch the state root from the local query service
     /// (non-cached)
-    pub async fn get_state_root(&self) -> Result<String> {
-        let url = format!("http://127.0.0.1:{}/mainnet/latest/stateRoot", self.port);
+    pub async fn get_state_root(&self, port: u16) -> Result<String> {
+        let url = format!("http://127.0.0.1:{}/mainnet/latest/stateRoot", port);
         let response = reqwest::get(&url).await?;
         Ok(response.text().await?)
     }
@@ -41,7 +41,7 @@ impl LocalQueryService {
 /// Used to determine the redirection for the following paths:
 /// /cannon/<id>/mainnet/latest/stateRoot
 /// /cannon/<id>/mainnet/transaction/broadcast
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub enum LedgerQueryService {
     /// Use the local ledger query service
     Local(LocalQueryService),
@@ -56,13 +56,12 @@ impl LedgerQueryService {
         match self {
             LedgerQueryService::Node(_) => true,
             LedgerQueryService::Local(LocalQueryService { sync_from, .. }) => sync_from.is_some(),
-            _ => false,
         }
     }
 }
 
 /// Which service is providing the compute power for executing transactions
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub enum ComputeTarget {
     /// Use the agent pool to generate executions
     AgentPool,
@@ -70,7 +69,7 @@ pub enum ComputeTarget {
     Demox,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq, Deserialize)]
 pub enum CreditsTxMode {
     BondPublic,
     UnbondPublic,
@@ -81,22 +80,18 @@ pub enum CreditsTxMode {
     TransferPrivateToPublic,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq, Deserialize)]
 pub enum TxMode {
     Credits(CreditsTxMode),
     // TODO: Program(program, func, input types??)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub enum TxSource {
     /// Read transactions from a file
     AoTPlayback {
-        storage_id: usize,
-        // filename for the tx list
+        // filename from the storage for the tx list
         name: String,
-        // TODO: is this enum a config or state enum?
-        // if it solely config, we may need to put a nonblocking appender
-        // somewhere else
     },
     /// Generate transactions in real time
     RealTime {
@@ -116,5 +111,18 @@ impl TxSource {
             TxSource::RealTime { query, .. } => query.needs_test_id(),
             _ => false,
         }
+    }
+
+    /// Get an available port for the query service if applicable
+    pub fn get_query_port(&self) -> Result<Option<u16>> {
+        matches!(
+            self,
+            TxSource::RealTime {
+                query: LedgerQueryService::Local(_),
+                ..
+            }
+        )
+        .then(|| get_available_port().ok_or(anyhow!("could not get an available port")))
+        .transpose()
     }
 }

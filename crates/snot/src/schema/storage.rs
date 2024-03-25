@@ -3,7 +3,10 @@ use std::{
     ops::Deref,
     path::PathBuf,
     process::Stdio,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use anyhow::{anyhow, ensure};
@@ -296,16 +299,14 @@ impl Document {
         let int_id = STORAGE_ID_INT.fetch_add(1, Ordering::Relaxed);
         storage_lock.insert(int_id, id.to_owned());
 
+        let storage = LoadedStorage {
+            id: id.to_owned(),
+            path: base.clone(),
+            committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
+            accounts,
+        };
         let mut storage_lock = state.storage.write().await;
-        storage_lock.insert(
-            int_id,
-            LoadedStorage {
-                id: id.to_owned(),
-                path: base.clone(),
-                committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
-                accounts,
-            },
-        );
+        storage_lock.insert(int_id, Arc::new(storage));
 
         Ok(int_id)
     }
