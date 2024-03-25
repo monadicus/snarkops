@@ -2,7 +2,9 @@ use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::A
 
 use snot_common::{
     rpc::{
-        agent::{AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError},
+        agent::{
+            AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError,
+        },
         control::{ControlServiceRequest, ControlServiceResponse},
         MuxMessage,
     },
@@ -363,5 +365,10 @@ impl AgentService for AgentRpcServer {
             self.state.external_addr,
             self.state.internal_addrs.clone(),
         )
+    }
+
+    async fn get_metric(self, _: context::Context, metric: AgentMetric) -> Result<f64, ()> {
+        // ...
+        Ok(0.0)
     }
 }

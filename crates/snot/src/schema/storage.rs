@@ -15,9 +15,8 @@ use serde::{
 use tokio::process::Command;
 use tracing::warn;
 
-use crate::state::GlobalState;
-
 use super::nodes::KeySource;
+use crate::state::GlobalState;
 
 /// A storage document. Explains how storage for a test should be set up.
 #[derive(Deserialize, Debug, Clone)]
@@ -177,7 +176,7 @@ impl Document {
 
         match self.generate.clone() {
             // generate the block and ledger if we have generation params
-            Some(mut generation) => 'generate: {
+            Some(generation) => 'generate: {
                 // warn if an existing block/ledger already exists
                 if exists {
                     // TODO: is this the behavior we want?
@@ -188,11 +187,6 @@ impl Document {
                     tokio::fs::create_dir_all(&base).await?;
                 }
 
-                generation.genesis = GenesisGeneration {
-                    output: base.join(generation.genesis.output),
-                    ..generation.genesis
-                };
-
                 // generate the genesis block using the aot cli
                 let bin = std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
                     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -200,8 +194,8 @@ impl Document {
                 );
                 let output = base.join(&generation.genesis.output);
                 let res = Command::new(bin)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
                     .arg("genesis")
                     .arg("--output")
                     .arg(&output)

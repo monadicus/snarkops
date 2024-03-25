@@ -7,7 +7,12 @@ version = "0.1.0"
 
 [features]
 default = ["node"]
-node = ["snarkos-node", "crossterm"]
+node = [
+    "snarkos-node",
+    "crossterm",
+    "snarkos-node/metrics",
+    "metrics-exporter-prometheus",
+]
 
 [dependencies]
 aleo-std.workspace = true
@@ -15,9 +20,11 @@ anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
 colored.workspace = true
+crossterm = { version = "0.27", optional = true }
 indexmap.workspace = true
 indicatif.workspace = true
 lazy_static.workspace = true
+metrics-exporter-prometheus = { version = "0.13", optional = true }
 nix.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
@@ -36,7 +43,10 @@ tracing-flame = "0.2.0"
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 tracing.workspace = true
-crossterm = { version = "0.27", optional = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 tikv-jemallocator = "0.5"
+
+[dependencies.metrics]
+package = "snarkos-node-metrics"
+path = "../../../snarkos/node/metrics"

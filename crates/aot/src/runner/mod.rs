@@ -14,6 +14,8 @@ use snot_common::state::NodeType;
 
 use crate::{ledger::Addrs, Account, PrivateKey};
 
+mod metrics;
+
 #[serde_clap_default]
 #[derive(Debug, Args, Serialize, Deserialize)]
 pub struct Runner {
@@ -43,6 +45,9 @@ pub struct Runner {
     /// Specify the IP address and port for the REST server
     #[clap(long = "rest", default_value_t = 3030)]
     pub rest: u16,
+    /// Specify the port for the metrics server
+    #[clap(long = "metrics", default_value_t = 9000)]
+    pub metrics: u16,
 
     /// Specify the IP address and port of the peer(s) to connect to
     #[clap(long = "peers", default_value = "")]
@@ -63,13 +68,36 @@ impl Runner {
         let node_ip = SocketAddr::new(bind_addr, self.node);
         let rest_ip = SocketAddr::new(bind_addr, self.rest);
         let bft_ip = SocketAddr::new(bind_addr, self.bft);
+        let metrics_ip = SocketAddr::new(bind_addr, self.metrics);
 
         let account = Account::try_from(self.private_key)?;
 
         let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
         let storage_mode = StorageMode::Custom(self.ledger);
 
-        // snarkos_node::metrics::initialize_metrics();
+        // slight alterations to the normal `metrics::initialize_metrics` because of
+        // visibility issues
+        {
+            // Build the Prometheus exporter.
+            metrics_exporter_prometheus::PrometheusBuilder::new()
+                .with_http_listener(metrics_ip)
+                .install()
+                .expect("can't build the prometheus exporter");
+
+            // Register the snarkVM metrics.
+            snarkvm::metrics::register_metrics();
+
+            // Register the metrics so they exist on init.
+            for name in metrics::GAUGE_NAMES {
+                ::metrics::register_gauge(name);
+            }
+            for name in metrics::COUNTER_NAMES {
+                ::metrics::register_counter(name);
+            }
+            for name in metrics::HISTOGRAM_NAMES {
+                ::metrics::register_histogram(name);
+            }
+        }
 
         match self.node_type {
             NodeType::Validator => {
@@ -113,8 +141,3 @@ impl Runner {
         Ok(())
     }
 }
-/*
-
-
-
-*/
