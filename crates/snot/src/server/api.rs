@@ -10,15 +10,16 @@ use serde_json::json;
 use snot_common::rpc::agent::AgentMetric;
 
 use super::AppState;
-use crate::testing::Environment;
+use crate::{cannon::router::redirect_cannon_routes, testing::Environment};
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
-        .route("/storage/:id/:ty", get(redirect_storage))
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
-        .route("/test/prepare", post(post_test_prepare))
-        .route("/test/:id", delete(delete_test))
+        .route("/env/prepare", post(post_env_prepare))
+        .route("/env/:env_id", delete(delete_env))
+        .route("/env/:env_id/storage/:ty", get(redirect_storage))
+        .nest("/env/:env_id/cannons", redirect_cannon_routes())
 }
 
 #[derive(Deserialize)]
@@ -29,18 +30,13 @@ enum StorageType {
 }
 
 async fn redirect_storage(
-    Path((storage_id, ty)): Path<(usize, StorageType)>,
+    Path((env_id, ty)): Path<(usize, StorageType)>,
     state: State<AppState>,
 ) -> Response {
-    let Some(real_id) = state
-        .storage_ids
-        .read()
-        .await
-        .get_by_left(&storage_id)
-        .cloned()
-    else {
+    let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let real_id = &env.storage.id;
 
     let filename = match ty {
         StorageType::Genesis => "genesis.block",
@@ -72,7 +68,7 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<usize>) -> Respons
         .into_response()
 }
 
-async fn post_test_prepare(state: State<AppState>, body: String) -> Response {
+async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
     let documents = match Environment::deserialize(&body) {
         Ok(documents) => documents,
         Err(e) => {
@@ -99,10 +95,7 @@ async fn post_test_prepare(state: State<AppState>, body: String) -> Response {
     }
 }
 
-async fn delete_test(
-    Path(env_id): Path<usize>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+async fn delete_env(Path(env_id): Path<usize>, State(state): State<AppState>) -> impl IntoResponse {
     match Environment::cleanup(&env_id, &state).await {
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => (

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-curl 'http://127.0.0.1:1234/api/v1/test' -X DELETE
+curl 'http://127.0.0.1:1234/api/v1/env' -X DELETE
 
 # TODO: specify the test to abort
 

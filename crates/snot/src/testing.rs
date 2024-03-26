@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::Display,
+    path::PathBuf,
     sync::{
         atomic::{AtomicU32, AtomicUsize, Ordering},
         Arc,
@@ -30,6 +31,7 @@ pub struct Environment {
     pub storage: Arc<LoadedStorage>,
     pub node_map: BiMap<NodeKey, EnvPeer>,
     pub initial_nodes: IndexMap<NodeKey, EnvNode>,
+    pub aot_bin: PathBuf,
 
     /// Map of transaction files to their respective counters
     pub transaction_counters: HashMap<String, AtomicU32>,
@@ -195,6 +197,15 @@ impl Environment {
             cannon_configs,
             cannons_counter: Default::default(),
             cannons: Default::default(),
+            aot_bin: {
+                // TODO: specify the binary when uploading the test or something
+                std::env::var("AOT_BIN")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| {
+                        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                            .join("../../target/release/snarkos-aot")
+                    })
+            },
         };
 
         let env_id = state.envs_counter.fetch_add(1, Ordering::Relaxed);
@@ -202,7 +213,7 @@ impl Environment {
         drop(state_lock);
 
         // reconcile the nodes
-        initial_reconcile(&env_id, state).await?;
+        initial_reconcile(env_id, state).await?;
 
         Ok(env_id)
     }
@@ -280,12 +291,14 @@ impl Environment {
 }
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Result<()> {
+pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Result<()> {
     let mut handles = vec![];
     let mut agent_ids = vec![];
     {
         let envs_lock = state.envs.read().await;
-        let env = envs_lock.get(id).ok_or_else(|| anyhow!("env not found"))?;
+        let env = envs_lock
+            .get(&env_id)
+            .ok_or_else(|| anyhow!("env not found"))?;
 
         let pool_lock = state.pool.read().await;
 
@@ -368,11 +381,11 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
             node_state.private_key = node
                 .key
                 .as_ref()
-                .and_then(|key| env.storage.lookup_keysource(key));
+                .and_then(|key| env.storage.lookup_keysource_pk(key));
             node_state.peers = matching_nodes(key, &node.peers, false)?;
             node_state.validators = matching_nodes(key, &node.validators, true)?;
 
-            let agent_state = AgentState::Node(id, node_state);
+            let agent_state = AgentState::Node(env_id, node_state);
             agent_ids.push(id);
             handles.push(tokio::spawn(async move {
                 client

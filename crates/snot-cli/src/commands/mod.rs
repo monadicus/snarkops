@@ -1,17 +1,17 @@
 use anyhow::Result;
 use clap::Parser;
 
-mod test;
+mod env;
 
 #[derive(Debug, Parser)]
 pub enum Commands {
-    Test(test::Test),
+    Env(env::Env),
 }
 
 impl Commands {
     pub fn run(self) -> Result<()> {
         match self {
-            Commands::Test(test) => test.run(),
+            Commands::Env(test) => test.run(),
         }
     }
 }

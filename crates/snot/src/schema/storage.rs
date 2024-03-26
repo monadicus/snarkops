@@ -347,7 +347,7 @@ async fn read_to_addrs<T: DeserializeOwned>(
 }
 
 impl LoadedStorage {
-    pub fn lookup_keysource(&self, key: &KeySource) -> Option<String> {
+    pub fn lookup_keysource_pk(&self, key: &KeySource) -> Option<String> {
         match key {
             KeySource::Literal(pk) => Some(pk.clone()),
             KeySource::Committee(Some(i)) => self.committee.get_index(*i).map(|(_, pk)| pk.clone()),
@@ -356,6 +356,21 @@ impl LoadedStorage {
                 .accounts
                 .get(name)
                 .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone())),
+            KeySource::Named(_name, None) => None,
+        }
+    }
+
+    pub fn lookup_keysource_addr(&self, key: &KeySource) -> Option<String> {
+        match key {
+            KeySource::Literal(addr) => Some(addr.clone()),
+            KeySource::Committee(Some(i)) => {
+                self.committee.get_index(*i).map(|(addr, _)| addr.clone())
+            }
+            KeySource::Committee(None) => None,
+            KeySource::Named(name, Some(i)) => self
+                .accounts
+                .get(name)
+                .and_then(|a| a.get_index(*i).map(|(addr, _)| addr.clone())),
             KeySource::Named(_name, None) => None,
         }
     }

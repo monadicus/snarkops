@@ -11,8 +11,8 @@ use crate::state::AppState;
 
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
-        .route("/:env/:id/mainnet/latest/stateRoot", get(state_root))
-        .route("/:env/:id/mainnet/transaction/broadcast", post(transaction))
+        .route("/:cannon/mainnet/latest/stateRoot", get(state_root))
+        .route("/:cannon/mainnet/transaction/broadcast", post(transaction))
 }
 
 async fn state_root(

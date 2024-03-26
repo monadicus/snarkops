@@ -3,7 +3,8 @@ use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::A
 use snot_common::{
     rpc::{
         agent::{
-            AgentError, AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError,
+            AgentError, AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse,
+            ReconcileError,
         },
         control::{ControlServiceRequest, ControlServiceResponse},
         MuxMessage,
@@ -108,8 +109,9 @@ impl AgentService for AgentRpcServer {
             'storage: {
                 match (&old_state, &target) {
                     (AgentState::Node(old, _), AgentState::Node(new, _)) if old == new => {
-                        // same storage_id
+                        // same environment id
                         // TODO: check if we need to update the ledger height
+                        debug!("skipping agent storage download");
                         break 'storage;
                     }
 
@@ -138,27 +140,33 @@ impl AgentService for AgentRpcServer {
 
                 // download and decompress the storage
                 // skip if we don't need storage
-                let AgentState::Node(storage_id, _) = &target else {
+                let AgentState::Node(env_id, _) = &target else {
+                    info!("agent is not running a node; skipping storage download");
                     break 'storage;
                 };
 
                 let genesis_url = format!(
-                    "http://{}/api/v1/storage/{storage_id}/genesis",
+                    "http://{}/api/v1/env/{env_id}/storage/genesis",
                     &state.endpoint
                 );
 
                 let ledger_url = format!(
-                    "http://{}/api/v1/storage/{storage_id}/ledger",
+                    "http://{}/api/v1/env/{env_id}/storage/ledger",
                     &state.endpoint
                 );
+
+                debug!("downloading genesis block");
 
                 // download the genesis block
                 api::download_file(genesis_url, base_path.join(SNARKOS_GENESIS_FILE))
                     .await
                     .map_err(|_| ReconcileError::StorageAcquireError)?;
+                debug!("downloaded genesis block...");
 
                 // download the ledger
                 let mut fail = false;
+
+                debug!("downloading ledger");
 
                 if let Ok(Some(())) =
                     api::download_file(ledger_url, base_path.join(LEDGER_STORAGE_FILE))
@@ -166,6 +174,7 @@ impl AgentService for AgentRpcServer {
                         .map_err(|_| ReconcileError::StorageAcquireError)
                 {
                     // TODO: remove existing ledger probably
+                    debug!("downloaded ledger...");
 
                     // use `tar` to decompress the storage
                     let mut tar_child = Command::new("tar")
@@ -307,7 +316,7 @@ impl AgentService for AgentRpcServer {
                                         }
                                     }
                                     Ok(Some(line)) = reader2.next_line() => {
-                                            error!(line);
+                                        error!(line);
                                     }
                                 }
                             }
@@ -389,7 +398,7 @@ impl AgentService for AgentRpcServer {
             .await
             .map_err(|_| AgentError::FailedToParseJson)
     }
-  
+
     async fn get_metric(self, _: context::Context, metric: AgentMetric) -> f64 {
         let metrics = self.state.metrics.read().await;
 

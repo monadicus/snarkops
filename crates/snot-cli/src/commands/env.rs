@@ -6,7 +6,7 @@ use serde_json::Value;
 
 /// For interacting with snot tests.
 #[derive(Debug, Parser)]
-pub struct Test {
+pub struct Env {
     /// The url the agent is on.
     #[clap(short, long, default_value = "http://localhost:1234")]
     url: url::Url,
@@ -14,17 +14,17 @@ pub struct Test {
     command: Commands,
 }
 
-/// Test commands
+/// Env commands
 #[derive(Debug, Parser)]
 enum Commands {
-    /// Start a test.
+    /// Start a Env.
     Start {
         /// The test spec file.
         spec: PathBuf,
     },
-    /// Stop a test(s).
+    /// Stop a Env(s).
     Stop {
-        /// Stop all tests.
+        /// Stop all envs.
         // #[clap(short, long)]
         // all: bool,
         /// Stop a specific test.
@@ -32,9 +32,9 @@ enum Commands {
     },
 }
 
-impl Test {
-    const START_ENDPOINT: &'static str = "api/v1/test/prepare";
-    const STOP_ENDPOINT: &'static str = "api/v1/test/";
+impl Env {
+    const START_ENDPOINT: &'static str = "api/v1/env/prepare";
+    const STOP_ENDPOINT: &'static str = "api/v1/env/";
 
     pub fn run(self) -> Result<()> {
         let client = reqwest::blocking::Client::new();
@@ -43,7 +43,7 @@ impl Test {
             Start { spec } => {
                 let file: String = std::fs::read_to_string(spec)?;
                 let id: Value = client
-                    .post(&format!("{}{}", self.url, Self::START_ENDPOINT))
+                    .post(format!("{}{}", self.url, Self::START_ENDPOINT))
                     .body(file)
                     .send()?
                     .json()?;
@@ -52,7 +52,7 @@ impl Test {
             }
             Stop { id } => {
                 client
-                    .delete(&format!("{}{}{id}", self.url, Self::STOP_ENDPOINT))
+                    .delete(format!("{}{}{id}", self.url, Self::STOP_ENDPOINT))
                     .send()?;
                 Ok(())
             }

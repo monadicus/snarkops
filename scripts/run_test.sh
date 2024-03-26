@@ -6,4 +6,4 @@ if [ ! -f "$1" ]; then
   exit 1
 fi
 
-curl http://localhost:1234/api/v1/test/prepare -d "$(cat $1)"
+curl http://localhost:1234/api/v1/env/prepare -d "$(cat $1)"

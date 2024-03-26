@@ -93,6 +93,7 @@ impl CannonInstance {
         let tx_sender = tx.clone();
 
         let query_port = source.get_query_port()?;
+        let source2 = source.clone();
 
         let fired_txs = AtomicU32::new(0);
 
@@ -100,12 +101,34 @@ impl CannonInstance {
             // TODO: write tx to sink at desired rate
             let _tx = rx.recv().await;
 
-            // TODO: if a sink or a source uses node_keys or storage
-            // env will be used
+            // spawn child process for ledger service if the source is local
+            let _child = if let Some(_port) = query_port {
+                // TODO: spawn ledger service
+                // kill on drop
+                // LedgerQueryService::Local(qs).run(port)
+
+                // generate the genesis block using the aot cli
+                // let bin = std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
+                //     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                //         .join("../../target/release/snarkos-aot"),
+                // );
+
+                // Command::new()
+                todo!()
+            };
+
+            // if tx source is playback, read lines from the transaction file
+            if let TxSource::Playback { name: _name } = source2 {
+                // TODO: use the env.transaction_counters to determine which
+                // line to read from the file
+            }
+
             println!("{}", env2.storage.id);
 
             // compare the tx id to an authorization id
             let _pending_txs = HashSet::<String>::new();
+
+            // env2.storage.lookup_keysource_pk(key)
 
             // TODO: if a local query service exists, spawn it here
             // kill on drop

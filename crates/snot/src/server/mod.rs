@@ -28,7 +28,6 @@ use self::{
     rpc::ControlRpcServer,
 };
 use crate::{
-    cannon::router::redirect_cannon_routes,
     cli::Cli,
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
     state::{Agent, AppState, GlobalState},
@@ -58,7 +57,6 @@ pub async fn start(cli: Cli) -> Result<()> {
         .nest("/api/v1", api::routes())
         // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
-        .nest("/cannons", redirect_cannon_routes())
         .with_state(Arc::new(state))
         .layer(
             TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().include_headers(true)),
