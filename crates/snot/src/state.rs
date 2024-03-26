@@ -23,7 +23,7 @@ use crate::{
     cli::Cli,
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
-    testing::Test,
+    testing::Environment,
 };
 
 pub type AgentId = usize;
@@ -38,10 +38,10 @@ pub struct GlobalState {
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage_ids: RwLock<BiMap<usize, String>>,
-    pub storage: RwLock<HashMap<usize, LoadedStorage>>,
+    pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
 
-    pub tests_counter: AtomicUsize,
-    pub tests: RwLock<HashMap<usize, Test>>,
+    pub envs_counter: AtomicUsize,
+    pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
 }
 
 /// This is the representation of a public addr or a list of internal addrs.
@@ -183,6 +183,10 @@ impl AgentClient {
     pub async fn reconcile(&self, to: AgentState) -> Result<Result<(), ReconcileError>, RpcError> {
         self.0.reconcile(context::current(), to).await
     }
+
+    pub async fn get_state_root(&self) -> Result<String> {
+        Ok(self.0.get_state_root(context::current()).await??)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -254,5 +258,15 @@ impl GlobalState {
                 Ok((*id, addrs.clone()))
             })
             .collect()
+    }
+
+    /// Lookup an rpc client by agent id.
+    /// Locks pools for reading
+    pub async fn get_client(&self, id: AgentId) -> Option<AgentClient> {
+        self.pool
+            .read()
+            .await
+            .get(&id)
+            .and_then(|a| a.client_owned())
     }
 }

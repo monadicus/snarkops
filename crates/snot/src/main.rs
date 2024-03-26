@@ -5,6 +5,7 @@ use cli::Cli;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::prelude::*;
 
+pub mod cannon;
 pub mod cli;
 pub mod schema;
 pub mod server;

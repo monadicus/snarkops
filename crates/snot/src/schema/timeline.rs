@@ -1,10 +1,13 @@
-use std::{fmt, path::PathBuf, time::Duration};
+use std::{fmt, time::Duration};
 
 use indexmap::IndexMap;
 use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer,
 };
+use snot_common::state::NodeKey;
+
+use super::NodeTargets;
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
@@ -42,7 +45,7 @@ pub enum Action {
     /// Update the given nodes to an offline state
     Offline(NodeTarget),
     /// Fire transactions from a source file at a target node
-    Cannon(Vec<TxCannon>),
+    Cannon(Vec<SpawnCannon>),
     /// Set the height of some nodes' ledgers
     Height(IndexMap<String, u64>),
 }
@@ -175,9 +178,11 @@ impl<'de> Deserialize<'de> for EventDuration {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct TxCannon {
-    pub target: String,
-    pub source: PathBuf,
-    pub total: u64,
-    pub tps: u32,
+pub struct SpawnCannon {
+    pub name: String,
+    pub count: u64,
+    /// overwrite the query's source node
+    pub query: Option<NodeKey>,
+    /// overwrite the cannon sink target
+    pub target: Option<NodeTargets>,
 }

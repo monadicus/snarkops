@@ -10,7 +10,7 @@ name: 4-validators
 
 nodes:
   validator/test:
-    replicas: 4
+    replicas: 2
     key: committee.$
     height: 0
     validators: [validator/*]

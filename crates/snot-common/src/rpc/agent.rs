@@ -20,6 +20,8 @@ pub trait AgentService {
     /// state.
     async fn reconcile(to: AgentState) -> Result<(), ReconcileError>;
 
+    /// Get the state root from the running node
+    async fn get_state_root() -> Result<String, AgentError>;
     async fn get_metric(metric: AgentMetric) -> f64;
 }
 
@@ -35,6 +37,15 @@ pub enum ReconcileError {
     Unknown,
 }
 
+#[derive(Debug, Error, Serialize, Deserialize)]
+pub enum AgentError {
+    #[error("invalid agent state")]
+    InvalidState,
+    #[error("failed to parse json")]
+    FailedToParseJson,
+    #[error("failed to make a request")]
+    FailedToMakeRequest,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentMetric {
     Tps,

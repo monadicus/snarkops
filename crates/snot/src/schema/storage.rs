@@ -3,7 +3,10 @@ use std::{
     ops::Deref,
     path::PathBuf,
     process::Stdio,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use anyhow::{anyhow, ensure};
@@ -28,6 +31,7 @@ pub struct Document {
     #[serde(default)]
     pub prefer_existing: bool,
     pub generate: Option<StorageGeneration>,
+    pub connect: Option<url::Url>,
 }
 
 /// Data generation instructions.
@@ -43,7 +47,16 @@ pub struct StorageGeneration {
     pub ledger: LedgerGeneration,
 
     #[serde(default)]
+    pub accounts: Vec<Accounts>,
+
+    #[serde(default)]
     pub transactions: Vec<Transaction>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Accounts {
+    pub file: PathBuf,
+    pub total: u64,
 }
 
 // TODO: I don't know what this type should look like
@@ -155,7 +168,7 @@ impl From<FilenameString> for String {
 }
 
 impl Document {
-    pub async fn prepare(&self, state: &GlobalState) -> anyhow::Result<usize> {
+    pub async fn prepare(self, state: &GlobalState) -> anyhow::Result<Arc<LoadedStorage>> {
         static STORAGE_ID_INT: AtomicUsize = AtomicUsize::new(0);
 
         let id = String::from(self.id.clone());
@@ -174,7 +187,7 @@ impl Document {
 
         // TODO: respect self.prefer_existing
 
-        match self.generate.clone() {
+        match self.generate {
             // generate the block and ledger if we have generation params
             Some(generation) => 'generate: {
                 // warn if an existing block/ledger already exists
@@ -193,28 +206,38 @@ impl Document {
                         .join("../../target/release/snarkos-aot"),
                 );
                 let output = base.join(&generation.genesis.output);
-                let res = Command::new(bin)
-                    .stdout(Stdio::inherit())
-                    .stderr(Stdio::inherit())
-                    .arg("genesis")
-                    .arg("--output")
-                    .arg(&output)
-                    .arg("--committee-size")
-                    .arg(generation.genesis.committee.to_string())
-                    .arg("--committee-output")
-                    .arg(base.join("committee.json"))
-                    .arg("--additional-accounts")
-                    .arg(generation.genesis.additional_accounts.to_string())
-                    .arg("--additional-accounts-output")
-                    .arg(base.join("accounts.json"))
-                    .arg("--ledger")
-                    .arg(base.join("ledger"))
-                    .spawn()?
-                    .wait()
-                    .await?;
 
-                if !res.success() {
-                    warn!("failed to run genesis generation command...");
+                match self.connect {
+                    Some(url) => {
+                        let res = reqwest::get(url).await?.error_for_status()?.bytes().await?;
+
+                        tokio::fs::write(&output, res).await?;
+                    }
+                    None => {
+                        let res = Command::new(bin)
+                            .stdout(Stdio::inherit())
+                            .stderr(Stdio::inherit())
+                            .arg("genesis")
+                            .arg("--output")
+                            .arg(&output)
+                            .arg("--committee-size")
+                            .arg(generation.genesis.committee.to_string())
+                            .arg("--committee-output")
+                            .arg(base.join("committee.json"))
+                            .arg("--additional-accounts")
+                            .arg(generation.genesis.additional_accounts.to_string())
+                            .arg("--additional-accounts-output")
+                            .arg(base.join("accounts.json"))
+                            .arg("--ledger")
+                            .arg(base.join("ledger"))
+                            .spawn()?
+                            .wait()
+                            .await?;
+
+                        if !res.success() {
+                            warn!("failed to run genesis generation command...");
+                        }
+                    }
                 }
 
                 if tokio::fs::try_exists(&output).await.is_err() {
@@ -290,18 +313,16 @@ impl Document {
         let int_id = STORAGE_ID_INT.fetch_add(1, Ordering::Relaxed);
         storage_lock.insert(int_id, id.to_owned());
 
+        let storage = Arc::new(LoadedStorage {
+            id: id.to_owned(),
+            path: base.clone(),
+            committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
+            accounts,
+        });
         let mut storage_lock = state.storage.write().await;
-        storage_lock.insert(
-            int_id,
-            LoadedStorage {
-                id: id.to_owned(),
-                path: base.clone(),
-                committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
-                accounts,
-            },
-        );
+        storage_lock.insert(int_id, storage.clone());
 
-        Ok(int_id)
+        Ok(storage)
     }
 }
 
