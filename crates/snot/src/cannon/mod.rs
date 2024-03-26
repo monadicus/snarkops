@@ -20,13 +20,12 @@ use tokio::{
 };
 use tracing::warn;
 
+use self::{sink::TxSink, source::TxSource};
 use crate::{
     cannon::source::{ComputeTarget, LedgerQueryService},
+    env::Environment,
     state::GlobalState,
-    testing::Environment,
 };
-
-use self::{sink::TxSink, source::TxSource};
 
 /*
 
@@ -73,7 +72,8 @@ pub struct CannonInstance {
     /// cannon pointing at a file
     env: Weak<Environment>,
 
-    /// Local query service port. Only present if the TxSource uses a local query source.
+    /// Local query service port. Only present if the TxSource uses a local
+    /// query source.
     query_port: Option<u16>,
 
     // TODO: run the actual cannon in this task

@@ -4,7 +4,7 @@ use anyhow::{anyhow, bail, Result};
 use serde::Deserialize;
 use snot_common::state::NodeKey;
 
-use crate::{schema::nodes::KeySource, testing::Environment};
+use crate::{env::Environment, schema::nodes::KeySource};
 
 use super::{authorized::Authorize, net::get_available_port};
 
@@ -130,13 +130,13 @@ impl TxSource {
                     private_keys
                         .get(rand::random::<usize>() % private_keys.len())
                         .and_then(|k| env.storage.sample_keysource_pk(k))
-                        .ok_or(bail!("error selecting a valid private key"))
+                        .ok_or(anyhow!("error selecting a valid private key"))
                 };
                 let sample_addr = || {
                     addresses
                         .get(rand::random::<usize>() % addresses.len())
                         .and_then(|k| env.storage.sample_keysource_addr(k))
-                        .ok_or(bail!("error selecting a valid private key"))
+                        .ok_or(anyhow!("error selecting a valid private key"))
                 };
 
                 let Some(mode) = tx_modes

@@ -29,6 +29,7 @@ surrealdb = { version = "1.3", default-features = false, features = [
 	"kv-rocksdb",
 ] }
 tarpc.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 tracing-appender.workspace = true

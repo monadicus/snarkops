@@ -30,7 +30,7 @@ pub struct TimelineEvent {
 }
 
 #[derive(Debug, Clone)]
-pub struct Actions(Vec<ActionInstance>);
+pub struct Actions(pub Vec<ActionInstance>);
 
 #[derive(Debug, Clone)]
 pub struct ActionInstance {
@@ -41,9 +41,9 @@ pub struct ActionInstance {
 #[derive(Debug, Clone)]
 pub enum Action {
     /// Update the given nodes to an online state
-    Online(NodeTarget),
+    Online(NodeTargets),
     /// Update the given nodes to an offline state
-    Offline(NodeTarget),
+    Offline(NodeTargets),
     /// Fire transactions from a source file at a target node
     Cannon(Vec<SpawnCannon>),
     /// Set the height of some nodes' ledgers

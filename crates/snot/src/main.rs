@@ -7,10 +7,10 @@ use tracing_subscriber::prelude::*;
 
 pub mod cannon;
 pub mod cli;
+pub mod env;
 pub mod schema;
 pub mod server;
 pub mod state;
-pub mod testing;
 
 #[tokio::main]
 async fn main() {

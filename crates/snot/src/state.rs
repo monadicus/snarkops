@@ -21,9 +21,9 @@ use tokio::sync::RwLock;
 
 use crate::{
     cli::Cli,
+    env::Environment,
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
-    testing::Environment,
 };
 
 pub type AgentId = usize;
@@ -40,7 +40,6 @@ pub struct GlobalState {
     pub storage_ids: RwLock<BiMap<usize, String>>,
     pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
 
-    pub envs_counter: AtomicUsize,
     pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
 }
 
@@ -180,8 +179,14 @@ impl Agent {
 }
 
 impl AgentClient {
-    pub async fn reconcile(&self, to: AgentState) -> Result<Result<(), ReconcileError>, RpcError> {
-        self.0.reconcile(context::current(), to).await
+    pub async fn reconcile(
+        &self,
+        to: AgentState,
+    ) -> Result<Result<AgentState, ReconcileError>, RpcError> {
+        self.0
+            .reconcile(context::current(), to.clone())
+            .await
+            .map(|res| res.map(|_| to))
     }
 
     pub async fn get_state_root(&self) -> Result<String> {

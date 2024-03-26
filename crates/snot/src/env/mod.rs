@@ -1,3 +1,5 @@
+pub mod timeline;
+
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -21,9 +23,10 @@ use crate::{
     schema::{
         nodes::{ExternalNode, Node},
         storage::LoadedStorage,
+        timeline::TimelineEvent,
         ItemDocument, NodeTargets,
     },
-    state::GlobalState,
+    state::{Agent, GlobalState},
 };
 
 #[derive(Debug)]
@@ -42,6 +45,8 @@ pub struct Environment {
     pub cannons_counter: AtomicUsize,
     /// Map of cannon ids to their cannon instances
     pub cannons: HashMap<usize, CannonInstance>,
+
+    pub timeline: Vec<TimelineEvent>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +93,8 @@ impl Environment {
         documents: Vec<ItemDocument>,
         state: &GlobalState,
     ) -> anyhow::Result<usize> {
+        static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
         let mut state_lock = state.envs.write().await;
 
         let mut storage = None;
@@ -95,6 +102,7 @@ impl Environment {
         let mut initial_nodes = IndexMap::default();
         let mut cannon_configs = HashMap::new();
         let mut tx_drains = HashMap::new();
+        let mut timeline = vec![];
 
         for document in documents {
             match document {
@@ -105,9 +113,11 @@ impl Environment {
                         bail!("multiple storage documents found in env")
                     }
                 }
+
                 ItemDocument::Cannon(cannon) => {
                     cannon_configs.insert(cannon.name.to_owned(), (cannon.source, cannon.sink));
                 }
+
                 ItemDocument::Nodes(nodes) => {
                     // flatten replicas
                     for (doc_node_key, mut doc_node) in nodes.nodes {
@@ -187,6 +197,10 @@ impl Environment {
                     )
                 }
 
+                ItemDocument::Timeline(sub_timeline) => {
+                    timeline.extend(sub_timeline.timeline.into_iter());
+                }
+
                 _ => warn!("ignored unimplemented document type"),
             }
         }
@@ -204,7 +218,7 @@ impl Environment {
             }
         }
 
-        let env_id = state.envs_counter.fetch_add(1, Ordering::Relaxed);
+        let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
         let env = Environment {
             id: env_id,
             storage,
@@ -223,13 +237,15 @@ impl Environment {
                             .join("../../target/release/snarkos-aot")
                     })
             },
+            timeline,
         };
 
+        let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
         state_lock.insert(env_id, Arc::new(env));
         drop(state_lock);
 
         // reconcile the nodes
-        initial_reconcile(env_id, state).await?;
+        initial_reconcile(&env_id, state).await?;
 
         Ok(env_id)
     }
@@ -276,9 +292,9 @@ impl Environment {
         for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
-                Ok(Ok(Ok(()))) => {
+                Ok(Ok(Ok(state))) => {
                     if let Some(agent) = agents.get_mut(&id) {
-                        agent.set_state(AgentState::Inventory);
+                        agent.set_state(state);
                         success += 1;
                     } else {
                         warn!("agent {id} not found in pool after successful reconcile")
@@ -304,79 +320,66 @@ impl Environment {
             EnvPeer::External => None,
         })
     }
+
+    pub fn matching_nodes<'a>(
+        &'a self,
+        targets: &'a NodeTargets,
+        pool: &'a HashMap<usize, Agent>,
+        is_validator: bool,
+    ) -> impl Iterator<Item = AgentPeer> + 'a {
+        self.node_map
+            .iter()
+            .filter(|(key, _)| targets.matches(key))
+            .filter_map(move |(key, value)| match value {
+                EnvPeer::Internal(id) => {
+                    let Some(agent) = pool.get(id) else {
+                        return None;
+                    };
+
+                    Some(AgentPeer::Internal(
+                        *id,
+                        match is_validator {
+                            true => agent.bft_port(),
+                            false => agent.node_port(),
+                        },
+                    ))
+                }
+
+                EnvPeer::External => {
+                    let Some(EnvNode::External(external)) = self.initial_nodes.get(key) else {
+                        return None;
+                    };
+
+                    Some(AgentPeer::External(match is_validator {
+                        true => external.bft?,
+                        false => external.node?,
+                    }))
+                }
+            })
+    }
+
+    pub fn matching_agents<'a>(
+        &'a self,
+        targets: &'a NodeTargets,
+        pool: &'a HashMap<usize, Agent>,
+    ) -> impl Iterator<Item = &'a Agent> + 'a {
+        self.matching_nodes(targets, pool, false /* don't care about this */)
+            .filter_map(|agent_peer| match agent_peer {
+                AgentPeer::Internal(id, _) => pool.get(&id),
+                AgentPeer::External(_) => None,
+            })
+    }
 }
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Result<()> {
+pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Result<()> {
     let mut handles = vec![];
     let mut agent_ids = vec![];
     {
         let envs_lock = state.envs.read().await;
-        let env = envs_lock
-            .get(&env_id)
-            .ok_or_else(|| anyhow!("env not found"))?;
+        let env = envs_lock.get(id).ok_or_else(|| anyhow!("env not found"))?;
 
         let pool_lock = state.pool.read().await;
-
-        // Lookup agent peers given a node key
-        let node_to_agent = |key: &NodeKey, node: &EnvPeer, is_validator: bool| {
-            // get the internal agent ID from the node key
-            match node {
-                // internal peers are mapped to internal agents
-                EnvPeer::Internal(id) => {
-                    let Some(agent) = pool_lock.get(id) else {
-                        bail!("agent {id} not found in pool")
-                    };
-
-                    Ok(AgentPeer::Internal(
-                        *id,
-                        if is_validator {
-                            agent.bft_port()
-                        } else {
-                            agent.node_port()
-                        },
-                    ))
-                }
-                // external peers are mapped to external nodes
-                EnvPeer::External => {
-                    let Some(EnvNode::External(external)) = env.initial_nodes.get(key) else {
-                        bail!("external node with key {key} not found")
-                    };
-
-                    Ok(AgentPeer::External(if is_validator {
-                        external
-                            .bft
-                            .ok_or_else(|| anyhow!("external node {key} is missing BFT port"))?
-                    } else {
-                        external
-                            .node
-                            .ok_or_else(|| anyhow!("external node {key} is missing Node port"))?
-                    }))
-                }
-            }
-        };
-
-        let matching_nodes = |key: &NodeKey, target: &NodeTargets, is_validator: bool| {
-            if target.is_empty() {
-                return Ok(vec![]);
-            }
-
-            // this can't really be cleverly optimized into
-            // a single lookup at the moment because we don't treat @local
-            // as a None namespace...
-
-            // TODO: ensure @local is always parsed as None, then we can
-            // optimize each target in this to be a direct lookup
-            // instead of walking through each node
-
-            // alternatively, use a more efficient data structure for
-            // storing node keys
-            env.node_map
-                .iter()
-                .filter(|(k, _)| *k != key && target.matches(k))
-                .map(|(k, v)| node_to_agent(k, v, is_validator))
-                .collect()
-        };
 
         for (key, node) in &env.initial_nodes {
             let EnvNode::Internal(node) = node else {
@@ -398,16 +401,26 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
                 .key
                 .as_ref()
                 .and_then(|key| env.storage.lookup_keysource_pk(key));
-            node_state.peers = matching_nodes(key, &node.peers, false)?;
-            node_state.validators = matching_nodes(key, &node.validators, true)?;
 
-            let agent_state = AgentState::Node(env_id, node_state);
+            let not_me = |agent: &AgentPeer| match agent {
+                AgentPeer::Internal(candidate_id, _) if *candidate_id == id => false,
+                _ => true,
+            };
+
+            node_state.peers = env
+                .matching_nodes(&node.peers, &*pool_lock, false)
+                .filter(not_me)
+                .collect();
+
+            node_state.validators = env
+                .matching_nodes(&node.validators, &*pool_lock, true)
+                .filter(not_me)
+                .collect();
+
+            let agent_state = AgentState::Node(id, node_state);
             agent_ids.push(id);
             handles.push(tokio::spawn(async move {
-                client
-                    .reconcile(agent_state.clone())
-                    .await
-                    .map(|res| res.map(|_| agent_state))
+                client.reconcile(agent_state.clone()).await
             }));
         }
     }
