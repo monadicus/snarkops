@@ -42,7 +42,7 @@ impl Authorize {
             }
         }
 
-        command.arg("--broadcast").arg("true");
+        command.arg("--broadcast");
 
         let res = command.output().await?;
 

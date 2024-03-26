@@ -128,7 +128,7 @@ impl CannonInstance {
         let tx_queue = VecDeque::<String>::new();
 
         // spawn child process for ledger service if the source is local
-        let mut child = if let Some(_port) = query_port {
+        let mut child = if let Some(port) = query_port {
             // TODO: make a copy of this ledger dir to prevent locks
             let child = Command::new(&env.aot_bin)
                 .kill_on_drop(true)
@@ -140,6 +140,11 @@ impl CannonInstance {
                 .arg("-g")
                 .arg(env.storage.path.join("genesis.block"))
                 .arg("query")
+                .arg("--port")
+                .arg(port.to_string())
+                .arg("--bind")
+                .arg("127.0.0.1") // only bind to localhost as this is a private process
+                .arg("--readonly")
                 .spawn()
                 .map_err(|e| anyhow::anyhow!("error spawning query service: {e}"))?;
             Some(child)
