@@ -248,7 +248,7 @@ impl Document {
                     .current_dir(&base)
                     .arg("czf")
                     .arg("ledger.tar.gz") // TODO: move constants from client...
-                    .arg("ledger/*")
+                    .arg("ledger")
                     .kill_on_drop(true)
                     .spawn()?
                     .wait()

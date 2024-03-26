@@ -27,7 +27,9 @@ async fn main() {
         .add_directive("tungstenite=off".parse().unwrap())
         .add_directive("tokio_tungstenite=off".parse().unwrap())
         .add_directive("tarpc::client=ERROR".parse().unwrap())
-        .add_directive("tarpc::server=ERROR".parse().unwrap());
+        .add_directive("tarpc::server=ERROR".parse().unwrap())
+        .add_directive("tower_http::trace::on_request=off".parse().unwrap())
+        .add_directive("tower_http::trace::on_response=off".parse().unwrap());
 
     let (stdout, _guard) = tracing_appender::non_blocking(io::stdout());
 

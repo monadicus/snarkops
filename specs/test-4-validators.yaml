@@ -4,13 +4,16 @@ version: storage.snarkos.testing.monadic.us/v1
 id: base
 name: base-ledger
 
+generate:
+  path: ./tests/base
+
 ---
 version: nodes.snarkos.testing.monadic.us/v1
 name: 4-validators
 
 nodes:
   validator/test:
-    replicas: 2
+    replicas: 4
     key: committee.$
     height: 0
     validators: [validator/*]

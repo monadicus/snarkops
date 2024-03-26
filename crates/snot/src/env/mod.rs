@@ -228,7 +228,7 @@ impl Environment {
         drop(state_lock);
 
         // reconcile the nodes
-        initial_reconcile(&env_id, state).await?;
+        initial_reconcile(env_id, state).await?;
 
         Ok(env_id)
     }
@@ -355,12 +355,14 @@ impl Environment {
 }
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Result<()> {
+pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Result<()> {
     let mut handles = vec![];
     let mut agent_ids = vec![];
     {
         let envs_lock = state.envs.read().await;
-        let env = envs_lock.get(id).ok_or_else(|| anyhow!("env not found"))?;
+        let env = envs_lock
+            .get(&env_id)
+            .ok_or_else(|| anyhow!("env not found"))?;
 
         let pool_lock = state.pool.read().await;
 
@@ -400,7 +402,7 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
                 .filter(not_me)
                 .collect();
 
-            let agent_state = AgentState::Node(id, node_state);
+            let agent_state = AgentState::Node(env_id, node_state);
             agent_ids.push(id);
             handles.push(tokio::spawn(async move {
                 client.reconcile(agent_state.clone()).await
