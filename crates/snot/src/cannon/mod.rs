@@ -5,7 +5,7 @@ pub mod source;
 
 use std::{
     collections::HashSet,
-    sync::{atomic::AtomicU32, Arc},
+    sync::{atomic::AtomicU32, Arc, Weak},
 };
 
 use anyhow::{bail, Result};
@@ -63,7 +63,7 @@ pub struct CannonInstance {
     /// To point at an external node, create a topology with external node
     /// To generate ahead-of-time, upload a test with a timeline referencing a
     /// cannon pointing at a file
-    env: Arc<Environment>,
+    env: Weak<Environment>,
 
     /// Local query service port. Only present if the TxSource uses a local query source.
     query_port: Option<u16>,
@@ -131,7 +131,7 @@ impl CannonInstance {
             global_state,
             source,
             sink,
-            env,
+            env: Arc::downgrade(&env),
             tx_sender,
             query_port,
             task: AsyncMutex::new(handle.abort_handle()),
@@ -152,8 +152,12 @@ impl CannonInstance {
                     }
                 }
                 LedgerQueryService::Node(key) => {
+                    let Some(env) = self.env.upgrade() else {
+                        unreachable!("called from a place where env is present")
+                    };
+
                     // env_id must be Some because LedgerQueryService::Node requires it
-                    let Some(agent_id) = self.env.get_agent_by_key(key) else {
+                    let Some(agent_id) = env.get_agent_by_key(key) else {
                         bail!("cannon target agent not found")
                     };
 
