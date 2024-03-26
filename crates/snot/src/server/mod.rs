@@ -52,7 +52,6 @@ pub async fn start(cli: Cli) -> Result<()> {
         storage: Default::default(),
         envs_counter: Default::default(),
         envs: Default::default(),
-        cannons: Default::default(),
     };
 
     let app = Router::new()

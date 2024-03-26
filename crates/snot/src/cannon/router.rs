@@ -11,15 +11,22 @@ use crate::state::AppState;
 
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
-        .route("/:id/mainnet/latest/stateRoot", get(state_root))
-        .route("/:id/mainnet/transaction/broadcast", post(transaction))
+        .route("/:env/:id/mainnet/latest/stateRoot", get(state_root))
+        .route("/:env/:id/mainnet/transaction/broadcast", post(transaction))
 }
 
-async fn state_root(Path(cannon_id): Path<usize>, state: State<AppState>) -> Response {
-    let Some(cannon) = ({
-        let cannons = state.cannons.read().await;
-        cannons.get(&cannon_id).cloned()
+async fn state_root(
+    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    state: State<AppState>,
+) -> Response {
+    let Some(env) = ({
+        let env = state.envs.read().await;
+        env.get(&env_id).cloned()
     }) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let Some(cannon) = env.cannons.get(&cannon_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
@@ -35,14 +42,18 @@ async fn state_root(Path(cannon_id): Path<usize>, state: State<AppState>) -> Res
 }
 
 async fn transaction(
-    Path(cannon_id): Path<usize>,
+    Path((env_id, cannon_id)): Path<(usize, usize)>,
     state: State<AppState>,
     body: String,
 ) -> Response {
-    let Some(cannon) = ({
-        let cannons = state.cannons.read().await;
-        cannons.get(&cannon_id).cloned()
+    let Some(env) = ({
+        let env = state.envs.read().await;
+        env.get(&env_id).cloned()
     }) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let Some(cannon) = env.cannons.get(&cannon_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 

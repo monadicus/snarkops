@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     sync::{
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicU32, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -35,8 +35,10 @@ pub struct Environment {
     pub transaction_counters: HashMap<String, AtomicU32>,
     /// Map of cannon ids to their cannon configurations
     pub cannon_configs: HashMap<String, (TxSource, TxSink)>,
+    /// To help generate the id of the new cannon.
+    pub cannons_counter: AtomicUsize,
     /// Map of cannon ids to their cannon instances
-    pub cannons: HashMap<String, Vec<CannonInstance>>,
+    pub cannons: HashMap<usize, CannonInstance>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,7 +91,6 @@ impl Environment {
         let mut node_map = BiHashMap::default();
         let mut initial_nodes = IndexMap::default();
         let mut cannon_configs = HashMap::new();
-        let mut cannons = HashMap::new();
 
         for document in documents {
             match document {
@@ -102,7 +103,6 @@ impl Environment {
                 }
                 ItemDocument::Cannon(cannon) => {
                     cannon_configs.insert(cannon.name.to_owned(), (cannon.source, cannon.sink));
-                    cannons.insert(cannon.name, Vec::new());
                 }
                 ItemDocument::Nodes(nodes) => {
                     // flatten replicas
@@ -191,9 +191,10 @@ impl Environment {
             storage: storage.ok_or_else(|| anyhow!("env is missing storage document"))?,
             node_map,
             initial_nodes,
-            transaction_counters: HashMap::new(),
+            transaction_counters: Default::default(),
             cannon_configs,
-            cannons,
+            cannons_counter: Default::default(),
+            cannons: Default::default(),
         };
 
         let env_id = state.envs_counter.fetch_add(1, Ordering::Relaxed);

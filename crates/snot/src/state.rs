@@ -20,7 +20,6 @@ use tarpc::{client::RpcError, context};
 use tokio::sync::RwLock;
 
 use crate::{
-    cannon::CannonInstance,
     cli::Cli,
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
@@ -40,7 +39,6 @@ pub struct GlobalState {
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage_ids: RwLock<BiMap<usize, String>>,
     pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
-    pub cannons: RwLock<HashMap<usize, Arc<CannonInstance>>>,
 
     pub envs_counter: AtomicUsize,
     pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
