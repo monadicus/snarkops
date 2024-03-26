@@ -53,23 +53,23 @@ pub async fn start(cli: Cli) -> Result<()> {
         tests: Default::default(),
     };
 
-    let app = Router::new()
-        .route("/agent", get(agent_ws_handler))
-        .nest("/api/v1", api::routes())
-        // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
-        .nest("/content", content::init_routes(&state).await)
-        .with_state(Arc::new(state))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().include_headers(true))
-                .on_request(|request: &Request<Body>, _span: &Span| {
-                    tracing::info!("req {} - {}", request.method(), request.uri());
-                })
-                .on_response(|response: &Response, _latency: Duration, span: &Span| {
-                    span.record("status_code", &tracing::field::display(response.status()));
-                    tracing::info!("res {}", response.status())
-                }),
-        );
+    let app =
+        Router::new()
+            .route("/agent", get(agent_ws_handler))
+            .nest("/api/v1", api::routes())
+            // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
+            .nest("/content", content::init_routes(&state).await)
+            .with_state(Arc::new(state))
+            .layer(
+                TraceLayer::new_for_http()
+                    .make_span_with(DefaultMakeSpan::new().include_headers(true)), /* .on_request(|request: &Request<Body>, _span: &Span| {
+                                                                                    *     tracing::info!("req {} - {}", request.method(), request.uri());
+                                                                                    * })
+                                                                                    * .on_response(|response: &Response, _latency: Duration, span: &Span| {
+                                                                                    *     span.record("status_code", &tracing::field::display(response.status()));
+                                                                                    *     tracing::info!("res {}", response.status())
+                                                                                    * }), */
+            );
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1234").await?;
     axum::serve(listener, app).await?;

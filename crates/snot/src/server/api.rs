@@ -5,8 +5,9 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use snot_common::rpc::agent::AgentMetric;
 
 use super::AppState;
 use crate::testing::Test;
@@ -15,6 +16,7 @@ pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/storage/:id/:ty", get(redirect_storage))
         .route("/agents", get(get_agents))
+        .route("/agents/:id/tps", get(get_agent_tps))
         .route("/test/prepare", post(post_test_prepare))
         .route("/test/:id", delete(delete_test))
 }
@@ -51,6 +53,23 @@ async fn redirect_storage(
 async fn get_agents(state: State<AppState>) -> impl IntoResponse {
     // TODO: return actual relevant info about agents
     Json(json!({ "count": state.pool.read().await.len() }))
+}
+
+async fn get_agent_tps(state: State<AppState>, Path(id): Path<usize>) -> Response {
+    let pool = state.pool.read().await;
+    let Some(agent) = pool.get(&id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    // TODO: get rid of these unwraps
+    agent
+        .rpc()
+        .unwrap()
+        .get_metric(tarpc::context::current(), AgentMetric::Tps)
+        .await
+        .unwrap()
+        .to_string()
+        .into_response()
 }
 
 async fn post_test_prepare(state: State<AppState>, body: String) -> Response {

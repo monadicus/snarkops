@@ -37,5 +37,8 @@ pub struct Cli {
     /// Specify the IP address and port for the REST server
     #[clap(long = "rest", default_value = "3030")]
     pub rest: u16,
+    /// Specify the port for the metrics
+    #[clap(long = "metrics", default_value_t = 9000)]
+    pub metrics: u16,
     // TODO: specify allowed modes (--validator --client --tx-gen)
 }

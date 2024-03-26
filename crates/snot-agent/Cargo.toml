@@ -23,3 +23,4 @@ tokio-tungstenite = "0.21.0"
 tracing-appender.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+simple_moving_average = "1.0.2"

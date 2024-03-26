@@ -20,7 +20,7 @@ pub trait AgentService {
     /// state.
     async fn reconcile(to: AgentState) -> Result<(), ReconcileError>;
 
-    async fn get_metric(metric: AgentMetric) -> Result<f64, ()>;
+    async fn get_metric(metric: AgentMetric) -> f64;
 }
 
 #[derive(Debug, Error, Serialize, Deserialize)]
