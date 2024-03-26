@@ -166,7 +166,7 @@ impl CannonInstance {
                     client.get_state_root().await
                 }
             },
-            TxSource::AoTPlayback { .. } => {
+            TxSource::Playback { .. } => {
                 bail!("cannon is configured to playback from file.")
             }
         }
@@ -179,7 +179,7 @@ impl CannonInstance {
             TxSource::RealTime { .. } => {
                 self.tx_sender.send(body)?;
             }
-            TxSource::AoTPlayback { .. } => {
+            TxSource::Playback { .. } => {
                 warn!("cannon received broadcasted transaction in playback mode. ignoring.")
             }
         }

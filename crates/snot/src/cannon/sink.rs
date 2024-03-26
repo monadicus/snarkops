@@ -5,19 +5,19 @@ use crate::schema::NodeTargets;
 #[derive(Clone, Debug, Deserialize)]
 pub enum TxSink {
     /// Write transactions to a file
-    AoTRecord {
+    Record {
         /// filename for the recording txs list
         name: String,
     },
-    /// Write transactions to a ledger query service
-    AoTAppend {
-        // information for running .. another ledger service
-        // solely for appending blocks to a ledger...
-        // storage_id: usize,
-        // port: u16,
-        /// Number of transactions per block
-        tx_per_block: u32,
-    },
+    //// Write transactions to a ledger query service
+    // AoTAppend {
+    //     // information for running .. another ledger service
+    //     // solely for appending blocks to a ledger...
+    //     // storage_id: usize,
+    //     // port: u16,
+    //     /// Number of transactions per block
+    //     tx_per_block: u32,
+    // },
     /// Send transactions to nodes in a env
     RealTime {
         /// The nodes to send transactions to

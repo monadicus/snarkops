@@ -83,7 +83,7 @@ pub enum TxMode {
 #[derive(Clone, Debug, Deserialize)]
 pub enum TxSource {
     /// Read transactions from a file
-    AoTPlayback {
+    Playback {
         // filename from the storage for the tx list
         name: String,
     },

@@ -45,7 +45,7 @@ pub enum Action {
     /// Update the given nodes to an offline state
     Offline(NodeTarget),
     /// Fire transactions from a source file at a target node
-    Cannon(Vec<TxCannon>),
+    Cannon(Vec<SpawnCannon>),
     /// Set the height of some nodes' ledgers
     Height(IndexMap<String, u64>),
 }
@@ -178,7 +178,7 @@ impl<'de> Deserialize<'de> for EventDuration {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct TxCannon {
+pub struct SpawnCannon {
     pub name: String,
     pub count: u64,
     /// overwrite the query's source node

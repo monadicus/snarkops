@@ -6,8 +6,14 @@ name: private tx, 500 rounds, 4 accounts
 description: |
   This ledger was built to test private transactions
 
+fetch: https://example.com/genesis.block
+
 # instructions for generating this test
 generate:
+  accounts:
+    - file: accounts.json
+      total: 5
+
   # genesis generation
   genesis:
     seed: 0
@@ -15,6 +21,7 @@ generate:
     committee-balances: 10_000_000_000_000
     additional-accounts: 10
     additional-balances: 100_000_000_000
+
   # ledger setup
   ledger:
     blocks: 100
