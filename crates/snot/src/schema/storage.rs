@@ -18,9 +18,8 @@ use serde::{
 use tokio::process::Command;
 use tracing::warn;
 
-use crate::state::GlobalState;
-
 use super::nodes::KeySource;
+use crate::state::GlobalState;
 
 /// A storage document. Explains how storage for a test should be set up.
 #[derive(Deserialize, Debug, Clone)]
@@ -32,6 +31,7 @@ pub struct Document {
     #[serde(default)]
     pub prefer_existing: bool,
     pub generate: Option<StorageGeneration>,
+    pub connect: Option<url::Url>,
 }
 
 /// Data generation instructions.
@@ -47,7 +47,16 @@ pub struct StorageGeneration {
     pub ledger: LedgerGeneration,
 
     #[serde(default)]
+    pub accounts: Vec<Accounts>,
+
+    #[serde(default)]
     pub transactions: Vec<Transaction>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Accounts {
+    pub file: PathBuf,
+    pub total: u64,
 }
 
 // TODO: I don't know what this type should look like
@@ -159,7 +168,7 @@ impl From<FilenameString> for String {
 }
 
 impl Document {
-    pub async fn prepare(&self, state: &GlobalState) -> anyhow::Result<usize> {
+    pub async fn prepare(self, state: &GlobalState) -> anyhow::Result<usize> {
         static STORAGE_ID_INT: AtomicUsize = AtomicUsize::new(0);
 
         let id = String::from(self.id.clone());
@@ -178,7 +187,7 @@ impl Document {
 
         // TODO: respect self.prefer_existing
 
-        match self.generate.clone() {
+        match self.generate {
             // generate the block and ledger if we have generation params
             Some(mut generation) => 'generate: {
                 // warn if an existing block/ledger already exists
@@ -202,28 +211,38 @@ impl Document {
                         .join("../../target/release/snarkos-aot"),
                 );
                 let output = base.join(&generation.genesis.output);
-                let res = Command::new(bin)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .arg("genesis")
-                    .arg("--output")
-                    .arg(&output)
-                    .arg("--committee-size")
-                    .arg(generation.genesis.committee.to_string())
-                    .arg("--committee-output")
-                    .arg(base.join("committee.json"))
-                    .arg("--additional-accounts")
-                    .arg(generation.genesis.additional_accounts.to_string())
-                    .arg("--additional-accounts-output")
-                    .arg(base.join("accounts.json"))
-                    .arg("--ledger")
-                    .arg(base.join("ledger"))
-                    .spawn()?
-                    .wait()
-                    .await?;
 
-                if !res.success() {
-                    warn!("failed to run genesis generation command...");
+                match self.connect {
+                    Some(url) => {
+                        let res = reqwest::get(url).await?.error_for_status()?.bytes().await?;
+
+                        tokio::fs::write(&output, res).await?;
+                    }
+                    None => {
+                        let res = Command::new(bin)
+                            .stdout(Stdio::piped())
+                            .stderr(Stdio::piped())
+                            .arg("genesis")
+                            .arg("--output")
+                            .arg(&output)
+                            .arg("--committee-size")
+                            .arg(generation.genesis.committee.to_string())
+                            .arg("--committee-output")
+                            .arg(base.join("committee.json"))
+                            .arg("--additional-accounts")
+                            .arg(generation.genesis.additional_accounts.to_string())
+                            .arg("--additional-accounts-output")
+                            .arg(base.join("accounts.json"))
+                            .arg("--ledger")
+                            .arg(base.join("ledger"))
+                            .spawn()?
+                            .wait()
+                            .await?;
+
+                        if !res.success() {
+                            warn!("failed to run genesis generation command...");
+                        }
+                    }
                 }
 
                 if tokio::fs::try_exists(&output).await.is_err() {

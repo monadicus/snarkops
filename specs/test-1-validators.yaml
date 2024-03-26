@@ -12,7 +12,7 @@ generate:
 ---
 version: nodes.snarkos.testing.monadic.us/v1
 
-name: 4-validators
+name: 1-validator
 
 nodes:
   # validator/test:

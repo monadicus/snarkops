@@ -1,0 +1,37 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: canary-clients
+name: canary-clients
+
+fetch: https://pub-d74d58a8616c4d54bc1a948b4d001970.r2.dev/block.genesis
+
+generate:
+  path: ./tests/canary-clients
+  
+  accounts:
+    - file: "accounts.json"
+      total: 5
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+name: 4-clients-canary
+
+external:
+  validator/1@canarynet:
+    node: 11.12.13.14:4130
+
+  validator/2@canarynet:
+    node: 11.12.13.14:4130
+
+  client/1@canarynet:
+    node: 11.12.13.14:4130
+
+nodes:
+  client/test:
+    key: accounts.$
+    replicas: 4
+    height: 0
+    validators: []
+    peers: ["*/*@canarynet"]
+  
