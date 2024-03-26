@@ -50,8 +50,8 @@ pub async fn start(cli: Cli) -> Result<()> {
         pool: Default::default(),
         storage_ids: Default::default(),
         storage: Default::default(),
-        tests_counter: Default::default(),
-        tests: Default::default(),
+        envs_counter: Default::default(),
+        envs: Default::default(),
         cannons: Default::default(),
     };
 

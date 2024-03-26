@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::AppState;
-use crate::testing::Test;
+use crate::testing::Environment;
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
@@ -54,7 +54,7 @@ async fn get_agents(state: State<AppState>) -> impl IntoResponse {
 }
 
 async fn post_test_prepare(state: State<AppState>, body: String) -> Response {
-    let documents = match Test::deserialize(&body) {
+    let documents = match Environment::deserialize(&body) {
         Ok(documents) => documents,
         Err(e) => {
             return (
@@ -70,8 +70,8 @@ async fn post_test_prepare(state: State<AppState>, body: String) -> Response {
 
     // TODO: clean up existing test
 
-    match Test::prepare(documents, &state).await {
-        Ok(test_id) => (StatusCode::OK, Json(json!({ "id": test_id }))).into_response(),
+    match Environment::prepare(documents, &state).await {
+        Ok(env_id) => (StatusCode::OK, Json(json!({ "id": env_id }))).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("{e}") })),
@@ -81,10 +81,10 @@ async fn post_test_prepare(state: State<AppState>, body: String) -> Response {
 }
 
 async fn delete_test(
-    Path(test_id): Path<usize>,
+    Path(env_id): Path<usize>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    match Test::cleanup(&test_id, &state).await {
+    match Environment::cleanup(&env_id, &state).await {
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,

@@ -16,7 +16,7 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::{cannon::source::LedgerQueryService, state::GlobalState, testing::Test};
+use crate::{cannon::source::LedgerQueryService, state::GlobalState, testing::Environment};
 
 use self::{sink::TxSink, source::TxSource};
 
@@ -52,7 +52,7 @@ burst mode??
 /// Transaction cannon state
 /// using the `TxSource` and `TxSink` for configuration.
 #[derive(Debug)]
-pub struct TestCannon {
+pub struct CannonInstance {
     // a copy of the global state
     global_state: Arc<GlobalState>,
 
@@ -63,7 +63,7 @@ pub struct TestCannon {
     /// To point at an external node, create a topology with external node
     /// To generate ahead-of-time, upload a test with a timeline referencing a
     /// cannon pointing at a file
-    env: CannonEnv,
+    env: Arc<Environment>,
 
     /// Local query service port. Only present if the TxSource uses a local query source.
     query_port: Option<u16>,
@@ -76,12 +76,7 @@ pub struct TestCannon {
     fired_txs: AtomicU32,
 }
 
-#[derive(Clone, Debug)]
-struct CannonEnv {
-    test: Arc<Test>,
-}
-
-impl TestCannon {
+impl CannonInstance {
     /// Create a new active transaction cannon
     /// with the given source and sink.
     ///
@@ -94,11 +89,11 @@ impl TestCannon {
     ) -> Result<Self> {
         // mapping with async is ugly and blocking_read is scary
         let env = {
-            let Some(test) = global_state.tests.read().await.get(&test_id).cloned() else {
+            let Some(env) = global_state.envs.read().await.get(&test_id).cloned() else {
                 bail!("test {test_id} not found")
             };
 
-            CannonEnv { test }
+            env
         };
         let env2 = env.clone();
 
@@ -115,7 +110,7 @@ impl TestCannon {
 
             // TODO: if a sink or a source uses node_keys or storage
             // env will be used
-            println!("{}", env2.test.storage.id);
+            println!("{}", env2.storage.id);
 
             // compare the tx id to an authorization id
             let _pending_txs = HashSet::<String>::new();
@@ -157,8 +152,8 @@ impl TestCannon {
                     }
                 }
                 LedgerQueryService::Node(key) => {
-                    // test_id must be Some because LedgerQueryService::Node requires it
-                    let Some(agent_id) = self.env.test.get_agent_by_key(key) else {
+                    // env_id must be Some because LedgerQueryService::Node requires it
+                    let Some(agent_id) = self.env.get_agent_by_key(key) else {
                         bail!("cannon target agent not found")
                     };
 
@@ -192,7 +187,7 @@ impl TestCannon {
     }
 }
 
-impl Drop for TestCannon {
+impl Drop for CannonInstance {
     fn drop(&mut self) {
         // cancel the task on drop
         self.task.blocking_lock().abort();

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, default};
+use std::collections::HashSet;
 
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
@@ -25,7 +25,7 @@ pub struct LocalQueryService {
     /// When present, the cannon will update the ledger service from this node
     /// if the node is out of sync, it will corrupt the ledger...
     ///
-    /// requires cannon to have an associated test_id
+    /// requires cannon to have an associated env_id
     pub sync_from: Option<NodeKey>,
 }
 
@@ -49,17 +49,8 @@ pub enum LedgerQueryService {
     Local(LocalQueryService),
     /// Target a specific node (probably over rpc instead of reqwest lol...)
     ///
-    /// Requires cannon to have an associated test_id
+    /// Requires cannon to have an associated env_id
     Node(NodeKey),
-}
-
-impl LedgerQueryService {
-    pub fn needs_test_id(&self) -> bool {
-        match self {
-            LedgerQueryService::Node(_) => true,
-            LedgerQueryService::Local(LocalQueryService { sync_from, .. }) => sync_from.is_some(),
-        }
-    }
 }
 
 /// Which service is providing the compute power for executing transactions

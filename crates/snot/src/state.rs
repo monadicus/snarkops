@@ -20,11 +20,11 @@ use tarpc::{client::RpcError, context};
 use tokio::sync::RwLock;
 
 use crate::{
-    cannon::TestCannon,
+    cannon::CannonInstance,
     cli::Cli,
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
-    testing::Test,
+    testing::Environment,
 };
 
 pub type AgentId = usize;
@@ -40,10 +40,10 @@ pub struct GlobalState {
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage_ids: RwLock<BiMap<usize, String>>,
     pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
-    pub cannons: RwLock<HashMap<usize, Arc<TestCannon>>>,
+    pub cannons: RwLock<HashMap<usize, Arc<CannonInstance>>>,
 
-    pub tests_counter: AtomicUsize,
-    pub tests: RwLock<HashMap<usize, Arc<Test>>>,
+    pub envs_counter: AtomicUsize,
+    pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
 }
 
 /// This is the representation of a public addr or a list of internal addrs.

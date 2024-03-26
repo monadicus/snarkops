@@ -18,11 +18,11 @@ pub enum TxSink {
         /// Number of transactions per block
         tx_per_block: u32,
     },
-    /// Send transactions to nodes in a test
+    /// Send transactions to nodes in a env
     RealTime {
         /// The nodes to send transactions to
         ///
-        /// Requires cannon to have an associated test_id
+        /// Requires cannon to have an associated env_id
         target: NodeTargets,
 
         /// How long between each burst of transactions
