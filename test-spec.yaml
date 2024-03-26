@@ -281,6 +281,9 @@ timeline:
 ---
 version: timeline.snarkos.testing.monadic.us/v1
 
+name: foo
+description: |-
+  my timeline that does nothing
 # additional timelines can be defined for additional tests
 
 timeline:
@@ -291,11 +294,18 @@ timeline:
 ---
 version: outcomes.snarkos.testing.monadic.us/v1
 
-# expected outcomes for the test
-metrics:
-  network/average-tps: 10
-  client/sync-speed: 20
-  validator/sync-speed: 20
+name: private-tx-sync
+description: |-
+  checking private transaction transfer speeds
+
+# metrics that are compared against the measured metrics
+expect:
+  network/tps: { min: 10 }
+  client/sync-speed: { min: 5 }
+  validator/sync-speed: { min: 20 }
+  node/uptime: { min: 80% } # parsed as 0.8
+  network/block-latency: { min: 9.8, max: 10.2 }
+  network/solutions-per-block: { min: 100 }
 
 
 ---
