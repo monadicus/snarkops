@@ -9,7 +9,7 @@ use serde_json::Value;
 pub struct Env {
     /// The url the control plane is on.
     #[clap(short, long, default_value = "http://localhost:1234")]
-    url: url::Url,
+    url: String,
     #[clap(subcommand)]
     command: Commands,
 }

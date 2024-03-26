@@ -168,30 +168,36 @@ impl AgentService for AgentRpcServer {
 
                 debug!("downloading ledger");
 
-                if let Ok(Some(())) =
-                    api::download_file(ledger_url, base_path.join(LEDGER_STORAGE_FILE))
-                        .await
-                        .map_err(|_| ReconcileError::StorageAcquireError)
-                {
-                    // TODO: remove existing ledger probably
-                    debug!("downloaded ledger...");
+                match api::download_file(ledger_url, base_path.join(LEDGER_STORAGE_FILE)).await {
+                    Ok(Some(())) => {
+                        // TODO: remove existing ledger probably
+                        debug!("downloaded ledger...");
 
-                    // use `tar` to decompress the storage
-                    let mut tar_child = Command::new("tar")
-                        .current_dir(base_path)
-                        .arg("xzf")
-                        .arg(LEDGER_STORAGE_FILE)
-                        .kill_on_drop(true)
-                        .spawn()
-                        .map_err(|_| ReconcileError::StorageAcquireError)?;
+                        // use `tar` to decompress the storage
+                        let mut tar_child = Command::new("tar")
+                            .current_dir(base_path)
+                            .arg("xzf")
+                            .arg(LEDGER_STORAGE_FILE)
+                            .kill_on_drop(true)
+                            .spawn()
+                            .map_err(|_| ReconcileError::StorageAcquireError)?;
 
-                    let status = tar_child
-                        .wait()
-                        .await
-                        .map_err(|_| ReconcileError::StorageAcquireError)?;
+                        let status = tar_child
+                            .wait()
+                            .await
+                            .map_err(|_| ReconcileError::StorageAcquireError)?;
 
-                    if !status.success() {
-                        fail = true;
+                        if !status.success() {
+                            fail = true;
+                        }
+                    }
+
+                    Ok(None) => {
+                        debug!("no ledger found");
+                    }
+
+                    Err(e) => {
+                        error!("error downloading ledger: {e}");
                     }
                 }
 
