@@ -1,3 +1,5 @@
+pub mod timeline;
+
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -273,9 +275,9 @@ impl Environment {
         for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
-                Ok(Ok(Ok(()))) => {
+                Ok(Ok(Ok(state))) => {
                     if let Some(agent) = agents.get_mut(&id) {
-                        agent.set_state(AgentState::Inventory);
+                        agent.set_state(state);
                         success += 1;
                     } else {
                         warn!("agent {id} not found in pool after successful reconcile")
@@ -338,6 +340,18 @@ impl Environment {
                 }
             })
     }
+
+    pub fn matching_agents<'a>(
+        &'a self,
+        targets: &'a NodeTargets,
+        pool: &'a HashMap<usize, Agent>,
+    ) -> impl Iterator<Item = &'a Agent> + 'a {
+        self.matching_nodes(targets, pool, false /* don't care about this */)
+            .filter_map(|agent_peer| match agent_peer {
+                AgentPeer::Internal(id, _) => pool.get(&id),
+                AgentPeer::External(_) => None,
+            })
+    }
 }
 
 /// Reconcile all associated nodes with their initial state.
@@ -389,10 +403,7 @@ pub async fn initial_reconcile(id: &usize, state: &GlobalState) -> anyhow::Resul
             let agent_state = AgentState::Node(id, node_state);
             agent_ids.push(id);
             handles.push(tokio::spawn(async move {
-                client
-                    .reconcile(agent_state.clone())
-                    .await
-                    .map(|res| res.map(|_| agent_state))
+                client.reconcile(agent_state.clone()).await
             }));
         }
     }

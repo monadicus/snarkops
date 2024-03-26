@@ -5368,6 +5368,7 @@ dependencies = [
  "snot-common",
  "surrealdb",
  "tarpc",
+ "thiserror",
  "tokio",
  "tower-http",
  "tracing",

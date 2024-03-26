@@ -20,6 +20,18 @@ pub enum AgentState {
     Node(usize, NodeState),
 }
 
+impl AgentState {
+    pub fn map_node<F>(self, f: F) -> AgentState
+    where
+        F: Fn(NodeState) -> NodeState,
+    {
+        match self {
+            Self::Inventory => Self::Inventory,
+            Self::Node(id, state) => Self::Node(id, f(state)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
     pub ty: NodeType,
