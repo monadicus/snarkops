@@ -9,6 +9,7 @@ use serde::{
 use snot_common::state::{NodeKey, NodeType};
 use wildmatch::WildMatch;
 
+pub mod cannon;
 pub mod infrastructure;
 pub mod nodes;
 pub mod outcomes;
@@ -38,6 +39,9 @@ pub enum ItemDocument {
 
     #[serde(rename = "outcomes.snarkos.testing.monadic.us/v1")]
     Outcomes(Box<outcomes::Document>),
+
+    #[serde(rename = "cannon.snarkos.testing.monadic.us/v1")]
+    Cannon(Box<cannon::Document>),
 }
 
 /// One or more deserialized node targets. Composed of one or more

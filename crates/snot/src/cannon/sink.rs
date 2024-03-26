@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 use crate::schema::NodeTargets;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub enum TxSink {
     /// Write transactions to a file
     AoTRecord {
@@ -32,10 +32,4 @@ pub enum TxSink {
         /// How long between each transaction in a burst
         tx_delay_ms: u32,
     },
-}
-
-impl TxSink {
-    pub fn needs_test_id(&self) -> bool {
-        matches!(self, Self::RealTime { .. })
-    }
 }

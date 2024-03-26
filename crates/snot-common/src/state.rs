@@ -16,7 +16,8 @@ pub enum AgentState {
     #[default]
     // A node in the inventory can function as a transaction cannon
     Inventory,
-    Node(StorageId, NodeState),
+    /// Test id mapping to node state
+    Node(usize, NodeState),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

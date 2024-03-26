@@ -8,7 +8,7 @@ use std::{
     sync::{atomic::AtomicU32, Arc},
 };
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{bail, Result};
 
 use tokio::{
     sync::{mpsc::UnboundedSender, Mutex as AsyncMutex},
@@ -16,12 +16,7 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::{
-    cannon::source::LedgerQueryService,
-    schema::{storage::LoadedStorage, timeline::EventDuration},
-    state::GlobalState,
-    testing::Test,
-};
+use crate::{cannon::source::LedgerQueryService, state::GlobalState, testing::Test};
 
 use self::{sink::TxSink, source::TxSource};
 
@@ -64,9 +59,6 @@ pub struct TestCannon {
     source: TxSource,
     sink: TxSink,
 
-    /// How long this cannon will be fired for
-    duration: CannonDuration,
-
     /// The test_id/storage associated with this cannon.
     /// To point at an external node, create a topology with external node
     /// To generate ahead-of-time, upload a test with a timeline referencing a
@@ -87,14 +79,6 @@ pub struct TestCannon {
 #[derive(Clone, Debug)]
 struct CannonEnv {
     test: Arc<Test>,
-    storage: Arc<LoadedStorage>,
-}
-
-#[derive(Clone, Debug)]
-pub enum CannonDuration {
-    Forever,
-    Timeline(EventDuration),
-    Count(u32),
 }
 
 impl TestCannon {
@@ -106,26 +90,15 @@ impl TestCannon {
         global_state: Arc<GlobalState>,
         source: TxSource,
         sink: TxSink,
-        duration: CannonDuration,
         test_id: usize,
     ) -> Result<Self> {
-        // ensure!(
-        //     (source.needs_test_id() || sink.needs_test_id()) != test_id.is_some(),
-        //     "Test ID must be provided if either source or sink requires it"
-        // );
-
         // mapping with async is ugly and blocking_read is scary
         let env = {
             let Some(test) = global_state.tests.read().await.get(&test_id).cloned() else {
                 bail!("test {test_id} not found")
             };
 
-            let storage_lock = global_state.storage.read().await;
-            let Some(storage) = storage_lock.get(&test.storage_id).cloned() else {
-                bail!("test {test_id} storage {} not found", test.storage_id)
-            };
-
-            CannonEnv { test, storage }
+            CannonEnv { test }
         };
         let env2 = env.clone();
 
@@ -142,7 +115,7 @@ impl TestCannon {
 
             // TODO: if a sink or a source uses node_keys or storage
             // env will be used
-            println!("{}", env2.storage.id);
+            println!("{}", env2.test.storage.id);
 
             // compare the tx id to an authorization id
             let _pending_txs = HashSet::<String>::new();
@@ -168,7 +141,6 @@ impl TestCannon {
             query_port,
             task: AsyncMutex::new(handle.abort_handle()),
             fired_txs,
-            duration,
         })
     }
 

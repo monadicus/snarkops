@@ -1,13 +1,15 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, default};
 
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use snot_common::state::NodeKey;
 
+use crate::schema::nodes::KeySource;
+
 use super::net::get_available_port;
 
 /// Represents an instance of a local query service.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct LocalQueryService {
     /// Ledger & genesis block to use
     // pub storage_id: usize,
@@ -41,7 +43,7 @@ impl LocalQueryService {
 /// Used to determine the redirection for the following paths:
 /// /cannon/<id>/mainnet/latest/stateRoot
 /// /cannon/<id>/mainnet/transaction/broadcast
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub enum LedgerQueryService {
     /// Use the local ledger query service
     Local(LocalQueryService),
@@ -61,15 +63,16 @@ impl LedgerQueryService {
 }
 
 /// Which service is providing the compute power for executing transactions
-#[derive(Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Deserialize)]
 pub enum ComputeTarget {
     /// Use the agent pool to generate executions
+    #[default]
     AgentPool,
     /// Use demox' API to generate executions
     Demox,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Deserialize)]
 pub enum CreditsTxMode {
     BondPublic,
     UnbondPublic,
@@ -80,13 +83,13 @@ pub enum CreditsTxMode {
     TransferPrivateToPublic,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Deserialize)]
 pub enum TxMode {
     Credits(CreditsTxMode),
     // TODO: Program(program, func, input types??)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub enum TxSource {
     /// Read transactions from a file
     AoTPlayback {
@@ -98,21 +101,19 @@ pub enum TxSource {
         query: LedgerQueryService,
         compute: ComputeTarget,
 
+        /// defaults to TransferPublic
         tx_modes: HashSet<TxMode>,
 
-        /// how many transactions to buffer before firing a burst
-        min_buffer_size: usize,
+        /// private keys for making transactions
+        /// defaults to committee keys
+        private_keys: Vec<KeySource>,
+        /// addreses for transaction targets
+        /// defaults to committee addresses
+        addresses: Vec<KeySource>,
     },
 }
 
 impl TxSource {
-    pub fn needs_test_id(&self) -> bool {
-        match self {
-            TxSource::RealTime { query, .. } => query.needs_test_id(),
-            _ => false,
-        }
-    }
-
     /// Get an available port for the query service if applicable
     pub fn get_query_port(&self) -> Result<Option<u16>> {
         matches!(

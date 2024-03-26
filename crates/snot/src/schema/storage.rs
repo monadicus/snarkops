@@ -168,7 +168,7 @@ impl From<FilenameString> for String {
 }
 
 impl Document {
-    pub async fn prepare(self, state: &GlobalState) -> anyhow::Result<usize> {
+    pub async fn prepare(self, state: &GlobalState) -> anyhow::Result<Arc<LoadedStorage>> {
         static STORAGE_ID_INT: AtomicUsize = AtomicUsize::new(0);
 
         let id = String::from(self.id.clone());
@@ -189,7 +189,7 @@ impl Document {
 
         match self.generate {
             // generate the block and ledger if we have generation params
-            Some(mut generation) => 'generate: {
+            Some(generation) => 'generate: {
                 // warn if an existing block/ledger already exists
                 if exists {
                     // TODO: is this the behavior we want?
@@ -199,11 +199,6 @@ impl Document {
                     tracing::debug!("generating storage for {id}");
                     tokio::fs::create_dir_all(&base).await?;
                 }
-
-                generation.genesis = GenesisGeneration {
-                    output: base.join(generation.genesis.output),
-                    ..generation.genesis
-                };
 
                 // generate the genesis block using the aot cli
                 let bin = std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
@@ -318,16 +313,16 @@ impl Document {
         let int_id = STORAGE_ID_INT.fetch_add(1, Ordering::Relaxed);
         storage_lock.insert(int_id, id.to_owned());
 
-        let storage = LoadedStorage {
+        let storage = Arc::new(LoadedStorage {
             id: id.to_owned(),
             path: base.clone(),
             committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
             accounts,
-        };
+        });
         let mut storage_lock = state.storage.write().await;
-        storage_lock.insert(int_id, Arc::new(storage));
+        storage_lock.insert(int_id, storage.clone());
 
-        Ok(int_id)
+        Ok(storage)
     }
 }
 
