@@ -1,22 +1,30 @@
+pub mod authorized;
+pub mod fs_drain;
 mod net;
 pub mod router;
 pub mod sink;
 pub mod source;
 
 use std::{
-    collections::HashSet,
-    sync::{atomic::AtomicU32, Arc, Weak},
+    collections::{HashSet, VecDeque},
+    process::Stdio,
+    sync::{atomic::AtomicUsize, Arc, Weak},
 };
 
-use anyhow::{bail, Result};
-
+use anyhow::{bail, ensure, Result};
+use serde_json::json;
 use tokio::{
-    sync::{mpsc::UnboundedSender, Mutex as AsyncMutex},
-    task::AbortHandle,
+    process::Command,
+    sync::{mpsc::UnboundedSender, Mutex as AsyncMutex, OnceCell},
+    task::{AbortHandle, JoinHandle},
 };
 use tracing::warn;
 
-use crate::{cannon::source::LedgerQueryService, state::GlobalState, testing::Environment};
+use crate::{
+    cannon::source::{ComputeTarget, LedgerQueryService},
+    state::GlobalState,
+    testing::Environment,
+};
 
 use self::{sink::TxSink, source::TxSource};
 
@@ -73,7 +81,24 @@ pub struct CannonInstance {
 
     /// channel to send transactions to the the task
     tx_sender: UnboundedSender<String>,
-    fired_txs: AtomicU32,
+    fired_txs: AtomicUsize,
+}
+
+async fn get_host(state: &GlobalState) -> Option<String> {
+    static ONCE: OnceCell<Option<String>> = OnceCell::const_new();
+    match state.cli.hostname.as_ref() {
+        Some(host) => Some(host.to_owned()),
+        None => ONCE
+            .get_or_init(|| async {
+                let sources: external_ip::Sources = external_ip::get_http_sources();
+                let consensus = external_ip::ConsensusBuilder::new()
+                    .add_sources(sources)
+                    .build();
+                consensus.get_consensus().await.map(|a| a.to_string())
+            })
+            .await
+            .to_owned(),
+    }
 }
 
 impl CannonInstance {
@@ -83,63 +108,127 @@ impl CannonInstance {
     /// Locks the global state's tests and storage for reading.
     pub async fn new(
         global_state: Arc<GlobalState>,
+        cannon_id: usize,
         env: Arc<Environment>,
         source: TxSource,
         sink: TxSink,
     ) -> Result<Self> {
-        let env2 = env.clone();
-
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let tx_sender = tx.clone();
 
         let query_port = source.get_query_port()?;
+
+        let env2 = env.clone();
         let source2 = source.clone();
+        let state = global_state.clone();
 
-        let fired_txs = AtomicU32::new(0);
+        let fired_txs = AtomicUsize::new(0);
 
-        let handle = tokio::spawn(async move {
-            // TODO: write tx to sink at desired rate
-            let _tx = rx.recv().await;
+        // buffer for transactions
+        let tx_queue = VecDeque::<String>::new();
 
-            // spawn child process for ledger service if the source is local
-            let _child = if let Some(_port) = query_port {
-                // TODO: spawn ledger service
-                // kill on drop
-                // LedgerQueryService::Local(qs).run(port)
+        // spawn child process for ledger service if the source is local
+        let mut child = if let Some(_port) = query_port {
+            // TODO: make a copy of this ledger dir to prevent locks
+            let child = Command::new(&env.aot_bin)
+                .kill_on_drop(true)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .arg("ledger")
+                .arg("-l")
+                .arg(env.storage.path.join("ledger"))
+                .arg("-g")
+                .arg(env.storage.path.join("genesis.block"))
+                .arg("query")
+                .spawn()
+                .map_err(|e| anyhow::anyhow!("error spawning query service: {e}"))?;
+            Some(child)
+        } else {
+            None
+        };
 
-                // generate the genesis block using the aot cli
-                // let bin = std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
-                //     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                //         .join("../../target/release/snarkos-aot"),
-                // );
+        // when in playback mode, ensure the drain exists
+        let (drain, query_path) = match &source {
+            TxSource::Playback { name } => {
+                let drain = env.tx_drains.get(name).cloned();
+                ensure!(drain.is_some(), "transaction drain not found: {name}");
+                (drain, None)
+            }
+            TxSource::RealTime { compute, .. } => {
+                let suffix = format!("/api/v1/env/{}/cannons/{cannon_id}", env.id);
+                let query = match compute {
+                    // agents already know the host of the control plane
+                    ComputeTarget::AgentPool => suffix,
+                    // demox needs to locate it
+                    ComputeTarget::Demox { .. } => {
+                        let Some(host) = get_host(&state).await else {
+                            bail!("no --host configured for demox based cannon");
+                        };
+                        format!("http://{host}:{}{suffix}", global_state.cli.port)
+                    }
+                };
+                (None, Some(query))
+            }
+        };
 
-                // Command::new()
-                todo!()
+        let handle: JoinHandle<anyhow::Result<_>> = tokio::spawn(async move {
+            // effectively make this be the source of pooling requests
+
+            let gen_tx = || async {
+                match &source2 {
+                    TxSource::Playback { .. } => {
+                        // if tx source is playback, read lines from the transaction file
+                        let Some(transaction) = drain.unwrap().next()? else {
+                            bail!("source out of transactions")
+                        };
+                        tx.send(transaction)?;
+                        Ok(())
+                    }
+                    TxSource::RealTime { compute, .. } => {
+                        // TODO: if source is realtime, generate authorizations and
+                        // send them to any available agent
+
+                        let auth = source2.get_auth(&env2)?.run(&env2.aot_bin).await?;
+                        match compute {
+                            ComputeTarget::AgentPool => {
+                                todo!("find an agent, call the .execute_authorization api")
+                            }
+                            ComputeTarget::Demox { url } => {
+                                let _body = json!({
+                                    "jsonrpc": "2.0",
+                                    "id": 1,
+                                    "method": "generateTransaction",
+                                    "params": {
+                                        "authorization": serde_json::to_string(&auth["authorization"])?,
+                                        "fee": serde_json::to_string(&auth["fee"])?,
+                                        "url": query_path,
+                                        "broadcast": true,
+                                    }
+                                });
+
+                                todo!("post on {url}")
+                            }
+                        }
+                    }
+                }
             };
 
-            // if tx source is playback, read lines from the transaction file
-            if let TxSource::Playback { name: _name } = source2 {
-                // TODO: use the env.transaction_counters to determine which
-                // line to read from the file
-            }
-
-            println!("{}", env2.storage.id);
+            // TODO: build a buffer deep enough to satisfy a few seconds of transactions
+            // TODO: as the buffer is drained, queue up more generated transactions
 
             // compare the tx id to an authorization id
             let _pending_txs = HashSet::<String>::new();
 
             // env2.storage.lookup_keysource_pk(key)
 
-            // TODO: if a local query service exists, spawn it here
-            // kill on drop
-
             // TODO: determine the rate that transactions need to be created
             // based on the sink
 
-            // TODO: if source is realtime, generate authorizations and
-            // send them to any available agent
+            if let Some(mut child) = child.take() {
+                child.wait().await?;
+            }
 
-            std::future::pending::<()>().await
+            Ok(())
         });
 
         Ok(Self {

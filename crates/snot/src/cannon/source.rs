@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use serde::Deserialize;
 use snot_common::state::NodeKey;
 
-use crate::schema::nodes::KeySource;
+use crate::{schema::nodes::KeySource, testing::Environment};
 
-use super::net::get_available_port;
+use super::{authorized::Authorize, net::get_available_port};
 
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Deserialize)]
@@ -60,7 +60,7 @@ pub enum ComputeTarget {
     #[default]
     AgentPool,
     /// Use demox' API to generate executions
-    Demox,
+    Demox { url: String },
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Deserialize)]
@@ -116,5 +116,55 @@ impl TxSource {
         )
         .then(|| get_available_port().ok_or(anyhow!("could not get an available port")))
         .transpose()
+    }
+
+    pub fn get_auth(&self, env: &Environment) -> Result<Authorize> {
+        match self {
+            TxSource::RealTime {
+                tx_modes,
+                private_keys,
+                addresses,
+                ..
+            } => {
+                let sample_pk = || {
+                    private_keys
+                        .get(rand::random::<usize>() % private_keys.len())
+                        .and_then(|k| env.storage.sample_keysource_pk(k))
+                        .ok_or(bail!("error selecting a valid private key"))
+                };
+                let sample_addr = || {
+                    addresses
+                        .get(rand::random::<usize>() % addresses.len())
+                        .and_then(|k| env.storage.sample_keysource_addr(k))
+                        .ok_or(bail!("error selecting a valid private key"))
+                };
+
+                let Some(mode) = tx_modes
+                    .iter()
+                    .nth(rand::random::<usize>() % tx_modes.len())
+                else {
+                    bail!("no tx modes available for this cannon instance??")
+                };
+
+                let auth = match mode {
+                    TxMode::Credits(credit) => match credit {
+                        CreditsTxMode::BondPublic => todo!(),
+                        CreditsTxMode::UnbondPublic => todo!(),
+                        CreditsTxMode::TransferPublic => Authorize::TransferPublic {
+                            private_key: sample_pk()?,
+                            recipient: sample_addr()?,
+                            amount: 1,
+                            priority_fee: 0,
+                        },
+                        CreditsTxMode::TransferPublicToPrivate => todo!(),
+                        CreditsTxMode::TransferPrivate => todo!(),
+                        CreditsTxMode::TransferPrivateToPublic => todo!(),
+                    },
+                };
+
+                Ok(auth)
+            }
+            _ => Err(anyhow!("cannot authorize playback transactions")),
+        }
     }
 }

@@ -3,7 +3,7 @@ use std::{
     fmt::Display,
     path::PathBuf,
     sync::{
-        atomic::{AtomicU32, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -17,7 +17,7 @@ use snot_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
 use tracing::{info, warn};
 
 use crate::{
-    cannon::{sink::TxSink, source::TxSource, CannonInstance},
+    cannon::{fs_drain::TransactionDrain, sink::TxSink, source::TxSource, CannonInstance},
     schema::{
         nodes::{ExternalNode, Node},
         storage::LoadedStorage,
@@ -28,13 +28,14 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Environment {
+    pub id: usize,
     pub storage: Arc<LoadedStorage>,
     pub node_map: BiMap<NodeKey, EnvPeer>,
     pub initial_nodes: IndexMap<NodeKey, EnvNode>,
     pub aot_bin: PathBuf,
 
     /// Map of transaction files to their respective counters
-    pub transaction_counters: HashMap<String, AtomicU32>,
+    pub tx_drains: HashMap<String, Arc<TransactionDrain>>,
     /// Map of cannon ids to their cannon configurations
     pub cannon_configs: HashMap<String, (TxSource, TxSink)>,
     /// To help generate the id of the new cannon.
@@ -93,6 +94,7 @@ impl Environment {
         let mut node_map = BiHashMap::default();
         let mut initial_nodes = IndexMap::default();
         let mut cannon_configs = HashMap::new();
+        let mut tx_drains = HashMap::new();
 
         for document in documents {
             match document {
@@ -189,11 +191,26 @@ impl Environment {
             }
         }
 
+        let storage = storage.ok_or_else(|| anyhow!("env is missing storage document"))?;
+
+        // review cannon configurations to ensure all playback sources have a real file
+        // backing them
+        for (source, _) in cannon_configs.values() {
+            if let TxSource::Playback { name } = source {
+                tx_drains.insert(
+                    name.to_owned(),
+                    Arc::new(TransactionDrain::new(storage.clone(), name)?),
+                );
+            }
+        }
+
+        let env_id = state.envs_counter.fetch_add(1, Ordering::Relaxed);
         let env = Environment {
-            storage: storage.ok_or_else(|| anyhow!("env is missing storage document"))?,
+            id: env_id,
+            storage,
             node_map,
             initial_nodes,
-            transaction_counters: Default::default(),
+            tx_drains,
             cannon_configs,
             cannons_counter: Default::default(),
             cannons: Default::default(),
@@ -208,7 +225,6 @@ impl Environment {
             },
         };
 
-        let env_id = state.envs_counter.fetch_add(1, Ordering::Relaxed);
         state_lock.insert(env_id, Arc::new(env));
         drop(state_lock);
 

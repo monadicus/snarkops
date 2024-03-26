@@ -406,4 +406,33 @@ impl AgentService for AgentRpcServer {
             AgentMetric::Tps => metrics.tps.get(),
         }
     }
+
+    async fn execute_authorization(
+        self,
+        _: context::Context,
+        _env_id: usize,
+        query: String,
+        auth: String,
+    ) -> Result<(), AgentError> {
+        info!("executing authorization...");
+        // TODO: ensure binary associated with this env_id is present
+
+        let res = Command::new(self.state.cli.path.join(SNARKOS_FILE))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .arg("execute")
+            .arg("--query")
+            .arg(&format!("http://{}{query}", self.state.endpoint))
+            .arg(auth)
+            .spawn()
+            .map_err(|_| AgentError::FailedToSpawnProcess)?
+            .wait()
+            .await
+            .map_err(|_| AgentError::ProcessFailed)?;
+
+        if !res.success() {
+            return Err(AgentError::ProcessFailed);
+        }
+        Ok(())
+    }
 }

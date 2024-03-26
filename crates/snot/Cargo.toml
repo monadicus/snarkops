@@ -10,6 +10,7 @@ bimap.workspace = true
 bincode.workspace = true
 clap.workspace = true
 duration-str = { version = "0.7", default-features = false }
+external-ip.workspace = true
 futures-util.workspace = true
 hmac = "0.12.1"
 indexmap.workspace = true
