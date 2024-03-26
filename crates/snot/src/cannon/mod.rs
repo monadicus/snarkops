@@ -83,18 +83,10 @@ impl CannonInstance {
     /// Locks the global state's tests and storage for reading.
     pub async fn new(
         global_state: Arc<GlobalState>,
+        env: Arc<Environment>,
         source: TxSource,
         sink: TxSink,
-        test_id: usize,
     ) -> Result<Self> {
-        // mapping with async is ugly and blocking_read is scary
-        let env = {
-            let Some(env) = global_state.envs.read().await.get(&test_id).cloned() else {
-                bail!("test {test_id} not found")
-            };
-
-            env
-        };
         let env2 = env.clone();
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
