@@ -21,9 +21,9 @@ use tokio::sync::RwLock;
 
 use crate::{
     cli::Cli,
+    env::Environment,
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
-    testing::Environment,
 };
 
 pub type AgentId = usize;
@@ -40,7 +40,6 @@ pub struct GlobalState {
     pub storage_ids: RwLock<BiMap<usize, String>>,
     pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
 
-    pub envs_counter: AtomicUsize,
     pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
 }
 

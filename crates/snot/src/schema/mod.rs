@@ -77,7 +77,11 @@ impl<'de> Visitor<'de> for NodeTargetsVisitor {
             buf.push(NodeTarget::from_str(elem).map_err(A::Error::custom)?);
         }
 
-        Ok(NodeTargets::Many(buf))
+        Ok(if buf.is_empty() {
+            NodeTargets::None
+        } else {
+            NodeTargets::Many(buf)
+        })
     }
 }
 
@@ -129,7 +133,7 @@ impl FromStr for NodeTarget {
             "*" => NodeTargetId::All,
 
             // partial wildcard
-            id if id.contains('*') => NodeTargetId::WildcardPattern(id.into()),
+            id if id.contains('*') => NodeTargetId::WildcardPattern(WildMatch::new(id)),
 
             // literal string
             id => NodeTargetId::Literal(id.into()),
@@ -165,7 +169,7 @@ pub enum NodeTargetId {
     /// `*`. Matches all IDs.
     All,
     /// A wildcard pattern, like `foo-*`.
-    WildcardPattern(String),
+    WildcardPattern(WildMatch),
     /// A literal name, like `foo-node` or `1`.
     Literal(String),
 }
@@ -198,14 +202,14 @@ impl NodeTarget {
         (match self.ty {
             NodeTargetType::All => true,
             NodeTargetType::One(ty) => ty == key.ty,
-        }) && (match self.id {
+        }) && (match &self.id {
             NodeTargetId::All => true,
-            NodeTargetId::WildcardPattern(ref pattern) => WildMatch::new(pattern).matches(&key.id),
-            NodeTargetId::Literal(ref id) => &key.id == id,
-        }) && (match self.ns {
+            NodeTargetId::WildcardPattern(pattern) => pattern.matches(&key.id),
+            NodeTargetId::Literal(id) => &key.id == id,
+        }) && (match &self.ns {
             NodeTargetNamespace::All => true,
             NodeTargetNamespace::Local => key.ns.is_none() || key.ns == Some("local".into()),
-            NodeTargetNamespace::Literal(ref ns) => {
+            NodeTargetNamespace::Literal(ns) => {
                 ns == "local" && key.ns.is_none()
                     || key.ns.as_ref().map_or(false, |key_ns| key_ns == ns)
             }

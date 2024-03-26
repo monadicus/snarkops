@@ -10,16 +10,18 @@ use serde_json::json;
 use snot_common::rpc::agent::AgentMetric;
 
 use super::AppState;
-use crate::{cannon::router::redirect_cannon_routes, testing::Environment};
+use crate::cannon::router::redirect_cannon_routes;
+use crate::env::Environment;
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/prepare", post(post_env_prepare))
-        .route("/env/:env_id", delete(delete_env))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
+        .route("/env/:id", post(post_env_timeline))
+        .route("/env/:id", delete(delete_env_timeline))
 }
 
 #[derive(Deserialize)]
@@ -95,7 +97,19 @@ async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
     }
 }
 
-async fn delete_env(Path(env_id): Path<usize>, State(state): State<AppState>) -> impl IntoResponse {
+async fn post_env_timeline(
+    Path(env_id): Path<usize>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    // ...
+
+    StatusCode::OK
+}
+
+async fn delete_env_timeline(
+    Path(env_id): Path<usize>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
     match Environment::cleanup(&env_id, &state).await {
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => (

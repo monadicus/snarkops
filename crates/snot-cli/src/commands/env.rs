@@ -7,7 +7,7 @@ use serde_json::Value;
 /// For interacting with snot tests.
 #[derive(Debug, Parser)]
 pub struct Env {
-    /// The url the agent is on.
+    /// The url the control plane is on.
     #[clap(short, long, default_value = "http://localhost:1234")]
     url: url::Url,
     #[clap(subcommand)]
@@ -17,12 +17,16 @@ pub struct Env {
 /// Env commands
 #[derive(Debug, Parser)]
 enum Commands {
-    /// Start a Env.
-    Start {
+    /// Prepare a (test) environment.
+    Prepare {
         /// The test spec file.
         spec: PathBuf,
     },
-    /// Stop a Env(s).
+
+    /// Start an environment's timeline (a test).
+    Start { id: usize },
+
+    /// Stop an environment's timeline.
     Stop {
         /// Stop all envs.
         // #[clap(short, long)]
@@ -33,27 +37,31 @@ enum Commands {
 }
 
 impl Env {
-    const START_ENDPOINT: &'static str = "api/v1/env/prepare";
-    const STOP_ENDPOINT: &'static str = "api/v1/env/";
-
     pub fn run(self) -> Result<()> {
         let client = reqwest::blocking::Client::new();
+
         use Commands::*;
         match self.command {
-            Start { spec } => {
+            Prepare { spec } => {
+                let ep = format!("{}/api/v1/env/prepare", self.url);
                 let file: String = std::fs::read_to_string(spec)?;
-                let id: Value = client
-                    .post(format!("{}{}", self.url, Self::START_ENDPOINT))
-                    .body(file)
-                    .send()?
-                    .json()?;
+
+                let id: Value = client.post(&ep).body(file).send()?.json()?;
                 println!("{}", serde_json::to_string(&id)?);
                 Ok(())
             }
+
+            Start { id } => {
+                let ep = format!("{}/api/v1/env/{id}", self.url);
+
+                client.post(&ep).send()?;
+                Ok(())
+            }
+
             Stop { id } => {
-                client
-                    .delete(format!("{}{}{id}", self.url, Self::STOP_ENDPOINT))
-                    .send()?;
+                let ep = format!("{}/api/v1/env/{id}", self.url);
+
+                client.delete(&ep).send()?;
                 Ok(())
             }
         }
