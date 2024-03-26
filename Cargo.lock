@@ -2473,6 +2473,50 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
 
 [[package]]
+name = "metrics"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd71d9db2e4287c3407fa04378b8c2ee570aebe0854431562cdd89ca091854f4"
+dependencies = [
+ "ahash 0.8.7",
+ "portable-atomic",
+]
+
+[[package]]
+name = "metrics-exporter-prometheus"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bf4e7146e30ad172c42c39b3246864bd2d3c6396780711a1baf749cfe423e21"
+dependencies = [
+ "base64 0.21.7",
+ "hyper 0.14.28",
+ "hyper-tls 0.5.0",
+ "indexmap 2.2.5",
+ "ipnet",
+ "metrics",
+ "metrics-util",
+ "quanta",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "metrics-util"
+version = "0.16.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b07a5eb561b8cbc16be2d216faf7757f9baf3bfb94dbb0fae3df8387a5bb47f"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+ "hashbrown 0.14.3",
+ "metrics",
+ "num_cpus",
+ "quanta",
+ "sketches-ddsketch",
+]
+
+[[package]]
 name = "miette"
 version = "5.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4129,10 +4173,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_moving_average"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a4b144ad185430cd033299e2c93e465d5a7e65fbb858593dc57181fa13cd310"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38b58827f4464d87d377d175e90bf58eb00fd8716ff0a62f80356b5e61555d0d"
+
+[[package]]
+name = "sketches-ddsketch"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85636c14b73d81f541e525f585c0a2109e6744e1565b5c1668e31c70c10ed65c"
 
 [[package]]
 name = "slab"
@@ -4209,6 +4268,7 @@ dependencies = [
  "indexmap 2.2.5",
  "indicatif",
  "lazy_static",
+ "metrics-exporter-prometheus",
  "nix",
  "rand",
  "rand_chacha",
@@ -4219,6 +4279,7 @@ dependencies = [
  "serde_json",
  "snarkos-account",
  "snarkos-node",
+ "snarkos-node-metrics",
  "snarkvm",
  "snot-common",
  "tikv-jemallocator",
@@ -4250,6 +4311,7 @@ dependencies = [
  "snarkos-node-bft",
  "snarkos-node-cdn",
  "snarkos-node-consensus",
+ "snarkos-node-metrics",
  "snarkos-node-rest",
  "snarkos-node-router",
  "snarkos-node-sync",
@@ -4282,6 +4344,7 @@ dependencies = [
  "snarkos-node-bft-events",
  "snarkos-node-bft-ledger-service",
  "snarkos-node-bft-storage-service",
+ "snarkos-node-metrics",
  "snarkos-node-sync",
  "snarkos-node-tcp",
  "snarkvm",
@@ -4301,6 +4364,7 @@ dependencies = [
  "indexmap 2.2.5",
  "rayon",
  "serde",
+ "snarkos-node-metrics",
  "snarkos-node-sync-locators",
  "snarkvm",
  "tokio-util",
@@ -4365,9 +4429,19 @@ dependencies = [
  "snarkos-node-bft",
  "snarkos-node-bft-ledger-service",
  "snarkos-node-bft-storage-service",
+ "snarkos-node-metrics",
  "snarkvm",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "snarkos-node-metrics"
+version = "2.2.7"
+dependencies = [
+ "metrics-exporter-prometheus",
+ "snarkvm",
+ "tokio",
 ]
 
 [[package]]
@@ -4414,6 +4488,7 @@ dependencies = [
  "reqwest 0.11.26",
  "serde",
  "snarkos-account",
+ "snarkos-node-metrics",
  "snarkos-node-router-messages",
  "snarkos-node-sync-locators",
  "snarkos-node-tcp",
@@ -4489,6 +4564,7 @@ dependencies = [
  "futures-util",
  "once_cell",
  "parking_lot",
+ "snarkos-node-metrics",
  "tokio",
  "tokio-util",
  "tracing",
@@ -4514,6 +4590,7 @@ dependencies = [
  "snarkvm-circuit",
  "snarkvm-console",
  "snarkvm-ledger",
+ "snarkvm-metrics",
  "snarkvm-parameters",
  "snarkvm-synthesizer",
  "snarkvm-utilities",
@@ -5014,6 +5091,7 @@ dependencies = [
  "serde_json",
  "snarkvm-console",
  "snarkvm-ledger-narwhal-batch-header",
+ "snarkvm-metrics",
 ]
 
 [[package]]
@@ -5129,6 +5207,14 @@ dependencies = [
  "snarkvm-synthesizer-program",
  "snarkvm-synthesizer-snark",
  "tracing",
+]
+
+[[package]]
+name = "snarkvm-metrics"
+version = "0.16.19"
+dependencies = [
+ "metrics",
+ "metrics-exporter-prometheus",
 ]
 
 [[package]]
@@ -5305,6 +5391,7 @@ dependencies = [
  "httpdate",
  "local-ip-address",
  "reqwest 0.12.0",
+ "simple_moving_average",
  "snot-common",
  "tarpc",
  "tokio",

@@ -215,8 +215,8 @@ impl Document {
                     }
                     None => {
                         let res = Command::new(bin)
-                            .stdout(Stdio::piped())
-                            .stderr(Stdio::piped())
+                            .stdout(Stdio::inherit())
+                            .stderr(Stdio::inherit())
                             .arg("genesis")
                             .arg("--output")
                             .arg(&output)

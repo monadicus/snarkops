@@ -3,7 +3,7 @@ use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::A
 use snot_common::{
     rpc::{
         agent::{
-            AgentError, AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError,
+            AgentError, AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, ReconcileError,
         },
         control::{ControlServiceRequest, ControlServiceResponse},
         MuxMessage,
@@ -17,7 +17,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn, Level};
 
-use crate::{api, state::AppState};
+use crate::{api, metrics::MetricComputer, state::AppState};
 
 /// The JWT file name.
 pub const JWT_FILE: &str = "jwt";
@@ -227,6 +227,8 @@ impl AgentService for AgentRpcServer {
                         .arg(state.cli.bft.to_string())
                         .arg("--rest")
                         .arg(state.cli.rest.to_string())
+                        .arg("--metrics")
+                        .arg(state.cli.metrics.to_string())
                         .arg("--node")
                         .arg(state.cli.node.to_string());
 
@@ -386,5 +388,13 @@ impl AgentService for AgentRpcServer {
             .json()
             .await
             .map_err(|_| AgentError::FailedToParseJson)
+    }
+  
+    async fn get_metric(self, _: context::Context, metric: AgentMetric) -> f64 {
+        let metrics = self.state.metrics.read().await;
+
+        match metric {
+            AgentMetric::Tps => metrics.tps.get(),
+        }
     }
 }

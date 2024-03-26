@@ -14,7 +14,7 @@ use tokio::{
     task::AbortHandle,
 };
 
-use crate::cli::Cli;
+use crate::{cli::Cli, metrics::Metrics};
 
 pub type AppState = Arc<GlobalState>;
 
@@ -33,6 +33,7 @@ pub struct GlobalState {
                                        * not sure yet */
     // Map of agent IDs to their resolved addresses.
     pub resolved_addrs: RwLock<HashMap<AgentId, IpAddr>>,
+    pub metrics: RwLock<Metrics>,
 }
 
 impl GlobalState {

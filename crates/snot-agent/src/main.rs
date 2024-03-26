@@ -1,5 +1,6 @@
 mod api;
 mod cli;
+mod metrics;
 mod net;
 mod rpc;
 mod state;
@@ -139,7 +140,11 @@ async fn main() {
         reconcilation_handle: Default::default(),
         child: Default::default(),
         resolved_addrs: Default::default(),
+        metrics: Default::default(),
     });
+
+    // start the metrics watcher
+    metrics::init(Arc::clone(&state));
 
     // initialize and start the rpc server
     let rpc_server = tarpc::server::BaseChannel::with_defaults(server_transport);

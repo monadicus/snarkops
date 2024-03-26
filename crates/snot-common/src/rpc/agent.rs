@@ -3,9 +3,8 @@ use std::net::IpAddr;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::state::{AgentState, PortConfig};
-
 use super::control::ResolveError;
+use crate::state::{AgentState, PortConfig};
 
 /// The RPC service that agents implement as a server.
 #[tarpc::service]
@@ -13,7 +12,8 @@ pub trait AgentService {
     /// Control plane instructs the agent to use a JWT when reconnecting later.
     async fn keep_jwt(jwt: String);
 
-    /// Control plane asks the agent for its external network address, along with local addrs.
+    /// Control plane asks the agent for its external network address, along
+    /// with local addrs.
     async fn get_addrs() -> (PortConfig, Option<IpAddr>, Vec<IpAddr>);
 
     /// Control plane instructs the agent to reconcile towards a particular
@@ -22,6 +22,7 @@ pub trait AgentService {
 
     /// Get the state root from the running node
     async fn get_state_root() -> Result<String, AgentError>;
+    async fn get_metric(metric: AgentMetric) -> f64;
 }
 
 #[derive(Debug, Error, Serialize, Deserialize)]
@@ -44,4 +45,8 @@ pub enum AgentError {
     FailedToParseJson,
     #[error("failed to make a request")]
     FailedToMakeRequest,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AgentMetric {
+    Tps,
 }
