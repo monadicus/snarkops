@@ -18,4 +18,5 @@ cargo run --release -p snot-agent -- \
   --bind "0.0.0.0" \
   --bft "500$INDEX" \
   --rest "303$INDEX" \
+  --metrics "900$INDEX" \
   --node "413$INDEX"
