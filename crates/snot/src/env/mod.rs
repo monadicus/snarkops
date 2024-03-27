@@ -18,6 +18,7 @@ use serde::Deserialize;
 use snot_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
 use tracing::{info, warn};
 
+use self::timeline::reconcile_agents;
 use crate::{
     cannon::{sink::TxSink, source::TxSource, CannonInstance},
     schema::{
@@ -356,8 +357,7 @@ impl Environment {
 
 /// Reconcile all associated nodes with their initial state.
 pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Result<()> {
-    let mut handles = vec![];
-    let mut agent_ids = vec![];
+    let mut pending_reconciliations = vec![];
     {
         let envs_lock = state.envs.read().await;
         let env = envs_lock
@@ -403,51 +403,11 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
                 .collect();
 
             let agent_state = AgentState::Node(env_id, node_state);
-            agent_ids.push(id);
-            handles.push(tokio::spawn(async move {
-                client.reconcile(agent_state.clone()).await
-            }));
+            pending_reconciliations.push((id, client, agent_state));
         }
     }
 
-    let num_attempted_reconciliations = handles.len();
-
-    info!("waiting for reconcile...");
-    let reconciliations = join_all(handles).await;
-    info!("reconcile done, updating agent states...");
-
-    let mut pool_lock = state.pool.write().await;
-    let mut success = 0;
-    for (agent_id, result) in agent_ids.into_iter().zip(reconciliations) {
-        // safety: we acquired this before when building handles, agent_id wouldn't be
-        // here if the corresponding agent didn't exist
-        let agent = pool_lock.get_mut(&agent_id).unwrap();
-
-        match result {
-            // oh god
-            Ok(Ok(Ok(state))) => {
-                agent.set_state(state);
-                success += 1;
-            }
-
-            // reconcile error
-            Ok(Err(e)) => warn!(
-                "agent {} experienced a reconcilation error: {e}",
-                agent.id()
-            ),
-
-            // could be a tokio error or an RPC error
-            _ => warn!(
-                "agent {} failed to reconcile for an unknown reason",
-                agent.id()
-            ),
-        }
-    }
-
-    info!(
-        "reconciliation result: {success}/{} nodes reconciled",
-        num_attempted_reconciliations
-    );
+    reconcile_agents(pending_reconciliations.into_iter(), &state.pool).await;
 
     Ok(())
 }

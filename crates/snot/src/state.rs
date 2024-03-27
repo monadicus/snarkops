@@ -13,7 +13,7 @@ use bimap::BiMap;
 use jwt::SignWithKey;
 use snot_common::{
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentState, PortConfig},
+    state::{AgentState, NodeState, PortConfig},
 };
 use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
@@ -175,6 +175,20 @@ impl Agent {
     /// trigger a reconcile
     pub fn set_addrs(&mut self, external_addr: Option<IpAddr>, internal_addrs: Vec<IpAddr>) {
         self.addrs = Some((external_addr, internal_addrs));
+    }
+
+    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(usize, AgentClient, AgentState)>
+    where
+        F: Fn(NodeState) -> NodeState,
+    {
+        Some((
+            self.id(),
+            self.client_owned()?,
+            match &self.state {
+                AgentState::Node(id, state) => AgentState::Node(*id, f(state.clone())),
+                _ => return None,
+            },
+        ))
     }
 }
 
