@@ -20,7 +20,7 @@ use snarkvm::{
 };
 use tracing::warn;
 
-use crate::{Address, PrivateKey};
+use crate::{Address, DbLedger, PrivateKey};
 
 pub mod add;
 pub mod distribute;
@@ -158,7 +158,7 @@ impl Ledger {
 
             Commands::Truncate(truncate) => truncate.parse(genesis, ledger),
             Commands::TruncateEvil { amount } => {
-                let ledger = util::open_ledger(genesis, ledger)?;
+                let ledger: DbLedger = util::open_ledger(genesis, ledger)?;
                 ledger.vm().block_store().remove_last_n(amount)?;
                 Ok(())
             }
