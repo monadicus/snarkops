@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, BufWriter, Write},
     sync::{Arc, Mutex},
 };
 
@@ -40,5 +40,37 @@ impl TransactionDrain {
             return Ok(None);
         }
         Ok(Some(buf))
+    }
+}
+
+#[derive(Debug)]
+pub struct TransactionSink(Mutex<Option<BufWriter<File>>>);
+
+impl TransactionSink {
+    /// Create a new transaction sink
+    pub fn new(storage: Arc<LoadedStorage>, target: &str) -> Result<Self> {
+        let target = storage.path.join(target);
+
+        let Ok(f) = File::options().create(true).append(true).open(&target) else {
+            bail!("error opening transaction target file: {target:?}");
+        };
+
+        Ok(Self(Mutex::new(Some(BufWriter::new(f)))))
+    }
+
+    /// Write a line to the transaction sink
+    pub fn write(&self, line: &str) -> Result<()> {
+        let Ok(mut lock) = self.0.lock() else {
+            bail!("error locking transaction sink");
+        };
+
+        if lock.is_none() {
+            return Ok(());
+        }
+
+        let writer = lock.as_mut().unwrap();
+        writer.write_all(line.as_bytes())?;
+        writer.write_all(b"\n")?;
+        Ok(())
     }
 }

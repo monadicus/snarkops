@@ -405,6 +405,32 @@ impl AgentService for AgentRpcServer {
             .map_err(|_| AgentError::FailedToParseJson)
     }
 
+    async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {
+        if !matches!(
+            self.state.agent_state.read().await.deref(),
+            AgentState::Node(_, _)
+        ) {
+            return Err(AgentError::InvalidState);
+        }
+
+        let url = format!(
+            "http://127.0.0.1:{}/mainnet/transaction/broadcast",
+            self.state.cli.rest
+        );
+        let response = reqwest::Client::new()
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(tx)
+            .send()
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(AgentError::FailedToMakeRequest)
+        }
+    }
+
     async fn get_metric(self, _: context::Context, metric: AgentMetric) -> f64 {
         let metrics = self.state.metrics.read().await;
 

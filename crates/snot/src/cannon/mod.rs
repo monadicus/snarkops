@@ -1,5 +1,5 @@
 pub mod authorized;
-pub mod fs_drain;
+pub mod file;
 mod net;
 pub mod router;
 pub mod sink;
@@ -13,6 +13,7 @@ use std::{
 
 use anyhow::{bail, ensure, Result};
 use serde_json::json;
+use snot_common::state::{AgentPeer, AgentState};
 use tokio::{
     process::Command,
     sync::{mpsc::UnboundedSender, Mutex as AsyncMutex, OnceCell},
@@ -23,7 +24,7 @@ use tracing::warn;
 use self::{sink::TxSink, source::TxSource};
 use crate::{
     cannon::source::{ComputeTarget, LedgerQueryService},
-    env::Environment,
+    env::{Environment, PortType},
     state::GlobalState,
 };
 
@@ -78,6 +79,7 @@ pub struct CannonInstance {
 
     // TODO: run the actual cannon in this task
     task: AsyncMutex<AbortHandle>,
+    child: Option<tokio::process::Child>,
 
     /// channel to send transactions to the the task
     tx_sender: UnboundedSender<String>,
@@ -118,8 +120,9 @@ impl CannonInstance {
 
         let query_port = source.get_query_port()?;
 
-        let env2 = env.clone();
+        let env2 = Arc::downgrade(&env);
         let source2 = source.clone();
+        let sink2 = sink.clone();
         let state = global_state.clone();
 
         let fired_txs = AtomicUsize::new(0);
@@ -128,7 +131,7 @@ impl CannonInstance {
         let tx_queue = VecDeque::<String>::new();
 
         // spawn child process for ledger service if the source is local
-        let mut child = if let Some(port) = query_port {
+        let child = if let Some(port) = query_port {
             // TODO: make a copy of this ledger dir to prevent locks
             let child = Command::new(&env.aot_bin)
                 .kill_on_drop(true)
@@ -153,11 +156,11 @@ impl CannonInstance {
         };
 
         // when in playback mode, ensure the drain exists
-        let (drain, query_path) = match &source {
+        let (drain_pipe, query_path) = match &source {
             TxSource::Playback { name } => {
-                let drain = env.tx_drains.get(name).cloned();
-                ensure!(drain.is_some(), "transaction drain not found: {name}");
-                (drain, None)
+                let pipe = env.tx_pipe.drains.get(name).cloned();
+                ensure!(pipe.is_some(), "transaction drain not found: {name}");
+                (pipe, None)
             }
             TxSource::RealTime { compute, .. } => {
                 let suffix = format!("/api/v1/env/{}/cannons/{cannon_id}", env.id);
@@ -176,6 +179,15 @@ impl CannonInstance {
             }
         };
 
+        let sink_pipe = match &sink {
+            TxSink::Record { name } => {
+                let pipe = env.tx_pipe.sinks.get(name).cloned();
+                ensure!(pipe.is_some(), "transaction sink not found: {name}");
+                pipe
+            }
+            _ => None,
+        };
+
         let handle: JoinHandle<anyhow::Result<_>> = tokio::spawn(async move {
             // effectively make this be the source of pooling requests
 
@@ -183,7 +195,7 @@ impl CannonInstance {
                 match &source2 {
                     TxSource::Playback { .. } => {
                         // if tx source is playback, read lines from the transaction file
-                        let Some(transaction) = drain.unwrap().next()? else {
+                        let Some(transaction) = drain_pipe.unwrap().next()? else {
                             bail!("source out of transactions")
                         };
                         tx.send(transaction)?;
@@ -193,10 +205,39 @@ impl CannonInstance {
                         // TODO: if source is realtime, generate authorizations and
                         // send them to any available agent
 
-                        let auth = source2.get_auth(&env2)?.run(&env2.aot_bin).await?;
+                        let env = env2
+                            .upgrade()
+                            .ok_or_else(|| anyhow::anyhow!("env dropped"))?;
+
+                        let auth = source2.get_auth(&env)?.run(&env.aot_bin).await?;
                         match compute {
                             ComputeTarget::AgentPool => {
-                                todo!("find an agent, call the .execute_authorization api")
+                                // find a client, mark it as busy
+                                let Some((client, _busy)) =
+                                    state.pool.read().await.values().find_map(|a| {
+                                        if !a.is_busy()
+                                            && matches!(a.state(), AgentState::Inventory)
+                                        {
+                                            a.client_owned().map(|c| (c, a.make_busy()))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                else {
+                                    bail!("no agents available to execute authorization")
+                                };
+
+                                // execute the authorization
+                                client
+                                    .execute_authorization(
+                                        env2.upgrade()
+                                            .ok_or_else(|| anyhow::anyhow!("env dropped"))?
+                                            .id,
+                                        query_path.unwrap(),
+                                        serde_json::from_value(auth)?,
+                                    )
+                                    .await?;
+                                Ok(())
                             }
                             ComputeTarget::Demox { url } => {
                                 let _body = json!({
@@ -206,7 +247,7 @@ impl CannonInstance {
                                     "params": {
                                         "authorization": serde_json::to_string(&auth["authorization"])?,
                                         "fee": serde_json::to_string(&auth["fee"])?,
-                                        "url": query_path,
+                                        "url": query_path.unwrap(),
                                         "broadcast": true,
                                     }
                                 });
@@ -218,21 +259,61 @@ impl CannonInstance {
                 }
             };
 
-            // TODO: build a buffer deep enough to satisfy a few seconds of transactions
-            // TODO: as the buffer is drained, queue up more generated transactions
-
             // compare the tx id to an authorization id
             let _pending_txs = HashSet::<String>::new();
 
-            // env2.storage.lookup_keysource_pk(key)
+            // build a timer that keeps track of the expected sink speed
+            let mut timer = sink2.timer(10000);
 
-            // TODO: determine the rate that transactions need to be created
-            // based on the sink
+            loop {
+                tokio::select! {
+                    _ = timer.next() => {
+                        // gen_tx.clone()().await?;
+                        todo!("queue a transaction generation")
+                    }
+                    Some(tx) = rx.recv() => {
+                        match &sink2 {
+                            TxSink::Record { .. } => {
+                                sink_pipe.clone().unwrap().write(&tx)?;
+                            }
+                            TxSink::RealTime { target, .. } => {
+                                let pool = state.pool.read().await;
+                                let nodes = env2.upgrade().ok_or_else(|| anyhow::anyhow!("env dropped"))?
+                                    .matching_nodes(target, &pool, PortType::Rest)
+                                    .collect::<Vec<_>>();
+                                let Some(node) = nodes.get(rand::random::<usize>() % nodes.len()) else {
+                                    bail!("no nodes available to broadcast transactions")
+                                };
+                                match node {
+                                    AgentPeer::Internal(id, _) => {
+                                        let Some(client) = pool[id].client_owned() else {
+                                            bail!("target node was offline");
+                                        };
 
-            if let Some(mut child) = child.take() {
-                child.wait().await?;
+                                        client.broadcast_tx(tx).await?;
+                                    }
+                                    AgentPeer::External(addr) => {
+                                        let url = format!("http://{addr}/mainnet/transaction/broadcast");
+                                        ensure!(
+                                            reqwest::Client::new()
+                                                .post(url)
+                                                .header("Content-Type", "application/json")
+                                                .body(tx)
+                                                .send()
+                                                .await?
+                                                .status()
+                                                .is_success(),
+                                            "failed to post transaction to external target node {addr}"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
+            #[allow(unreachable_code)]
             Ok(())
         });
 
@@ -243,6 +324,7 @@ impl CannonInstance {
             env: Arc::downgrade(&env),
             tx_sender,
             query_port,
+            child,
             task: AsyncMutex::new(handle.abort_handle()),
             fired_txs,
         })

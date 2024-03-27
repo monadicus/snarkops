@@ -19,7 +19,12 @@ use snot_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
 use tracing::{info, warn};
 
 use crate::{
-    cannon::{fs_drain::TransactionDrain, sink::TxSink, source::TxSource, CannonInstance},
+    cannon::{
+        file::{TransactionDrain, TransactionSink},
+        sink::TxSink,
+        source::TxSource,
+        CannonInstance,
+    },
     schema::{
         nodes::{ExternalNode, Node},
         storage::LoadedStorage,
@@ -38,7 +43,7 @@ pub struct Environment {
     pub aot_bin: PathBuf,
 
     /// Map of transaction files to their respective counters
-    pub tx_drains: HashMap<String, Arc<TransactionDrain>>,
+    pub tx_pipe: TxPipes,
     /// Map of cannon ids to their cannon configurations
     pub cannon_configs: HashMap<String, (TxSource, TxSink)>,
     /// To help generate the id of the new cannon.
@@ -47,6 +52,12 @@ pub struct Environment {
     pub cannons: HashMap<usize, CannonInstance>,
 
     pub timeline: Vec<TimelineEvent>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TxPipes {
+    pub drains: HashMap<String, Arc<TransactionDrain>>,
+    pub sinks: HashMap<String, Arc<TransactionSink>>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +83,12 @@ impl Display for EnvPeer {
             EnvPeer::External => write!(f, "external node"),
         }
     }
+}
+
+pub enum PortType {
+    Node,
+    Bft,
+    Rest,
 }
 
 impl Environment {
@@ -101,7 +118,7 @@ impl Environment {
         let mut node_map = BiHashMap::default();
         let mut initial_nodes = IndexMap::default();
         let mut cannon_configs = HashMap::new();
-        let mut tx_drains = HashMap::new();
+        let mut tx_pipe = TxPipes::default();
         let mut timeline = vec![];
 
         for document in documents {
@@ -207,13 +224,20 @@ impl Environment {
 
         let storage = storage.ok_or_else(|| anyhow!("env is missing storage document"))?;
 
-        // review cannon configurations to ensure all playback sources have a real file
-        // backing them
-        for (source, _) in cannon_configs.values() {
+        // review cannon configurations to ensure all playback sources and sinks
+        // have a real file backing them
+        for (source, sink) in cannon_configs.values() {
             if let TxSource::Playback { name } = source {
-                tx_drains.insert(
+                tx_pipe.drains.insert(
                     name.to_owned(),
                     Arc::new(TransactionDrain::new(storage.clone(), name)?),
+                );
+            }
+
+            if let TxSink::Record { name } = sink {
+                tx_pipe.sinks.insert(
+                    name.to_owned(),
+                    Arc::new(TransactionSink::new(storage.clone(), name)?),
                 );
             }
         }
@@ -224,7 +248,7 @@ impl Environment {
             storage,
             node_map,
             initial_nodes,
-            tx_drains,
+            tx_pipe,
             cannon_configs,
             cannons_counter: Default::default(),
             cannons: Default::default(),
@@ -325,7 +349,7 @@ impl Environment {
         &'a self,
         targets: &'a NodeTargets,
         pool: &'a HashMap<usize, Agent>,
-        is_validator: bool,
+        port_type: PortType,
     ) -> impl Iterator<Item = AgentPeer> + 'a {
         self.node_map
             .iter()
@@ -338,9 +362,10 @@ impl Environment {
 
                     Some(AgentPeer::Internal(
                         *id,
-                        match is_validator {
-                            true => agent.bft_port(),
-                            false => agent.node_port(),
+                        match port_type {
+                            PortType::Bft => agent.bft_port(),
+                            PortType::Node => agent.node_port(),
+                            PortType::Rest => agent.rest_port(),
                         },
                     ))
                 }
@@ -350,9 +375,10 @@ impl Environment {
                         return None;
                     };
 
-                    Some(AgentPeer::External(match is_validator {
-                        true => external.bft?,
-                        false => external.node?,
+                    Some(AgentPeer::External(match port_type {
+                        PortType::Bft => external.bft?,
+                        PortType::Node => external.node?,
+                        PortType::Rest => external.rest?,
                     }))
                 }
             })
@@ -363,7 +389,7 @@ impl Environment {
         targets: &'a NodeTargets,
         pool: &'a HashMap<usize, Agent>,
     ) -> impl Iterator<Item = &'a Agent> + 'a {
-        self.matching_nodes(targets, pool, false /* don't care about this */)
+        self.matching_nodes(targets, pool, PortType::Node) // ignore node type
             .filter_map(|agent_peer| match agent_peer {
                 AgentPeer::Internal(id, _) => pool.get(&id),
                 AgentPeer::External(_) => None,
@@ -410,12 +436,12 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
             };
 
             node_state.peers = env
-                .matching_nodes(&node.peers, &*pool_lock, false)
+                .matching_nodes(&node.peers, &*pool_lock, PortType::Node)
                 .filter(not_me)
                 .collect();
 
             node_state.validators = env
-                .matching_nodes(&node.validators, &*pool_lock, true)
+                .matching_nodes(&node.validators, &*pool_lock, PortType::Bft)
                 .filter(not_me)
                 .collect();
 

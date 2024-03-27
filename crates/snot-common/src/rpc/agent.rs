@@ -23,6 +23,9 @@ pub trait AgentService {
     /// Get the state root from the running node
     async fn get_state_root() -> Result<String, AgentError>;
 
+    /// Broadcast a transaction locally
+    async fn broadcast_tx(tx: String) -> Result<(), AgentError>;
+
     /// Locally execute an authorization, using the given query
     /// environment id is passed so the agent can determine which aot binary to use
     async fn execute_authorization(
