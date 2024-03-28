@@ -7,7 +7,7 @@ name: base-ledger
 ---
 version: cannon.snarkos.testing.monadic.us/v1
 
-name: commitee-tx-public
+name: committee-tx-public
 
 source:
   query: { mode: local }
@@ -18,3 +18,13 @@ source:
 
 sink:
   file-name: txs.json
+
+---
+version: timeline.snarkos.testing.monadic.us/v1
+
+name: tx-local
+
+timeline:
+  - cannon.await:
+      - name: committee-tx-public
+        count: 5

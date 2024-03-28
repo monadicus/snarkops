@@ -12,6 +12,8 @@ use super::NodeTargets;
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Document {
+    pub name: String,
+    pub description: Option<String>,
     pub timeline: Vec<TimelineEvent>,
 }
 
@@ -180,7 +182,7 @@ impl<'de> Deserialize<'de> for EventDuration {
 #[derive(Deserialize, Debug, Clone)]
 pub struct SpawnCannon {
     pub name: String,
-    pub count: u64,
+    pub count: usize,
     /// overwrite the query's source node
     pub query: Option<NodeKey>,
     /// overwrite the cannon sink target

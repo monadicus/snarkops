@@ -46,7 +46,7 @@ impl Env {
                 let ep = format!("{}/api/v1/env/prepare", self.url);
                 let file: String = std::fs::read_to_string(spec)?;
 
-                let id: Value = client.post(&ep).body(file).send()?.json()?;
+                let id: Value = client.post(ep).body(file).send()?.json()?;
                 println!("{}", serde_json::to_string(&id)?);
                 Ok(())
             }
@@ -54,14 +54,14 @@ impl Env {
             Start { id } => {
                 let ep = format!("{}/api/v1/env/{id}", self.url);
 
-                client.post(&ep).send()?;
+                client.post(ep).send()?;
                 Ok(())
             }
 
             Stop { id } => {
                 let ep = format!("{}/api/v1/env/{id}", self.url);
 
-                client.delete(&ep).send()?;
+                client.delete(ep).send()?;
                 Ok(())
             }
         }

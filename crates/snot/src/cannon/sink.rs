@@ -85,10 +85,15 @@ enum TimerState {
 impl Timer {
     /*
 
-    example for burst 6, size 3,
+    example for burst 6, size 3
     wait is `=`, active is `-,` fire is `>`
     [======>-->-->======>-->-->======]
 
+    example for burst 6, size 2
+    [======>-->======>-->======]
+
+    example for burst 6, size 1/0,
+    [======>======>======]
 
      */
 

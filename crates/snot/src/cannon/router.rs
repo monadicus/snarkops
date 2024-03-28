@@ -26,7 +26,8 @@ async fn state_root(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let Some(cannon) = env.cannons.get(&cannon_id) else {
+    let cannon_lock = env.cannons.read().await;
+    let Some(cannon) = cannon_lock.get(&cannon_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
@@ -53,7 +54,8 @@ async fn transaction(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let Some(cannon) = env.cannons.get(&cannon_id) else {
+    let cannon_lock = env.cannons.read().await;
+    let Some(cannon) = cannon_lock.get(&cannon_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 

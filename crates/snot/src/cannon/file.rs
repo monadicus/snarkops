@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{bail, Result};
+use tracing::debug;
 
 use crate::schema::storage::LoadedStorage;
 
@@ -15,6 +16,7 @@ impl TransactionDrain {
     /// Create a new transaction drain
     pub fn new(storage: Arc<LoadedStorage>, source: &str) -> Result<Self> {
         let source = storage.path.join(source);
+        debug!("opening tx drain @ {source:?}");
 
         let Ok(f) = File::open(&source) else {
             bail!("error opening transaction source file: {source:?}");
@@ -50,6 +52,7 @@ impl TransactionSink {
     /// Create a new transaction sink
     pub fn new(storage: Arc<LoadedStorage>, target: &str) -> Result<Self> {
         let target = storage.path.join(target);
+        debug!("opening tx sink @ {target:?}");
 
         let Ok(f) = File::options().create(true).append(true).open(&target) else {
             bail!("error opening transaction target file: {target:?}");

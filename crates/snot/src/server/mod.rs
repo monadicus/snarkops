@@ -225,7 +225,7 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
             msg = client_request_out.recv() => {
                 let msg = msg.expect("internal RPC channel closed");
                 let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize request");
-                if let Err(_) = socket.send(Message::Binary(bin)).await {
+                if (socket.send(Message::Binary(bin)).await).is_err() {
                     break;
                 }
             }
@@ -234,7 +234,7 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
             msg = server_response_out.recv() => {
                 let msg = msg.expect("internal RPC channel closed");
                 let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize response");
-                if let Err(_) = socket.send(Message::Binary(bin)).await {
+                if (socket.send(Message::Binary(bin)).await).is_err() {
                     break;
                 }
             }

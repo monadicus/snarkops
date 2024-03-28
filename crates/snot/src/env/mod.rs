@@ -16,7 +16,10 @@ use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
 use snot_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 use tracing::{info, warn};
 
 use self::timeline::{reconcile_agents, ExecutionError};
@@ -51,7 +54,7 @@ pub struct Environment {
     /// To help generate the id of the new cannon.
     pub cannons_counter: AtomicUsize,
     /// Map of cannon ids to their cannon instances
-    pub cannons: HashMap<usize, CannonInstance>,
+    pub cannons: Arc<RwLock<HashMap<usize, CannonInstance>>>,
 
     pub timeline: Vec<TimelineEvent>,
     pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
@@ -433,18 +436,15 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
                 .as_ref()
                 .and_then(|key| env.storage.lookup_keysource_pk(key));
 
-            let not_me = |agent: &AgentPeer| match agent {
-                AgentPeer::Internal(candidate_id, _) if *candidate_id == id => false,
-                _ => true,
-            };
+            let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
 
             node_state.peers = env
-                .matching_nodes(&node.peers, &*pool_lock, PortType::Node)
+                .matching_nodes(&node.peers, &pool_lock, PortType::Node)
                 .filter(not_me)
                 .collect();
 
             node_state.validators = env
-                .matching_nodes(&node.validators, &*pool_lock, PortType::Bft)
+                .matching_nodes(&node.validators, &pool_lock, PortType::Bft)
                 .filter(not_me)
                 .collect();
 
