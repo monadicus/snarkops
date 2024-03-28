@@ -1,0 +1,28 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: base
+name: base-ledger
+
+generate:
+  path: ./tests/base
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+
+name: 1-validator
+
+nodes:
+  validator/0:
+    key: committee.0
+    height: 0
+    validators: [validator/*]
+    peers: []
+---
+version: timeline.snarkos.testing.monadic.us/v1
+
+timeline:
+  - duration: 5s
+  - offline: '*/*'
+    duration: 5s
+  - online: '*/*'
