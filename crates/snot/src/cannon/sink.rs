@@ -1,15 +1,17 @@
 use std::{future, time::Duration};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::schema::NodeTargets;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", untagged)]
 pub enum TxSink {
     /// Write transactions to a file
+    #[serde(rename_all = "kebab-case")]
     Record {
         /// filename for the recording txs list
-        name: String,
+        file_name: String,
     },
     //// Write transactions to a ledger query service
     // AoTAppend {
@@ -21,6 +23,7 @@ pub enum TxSink {
     //     tx_per_block: u32,
     // },
     /// Send transactions to nodes in a env
+    #[serde(rename_all = "kebab-case")]
     RealTime {
         /// The nodes to send transactions to
         ///
@@ -103,7 +106,7 @@ impl Timer {
                 }
             }
             TimerState::Waiting => {
-                self.count.saturating_sub(1);
+                self.count = self.count.saturating_sub(1);
                 tokio::time::sleep(self.burst_rate).await;
                 match self.count {
                     // if count is empty, the next sleep will be permanent
@@ -121,3 +124,32 @@ impl Timer {
         };
     }
 }
+
+// I use this to generate example yaml...
+/* #[cfg(test)]
+mod test {
+    use super::*;
+    use crate::schema::NodeTarget;
+    use std::str::FromStr;
+
+    #[test]
+    fn what_does_it_look_like() {
+        println!(
+            "{}",
+            serde_yaml::to_string(&TxSink::Record {
+                file_name: "test".to_string(),
+            })
+            .unwrap()
+        );
+        println!(
+            "{}",
+            serde_yaml::to_string(&TxSink::RealTime {
+                target: NodeTargets::One(NodeTarget::from_str("validator/1").unwrap()),
+                burst_delay_ms: 5,
+                tx_per_burst: 5,
+                tx_delay_ms: 5
+            })
+            .unwrap()
+        );
+    }
+} */

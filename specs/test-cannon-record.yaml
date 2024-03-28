@@ -1,0 +1,20 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: base
+name: base-ledger
+
+---
+version: cannon.snarkos.testing.monadic.us/v1
+
+name: commitee-tx-public
+
+source:
+  query: { mode: local }
+  compute: agent
+  tx-modes: [transfer-public]
+  private-keys: [committee.$]
+  addresses: [committee.$]
+
+sink:
+  file-name: txs.json

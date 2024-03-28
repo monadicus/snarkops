@@ -157,7 +157,7 @@ impl CannonInstance {
 
         // when in playback mode, ensure the drain exists
         let (drain_pipe, query_path) = match &source {
-            TxSource::Playback { name } => {
+            TxSource::Playback { file_name: name } => {
                 let pipe = env.tx_pipe.drains.get(name).cloned();
                 ensure!(pipe.is_some(), "transaction drain not found: {name}");
                 (pipe, None)
@@ -166,7 +166,7 @@ impl CannonInstance {
                 let suffix = format!("/api/v1/env/{}/cannons/{cannon_id}", env.id);
                 let query = match compute {
                     // agents already know the host of the control plane
-                    ComputeTarget::AgentPool => suffix,
+                    ComputeTarget::Agent => suffix,
                     // demox needs to locate it
                     ComputeTarget::Demox { .. } => {
                         let Some(host) = get_host(&state).await else {
@@ -180,7 +180,7 @@ impl CannonInstance {
         };
 
         let sink_pipe = match &sink {
-            TxSink::Record { name } => {
+            TxSink::Record { file_name: name } => {
                 let pipe = env.tx_pipe.sinks.get(name).cloned();
                 ensure!(pipe.is_some(), "transaction sink not found: {name}");
                 pipe
@@ -211,7 +211,7 @@ impl CannonInstance {
 
                         let auth = source2.get_auth(&env)?.run(&env.aot_bin).await?;
                         match compute {
-                            ComputeTarget::AgentPool => {
+                            ComputeTarget::Agent => {
                                 // find a client, mark it as busy
                                 let Some((client, _busy)) =
                                     state.pool.read().await.values().find_map(|a| {

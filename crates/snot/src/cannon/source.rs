@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use anyhow::{anyhow, bail, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snot_common::state::NodeKey;
 
 use crate::{env::Environment, schema::nodes::KeySource};
@@ -9,7 +9,7 @@ use crate::{env::Environment, schema::nodes::KeySource};
 use super::{authorized::Authorize, net::get_available_port};
 
 /// Represents an instance of a local query service.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalQueryService {
     /// Ledger & genesis block to use
     // pub storage_id: usize,
@@ -26,6 +26,7 @@ pub struct LocalQueryService {
     /// if the node is out of sync, it will corrupt the ledger...
     ///
     /// requires cannon to have an associated env_id
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sync_from: Option<NodeKey>,
 }
 
@@ -43,7 +44,8 @@ impl LocalQueryService {
 /// Used to determine the redirection for the following paths:
 /// /cannon/<id>/mainnet/latest/stateRoot
 /// /cannon/<id>/mainnet/transaction/broadcast
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", tag = "mode")]
 pub enum LedgerQueryService {
     /// Use the local ledger query service
     Local(LocalQueryService),
@@ -54,16 +56,18 @@ pub enum LedgerQueryService {
 }
 
 /// Which service is providing the compute power for executing transactions
-#[derive(Default, Clone, Debug, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ComputeTarget {
     /// Use the agent pool to generate executions
     #[default]
-    AgentPool,
+    Agent,
     /// Use demox' API to generate executions
     Demox { url: String },
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum CreditsTxMode {
     BondPublic,
     UnbondPublic,
@@ -74,20 +78,24 @@ pub enum CreditsTxMode {
     TransferPrivateToPublic,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum TxMode {
     Credits(CreditsTxMode),
     // TODO: Program(program, func, input types??)
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", untagged)]
 pub enum TxSource {
     /// Read transactions from a file
+    #[serde(rename_all = "kebab-case")]
     Playback {
         // filename from the storage for the tx list
-        name: String,
+        file_name: String,
     },
     /// Generate transactions in real time
+    #[serde(rename_all = "kebab-case")]
     RealTime {
         query: LedgerQueryService,
         compute: ComputeTarget,
@@ -168,3 +176,40 @@ impl TxSource {
         }
     }
 }
+
+// I use this to generate example yaml...
+/* #[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        cannon::source::{
+            ComputeTarget, CreditsTxMode, LedgerQueryService, LocalQueryService, TxMode,
+        },
+        schema::nodes::KeySource,
+    };
+    use std::str::FromStr;
+
+    #[test]
+    fn what_does_it_look_like() {
+        println!(
+            "{}",
+            serde_yaml::to_string(&TxSource::Playback {
+                file_name: "test".to_string(),
+            })
+            .unwrap()
+        );
+        println!(
+            "{}",
+            serde_yaml::to_string(&TxSource::RealTime {
+                query: LedgerQueryService::Local(LocalQueryService { sync_from: None }),
+                compute: ComputeTarget::Agent,
+                tx_modes: [TxMode::Credits(CreditsTxMode::TransferPublic)]
+                    .into_iter()
+                    .collect(),
+                private_keys: vec![KeySource::from_str("committee.$").unwrap()],
+                addresses: vec![KeySource::from_str("committee.$").unwrap()],
+            })
+            .unwrap()
+        );
+    }
+} */

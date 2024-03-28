@@ -227,17 +227,17 @@ impl Environment {
         // review cannon configurations to ensure all playback sources and sinks
         // have a real file backing them
         for (source, sink) in cannon_configs.values() {
-            if let TxSource::Playback { name } = source {
+            if let TxSource::Playback { file_name } = source {
                 tx_pipe.drains.insert(
-                    name.to_owned(),
-                    Arc::new(TransactionDrain::new(storage.clone(), name)?),
+                    file_name.to_owned(),
+                    Arc::new(TransactionDrain::new(storage.clone(), file_name)?),
                 );
             }
 
-            if let TxSink::Record { name } = sink {
+            if let TxSink::Record { file_name } = sink {
                 tx_pipe.sinks.insert(
-                    name.to_owned(),
-                    Arc::new(TransactionSink::new(storage.clone(), name)?),
+                    file_name.to_owned(),
+                    Arc::new(TransactionSink::new(storage.clone(), file_name)?),
                 );
             }
         }
