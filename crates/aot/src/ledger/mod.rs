@@ -9,13 +9,17 @@ use std::{
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use indexmap::IndexSet;
 use rand::{seq::SliceRandom, CryptoRng, Rng};
 use serde::Serialize;
 use snarkvm::{
-    console::{network::MainnetV0, program::Network},
-    ledger::store::helpers::rocksdb::{
-        BFTMap, BlockMap, CommitteeMap, DeploymentMap, ExecutionMap, FeeMap, MapID, ProgramMap,
-        TransactionMap, TransitionInputMap, TransitionMap, TransitionOutputMap, PREFIX_LEN,
+    console::{network::MainnetV0, program::Network, types::Field},
+    ledger::{
+        narwhal::{Transmission, TransmissionID},
+        store::helpers::rocksdb::{
+            BFTMap, BlockMap, CommitteeMap, DeploymentMap, ExecutionMap, FeeMap, MapID, ProgramMap,
+            TransactionMap, TransitionInputMap, TransitionMap, TransitionOutputMap, PREFIX_LEN,
+        },
     },
 };
 use tracing::warn;
@@ -176,7 +180,7 @@ impl Ledger {
                         if key.len() < PREFIX_LEN {
                             return;
                         }
-                        let (prefix, _) = key.split_at(PREFIX_LEN);
+                        let (prefix, rest) = key.split_at(PREFIX_LEN);
                         let mut network_id = [0u8; 2];
                         network_id.copy_from_slice(&prefix[0..2]);
                         let network_id = u16::from_le_bytes(network_id);
@@ -194,6 +198,24 @@ impl Ledger {
                         // }
 
                         *map.entry(map_id).or_default() += 1;
+
+                        if map_id == BFTMap::Transmissions as u16 {
+                            type N = MainnetV0;
+                            match (
+                                bincode::deserialize::<TransmissionID<N>>(rest),
+                                bincode::deserialize::<(Transmission<N>, IndexSet<Field<N>>)>(
+                                    &value,
+                                ),
+                            ) {
+                                (Ok(k), Ok(v)) => {
+                                    println!("transmission {k} = {v:?}");
+                                }
+                                (a, b) => {
+                                    warn!("failed to deserialize transmission: {a:?} {b:?}");
+                                }
+                            }
+                        }
+
                         map_hashers
                             .entry(map_id)
                             .or_insert_with(|| Box::new(DefaultHasher::new()))

@@ -14,12 +14,14 @@ use snarkvm::{
 use crate::{ledger::util, DbLedger};
 
 #[derive(Debug, Args)]
-#[group(required = true, multiple = false)]
+#[group(required = true)]
 pub struct Truncate {
     #[arg(long)]
     height: Option<u32>,
     #[arg(long)]
     amount: Option<u32>,
+    #[arg(long, default_value_t = 1)]
+    skip: u32,
     // TODO: duration based truncation (blocks within a duration before now)
     // TODO: timestamp based truncation (blocks after a certain date)
 }
@@ -35,7 +37,7 @@ impl Truncate {
                 let db_ledger: DbLedger = util::open_ledger(genesis, ledger)?;
 
                 let amount = match (self.height, self.amount) {
-                    (Some(height), None) => db_ledger.latest_height() - height,
+                    (Some(height), _) => db_ledger.latest_height() - height,
                     (None, Some(amount)) => amount,
                     // Clap should prevent this case
                     _ => unreachable!(),
@@ -43,10 +45,10 @@ impl Truncate {
 
                 let target_height = db_ledger.latest_height().saturating_sub(amount);
 
-                for i in 1..target_height {
+                for i in self.skip..target_height {
                     let block = db_ledger.get_block(i)?;
                     let buf = block.to_bytes_le()?;
-                    tracing::info!("Writing block {i}... {}", buf.len());
+                    println!("Writing block {i}... {}", buf.len());
 
                     unistd::write(&write_fd, &(buf.len() as u32).to_le_bytes())?;
                     unistd::write(&write_fd, &buf)?;
@@ -77,13 +79,18 @@ impl Truncate {
                     while read < amount as usize {
                         read += unistd::read(read_fd, &mut buf[read..])?;
                     }
-                    tracing::info!(
+                    let block = Block::from_bytes_le(&buf)?;
+
+                    if block.height() != db_ledger.latest_height() + 1 {
+                        println!("Skipping block {}...", block.height());
+                        continue;
+                    }
+                    println!(
                         "Reading block {}... {}",
                         db_ledger.latest_height() + 1,
                         buf.len()
                     );
 
-                    let block = Block::from_bytes_le(&buf)?;
                     db_ledger.advance_to_next_block(&block)?;
                 }
 
