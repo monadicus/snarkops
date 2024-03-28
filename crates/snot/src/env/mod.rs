@@ -16,9 +16,10 @@ use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
 use snot_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
+use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{info, warn};
 
-use self::timeline::reconcile_agents;
+use self::timeline::{reconcile_agents, ExecutionError};
 use crate::{
     cannon::{sink::TxSink, source::TxSource, CannonInstance},
     schema::{
@@ -47,6 +48,7 @@ pub struct Environment {
     pub cannons: HashMap<usize, CannonInstance>,
 
     pub timeline: Vec<TimelineEvent>,
+    pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +224,7 @@ impl Environment {
                     })
             },
             timeline,
+            timeline_handle: Default::default(),
         };
 
         let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -407,7 +410,6 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
         }
     }
 
-    reconcile_agents(pending_reconciliations.into_iter(), &state.pool).await;
-
+    reconcile_agents(pending_reconciliations.into_iter(), &state.pool).await?;
     Ok(())
 }

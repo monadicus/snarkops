@@ -97,13 +97,15 @@ async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
     }
 }
 
-async fn post_env_timeline(
-    Path(env_id): Path<usize>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    // ...
-
-    StatusCode::OK
+async fn post_env_timeline(Path(env_id): Path<usize>, State(state): State<AppState>) -> Response {
+    match Environment::execute(state, env_id).await {
+        Ok(()) => StatusCode::OK.into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("{e}") })),
+        )
+            .into_response(),
+    }
 }
 
 async fn delete_env_timeline(
