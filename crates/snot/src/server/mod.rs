@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ::jwt::VerifyWithKey;
 use anyhow::Result;
 use axum::{
@@ -18,7 +16,6 @@ use snot_common::{
     prelude::*,
     rpc::{agent::AgentServiceClient, control::ControlService},
 };
-use surrealdb::Surreal;
 use tarpc::server::Channel;
 use tokio::select;
 use tracing::{info, warn};
@@ -28,10 +25,9 @@ use self::{
     rpc::ControlRpcServer,
 };
 use crate::{
-    cli::Cli,
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{Agent, AppState, GlobalState},
+    state::{Agent, AppState},
 };
 
 mod api;
@@ -39,25 +35,13 @@ mod content;
 pub mod jwt;
 mod rpc;
 
-pub async fn start(cli: Cli) -> Result<()> {
-    let mut path = cli.path.clone();
-    path.push("data.db");
-    let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
-    let state = GlobalState {
-        cli,
-        db,
-        pool: Default::default(),
-        storage_ids: Default::default(),
-        storage: Default::default(),
-        envs: Default::default(),
-    };
-
+pub async fn start(state: AppState) -> Result<()> {
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
         // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
-        .with_state(Arc::new(state))
+        .with_state(state)
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
     // .layer(

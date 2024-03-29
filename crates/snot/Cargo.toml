@@ -39,3 +39,4 @@ tracing-subscriber.workspace = true
 url = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4", "fast-rng"] }
 wildmatch = "2.3.3"
+bollard = "0.16.1"

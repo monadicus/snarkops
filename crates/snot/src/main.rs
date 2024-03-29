@@ -1,14 +1,18 @@
-use std::io;
+use std::{io, sync::Arc};
 
 use clap::Parser;
 use cli::Cli;
+use surrealdb::Surreal;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::prelude::*;
+
+use crate::state::GlobalState;
 
 pub mod cannon;
 pub mod cli;
 pub mod env;
 pub mod logging;
+pub mod prometheus;
 pub mod schema;
 pub mod server;
 pub mod state;
@@ -28,6 +32,8 @@ async fn main() {
         .add_directive("surrealdb=off".parse().unwrap())
         .add_directive("tungstenite=off".parse().unwrap())
         .add_directive("tokio_tungstenite=off".parse().unwrap())
+        .add_directive("tokio_util=off".parse().unwrap())
+        .add_directive("bollard=ERROR".parse().unwrap())
         .add_directive("tarpc::client=ERROR".parse().unwrap())
         .add_directive("tarpc::server=ERROR".parse().unwrap())
         .add_directive("tower_http::trace::on_request=off".parse().unwrap())
@@ -53,5 +59,26 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    server::start(cli).await.expect("start server");
+    let mut path = cli.path.clone();
+    path.push("data.db");
+
+    let db = Surreal::new::<surrealdb::engine::local::File>(path)
+        .await
+        .expect("failed to create surrealDB");
+
+    let state = GlobalState {
+        cli,
+        db,
+        prom_ctr: Default::default(),
+        pool: Default::default(),
+        storage_ids: Default::default(),
+        storage: Default::default(),
+        envs: Default::default(),
+    };
+
+    prometheus::init(&state)
+        .await
+        .expect("failed to launch prometheus container");
+
+    server::start(Arc::new(state)).await.expect("start server");
 }

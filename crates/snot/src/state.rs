@@ -3,7 +3,7 @@ use std::{
     net::IpAddr,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Instant,
 };
@@ -35,6 +35,8 @@ pub type AppState = Arc<GlobalState>;
 pub struct GlobalState {
     pub cli: Cli,
     pub db: Surreal<Db>,
+
+    pub prom_ctr: Mutex<String>,
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage_ids: RwLock<BiMap<usize, String>>,
