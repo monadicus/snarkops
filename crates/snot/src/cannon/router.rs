@@ -11,10 +11,13 @@ use serde_json::json;
 
 use crate::state::AppState;
 
+use super::Authorization;
+
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
         .route("/:cannon/mainnet/latest/stateRoot", get(state_root))
         .route("/:cannon/mainnet/transaction/broadcast", post(transaction))
+        .route("/:cannon/auth", post(authorization))
 }
 
 async fn state_root(
@@ -81,15 +84,58 @@ async fn transaction(
         let env = state.envs.read().await;
         env.get(&env_id).cloned()
     }) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "environment not found" })),
+        )
+            .into_response();
     };
 
     let cannon_lock = env.cannons.read().await;
     let Some(cannon) = cannon_lock.get(&cannon_id) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "cannon not found" })),
+        )
+            .into_response();
     };
 
     match cannon.proxy_broadcast(body) {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("{e}")})),
+        )
+            .into_response(),
+    }
+}
+
+async fn authorization(
+    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    state: State<AppState>,
+    Json(body): Json<Authorization>,
+) -> Response {
+    let Some(env) = ({
+        let env = state.envs.read().await;
+        env.get(&env_id).cloned()
+    }) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "environment not found" })),
+        )
+            .into_response();
+    };
+
+    let cannon_lock = env.cannons.read().await;
+    let Some(cannon) = cannon_lock.get(&cannon_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "cannon not found" })),
+        )
+            .into_response();
+    };
+
+    match cannon.proxy_auth(body) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,

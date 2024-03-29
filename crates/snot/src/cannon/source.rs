@@ -2,15 +2,16 @@ use std::collections::HashSet;
 
 use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use snot_common::state::NodeKey;
 
-use crate::{env::Environment, schema::nodes::KeySource};
+use crate::{env::Environment, schema::nodes::KeySource, state::GlobalState};
 
 use super::{authorized::Authorize, net::get_available_port};
 
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LocalQueryService {
+pub struct LocalService {
     /// Ledger & genesis block to use
     // pub storage_id: usize,
     /// port to host the service on (needs to be unused by other cannons and services)
@@ -30,7 +31,7 @@ pub struct LocalQueryService {
     pub sync_from: Option<NodeKey>,
 }
 
-impl LocalQueryService {
+impl LocalService {
     // TODO: cache this when sync_from is false
     /// Fetch the state root from the local query service
     /// (non-cached)
@@ -46,9 +47,9 @@ impl LocalQueryService {
 /// /cannon/<id>/mainnet/transaction/broadcast
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "mode")]
-pub enum LedgerQueryService {
+pub enum QueryTarget {
     /// Use the local ledger query service
-    Local(LocalQueryService),
+    Local(LocalService),
     /// Target a specific node (probably over rpc instead of reqwest lol...)
     ///
     /// Requires cannon to have an associated env_id
@@ -97,7 +98,7 @@ pub enum TxSource {
     /// Generate transactions in real time
     #[serde(rename_all = "kebab-case")]
     RealTime {
-        query: LedgerQueryService,
+        query: QueryTarget,
         compute: ComputeTarget,
 
         /// defaults to TransferPublic
@@ -110,6 +111,12 @@ pub enum TxSource {
         /// defaults to committee addresses
         addresses: Vec<KeySource>,
     },
+    /// Receive authorizations from a persistent path /api/v1/env/:env_id/cannons/:id/auth
+    #[serde(rename_all = "kebab-case")]
+    Listen {
+        query: QueryTarget,
+        compute: ComputeTarget,
+    },
 }
 
 impl TxSource {
@@ -118,7 +125,7 @@ impl TxSource {
         matches!(
             self,
             TxSource::RealTime {
-                query: LedgerQueryService::Local(_),
+                query: QueryTarget::Local(_),
                 ..
             }
         )
@@ -173,6 +180,53 @@ impl TxSource {
                 Ok(auth)
             }
             _ => Err(anyhow!("cannot authorize playback transactions")),
+        }
+    }
+}
+
+impl ComputeTarget {
+    pub async fn execute(
+        &self,
+        state: &GlobalState,
+        env: &Environment,
+        query_path: String,
+        auth: serde_json::Value,
+    ) -> Result<()> {
+        match self {
+            ComputeTarget::Agent => {
+                // find a client, mark it as busy
+                let Some((client, _busy)) = state.pool.read().await.values().find_map(|a| {
+                    if !a.is_busy() && a.is_inventory() {
+                        a.client_owned().map(|c| (c, a.make_busy()))
+                    } else {
+                        None
+                    }
+                }) else {
+                    bail!("no agents available to execute authorization")
+                };
+
+                // execute the authorization
+                client
+                    .execute_authorization(env.id, query_path, serde_json::to_string(&auth)?)
+                    .await?;
+
+                Ok(())
+            }
+            ComputeTarget::Demox { url } => {
+                let _body = json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "generateTransaction",
+                    "params": {
+                        "authorization": serde_json::to_string(&auth["authorization"])?,
+                        "fee": serde_json::to_string(&auth["fee"])?,
+                        "url": query_path,
+                        "broadcast": true,
+                    }
+                });
+
+                todo!("post on {url}")
+            }
         }
     }
 }

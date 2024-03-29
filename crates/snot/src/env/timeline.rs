@@ -14,7 +14,7 @@ use super::Environment;
 use crate::{
     cannon::{
         sink::TxSink,
-        source::{LedgerQueryService, TxSource},
+        source::{QueryTarget, TxSource},
         CannonInstance,
     },
     schema::timeline::{Action, ActionInstance, EventDuration},
@@ -212,7 +212,7 @@ impl Environment {
                                 if let (Some(q), TxSource::RealTime { query, .. }) =
                                     (&cannon.query, &mut source)
                                 {
-                                    *query = LedgerQueryService::Node(q.clone());
+                                    *query = QueryTarget::Node(q.clone());
                                 };
 
                                 if let (Some(t), TxSink::RealTime { target, .. }) =
@@ -222,7 +222,7 @@ impl Environment {
                                 };
                                 let count = cannon.count;
 
-                                let mut instance = CannonInstance::new(
+                                let (mut instance, rx) = CannonInstance::new(
                                     state.clone(),
                                     cannon_id,
                                     env.clone(),
@@ -239,7 +239,7 @@ impl Environment {
 
                                     // debug!("instance started await mode");
                                     awaiting_handles.push(tokio::task::spawn(async move {
-                                        let res = ctx.spawn().await;
+                                        let res = ctx.spawn(rx).await;
 
                                         // remove the cannon after the task is complete
                                         env.cannons.write().await.remove(&cannon_id);
@@ -247,7 +247,7 @@ impl Environment {
                                     }));
                                 } else {
                                     instance
-                                        .spawn_local()
+                                        .spawn_local(rx)
                                         .await
                                         .map_err(ExecutionError::Cannon)?;
                                 }

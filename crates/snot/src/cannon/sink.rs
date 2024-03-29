@@ -37,6 +37,18 @@ pub enum TxSink {
         /// Requires cannon to have an associated env_id
         target: NodeTargets,
 
+        #[serde(flatten)]
+        // rate in which the transactions are sent
+        rate: FireRate,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", untagged)]
+pub enum FireRate {
+    Never,
+    #[serde(rename_all = "kebab-case")]
+    Burst {
         /// How long between each burst of transactions
         burst_delay_ms: u32,
         /// How many transactions to fire off in each burst
@@ -44,27 +56,20 @@ pub enum TxSink {
         /// How long between each transaction in a burst
         tx_delay_ms: u32,
     },
+    #[serde(rename_all = "kebab-case")]
+    Repeat {
+        tx_delay_ms: u32,
+    },
 }
 
-impl TxSink {
-    pub fn timer(&self, count: usize) -> Timer {
+impl FireRate {
+    fn as_timer(&self, count: usize) -> Timer {
         match self {
-            TxSink::Record {
-                tx_request_delay_ms,
-                ..
-            } => Timer {
-                last_shot: Instant::now(),
-                state: TimerState::Waiting,
-                count,
-                burst_rate: Duration::from_millis(*tx_request_delay_ms as u64),
-                burst_size: 1,
-                fire_rate: Duration::ZERO,
-            },
-            TxSink::RealTime {
+            FireRate::Never => Timer::never(),
+            FireRate::Burst {
                 burst_delay_ms,
                 tx_per_burst,
                 tx_delay_ms,
-                ..
             } => Timer {
                 last_shot: Instant::now(),
                 state: TimerState::Waiting,
@@ -73,6 +78,29 @@ impl TxSink {
                 burst_size: *tx_per_burst,
                 fire_rate: Duration::from_millis(*tx_delay_ms as u64),
             },
+            FireRate::Repeat { tx_delay_ms } => Timer {
+                last_shot: Instant::now(),
+                state: TimerState::Waiting,
+                count,
+                burst_rate: Duration::from_millis(*tx_delay_ms as u64),
+                burst_size: 1,
+                fire_rate: Duration::ZERO,
+            },
+        }
+    }
+}
+
+impl TxSink {
+    pub fn timer(&self, count: usize) -> Timer {
+        match self {
+            TxSink::Record {
+                tx_request_delay_ms,
+                ..
+            } => FireRate::Repeat {
+                tx_delay_ms: *tx_request_delay_ms,
+            }
+            .as_timer(count),
+            TxSink::RealTime { rate: speed, .. } => speed.as_timer(count),
         }
     }
 }
@@ -92,8 +120,10 @@ enum TimerState {
     Active(usize),
     /// wait the `burst_rate` duration
     Waiting,
-    /// wait forever
+    /// wait forever, but available for undo
     Done,
+    /// wait forever. does not support undo
+    Never,
 }
 
 impl Timer {
@@ -115,6 +145,17 @@ impl Timer {
         self.count += 1;
         if matches!(self.state, TimerState::Done) {
             self.state = TimerState::Waiting;
+        }
+    }
+
+    pub fn never() -> Self {
+        Timer {
+            last_shot: Instant::now(),
+            state: TimerState::Never,
+            count: 0,
+            burst_rate: Duration::ZERO,
+            burst_size: 0,
+            fire_rate: Duration::ZERO,
         }
     }
 
@@ -150,7 +191,7 @@ impl Timer {
                     },
                 }
             }
-            TimerState::Done => future::pending().await,
+            TimerState::Done | TimerState::Never => future::pending().await,
         };
     }
 }

@@ -12,18 +12,24 @@ use std::{
 
 use anyhow::{bail, ensure, Result};
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use serde_json::json;
 use snot_common::state::AgentPeer;
 use tokio::{
     process::Command,
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::AbortHandle,
 };
-use tracing::{debug, trace, warn};
+use tracing::{info, trace, warn};
 
-use self::{sink::TxSink, source::TxSource};
+use self::{
+    file::{TransactionDrain, TransactionSink},
+    sink::TxSink,
+    source::TxSource,
+};
 use crate::{
-    cannon::source::{ComputeTarget, LedgerQueryService},
+    cannon::{
+        sink::Timer,
+        source::{ComputeTarget, QueryTarget},
+    },
     env::{Environment, PortType},
     state::GlobalState,
 };
@@ -57,6 +63,8 @@ burst mode??
 
 */
 
+pub type Authorization = serde_json::Value;
+
 /// Transaction cannon state
 /// using the `TxSource` and `TxSink` for configuration.
 #[derive(Debug)]
@@ -88,7 +96,9 @@ pub struct CannonInstance {
 
     /// channel to send transactions to the the task
     tx_sender: UnboundedSender<String>,
-    tx_receiver: Option<UnboundedReceiver<String>>,
+    /// channel to send authorizations to the the task
+    auth_sender: UnboundedSender<Authorization>,
+
     fired_txs: Arc<AtomicUsize>,
     tx_count: usize,
 }
@@ -110,6 +120,11 @@ async fn get_host(state: &GlobalState) -> Option<String> {
     }
 }
 
+pub struct CannonReceivers {
+    transactions: UnboundedReceiver<String>,
+    authorizations: UnboundedReceiver<Authorization>,
+}
+
 impl CannonInstance {
     /// Create a new active transaction cannon
     /// with the given source and sink.
@@ -122,7 +137,7 @@ impl CannonInstance {
         source: TxSource,
         sink: TxSink,
         count: usize,
-    ) -> Result<Self> {
+    ) -> Result<(Self, CannonReceivers)> {
         let (tx_sender, tx_receiver) = tokio::sync::mpsc::unbounded_channel();
         let query_port = source.get_query_port()?;
         let fired_txs = Arc::new(AtomicUsize::new(0));
@@ -152,27 +167,31 @@ impl CannonInstance {
             None
         };
 
-        Ok(Self {
-            id,
-            global_state,
-            source,
-            sink,
-            env: Arc::downgrade(&env),
-            tx_sender,
-            tx_receiver: Some(tx_receiver),
-            query_port,
-            child,
-            task: None,
-            fired_txs,
-            tx_count: count,
-        })
+        let (auth_sender, auth_receiver) = tokio::sync::mpsc::unbounded_channel();
+
+        Ok((
+            Self {
+                id,
+                global_state,
+                source,
+                sink,
+                env: Arc::downgrade(&env),
+                tx_sender,
+                auth_sender,
+                query_port,
+                child,
+                task: None,
+                fired_txs,
+                tx_count: count,
+            },
+            CannonReceivers {
+                transactions: tx_receiver,
+                authorizations: auth_receiver,
+            },
+        ))
     }
 
-    pub fn ctx(&mut self) -> Result<ExecutionContext> {
-        let Some(rx) = self.tx_receiver.take() else {
-            bail!("cannon already spawned")
-        };
-
+    pub fn ctx(&self) -> Result<ExecutionContext> {
         Ok(ExecutionContext {
             id: self.id,
             env: self.env.clone(),
@@ -181,37 +200,37 @@ impl CannonInstance {
             fired_txs: self.fired_txs.clone(),
             state: self.global_state.clone(),
             tx_count: self.tx_count,
-            tx: self.tx_sender.clone(),
-            rx,
+            tx_sender: self.tx_sender.clone(),
+            auth_sender: self.auth_sender.clone(),
         })
     }
 
-    pub async fn spawn_local(&mut self) -> Result<()> {
+    pub async fn spawn_local(&mut self, rx: CannonReceivers) -> Result<()> {
         let ctx = self.ctx()?;
 
-        let handle = tokio::task::spawn(async move { ctx.spawn().await });
+        let handle = tokio::task::spawn(async move { ctx.spawn(rx).await });
         self.task = Some(handle.abort_handle());
 
         Ok(())
     }
 
-    pub async fn spawn(&mut self) -> Result<()> {
-        self.ctx()?.spawn().await
+    pub async fn spawn(&mut self, rx: CannonReceivers) -> Result<()> {
+        self.ctx()?.spawn(rx).await
     }
 
     /// Called by axum to forward /cannon/<id>/mainnet/latest/stateRoot
     /// to the ledger query service's /mainnet/latest/stateRoot
     pub async fn proxy_state_root(&self) -> Result<String> {
         match &self.source {
-            TxSource::RealTime { query, .. } => match query {
-                LedgerQueryService::Local(qs) => {
+            TxSource::RealTime { query, .. } | TxSource::Listen { query, .. } => match query {
+                QueryTarget::Local(qs) => {
                     if let Some(port) = self.query_port {
                         qs.get_state_root(port).await
                     } else {
                         bail!("cannon is missing a query port")
                     }
                 }
-                LedgerQueryService::Node(key) => {
+                QueryTarget::Node(key) => {
                     let Some(env) = self.env.upgrade() else {
                         unreachable!("called from a place where env is present")
                     };
@@ -240,9 +259,24 @@ impl CannonInstance {
     /// to the desired sink
     pub fn proxy_broadcast(&self, body: String) -> Result<()> {
         match &self.source {
-            TxSource::RealTime { .. } => {
-                debug!("received tx from broadcast path");
+            TxSource::RealTime { .. } | TxSource::Listen { .. } => {
                 self.tx_sender.send(body)?;
+            }
+            TxSource::Playback { .. } => {
+                warn!("cannon received broadcasted transaction in playback mode. ignoring.")
+            }
+        }
+        Ok(())
+    }
+
+    /// Called by axum to forward /cannon/<id>/auth to a listen source
+    pub fn proxy_auth(&self, body: Authorization) -> Result<()> {
+        match &self.source {
+            TxSource::Listen { .. } => {
+                self.auth_sender.send(body)?;
+            }
+            TxSource::RealTime { .. } => {
+                warn!("cannon received broadcasted transaction in realtime mode. ignoring.")
             }
             TxSource::Playback { .. } => {
                 warn!("cannon received broadcasted transaction in playback mode. ignoring.")
@@ -255,7 +289,6 @@ impl CannonInstance {
 impl Drop for CannonInstance {
     fn drop(&mut self) {
         // cancel the task on drop
-        debug!("dropping cannon {}", self.id);
         if let Some(handle) = self.task.take() {
             handle.abort();
         }
@@ -273,30 +306,29 @@ pub struct ExecutionContext {
     sink: TxSink,
     fired_txs: Arc<AtomicUsize>,
     tx_count: usize,
-    tx: UnboundedSender<String>,
-    rx: UnboundedReceiver<String>,
+    tx_sender: UnboundedSender<String>,
+    auth_sender: UnboundedSender<Authorization>,
 }
 
 impl ExecutionContext {
-    pub async fn spawn(self) -> Result<()> {
+    pub async fn spawn(self, mut rx: CannonReceivers) -> Result<()> {
         let ExecutionContext {
             id: cannon_id,
-            env: env2,
+            env: env_weak,
             source,
             sink,
             fired_txs,
             tx_count,
             state,
-            tx,
-            mut rx,
-        } = self;
+            ..
+        } = &self;
 
-        let Some(env) = env2.upgrade() else {
+        let Some(env) = env_weak.upgrade() else {
             bail!("env dropped")
         };
         let env_id = env.id;
 
-        trace!("cannon {env_id}/{cannon_id} spawned");
+        trace!("cannon {env_id}.{cannon_id} spawned");
 
         // when in playback mode, ensure the drain exists
         let (drain_pipe, query_path) = match &source {
@@ -305,20 +337,20 @@ impl ExecutionContext {
                 ensure!(pipe.is_some(), "transaction drain not found: {name}");
                 (pipe, None)
             }
-            TxSource::RealTime { compute, .. } => {
+            TxSource::RealTime { compute, .. } | TxSource::Listen { compute, .. } => {
                 let suffix = format!("/api/v1/env/{}/cannons/{cannon_id}", env.id);
                 let query = match compute {
                     // agents already know the host of the control plane
                     ComputeTarget::Agent => suffix,
                     // demox needs to locate it
                     ComputeTarget::Demox { .. } => {
-                        let Some(host) = get_host(&state).await else {
+                        let Some(host) = get_host(state).await else {
                             bail!("no --host configured for demox based cannon");
                         };
                         format!("http://{host}:{}{suffix}", state.cli.port)
                     }
                 };
-                trace!("cannon {cannon_id}/{env_id} using realtime query {query}");
+                trace!("cannon {env_id}.{cannon_id} using realtime query {query}");
                 (None, Some(query))
             }
         };
@@ -332,143 +364,168 @@ impl ExecutionContext {
             _ => None,
         };
 
-        // effectively make this be the source of pooling requests
-
-        let gen_tx = || async {
-            match &source {
-                TxSource::Playback { .. } => {
-                    // if tx source is playback, read lines from the transaction file
-                    let Some(transaction) = drain_pipe.unwrap().next()? else {
-                        bail!("source out of transactions")
-                    };
-                    tx.send(transaction)?;
-                    Ok(())
-                }
-                TxSource::RealTime { compute, .. } => {
-                    // TODO: if source is realtime, generate authorizations and
-                    // send them to any available agent
-
-                    let env = env2
-                        .upgrade()
-                        .ok_or_else(|| anyhow::anyhow!("env dropped"))?;
-
-                    trace!("cannon {cannon_id}/{env_id} generating authorization...");
-                    let auth = source.get_auth(&env)?.run(&env.aot_bin).await?;
-                    match compute {
-                        ComputeTarget::Agent => {
-                            // find a client, mark it as busy
-                            let Some((client, _busy)) =
-                                state.pool.read().await.values().find_map(|a| {
-                                    if !a.is_busy() && a.is_inventory() {
-                                        a.client_owned().map(|c| (c, a.make_busy()))
-                                    } else {
-                                        None
-                                    }
-                                })
-                            else {
-                                bail!("no agents available to execute authorization")
-                            };
-
-                            // execute the authorization
-                            client
-                                .execute_authorization(
-                                    env2.upgrade()
-                                        .ok_or_else(|| anyhow::anyhow!("env dropped"))?
-                                        .id,
-                                    query_path.unwrap(),
-                                    serde_json::to_string(&auth)?,
-                                )
-                                .await?;
-
-                            Ok(())
-                        }
-                        ComputeTarget::Demox { url } => {
-                            let _body = json!({
-                                "jsonrpc": "2.0",
-                                "id": 1,
-                                "method": "generateTransaction",
-                                "params": {
-                                    "authorization": serde_json::to_string(&auth["authorization"])?,
-                                    "fee": serde_json::to_string(&auth["fee"])?,
-                                    "url": query_path.unwrap(),
-                                    "broadcast": true,
-                                }
-                            });
-
-                            todo!("post on {url}")
-                        }
-                    }
-                }
-            }
-        };
-
         // build a timer that keeps track of the expected sink speed
-        let mut timer = sink.timer(tx_count);
+        // if the source is listen, the sink's rate is ignored
+        let mut timer = matches!(source, TxSource::Listen { .. })
+            .then(Timer::never)
+            .unwrap_or_else(|| sink.timer(*tx_count));
 
-        let mut container = FuturesUnordered::new();
+        let mut tx_reqs = FuturesUnordered::new();
+        let mut auth_execs = FuturesUnordered::new();
+        let mut tx_shots = FuturesUnordered::new();
 
         loop {
             tokio::select! {
-                Some(res) = container.next() => {
-                    if let Err(e) = res {
-                        timer.undo();
-                        warn!("transaction gen failed: {e}");
+                // ------------------------
+                // Work generation
+                // ------------------------
+
+                // when the timer resolves, request a new transaction
+                _ = timer.next() => {
+                    tx_reqs.push(self.request_tx(drain_pipe.clone()));
+                }
+                // receive authorizations and forward the executions to the compute target
+                Some(auth) = rx.authorizations.recv() => {
+                    auth_execs.push(self.execute_auth(auth, query_path.clone().unwrap()));
+                }
+                // receive transactions and forward them to the sink target
+                Some(tx) = rx.transactions.recv() => {
+                    tx_shots.push(self.fire_tx(sink_pipe.clone(), tx));
+                }
+
+                // ------------------------
+                // Work results
+                // ------------------------
+
+                Some(res) = tx_reqs.next() => {
+                    match res {
+                        // if the request was successful, continue
+                        Ok(true) => {}
+                        // if the source is depleted, break the loop
+                        Ok(false) => {
+                            info!("cannon {env_id}.{cannon_id} source depleted after {} txs", fired_txs.load(std::sync::atomic::Ordering::Relaxed));
+                            break;
+                        },
+                        // if the request failed, undo the timer to allow another transaction to replace the failure
+                        Err(e) => {
+                            warn!("cannon {env_id}.{cannon_id} transaction task failed: {e}");
+                            timer.undo();
+                        }
                     }
                 },
-                _ = timer.next() => {
-                    // queue a new transaction
-                    container.push(gen_tx.clone()());
-                }
-                Some(tx) = rx.recv() => {
-                    let fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                    match &sink {
-                        TxSink::Record { .. } => {
-                            debug!("writing tx to file");
-                            sink_pipe.clone().unwrap().write(&tx)?;
-                        }
-                        TxSink::RealTime { target, .. } => {
-                            let pool = state.pool.read().await;
-                            let nodes = env2.upgrade().ok_or_else(|| anyhow::anyhow!("env dropped"))?
-                                .matching_nodes(target, &pool, PortType::Rest)
-                                .collect::<Vec<_>>();
-                            let Some(node) = nodes.get(rand::random::<usize>() % nodes.len()) else {
-                                bail!("no nodes available to broadcast transactions")
-                            };
-                            match node {
-                                AgentPeer::Internal(id, _) => {
-                                    let Some(client) = pool[id].client_owned() else {
-                                        bail!("target node was offline");
-                                    };
-
-                                    client.broadcast_tx(tx).await?;
-                                }
-                                AgentPeer::External(addr) => {
-                                    let url = format!("http://{addr}/mainnet/transaction/broadcast");
-                                    ensure!(
-                                        reqwest::Client::new()
-                                            .post(url)
-                                            .header("Content-Type", "application/json")
-                                            .body(tx)
-                                            .send()
-                                            .await?
-                                            .status()
-                                            .is_success(),
-                                        "failed to post transaction to external target node {addr}"
-                                    );
-                                }
+                Some(res) = auth_execs.next() => {
+                    if let Err(e) = res {
+                        warn!("cannon {env_id}.{cannon_id} auth execute task failed: {e}");
+                        timer.undo();
+                    }
+                },
+                Some(res) = tx_shots.next() => {
+                    match res {
+                        Ok(()) => {
+                            let fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            if fired_count >= *tx_count {
+                                trace!("cannon {env_id}.{cannon_id} finished firing txs");
+                                break;
                             }
+                            trace!("cannon {env_id}.{cannon_id} fired {fired_count}/{tx_count} txs");
+                        }
+                        Err(e) => {
+                            warn!("cannon {env_id}.{cannon_id} failed to fire transaction {e}");
+                            timer.undo();
                         }
                     }
-
-                    if fired_count >= tx_count {
-                        debug!("finished firing txs");
-                        break;
-                    }
-                    debug!("fired {fired_count}/{tx_count} txs");
-                }
+                },
             }
         }
 
+        Ok(())
+    }
+
+    /// Request a new transaction from the context's source
+    async fn request_tx(&self, drain_pipe: Option<Arc<TransactionDrain>>) -> Result<bool> {
+        match &self.source {
+            TxSource::Playback { .. } => {
+                // if tx source is playback, read lines from the transaction file
+                let Some(transaction) = drain_pipe.unwrap().next()? else {
+                    return Ok(false);
+                };
+                self.tx_sender.send(transaction)?;
+                Ok(true)
+            }
+            TxSource::RealTime { .. } => {
+                let Some(env) = self.env.upgrade() else {
+                    bail!("env dropped")
+                };
+                trace!("cannon {}.{} generating authorization...", env.id, self.id);
+
+                let auth = self.source.get_auth(&env)?.run(&env.aot_bin).await?;
+                self.auth_sender.send(auth)?;
+                Ok(true)
+            }
+            TxSource::Listen { .. } => {
+                unreachable!("listen mode cannot generate transactions")
+            }
+        }
+    }
+
+    /// Execute an authorization on the source's compute target
+    async fn execute_auth(&self, auth: Authorization, query_path: String) -> Result<()> {
+        match &self.source {
+            TxSource::Playback { .. } => {
+                unreachable!("playback mode cannot receive authorizations")
+            }
+            TxSource::RealTime { compute, .. } | TxSource::Listen { compute, .. } => {
+                let env = self
+                    .env
+                    .upgrade()
+                    .ok_or_else(|| anyhow::anyhow!("env dropped"))?;
+                compute.execute(&self.state, &env, query_path, auth).await
+            }
+        }
+    }
+
+    /// Fire a transaction to the sink
+    async fn fire_tx(&self, sink_pipe: Option<Arc<TransactionSink>>, tx: String) -> Result<()> {
+        match &self.sink {
+            TxSink::Record { .. } => {
+                sink_pipe.unwrap().write(&tx)?;
+            }
+            TxSink::RealTime { target, .. } => {
+                let pool = self.state.pool.read().await;
+                let nodes = self
+                    .env
+                    .upgrade()
+                    .ok_or_else(|| anyhow::anyhow!("env dropped"))?
+                    .matching_nodes(target, &pool, PortType::Rest)
+                    .collect::<Vec<_>>();
+                let Some(node) = nodes.get(rand::random::<usize>() % nodes.len()) else {
+                    bail!("no nodes available to broadcast transactions")
+                };
+                match node {
+                    AgentPeer::Internal(id, _) => {
+                        let Some(client) = pool[id].client_owned() else {
+                            bail!("target agent {id} was offline");
+                        };
+
+                        client.broadcast_tx(tx).await?;
+                    }
+                    AgentPeer::External(addr) => {
+                        let url = format!("http://{addr}/mainnet/transaction/broadcast");
+                        ensure!(
+                            reqwest::Client::new()
+                                .post(url)
+                                .header("Content-Type", "application/json")
+                                .body(tx)
+                                .send()
+                                .await?
+                                .status()
+                                .is_success(),
+                            "failed to post transaction to external target node {addr}"
+                        );
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
