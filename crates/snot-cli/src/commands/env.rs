@@ -39,6 +39,7 @@ enum Commands {
 impl Env {
     pub fn run(self) -> Result<()> {
         let client = reqwest::blocking::Client::new();
+        println!("testing caching");
 
         use Commands::*;
         match self.command {
