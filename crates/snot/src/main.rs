@@ -22,6 +22,9 @@ async fn main() {
 
     let env_filter = env_filter
         .parse_lossy("")
+        .add_directive("hyper_util=off".parse().unwrap())
+        .add_directive("hyper=off".parse().unwrap())
+        .add_directive("reqwest=off".parse().unwrap())
         .add_directive("surrealdb_core=off".parse().unwrap())
         .add_directive("surrealdb=off".parse().unwrap())
         .add_directive("tungstenite=off".parse().unwrap())

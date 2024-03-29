@@ -19,7 +19,6 @@ impl Authorize {
         command
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
-            .arg("aot")
             .arg("authorize");
 
         match self {
@@ -46,13 +45,19 @@ impl Authorize {
 
         let res = command.output().await?;
 
+        if !res.status.success() {
+            return Err(anyhow::anyhow!(
+                "command failed with status {}: {}",
+                res.status,
+                String::from_utf8_lossy(&res.stderr)
+            ));
+        }
+
         let blob: serde_json::Value = serde_json::from_slice(&res.stdout)?;
 
         ensure!(blob.is_object(), "expected JSON object in response");
         ensure!(
-            blob.get("function").is_some()
-                && blob.get("fee").is_some()
-                && blob.get("broadcast").is_some(),
+            blob.get("function").is_some() && blob.get("broadcast").is_some(),
             "expected function, fee, and broadcast fields in response"
         );
 

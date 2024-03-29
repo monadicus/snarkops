@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{
     extract::{Path, State},
     response::{IntoResponse, Response},
@@ -23,23 +25,51 @@ async fn state_root(
         let env = state.envs.read().await;
         env.get(&env_id).cloned()
     }) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "environment not found" })),
+        )
+            .into_response();
     };
 
     let cannon_lock = env.cannons.read().await;
     let Some(cannon) = cannon_lock.get(&cannon_id) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "cannon not found" })),
+        )
+            .into_response();
     };
 
-    match cannon.proxy_state_root().await {
-        // the nodes expect this state root to be string escaped json
-        Ok(root) => Json(json!(root)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("{e}")})),
-        )
-            .into_response(),
+    // TODO: lock this with a mutex or something so that multiple route callers can't bombard the cannon with proxy_state_root call attempts
+    let mut attempts = 0;
+    loop {
+        attempts += 1;
+        match cannon.proxy_state_root().await {
+            Ok(root) => break Json(root).into_response(),
+
+            Err(e) if attempts > 5 => {
+                break (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "non-responsive query node", "inner": format!("{e}") })),
+                )
+                    .into_response()
+            }
+
+            _ => attempts += 1,
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
+
+    // match cannon.proxy_state_root().await {
+    //     // the nodes expect this state root to be string escaped json
+    //     Ok(root) => Json(root).into_response(),
+    //     Err(e) => (
+    //         StatusCode::INTERNAL_SERVER_ERROR,
+    //         Json(json!({ "error": format!("{e}")})),
+    //     )
+    //         .into_response(),
+    // }
 }
 
 async fn transaction(

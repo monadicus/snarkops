@@ -74,6 +74,7 @@ impl TransactionSink {
         let writer = lock.as_mut().unwrap();
         writer.write_all(line.as_bytes())?;
         writer.write_all(b"\n")?;
+        writer.flush()?;
         Ok(())
     }
 }

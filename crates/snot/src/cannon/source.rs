@@ -37,7 +37,7 @@ impl LocalQueryService {
     pub async fn get_state_root(&self, port: u16) -> Result<String> {
         let url = format!("http://127.0.0.1:{}/mainnet/latest/stateRoot", port);
         let response = reqwest::get(&url).await?;
-        Ok(response.text().await?)
+        Ok(response.json().await?)
     }
 }
 

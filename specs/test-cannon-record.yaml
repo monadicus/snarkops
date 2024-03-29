@@ -17,6 +17,7 @@ source:
   addresses: [committee.$]
 
 sink:
+  tx-request-delay-ms: 1000
   file-name: txs.json
 
 ---
@@ -27,4 +28,4 @@ name: tx-local
 timeline:
   - cannon.await:
       - name: committee-tx-public
-        count: 5
+        count: 10

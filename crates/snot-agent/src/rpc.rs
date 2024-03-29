@@ -449,20 +449,27 @@ impl AgentService for AgentRpcServer {
         info!("executing authorization...");
         // TODO: ensure binary associated with this env_id is present
 
-        let res = Command::new(self.state.cli.path.join(SNARKOS_FILE))
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+        let res = Command::new(dbg!(self.state.cli.path.join(SNARKOS_FILE)))
+            .stdout(std::io::stdout())
+            .stderr(std::io::stderr())
             .arg("execute")
             .arg("--query")
             .arg(&format!("http://{}{query}", self.state.endpoint))
             .arg(auth)
             .spawn()
-            .map_err(|_| AgentError::FailedToSpawnProcess)?
+            .map_err(|e| {
+                warn!("failed to spawn auth exec process: {e}");
+                AgentError::FailedToSpawnProcess
+            })?
             .wait()
             .await
-            .map_err(|_| AgentError::ProcessFailed)?;
+            .map_err(|e| {
+                warn!("auth exec process failed: {e}");
+                AgentError::ProcessFailed
+            })?;
 
         if !res.success() {
+            warn!("auth exec process exited with status: {res}");
             return Err(AgentError::ProcessFailed);
         }
         Ok(())

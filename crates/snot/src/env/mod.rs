@@ -240,7 +240,7 @@ impl Environment {
                 );
             }
 
-            if let TxSink::Record { file_name } = sink {
+            if let TxSink::Record { file_name, .. } = sink {
                 tx_pipe.sinks.insert(
                     file_name.to_owned(),
                     Arc::new(TransactionSink::new(storage.clone(), file_name)?),
@@ -271,7 +271,6 @@ impl Environment {
             timeline_handle: Default::default(),
         };
 
-        let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
         state_lock.insert(env_id, Arc::new(env));
         drop(state_lock);
 

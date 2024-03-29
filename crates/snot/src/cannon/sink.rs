@@ -1,8 +1,13 @@
 use std::{future, time::Duration};
 
 use serde::{Deserialize, Serialize};
+use tokio::time::Instant;
 
 use crate::schema::NodeTargets;
+
+fn one_thousand() -> u32 {
+    1000
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", untagged)]
@@ -12,6 +17,8 @@ pub enum TxSink {
     Record {
         /// filename for the recording txs list
         file_name: String,
+        #[serde(default = "one_thousand")]
+        tx_request_delay_ms: u32,
     },
     //// Write transactions to a ledger query service
     // AoTAppend {
@@ -42,10 +49,14 @@ pub enum TxSink {
 impl TxSink {
     pub fn timer(&self, count: usize) -> Timer {
         match self {
-            TxSink::Record { .. } => Timer {
-                state: TimerState::Active(0),
+            TxSink::Record {
+                tx_request_delay_ms,
+                ..
+            } => Timer {
+                last_shot: Instant::now(),
+                state: TimerState::Waiting,
                 count,
-                burst_rate: Duration::from_secs(1),
+                burst_rate: Duration::from_millis(*tx_request_delay_ms as u64),
                 burst_size: 1,
                 fire_rate: Duration::ZERO,
             },
@@ -55,7 +66,8 @@ impl TxSink {
                 tx_delay_ms,
                 ..
             } => Timer {
-                state: TimerState::Active(*tx_per_burst as usize),
+                last_shot: Instant::now(),
+                state: TimerState::Waiting,
                 count,
                 burst_rate: Duration::from_millis(*burst_delay_ms as u64),
                 burst_size: *tx_per_burst,
@@ -71,8 +83,10 @@ pub struct Timer {
     burst_size: u32,
     fire_rate: Duration,
     state: TimerState,
+    last_shot: Instant,
 }
 
+#[derive(Debug)]
 enum TimerState {
     /// wait the `fire_rate` duration
     Active(usize),
@@ -97,10 +111,19 @@ impl Timer {
 
      */
 
+    pub fn undo(&mut self) {
+        self.count += 1;
+        if matches!(self.state, TimerState::Done) {
+            self.state = TimerState::Waiting;
+        }
+    }
+
     pub async fn next(&mut self) {
         self.state = match self.state {
             TimerState::Active(remaining) => {
-                tokio::time::sleep(self.fire_rate).await;
+                tokio::time::sleep_until(self.last_shot + self.fire_rate).await;
+                self.last_shot = Instant::now();
+                self.count = self.count.saturating_sub(1);
 
                 // we reach this point by having waited before, so we remove one
                 match remaining.saturating_sub(1) {
@@ -111,17 +134,19 @@ impl Timer {
                 }
             }
             TimerState::Waiting => {
+                tokio::time::sleep_until(self.last_shot + self.burst_rate).await;
+                self.last_shot = Instant::now();
                 self.count = self.count.saturating_sub(1);
-                tokio::time::sleep(self.burst_rate).await;
+
                 match self.count {
                     // if count is empty, the next sleep will be permanent
                     0 => TimerState::Done,
 
-                    _ => match self.burst_size {
+                    _ => match self.burst_size.saturating_sub(1) {
                         // if the burst size is 0, do a full burst wait
                         0 => TimerState::Waiting,
                         // if the burst size is nonzero, wait for the shorter burst latency
-                        _ => TimerState::Active(self.burst_size as usize),
+                        shots => TimerState::Active((shots as usize).min(self.count)),
                     },
                 }
             }

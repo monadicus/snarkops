@@ -7,22 +7,19 @@ pub mod source;
 
 use std::{
     process::Stdio,
-    sync::{atomic::AtomicUsize, Arc, Mutex, Weak},
+    sync::{atomic::AtomicUsize, Arc, OnceLock, Weak},
 };
 
 use anyhow::{bail, ensure, Result};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use serde_json::json;
-use snot_common::state::{AgentPeer, AgentState};
+use snot_common::state::AgentPeer;
 use tokio::{
     process::Command,
-    sync::{
-        mpsc::{UnboundedReceiver, UnboundedSender},
-        OnceCell,
-    },
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::AbortHandle,
 };
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use self::{sink::TxSink, source::TxSource};
 use crate::{
@@ -82,7 +79,7 @@ pub struct CannonInstance {
     query_port: Option<u16>,
 
     // TODO: run the actual cannon in this task
-    pub task: Mutex<Option<AbortHandle>>,
+    pub task: Option<AbortHandle>,
 
     /// Child process must exist for the duration of the cannon instance.
     /// This value is never used
@@ -96,20 +93,20 @@ pub struct CannonInstance {
     tx_count: usize,
 }
 
+#[tokio::main]
+async fn get_external_ip() -> Option<String> {
+    let sources: external_ip::Sources = external_ip::get_http_sources();
+    let consensus = external_ip::ConsensusBuilder::new()
+        .add_sources(sources)
+        .build();
+    consensus.get_consensus().await.map(|s| s.to_string())
+}
+
 async fn get_host(state: &GlobalState) -> Option<String> {
-    static ONCE: OnceCell<Option<String>> = OnceCell::const_new();
+    static ONCE: OnceLock<Option<String>> = OnceLock::new();
     match state.cli.hostname.as_ref() {
         Some(host) => Some(host.to_owned()),
-        None => ONCE
-            .get_or_init(|| async {
-                let sources: external_ip::Sources = external_ip::get_http_sources();
-                let consensus = external_ip::ConsensusBuilder::new()
-                    .add_sources(sources)
-                    .build();
-                consensus.get_consensus().await.map(|a| a.to_string())
-            })
-            .await
-            .to_owned(),
+        None => ONCE.get_or_init(get_external_ip).to_owned(),
     }
 }
 
@@ -165,7 +162,7 @@ impl CannonInstance {
             tx_receiver: Some(tx_receiver),
             query_port,
             child,
-            task: Mutex::new(None),
+            task: None,
             fired_txs,
             tx_count: count,
         })
@@ -192,12 +189,8 @@ impl CannonInstance {
     pub async fn spawn_local(&mut self) -> Result<()> {
         let ctx = self.ctx()?;
 
-        let handle = tokio::task::spawn_local(async move { ctx.spawn().await });
-        self.task
-            .lock()
-            .as_mut()
-            .unwrap()
-            .replace(handle.abort_handle());
+        let handle = tokio::task::spawn(async move { ctx.spawn().await });
+        self.task = Some(handle.abort_handle());
 
         Ok(())
     }
@@ -262,10 +255,9 @@ impl CannonInstance {
 impl Drop for CannonInstance {
     fn drop(&mut self) {
         // cancel the task on drop
-        if let Ok(lock) = self.task.lock() {
-            if let Some(handle) = lock.as_ref() {
-                handle.abort();
-            }
+        debug!("dropping cannon {}", self.id);
+        if let Some(handle) = self.task.take() {
+            handle.abort();
         }
     }
 }
@@ -299,11 +291,12 @@ impl ExecutionContext {
             mut rx,
         } = self;
 
-        debug!("spawning cannon {cannon_id}");
-
         let Some(env) = env2.upgrade() else {
             bail!("env dropped")
         };
+        let env_id = env.id;
+
+        trace!("cannon {env_id}/{cannon_id} spawned");
 
         // when in playback mode, ensure the drain exists
         let (drain_pipe, query_path) = match &source {
@@ -325,15 +318,15 @@ impl ExecutionContext {
                         format!("http://{host}:{}{suffix}", state.cli.port)
                     }
                 };
-                debug!("using realtime query {query}");
+                trace!("cannon {cannon_id}/{env_id} using realtime query {query}");
                 (None, Some(query))
             }
         };
 
         let sink_pipe = match &sink {
-            TxSink::Record { file_name: name } => {
-                let pipe = env.tx_pipe.sinks.get(name).cloned();
-                ensure!(pipe.is_some(), "transaction sink not found: {name}");
+            TxSink::Record { file_name, .. } => {
+                let pipe = env.tx_pipe.sinks.get(file_name).cloned();
+                ensure!(pipe.is_some(), "transaction sink not found: {file_name}");
                 pipe
             }
             _ => None,
@@ -359,14 +352,14 @@ impl ExecutionContext {
                         .upgrade()
                         .ok_or_else(|| anyhow::anyhow!("env dropped"))?;
 
-                    debug!("generating authorization...");
+                    trace!("cannon {cannon_id}/{env_id} generating authorization...");
                     let auth = source.get_auth(&env)?.run(&env.aot_bin).await?;
                     match compute {
                         ComputeTarget::Agent => {
                             // find a client, mark it as busy
                             let Some((client, _busy)) =
                                 state.pool.read().await.values().find_map(|a| {
-                                    if !a.is_busy() && matches!(a.state(), AgentState::Inventory) {
+                                    if !a.is_busy() && a.is_inventory() {
                                         a.client_owned().map(|c| (c, a.make_busy()))
                                     } else {
                                         None
@@ -375,7 +368,6 @@ impl ExecutionContext {
                             else {
                                 bail!("no agents available to execute authorization")
                             };
-                            debug!("firing auth at agent");
 
                             // execute the authorization
                             client
@@ -384,9 +376,10 @@ impl ExecutionContext {
                                         .ok_or_else(|| anyhow::anyhow!("env dropped"))?
                                         .id,
                                     query_path.unwrap(),
-                                    serde_json::from_value(auth)?,
+                                    serde_json::to_string(&auth)?,
                                 )
                                 .await?;
+
                             Ok(())
                         }
                         ComputeTarget::Demox { url } => {
@@ -418,19 +411,16 @@ impl ExecutionContext {
             tokio::select! {
                 Some(res) = container.next() => {
                     if let Err(e) = res {
+                        timer.undo();
                         warn!("transaction gen failed: {e}");
                     }
                 },
                 _ = timer.next() => {
-                    debug!("queue new transaction");
                     // queue a new transaction
                     container.push(gen_tx.clone()());
                 }
                 Some(tx) = rx.recv() => {
-                    let fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if fired_count >= tx_count {
-                        break;
-                    }
+                    let fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                     match &sink {
                         TxSink::Record { .. } => {
                             debug!("writing tx to file");
@@ -469,6 +459,12 @@ impl ExecutionContext {
                             }
                         }
                     }
+
+                    if fired_count >= tx_count {
+                        debug!("finished firing txs");
+                        break;
+                    }
+                    debug!("fired {fired_count}/{tx_count} txs");
                 }
             }
         }

@@ -200,14 +200,11 @@ impl Environment {
                         }
 
                         Action::Cannon(cannons) => {
-                            debug!("enter cannon action, {} cannons", cannons.len());
                             for cannon in cannons.iter() {
-                                debug!("iter cannon {cannon:?} configs: {:?}", env.cannon_configs);
                                 let cannon_id = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
                                 let Some((mut source, mut sink)) =
                                     env.cannon_configs.get(&cannon.name).cloned()
                                 else {
-                                    debug!("unknown cannon");
                                     return Err(ExecutionError::UnknownCannon(cannon.name.clone()));
                                 };
 
@@ -237,25 +234,27 @@ impl Environment {
                                 .map_err(ExecutionError::Cannon)?;
 
                                 if *awaited {
-                                    // debug!("instance started await mode");
-                                    awaiting_handles.push(tokio::task::spawn_local(async move {
-                                        debug!("spawn start");
+                                    let ctx = instance.ctx().unwrap();
+                                    let env = env.clone();
 
-                                        instance.spawn().await.map_err(ExecutionError::Cannon)?;
-                                        debug!("spawn complete");
-                                        Ok::<_, ExecutionError>(())
+                                    // debug!("instance started await mode");
+                                    awaiting_handles.push(tokio::task::spawn(async move {
+                                        let res = ctx.spawn().await;
+
+                                        // remove the cannon after the task is complete
+                                        env.cannons.write().await.remove(&cannon_id);
+                                        res.map_err(ExecutionError::Cannon)
                                     }));
-                                    todo!()
                                 } else {
                                     instance
                                         .spawn_local()
                                         .await
                                         .map_err(ExecutionError::Cannon)?;
-                                    env.cannons.write().await.insert(cannon_id, instance);
                                 }
-                            }
 
-                            todo!()
+                                // insert the cannon
+                                env.cannons.write().await.insert(cannon_id, instance);
+                            }
                         }
                         Action::Height(_) => unimplemented!(),
                     };
