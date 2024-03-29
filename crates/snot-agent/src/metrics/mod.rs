@@ -67,7 +67,7 @@ pub fn init(state: Arc<GlobalState>) {
 }
 
 /// Parse the metrics blob when scraping the snarkOS Prometheus exporter.
-fn parse_metrics<'a>(source: &'a str) -> ParsedMetrics<'a> {
+fn parse_metrics(source: &str) -> ParsedMetrics<'_> {
     source
         .split('\n')
         .map(str::trim)

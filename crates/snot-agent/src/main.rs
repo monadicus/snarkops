@@ -57,9 +57,9 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::builder()
-                .with_env_var("RUST_LOG")
+                .with_env_var("SNOT_AGENT_LOG")
                 .with_default_directive(LevelFilter::TRACE.into())
-                .parse_lossy("")
+                .from_env_lossy()
                 .add_directive("neli=off".parse().unwrap())
                 .add_directive("hyper_util=off".parse().unwrap())
                 .add_directive("reqwest=off".parse().unwrap())
@@ -208,7 +208,7 @@ async fn main() {
                     msg = server_response_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
                         let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize response");
-                        if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bin)).await {
+                        if (ws_stream.send(tungstenite::Message::Binary(bin)).await).is_err() {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
@@ -218,7 +218,7 @@ async fn main() {
                     msg = client_request_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
                         let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize request");
-                        if let Err(_) = ws_stream.send(tungstenite::Message::Binary(bin)).await {
+                        if (ws_stream.send(tungstenite::Message::Binary(bin)).await).is_err() {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
