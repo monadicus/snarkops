@@ -16,20 +16,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: snarkos-test
 
       - name: Checkout snarkOS
         uses: actions/checkout@v4
         with:
           repository: AleoNet/snarkOS
-          path: snarkos
+          path: ../snarkos
 
       - name: Checkout snarkVM
         uses: actions/checkout@v4
         with:
           repository: AleoNet/snarkVM
-          path: snarkvm
+          path: ../snarkvm
 
       - name: Use mold linker
         uses: rui314/setup-mold@v1
@@ -55,20 +53,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: snarkos-test
 
       - name: Checkout snarkOS
         uses: actions/checkout@v4
         with:
           repository: AleoNet/snarkOS
-          path: snarkos
+          path: ../snarkos
 
       - name: Checkout snarkVM
         uses: actions/checkout@v4
         with:
           repository: AleoNet/snarkVM
-          path: snarkvm
+          path: ../snarkvm
 
       - name: Use mold linker
         uses: rui314/setup-mold@v1
@@ -85,7 +81,6 @@ jobs:
       - uses: taiki-e/install-action@nextest
 
       - name: Run tests
-        working-directory: ./snarkos-test
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
-        run: cargo +nightly nextest --all --verbose
+        run: cargo +nightly nextest run --all --verbose --fail-fast
