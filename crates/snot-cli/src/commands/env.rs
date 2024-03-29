@@ -41,29 +41,34 @@ impl Env {
         let client = reqwest::blocking::Client::new();
 
         use Commands::*;
-        match self.command {
+        let response = match self.command {
             Prepare { spec } => {
                 let ep = format!("{}/api/v1/env/prepare", self.url);
                 let file: String = std::fs::read_to_string(spec)?;
 
-                let id: Value = client.post(ep).body(file).send()?.json()?;
-                println!("{}", serde_json::to_string(&id)?);
-                Ok(())
+                client.post(ep).body(file).send()?
             }
 
             Start { id } => {
                 let ep = format!("{}/api/v1/env/{id}", self.url);
 
-                client.post(ep).send()?;
-                Ok(())
+                client.post(ep).send()?
             }
 
             Stop { id } => {
                 let ep = format!("{}/api/v1/env/{id}", self.url);
 
-                client.delete(ep).send()?;
-                Ok(())
+                client.delete(ep).send()?
             }
-        }
+        };
+
+        let value = match response.content_length() {
+            Some(0) | None => None,
+            _ => response.json::<Value>().map(Some)?,
+        };
+
+        println!("{}", serde_json::to_string_pretty(&value)?);
+
+        Ok(())
     }
 }

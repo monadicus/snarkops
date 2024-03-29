@@ -362,9 +362,7 @@ impl Environment {
             .filter(|(key, _)| targets.matches(key))
             .filter_map(move |(key, value)| match value {
                 EnvPeer::Internal(id) => {
-                    let Some(agent) = pool.get(id) else {
-                        return None;
-                    };
+                    let agent = pool.get(id)?;
 
                     Some(AgentPeer::Internal(
                         *id,

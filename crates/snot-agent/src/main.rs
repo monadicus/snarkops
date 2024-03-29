@@ -57,9 +57,9 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::builder()
-                .with_env_var("RUST_LOG")
+                .with_env_var("SNOT_AGENT_LOG")
                 .with_default_directive(LevelFilter::TRACE.into())
-                .parse_lossy("")
+                .from_env_lossy()
                 .add_directive("neli=off".parse().unwrap())
                 .add_directive("hyper_util=off".parse().unwrap())
                 .add_directive("reqwest=off".parse().unwrap())

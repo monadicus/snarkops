@@ -274,9 +274,7 @@ pub fn resolve_addrs(
             }
 
             // if the agent has no addresses, skip it
-            let Some(addrs) = addr_map.get(id) else {
-                return None;
-            };
+            let addrs = addr_map.get(id)?;
 
             // if there are no external addresses in the entire addr map,
             // use the first internal address
