@@ -319,9 +319,7 @@ impl Environment {
             .filter(|(key, _)| targets.matches(key))
             .filter_map(move |(key, value)| match value {
                 EnvPeer::Internal(id) => {
-                    let Some(agent) = pool.get(id) else {
-                        return None;
-                    };
+                    let agent = pool.get(id)?;
 
                     Some(AgentPeer::Internal(
                         *id,
@@ -390,18 +388,15 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
                 .as_ref()
                 .and_then(|key| env.storage.lookup_keysource_pk(key));
 
-            let not_me = |agent: &AgentPeer| match agent {
-                AgentPeer::Internal(candidate_id, _) if *candidate_id == id => false,
-                _ => true,
-            };
+            let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
 
             node_state.peers = env
-                .matching_nodes(&node.peers, &*pool_lock, false)
+                .matching_nodes(&node.peers, &pool_lock, false)
                 .filter(not_me)
                 .collect();
 
             node_state.validators = env
-                .matching_nodes(&node.validators, &*pool_lock, true)
+                .matching_nodes(&node.validators, &pool_lock, true)
                 .filter(not_me)
                 .collect();
 

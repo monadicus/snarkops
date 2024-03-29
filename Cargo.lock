@@ -5350,6 +5350,7 @@ dependencies = [
  "axum",
  "bimap",
  "bincode",
+ "chrono",
  "clap",
  "duration-str",
  "futures-util",
@@ -5376,6 +5377,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "url",
+ "uuid",
  "wildmatch 2.3.3",
 ]
 
@@ -6439,6 +6441,7 @@ checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"
 dependencies = [
  "atomic",
  "getrandom",
+ "rand",
  "serde",
  "wasm-bindgen",
 ]

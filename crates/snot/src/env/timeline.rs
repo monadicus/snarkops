@@ -43,7 +43,7 @@ pub async fn reconcile_agents<I>(
 where
     I: Iterator<Item = PendingAgentReconcile>,
 {
-    use tracing::{info, warn};
+    use tracing::warn;
 
     let mut handles = vec![];
     let mut agent_ids = vec![];
@@ -180,7 +180,7 @@ impl Environment {
 
                             let online = matches!(action, Action::Online(_));
 
-                            for agent in env.matching_agents(targets, &*pool) {
+                            for agent in env.matching_agents(targets, &pool) {
                                 set_node_field!(agent, online = online);
                             }
                         }
@@ -194,11 +194,7 @@ impl Environment {
 
                 let task_state = Arc::clone(&state);
                 let reconcile_handle = tokio::spawn(async move {
-                    reconcile_agents(
-                        pending_reconciliations.into_iter().map(|(_, v)| v),
-                        &task_state.pool,
-                    )
-                    .await
+                    reconcile_agents(pending_reconciliations.into_values(), &task_state.pool).await
                 });
 
                 // await the reconciliation if any of the actions were `.await`
