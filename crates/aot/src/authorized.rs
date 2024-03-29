@@ -4,6 +4,7 @@ use anyhow::{bail, Result};
 use clap::Args;
 use rand::{CryptoRng, Rng};
 use snarkvm::{
+    console::program::Network as NetworkTrait,
     ledger::{
         query::Query,
         store::{helpers::memory::ConsensusMemory, ConsensusStore},
@@ -11,6 +12,8 @@ use snarkvm::{
     prelude::{
         de, Deserialize, DeserializeExt, Deserializer, Serialize, SerializeStruct, Serializer,
     },
+    synthesizer::process::cost_in_microcredits,
+    utilities::ToBytes,
 };
 use tracing::error;
 
@@ -111,8 +114,8 @@ impl Authorized {
         // Retrieve the execution ID.
         let execution_id: snarkvm::prelude::Field<Network> = function.to_execution_id()?;
         // Determine the base fee in microcredits.
-        let base_fee_in_microcredits = 0;
-        // get_base_fee_in_microcredits(program_id, function_name)?;
+        let base_fee_in_microcredits = estimate_cost(&function)?;
+
         // Authorize the fee.
         let fee = match base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
             true => None,
@@ -179,6 +182,66 @@ impl Authorized {
             ExecutionMode::Remote(ref api_url) => self.execute_remote(api_url),
         }
     }
+}
+
+fn estimate_cost(func: &Authorization) -> Result<u64> {
+    let transitions = func.transitions();
+
+    let storage_cost = {
+        let mut cost = 0u64;
+
+        cost += 1; // execution version, 1 byte
+        cost += 1; // number of transitions, 1 byte
+
+        // write each transition
+        for transition in transitions.values() {
+            cost += transition.to_bytes_le()?.len() as u64;
+        }
+
+        // state root (this is 32 bytes)
+        cost += <Network as NetworkTrait>::StateRoot::default()
+            .to_bytes_le()?
+            .len() as u64;
+
+        // proof option is_some (1 byte)
+        cost += 1;
+        // Proof<Network> version
+        cost += 1;
+
+        cost += 956; // size of proof with 1 batch size
+
+        /* cost += varuna::Proof::<<Network as Environment>::PairingCurve>::new(
+            todo!("batch_sizes"),
+            todo!("commitments"),
+            todo!("evaluations"),
+            todo!("prover_third_message"),
+            todo!("prover_fourth_message"),
+            todo!("pc_proof"),
+        )?
+        .to_bytes_le()?
+        .len() as u64; */
+
+        cost
+    };
+    //execution.size_in_bytes().map_err(|e| e.to_string())?;
+
+    // Compute the finalize cost in microcredits.
+    let mut finalize_cost = 0u64;
+    // Iterate over the transitions to accumulate the finalize cost.
+    for (_key, transition) in transitions {
+        // Retrieve the function name, program id, and program.
+        let function_name = transition.function_name();
+        let stack = PROCESS.get_stack(transition.program_id())?;
+        let cost = cost_in_microcredits(stack, function_name)?;
+
+        // Accumulate the finalize cost.
+        if let Some(cost) = finalize_cost.checked_add(cost) {
+            finalize_cost = cost;
+        } else {
+            bail!("The finalize cost computation overflowed for an execution")
+        };
+    }
+    Ok(storage_cost + finalize_cost)
 }
 
 impl Serialize for Authorized {

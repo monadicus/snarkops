@@ -498,6 +498,11 @@ impl ExecutionContext {
                     .ok_or_else(|| anyhow::anyhow!("env dropped"))?
                     .matching_nodes(target, &pool, PortType::Rest)
                     .collect::<Vec<_>>();
+
+                if nodes.is_empty() {
+                    bail!("no nodes available to broadcast transactions")
+                }
+
                 let Some(node) = nodes.get(rand::random::<usize>() % nodes.len()) else {
                     bail!("no nodes available to broadcast transactions")
                 };
