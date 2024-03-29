@@ -8,6 +8,7 @@ use axum::{
         State, WebSocketUpgrade,
     },
     http::HeaderMap,
+    middleware,
     response::IntoResponse,
     routing::get,
     Router,
@@ -20,7 +21,6 @@ use snot_common::{
 use surrealdb::Surreal;
 use tarpc::server::Channel;
 use tokio::select;
-use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::{info, warn};
 
 use self::{
@@ -29,6 +29,7 @@ use self::{
 };
 use crate::{
     cli::Cli,
+    logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
     state::{Agent, AppState, GlobalState},
 };
@@ -57,16 +58,19 @@ pub async fn start(cli: Cli) -> Result<()> {
         // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
         .with_state(Arc::new(state))
-        .layer(
-            TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().include_headers(true)),
-            //.on_request(|request: &Request<Body>, _span: &Span| {
-            //    tracing::info!("req {} - {}", request.method(), request.uri());
-            //})
-            //.on_response(|response: &Response, _latency: Duration, span: &Span| {
-            //    span.record("status_code", &tracing::field::display(response.status()));
-            //    tracing::info!("res {}", response.status())
-            //}),
-        );
+        .layer(middleware::map_response(log_request))
+        .layer(middleware::from_fn(req_stamp));
+    // .layer(
+    // TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().
+    // include_headers(true)),
+    //.on_request(|request: &Request<Body>, _span: &Span| {
+    //    tracing::info!("req {} - {}", request.method(), request.uri());
+    //})
+    //.on_response(|response: &Response, _latency: Duration, span: &Span| {
+    //    span.record("status_code", &tracing::field::display(response.status()));
+    //    tracing::info!("res {}", response.status())
+    //}),
+    // );
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1234").await?;
     axum::serve(listener, app).await?;
@@ -225,7 +229,7 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
             msg = client_request_out.recv() => {
                 let msg = msg.expect("internal RPC channel closed");
                 let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize request");
-                if let Err(_) = socket.send(Message::Binary(bin)).await {
+                if (socket.send(Message::Binary(bin)).await).is_err() {
                     break;
                 }
             }
@@ -234,7 +238,7 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
             msg = server_response_out.recv() => {
                 let msg = msg.expect("internal RPC channel closed");
                 let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize response");
-                if let Err(_) = socket.send(Message::Binary(bin)).await {
+                if (socket.send(Message::Binary(bin)).await).is_err() {
                     break;
                 }
             }

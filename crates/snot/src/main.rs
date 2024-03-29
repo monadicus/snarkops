@@ -8,6 +8,7 @@ use tracing_subscriber::prelude::*;
 pub mod cannon;
 pub mod cli;
 pub mod env;
+pub mod logging;
 pub mod schema;
 pub mod server;
 pub mod state;
@@ -21,7 +22,8 @@ async fn main() {
     };
 
     let env_filter = env_filter
-        .parse_lossy("")
+        .with_env_var("SNOT_LOG")
+        .from_env_lossy()
         .add_directive("surrealdb_core=off".parse().unwrap())
         .add_directive("surrealdb=off".parse().unwrap())
         .add_directive("tungstenite=off".parse().unwrap())
@@ -30,6 +32,8 @@ async fn main() {
         .add_directive("tarpc::server=ERROR".parse().unwrap())
         .add_directive("tower_http::trace::on_request=off".parse().unwrap())
         .add_directive("tower_http::trace::on_response=off".parse().unwrap());
+
+    dbg!(env_filter.to_string());
 
     let (stdout, _guard) = tracing_appender::non_blocking(io::stdout());
 
