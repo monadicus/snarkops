@@ -239,13 +239,13 @@ impl AgentService for AgentRpcServer {
                         .arg("--bind")
                         .arg(state.cli.bind_addr.to_string())
                         .arg("--bft")
-                        .arg(state.cli.bft.to_string())
+                        .arg(state.cli.ports.bft.to_string())
                         .arg("--rest")
-                        .arg(state.cli.rest.to_string())
+                        .arg(state.cli.ports.rest.to_string())
                         .arg("--metrics")
-                        .arg(state.cli.metrics.to_string())
+                        .arg(state.cli.ports.metrics.to_string())
                         .arg("--node")
-                        .arg(state.cli.node.to_string());
+                        .arg(state.cli.ports.node.to_string());
 
                     if let Some(pk) = node.private_key {
                         command.arg("--private-key").arg(pk);
@@ -374,11 +374,7 @@ impl AgentService for AgentRpcServer {
 
     async fn get_addrs(self, _: context::Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
         (
-            PortConfig {
-                bft: self.state.cli.bft,
-                node: self.state.cli.node,
-                rest: self.state.cli.rest,
-            },
+            self.state.cli.ports.clone(),
             self.state.external_addr,
             self.state.internal_addrs.clone(),
         )
@@ -394,7 +390,7 @@ impl AgentService for AgentRpcServer {
 
         let url = format!(
             "http://127.0.0.1:{}/mainnet/latest/stateRoot",
-            self.state.cli.rest
+            self.state.cli.ports.rest
         );
         let response = reqwest::get(&url)
             .await
@@ -405,11 +401,73 @@ impl AgentService for AgentRpcServer {
             .map_err(|_| AgentError::FailedToParseJson)
     }
 
+    async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {
+        if !matches!(
+            self.state.agent_state.read().await.deref(),
+            AgentState::Node(_, _)
+        ) {
+            return Err(AgentError::InvalidState);
+        }
+
+        let url = format!(
+            "http://127.0.0.1:{}/mainnet/transaction/broadcast",
+            self.state.cli.ports.rest
+        );
+        let response = reqwest::Client::new()
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(tx)
+            .send()
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(AgentError::FailedToMakeRequest)
+        }
+    }
+
     async fn get_metric(self, _: context::Context, metric: AgentMetric) -> f64 {
         let metrics = self.state.metrics.read().await;
 
         match metric {
             AgentMetric::Tps => metrics.tps.get(),
         }
+    }
+
+    async fn execute_authorization(
+        self,
+        _: context::Context,
+        _env_id: usize,
+        query: String,
+        auth: String,
+    ) -> Result<(), AgentError> {
+        info!("executing authorization...");
+        // TODO: ensure binary associated with this env_id is present
+
+        let res = Command::new(dbg!(self.state.cli.path.join(SNARKOS_FILE)))
+            .stdout(std::io::stdout())
+            .stderr(std::io::stderr())
+            .arg("execute")
+            .arg("--query")
+            .arg(&format!("http://{}{query}", self.state.endpoint))
+            .arg(auth)
+            .spawn()
+            .map_err(|e| {
+                warn!("failed to spawn auth exec process: {e}");
+                AgentError::FailedToSpawnProcess
+            })?
+            .wait()
+            .await
+            .map_err(|e| {
+                warn!("auth exec process failed: {e}");
+                AgentError::ProcessFailed
+            })?;
+
+        if !res.success() {
+            warn!("auth exec process exited with status: {res}");
+            return Err(AgentError::ProcessFailed);
+        }
+        Ok(())
     }
 }

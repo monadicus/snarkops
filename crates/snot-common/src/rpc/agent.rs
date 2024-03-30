@@ -22,6 +22,18 @@ pub trait AgentService {
 
     /// Get the state root from the running node
     async fn get_state_root() -> Result<String, AgentError>;
+
+    /// Broadcast a transaction locally
+    async fn broadcast_tx(tx: String) -> Result<(), AgentError>;
+
+    /// Locally execute an authorization, using the given query
+    /// environment id is passed so the agent can determine which aot binary to use
+    async fn execute_authorization(
+        env_id: usize,
+        query: String,
+        auth: String,
+    ) -> Result<(), AgentError>;
+
     async fn get_metric(metric: AgentMetric) -> f64;
 }
 
@@ -45,6 +57,10 @@ pub enum AgentError {
     FailedToParseJson,
     #[error("failed to make a request")]
     FailedToMakeRequest,
+    #[error("failed to spawn a process")]
+    FailedToSpawnProcess,
+    #[error("process failed")]
+    ProcessFailed,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentMetric {

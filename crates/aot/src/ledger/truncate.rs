@@ -46,7 +46,7 @@ impl Truncate {
                 for i in 1..target_height {
                     let block = db_ledger.get_block(i)?;
                     let buf = block.to_bytes_le()?;
-                    tracing::info!("Writing block {i}... {}", buf.len());
+                    // println!("Writing block {i}... {}", buf.len());
 
                     unistd::write(&write_fd, &(buf.len() as u32).to_le_bytes())?;
                     unistd::write(&write_fd, &buf)?;
@@ -77,14 +77,22 @@ impl Truncate {
                     while read < amount as usize {
                         read += unistd::read(read_fd, &mut buf[read..])?;
                     }
-                    tracing::info!(
-                        "Reading block {}... {}",
-                        db_ledger.latest_height() + 1,
-                        buf.len()
-                    );
-
                     let block = Block::from_bytes_le(&buf)?;
-                    db_ledger.advance_to_next_block(&block)?;
+                    if db_ledger.latest_height() + 1 != block.height() {
+                        println!(
+                            "Skipping block {}, waiting for {}",
+                            block.height(),
+                            db_ledger.latest_height() + 1,
+                        );
+                    } else {
+                        println!(
+                            "Reading block {}... {}",
+                            db_ledger.latest_height() + 1,
+                            buf.len()
+                        );
+
+                        db_ledger.advance_to_next_block(&block)?;
+                    }
                 }
 
                 unistd::close(read_fd.as_raw_fd())?;

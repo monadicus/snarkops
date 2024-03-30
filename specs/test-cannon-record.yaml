@@ -1,0 +1,31 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: base
+name: base-ledger
+
+---
+version: cannon.snarkos.testing.monadic.us/v1
+
+name: committee-tx-public
+
+source:
+  query: { mode: local }
+  compute: agent
+  tx-modes: [transfer-public]
+  private-keys: [committee.$]
+  addresses: [committee.$]
+
+sink:
+  tx-request-delay-ms: 1000
+  file-name: txs.json
+
+---
+version: timeline.snarkos.testing.monadic.us/v1
+
+name: tx-local
+
+timeline:
+  - cannon.await:
+      - name: committee-tx-public
+        count: 10

@@ -1,10 +1,11 @@
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{
     de::{Error, Visitor},
-    Deserialize,
+    ser::SerializeSeq,
+    Deserialize, Serialize,
 };
 use snot_common::state::{NodeKey, NodeType};
 use wildmatch::WildMatch;
@@ -100,6 +101,25 @@ lazy_static! {
             .unwrap();
 }
 
+impl Serialize for NodeTargets {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            NodeTargets::None => serializer.serialize_seq(Some(0))?.end(),
+            NodeTargets::One(target) => serializer.serialize_str(&target.to_string()),
+            NodeTargets::Many(targets) => {
+                let mut seq = serializer.serialize_seq(Some(targets.len()))?;
+                for target in targets {
+                    seq.serialize_element(&target.to_string())?;
+                }
+                seq.end()
+            }
+        }
+    }
+}
+
 /// A **single** matched node target. Use [`NodeTargets`] when deserializing
 /// from documents.
 #[derive(Debug, Clone)]
@@ -153,6 +173,29 @@ impl FromStr for NodeTarget {
         };
 
         Ok(Self { ty, id, ns })
+    }
+}
+
+impl Display for NodeTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}/{}{}",
+            match self.ty {
+                NodeTargetType::All => "*".to_owned(),
+                NodeTargetType::One(ty) => ty.to_string(),
+            },
+            match &self.id {
+                NodeTargetId::All => "*".to_owned(),
+                NodeTargetId::WildcardPattern(pattern) => pattern.to_string(),
+                NodeTargetId::Literal(id) => id.to_owned(),
+            },
+            match &self.ns {
+                NodeTargetNamespace::All => "@*".to_owned(),
+                NodeTargetNamespace::Local => "".to_owned(),
+                NodeTargetNamespace::Literal(ns) => format!("@{}", ns),
+            }
+        )
     }
 }
 

@@ -374,4 +374,48 @@ impl LoadedStorage {
             KeySource::Named(_name, None) => None,
         }
     }
+
+    pub fn sample_keysource_pk(&self, key: &KeySource) -> Option<String> {
+        match key {
+            KeySource::Literal(pk) => Some(pk.clone()),
+            KeySource::Committee(Some(i)) => self.committee.get_index(*i).map(|(_, pk)| pk.clone()),
+            KeySource::Committee(None) => self
+                .committee
+                .values()
+                .nth(rand::random::<usize>() % self.committee.len())
+                .cloned(),
+            KeySource::Named(name, Some(i)) => self
+                .accounts
+                .get(name)
+                .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone())),
+            KeySource::Named(name, None) => self.accounts.get(name).and_then(|a| {
+                a.values()
+                    .nth(rand::random::<usize>() % self.accounts.len())
+                    .cloned()
+            }),
+        }
+    }
+
+    pub fn sample_keysource_addr(&self, key: &KeySource) -> Option<String> {
+        match key {
+            KeySource::Literal(addr) => Some(addr.clone()),
+            KeySource::Committee(Some(i)) => {
+                self.committee.get_index(*i).map(|(addr, _)| addr.clone())
+            }
+            KeySource::Committee(None) => self
+                .committee
+                .keys()
+                .nth(rand::random::<usize>() % self.committee.len())
+                .cloned(),
+            KeySource::Named(name, Some(i)) => self
+                .accounts
+                .get(name)
+                .and_then(|a| a.get_index(*i).map(|(addr, _)| addr.clone())),
+            KeySource::Named(name, None) => self.accounts.get(name).and_then(|a| {
+                a.keys()
+                    .nth(rand::random::<usize>() % self.accounts.len())
+                    .cloned()
+            }),
+        }
+    }
 }

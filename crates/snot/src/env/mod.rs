@@ -5,7 +5,7 @@ use std::{
     fmt::Display,
     path::PathBuf,
     sync::{
-        atomic::{AtomicU32, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -16,12 +16,20 @@ use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
 use snot_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::{
+    sync::{Mutex, RwLock},
+    task::JoinHandle,
+};
 use tracing::{info, warn};
 
 use self::timeline::{reconcile_agents, ExecutionError};
 use crate::{
-    cannon::{sink::TxSink, source::TxSource, CannonInstance},
+    cannon::{
+        file::{TransactionDrain, TransactionSink},
+        sink::TxSink,
+        source::TxSource,
+        CannonInstance,
+    },
     schema::{
         nodes::{ExternalNode, Node},
         storage::LoadedStorage,
@@ -33,22 +41,29 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Environment {
+    pub id: usize,
     pub storage: Arc<LoadedStorage>,
     pub node_map: BiMap<NodeKey, EnvPeer>,
     pub initial_nodes: IndexMap<NodeKey, EnvNode>,
     pub aot_bin: PathBuf,
 
     /// Map of transaction files to their respective counters
-    pub transaction_counters: HashMap<String, AtomicU32>,
+    pub tx_pipe: TxPipes,
     /// Map of cannon ids to their cannon configurations
     pub cannon_configs: HashMap<String, (TxSource, TxSink)>,
     /// To help generate the id of the new cannon.
     pub cannons_counter: AtomicUsize,
     /// Map of cannon ids to their cannon instances
-    pub cannons: HashMap<usize, CannonInstance>,
+    pub cannons: Arc<RwLock<HashMap<usize, CannonInstance>>>,
 
     pub timeline: Vec<TimelineEvent>,
     pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TxPipes {
+    pub drains: HashMap<String, Arc<TransactionDrain>>,
+    pub sinks: HashMap<String, Arc<TransactionSink>>,
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +89,12 @@ impl Display for EnvPeer {
             EnvPeer::External => write!(f, "external node"),
         }
     }
+}
+
+pub enum PortType {
+    Node,
+    Bft,
+    Rest,
 }
 
 impl Environment {
@@ -103,6 +124,7 @@ impl Environment {
         let mut node_map = BiHashMap::default();
         let mut initial_nodes = IndexMap::default();
         let mut cannon_configs = HashMap::new();
+        let mut tx_pipe = TxPipes::default();
         let mut timeline = vec![];
 
         for document in documents {
@@ -169,6 +191,10 @@ impl Environment {
                     // agent best suited to be a node,
                     // instead of naively picking an agent to fill the needs of
                     // a node
+
+                    // TODO: use node.agent and node.labels against the agent's id and labels
+                    // TODO: use node.mode to determine if the agent can be a node
+
                     node_map.extend(
                         initial_nodes
                             .keys()
@@ -206,11 +232,33 @@ impl Environment {
             }
         }
 
+        let storage = storage.ok_or_else(|| anyhow!("env is missing storage document"))?;
+
+        // review cannon configurations to ensure all playback sources and sinks
+        // have a real file backing them
+        for (source, sink) in cannon_configs.values() {
+            if let TxSource::Playback { file_name } = source {
+                tx_pipe.drains.insert(
+                    file_name.to_owned(),
+                    Arc::new(TransactionDrain::new(storage.clone(), file_name)?),
+                );
+            }
+
+            if let TxSink::Record { file_name, .. } = sink {
+                tx_pipe.sinks.insert(
+                    file_name.to_owned(),
+                    Arc::new(TransactionSink::new(storage.clone(), file_name)?),
+                );
+            }
+        }
+
+        let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
         let env = Environment {
-            storage: storage.ok_or_else(|| anyhow!("env is missing storage document"))?,
+            id: env_id,
+            storage,
             node_map,
             initial_nodes,
-            transaction_counters: Default::default(),
+            tx_pipe,
             cannon_configs,
             cannons_counter: Default::default(),
             cannons: Default::default(),
@@ -227,7 +275,6 @@ impl Environment {
             timeline_handle: Default::default(),
         };
 
-        let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
         state_lock.insert(env_id, Arc::new(env));
         drop(state_lock);
 
@@ -311,8 +358,8 @@ impl Environment {
     pub fn matching_nodes<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<usize, Agent>,
-        is_validator: bool,
+        pool: &'a HashMap<AgentId, Agent>,
+        port_type: PortType,
     ) -> impl Iterator<Item = AgentPeer> + 'a {
         self.node_map
             .iter()
@@ -323,9 +370,10 @@ impl Environment {
 
                     Some(AgentPeer::Internal(
                         *id,
-                        match is_validator {
-                            true => agent.bft_port(),
-                            false => agent.node_port(),
+                        match port_type {
+                            PortType::Bft => agent.bft_port(),
+                            PortType::Node => agent.node_port(),
+                            PortType::Rest => agent.rest_port(),
                         },
                     ))
                 }
@@ -335,9 +383,10 @@ impl Environment {
                         return None;
                     };
 
-                    Some(AgentPeer::External(match is_validator {
-                        true => external.bft?,
-                        false => external.node?,
+                    Some(AgentPeer::External(match port_type {
+                        PortType::Bft => external.bft?,
+                        PortType::Node => external.node?,
+                        PortType::Rest => external.rest?,
                     }))
                 }
             })
@@ -346,9 +395,9 @@ impl Environment {
     pub fn matching_agents<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<usize, Agent>,
+        pool: &'a HashMap<AgentId, Agent>,
     ) -> impl Iterator<Item = &'a Agent> + 'a {
-        self.matching_nodes(targets, pool, false /* don't care about this */)
+        self.matching_nodes(targets, pool, PortType::Node) // ignore node type
             .filter_map(|agent_peer| match agent_peer {
                 AgentPeer::Internal(id, _) => pool.get(&id),
                 AgentPeer::External(_) => None,
@@ -391,12 +440,12 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
             let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
 
             node_state.peers = env
-                .matching_nodes(&node.peers, &pool_lock, false)
+                .matching_nodes(&node.peers, &pool_lock, PortType::Node)
                 .filter(not_me)
                 .collect();
 
             node_state.validators = env
-                .matching_nodes(&node.validators, &pool_lock, true)
+                .matching_nodes(&node.validators, &pool_lock, PortType::Bft)
                 .filter(not_me)
                 .collect();
 

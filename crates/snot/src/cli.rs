@@ -15,4 +15,7 @@ pub struct Cli {
     #[arg(long, default_value = "snot-control-data")]
     /// Path to the directory containing the stored data
     pub path: PathBuf,
+
+    #[arg(long)]
+    pub hostname: Option<String>,
 }

@@ -6,7 +6,6 @@ mod rpc;
 mod state;
 
 use std::{
-    env,
     os::unix::fs::PermissionsExt,
     path::Path,
     sync::{Arc, Mutex},
@@ -14,7 +13,7 @@ use std::{
 };
 
 use clap::Parser;
-use cli::{Cli, ENV_ENDPOINT, ENV_ENDPOINT_DEFAULT};
+use cli::Cli;
 use futures::{executor::block_on, SinkExt};
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::HeaderValue;
@@ -27,7 +26,7 @@ use tokio::{
 };
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{self, client::IntoClientRequest, http::Uri},
+    tungstenite::{self, client::IntoClientRequest},
 };
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -89,21 +88,7 @@ async fn main() {
     }
 
     // get the endpoint
-    let endpoint = args
-        .endpoint
-        .or_else(|| {
-            env::var(ENV_ENDPOINT)
-                .ok()
-                .and_then(|s| s.as_str().parse().ok())
-        })
-        .unwrap_or(ENV_ENDPOINT_DEFAULT);
-
-    let ws_uri = Uri::builder()
-        .scheme("ws")
-        .authority(endpoint.to_string())
-        .path_and_query("/agent")
-        .build()
-        .unwrap();
+    let (endpoint, ws_uri) = args.endpoint_and_uri();
 
     // create the data directory
     tokio::fs::create_dir_all(&args.path)
