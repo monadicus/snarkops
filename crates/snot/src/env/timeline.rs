@@ -3,14 +3,15 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 
-use anyhow::bail;
 use futures_util::future::join_all;
 use snot_common::state::AgentState;
-use thiserror::Error;
-use tokio::{select, sync::RwLock, task::JoinError};
-use tracing::{debug, info, warn};
+use tokio::{select, sync::RwLock};
+use tracing::{debug, error, info};
 
-use super::Environment;
+use super::{
+    error::{BatchReconcileError, ExecutionError},
+    Environment,
+};
 use crate::{
     cannon::{
         sink::TxSink,
@@ -21,28 +22,8 @@ use crate::{
     state::{Agent, AgentClient, AgentId, GlobalState},
 };
 
-#[derive(Debug, Error)]
-pub enum ExecutionError {
-    #[error("an agent is offline, so the test cannot complete")]
-    AgentOffline,
-    #[error("reconcilation failed: {0}")]
-    Reconcile(#[from] BatchReconcileError),
-    #[error("join error: {0}")]
-    Join(#[from] JoinError),
-    #[error("unknown cannon: {0}")]
-    UnknownCannon(String),
-    #[error("cannon error: {0}")]
-    Cannon(anyhow::Error),
-}
-
 /// The tuple to pass into `reconcile_agents`.
 pub type PendingAgentReconcile = (AgentId, AgentClient, AgentState);
-
-#[derive(Debug, Error)]
-#[error("batch reconciliation failed with {failures} failed reconciliations")]
-pub struct BatchReconcileError {
-    pub failures: usize,
-}
 
 /// Reconcile a bunch of agents at once.
 pub async fn reconcile_agents<I>(
@@ -77,16 +58,13 @@ where
                 agent.set_state(state);
                 success += 1;
             }
-
-            Ok(Err(e)) => warn!(
+            Ok(Ok(Err(e))) => error!(
                 "agent {} experienced a reconcilation error: {e}",
                 agent.id(),
             ),
 
-            _ => warn!(
-                "agent {} failed to reconcile for an unknown reason",
-                agent.id(),
-            ),
+            Ok(Err(e)) => error!("agent {} experienced a rpc error: {e}", agent.id(),),
+            Err(e) => error!("agent {} experienced a join error: {e}", agent.id(),),
         }
     }
 
@@ -105,10 +83,10 @@ where
 }
 
 impl Environment {
-    pub async fn execute(state: Arc<GlobalState>, env_id: usize) -> anyhow::Result<()> {
+    pub async fn execute(state: Arc<GlobalState>, env_id: usize) -> Result<(), ExecutionError> {
         let env = Arc::clone(match state.envs.read().await.get(&env_id) {
             Some(env) => env,
-            None => bail!("no env with id {env_id}"),
+            None => Err(ExecutionError::EnvNotFound(env_id))?,
         });
 
         info!(
@@ -122,7 +100,7 @@ impl Environment {
         // abort if timeline is already being executed
         match &*handle_lock {
             Some(handle) if !handle.is_finished() => {
-                bail!("environment timeline is already being executed")
+                Err(ExecutionError::TimelineAlreadyStarted)?;
             }
             _ => (),
         }
@@ -300,7 +278,7 @@ impl Environment {
                     match result {
                         Ok(Ok(())) => (),
                         Ok(e) => return e,
-                        Err(e) => return Err(ExecutionError::Join(e)),
+                        Err(e) => Err(ExecutionError::Join(e))?,
                     }
                 }
             }

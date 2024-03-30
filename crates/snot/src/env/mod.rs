@@ -1,8 +1,9 @@
+pub mod error;
 pub mod timeline;
 
+use core::fmt;
 use std::{
     collections::HashMap,
-    fmt::Display,
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -10,7 +11,6 @@ use std::{
     },
 };
 
-use anyhow::{anyhow, bail, ensure};
 use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
@@ -20,9 +20,9 @@ use tokio::{
     sync::{Mutex, RwLock},
     task::JoinHandle,
 };
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
-use self::timeline::{reconcile_agents, ExecutionError};
+use self::{error::*, timeline::reconcile_agents};
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -82,8 +82,8 @@ pub enum EnvPeer {
     External,
 }
 
-impl Display for EnvPeer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for EnvPeer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EnvPeer::Internal(id) => write!(f, "agent {id}"),
             EnvPeer::External => write!(f, "external node"),
@@ -99,12 +99,10 @@ pub enum PortType {
 
 impl Environment {
     /// Deserialize (YAML) many documents into a `Vec` of documents.
-    pub fn deserialize(str: &str) -> Result<Vec<ItemDocument>, anyhow::Error> {
+    pub fn deserialize(str: &str) -> Result<Vec<ItemDocument>, DeserializeError> {
         serde_yaml::Deserializer::from_str(str)
             .enumerate()
-            .map(|(i, doc)| {
-                ItemDocument::deserialize(doc).map_err(|e| anyhow!("document {i}: {e}"))
-            })
+            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
             .collect()
     }
 
@@ -115,7 +113,7 @@ impl Environment {
     pub async fn prepare(
         documents: Vec<ItemDocument>,
         state: &GlobalState,
-    ) -> anyhow::Result<usize> {
+    ) -> Result<usize, PrepareError> {
         static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         let mut state_lock = state.envs.write().await;
@@ -131,9 +129,9 @@ impl Environment {
             match document {
                 ItemDocument::Storage(doc) => {
                     if storage.is_none() {
-                        storage = Some(doc.prepare(state).await?);
+                        storage = Some(doc.prepare(state).await.expect("TODO"));
                     } else {
-                        bail!("multiple storage documents found in env")
+                        Err(PrepareError::MultipleStorage)?;
                     }
                 }
 
@@ -147,7 +145,7 @@ impl Environment {
                         let num_replicas = doc_node.replicas.unwrap_or(1);
                         for i in 0..num_replicas {
                             let node_key = match num_replicas {
-                                0 => bail!("cannot have a node with zero replicas"),
+                                0 => Err(PrepareError::NodeHas0Replicas)?,
                                 1 => doc_node_key.to_owned(),
                                 _ => {
                                     let mut node_key = doc_node_key.to_owned();
@@ -161,7 +159,9 @@ impl Environment {
                             doc_node.replicas.take();
 
                             match initial_nodes.entry(node_key) {
-                                Entry::Occupied(ent) => bail!("duplicate node key: {}", ent.key()),
+                                Entry::Occupied(ent) => {
+                                    Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
+                                }
                                 Entry::Vacant(ent) => {
                                     // replace the key with a new one
                                     let mut node = doc_node.to_owned();
@@ -181,10 +181,12 @@ impl Environment {
                         .filter(|a| a.is_node_capable() && a.is_inventory());
                     let num_available_agents = available_agent.clone().count();
 
-                    ensure!(
-                        num_available_agents >= initial_nodes.len(),
-                        "not enough available agents to satisfy node topology"
-                    );
+                    if num_available_agents > initial_nodes.len() {
+                        return Err(PrepareError::NotEnoughAvailableNodes(
+                            num_available_agents,
+                            initial_nodes.len(),
+                        ));
+                    }
 
                     // TODO: remove this naive delegation, replace with
                     // some kind of "pick_agent" function that picks an
@@ -207,7 +209,9 @@ impl Environment {
 
                     for (node_key, node) in &nodes.external {
                         match initial_nodes.entry(node_key.clone()) {
-                            Entry::Occupied(ent) => bail!("duplicate node key: {}", ent.key()),
+                            Entry::Occupied(ent) => {
+                                Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
+                            }
                             Entry::Vacant(ent) => ent.insert(EnvNode::External(node.to_owned())),
                         };
                     }
@@ -228,7 +232,7 @@ impl Environment {
             }
         }
 
-        let storage = storage.ok_or_else(|| anyhow!("env is missing storage document"))?;
+        let storage = storage.ok_or(PrepareError::MissingStorage)?;
 
         // review cannon configurations to ensure all playback sources and sinks
         // have a real file backing them
@@ -236,14 +240,14 @@ impl Environment {
             if let TxSource::Playback { file_name } = source {
                 tx_pipe.drains.insert(
                     file_name.to_owned(),
-                    Arc::new(TransactionDrain::new(storage.clone(), file_name)?),
+                    Arc::new(TransactionDrain::new(storage.clone(), file_name).expect("TODO")),
                 );
             }
 
             if let TxSink::Record { file_name, .. } = sink {
                 tx_pipe.sinks.insert(
                     file_name.to_owned(),
-                    Arc::new(TransactionSink::new(storage.clone(), file_name)?),
+                    Arc::new(TransactionSink::new(storage.clone(), file_name).expect("TODO")),
                 );
             }
         }
@@ -280,14 +284,14 @@ impl Environment {
         Ok(env_id)
     }
 
-    pub async fn cleanup(id: &usize, state: &GlobalState) -> anyhow::Result<()> {
+    pub async fn cleanup(id: &usize, state: &GlobalState) -> Result<(), CleanupError> {
         // clear the env state
         info!("clearing env {id} state...");
         let Some(env) = ({
             let mut state_lock = state.envs.write().await;
             state_lock.remove(id)
         }) else {
-            bail!("env {id} not found")
+            return Err(CleanupError::EnvNotFound(*id));
         };
 
         // reconcile all online agents
@@ -327,15 +331,14 @@ impl Environment {
                         agent.set_state(state);
                         success += 1;
                     } else {
-                        warn!("agent {id} not found in pool after successful reconcile")
+                        error!("agent {id} not found in pool after successful reconcile")
                     }
                 }
 
                 // reconcile error
-                Ok(Ok(Err(e))) => warn!("agent {id} experienced a reconcilation error: {e}",),
-
-                // could be a tokio error or an RPC error
-                _ => warn!("agent {id} failed to cleanup for an unknown reason"),
+                Ok(Ok(Err(e))) => error!("agent {id} experienced a reconcilation error: {e}"),
+                Ok(Err(e)) => error!("agent {id} experienced a rpc error: {e}"),
+                Err(e) => error!("agent {id} experienced a join error: {e}"),
             }
         }
         info!("cleanup result: {success}/{num_reconciles} agents inventoried");
@@ -402,13 +405,13 @@ impl Environment {
 }
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Result<()> {
+pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(), ReconcileError> {
     let mut pending_reconciliations = vec![];
     {
         let envs_lock = state.envs.read().await;
         let env = envs_lock
             .get(&env_id)
-            .ok_or_else(|| anyhow!("env not found"))?;
+            .ok_or(ReconcileError::EnvNotFound(env_id))?;
 
         let pool_lock = state.pool.read().await;
 
@@ -419,7 +422,7 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
 
             // get the internal agent ID from the node key
             let Some(id) = env.get_agent_by_key(key) else {
-                bail!("expected internal agent peer for node with key {key}")
+                return Err(ReconcileError::ExpectedInternalAgentPeer { key: key.clone() });
             };
 
             let Some(client) = pool_lock.get(&id).and_then(|a| a.client_owned()) else {
