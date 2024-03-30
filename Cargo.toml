@@ -24,6 +24,7 @@ http = "1.1"
 indexmap = { version = "2.2", features = ["serde"] }
 indicatif = { version = "0.17", features = ["rayon"] }
 lazy_static = "1.4"
+lasso = { version = "0.7.2", features = ["multi-threaded", "serialize"] }
 rand = "0.8"
 rand_chacha = "0.3"
 rayon = "1"

@@ -121,7 +121,7 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
     let client =
         AgentServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
-    let id: usize = 'insertion: {
+    let id: AgentId = 'insertion: {
         let client = client.clone();
         let mut pool = state.pool.write().await;
 

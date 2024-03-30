@@ -1,10 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::Instant,
 };
 
@@ -13,7 +10,7 @@ use bimap::BiMap;
 use jwt::SignWithKey;
 use snot_common::{
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentState, NodeState, PortConfig},
+    state::{AgentId, AgentState, NodeState, PortConfig},
 };
 use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
@@ -25,8 +22,6 @@ use crate::{
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
 };
-
-pub type AgentId = usize;
 
 pub type AppState = Arc<GlobalState>;
 
@@ -69,9 +64,7 @@ pub struct AgentClient(AgentServiceClient);
 
 impl Agent {
     pub fn new(rpc: AgentServiceClient) -> Self {
-        static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-        let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-
+        let id = AgentId::default();
         Self {
             id,
             busy: Arc::new(Busy),
@@ -115,7 +108,7 @@ impl Agent {
     }
 
     /// The ID of this agent.
-    pub fn id(&self) -> usize {
+    pub fn id(&self) -> AgentId {
         self.id
     }
 
@@ -194,7 +187,7 @@ impl Agent {
         self.addrs = Some((external_addr, internal_addrs));
     }
 
-    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(usize, AgentClient, AgentState)>
+    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(AgentId, AgentClient, AgentState)>
     where
         F: Fn(NodeState) -> NodeState,
     {

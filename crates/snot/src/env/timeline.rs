@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::bail;
 use futures_util::future::join_all;
-use snot_common::state::AgentState;
+use snot_common::state::{AgentId, AgentState};
 use thiserror::Error;
 use tokio::{select, sync::RwLock, task::JoinError};
 use tracing::{debug, info, warn};
@@ -18,7 +18,7 @@ use crate::{
         CannonInstance,
     },
     schema::timeline::{Action, ActionInstance, EventDuration},
-    state::{Agent, AgentClient, AgentId, GlobalState},
+    state::{Agent, AgentClient, GlobalState},
 };
 
 #[derive(Debug, Error)]
@@ -156,7 +156,7 @@ impl Environment {
                 let mut reconcile_async = false;
 
                 // the pending reconciliations
-                let mut pending_reconciliations: HashMap<usize, PendingAgentReconcile> =
+                let mut pending_reconciliations: HashMap<AgentId, PendingAgentReconcile> =
                     HashMap::new();
 
                 macro_rules! set_node_field {

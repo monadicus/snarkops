@@ -354,7 +354,7 @@ impl Environment {
     pub fn matching_nodes<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<usize, Agent>,
+        pool: &'a HashMap<AgentId, Agent>,
         port_type: PortType,
     ) -> impl Iterator<Item = AgentPeer> + 'a {
         self.node_map
@@ -391,7 +391,7 @@ impl Environment {
     pub fn matching_agents<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<usize, Agent>,
+        pool: &'a HashMap<AgentId, Agent>,
     ) -> impl Iterator<Item = &'a Agent> + 'a {
         self.matching_nodes(targets, pool, PortType::Node) // ignore node type
             .filter_map(|agent_peer| match agent_peer {

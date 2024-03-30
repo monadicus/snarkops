@@ -7,7 +7,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use snot_common::rpc::agent::AgentMetric;
+use snot_common::{rpc::agent::AgentMetric, state::AgentId};
 
 use super::AppState;
 use crate::cannon::router::redirect_cannon_routes;
@@ -53,7 +53,7 @@ async fn get_agents(state: State<AppState>) -> impl IntoResponse {
     Json(json!({ "count": state.pool.read().await.len() }))
 }
 
-async fn get_agent_tps(state: State<AppState>, Path(id): Path<usize>) -> Response {
+async fn get_agent_tps(state: State<AppState>, Path(id): Path<AgentId>) -> Response {
     let pool = state.pool.read().await;
     let Some(agent) = pool.get(&id) else {
         return StatusCode::NOT_FOUND.into_response();

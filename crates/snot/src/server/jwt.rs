@@ -4,8 +4,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-
-use crate::state::AgentId;
+use snot_common::state::AgentId;
 
 lazy_static! {
     pub static ref JWT_NONCE: u16 = ChaChaRng::from_entropy().gen();
