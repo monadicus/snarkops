@@ -18,6 +18,7 @@ pub struct Env {
 #[derive(Debug, Parser)]
 enum Commands {
     /// Prepare a (test) environment.
+    #[command(arg_required_else_help = true)]
     Prepare {
         /// The test spec file.
         #[clap(value_hint = ValueHint::AnyPath)]
@@ -25,6 +26,7 @@ enum Commands {
     },
 
     /// Start an environment's timeline (a test).
+    #[command(arg_required_else_help = true)]
     Start {
         /// Start a specific env.
         #[clap(value_hint = ValueHint::Other)]
@@ -32,6 +34,7 @@ enum Commands {
     },
 
     /// Stop an environment's timeline.
+    #[command(arg_required_else_help = true)]
     Stop {
         /// Stop a specific env.
         #[clap(value_hint = ValueHint::Other)]

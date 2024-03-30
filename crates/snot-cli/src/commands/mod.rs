@@ -8,6 +8,7 @@ mod env;
 #[derive(Debug, Parser)]
 pub enum Commands {
     /// Generate shell completions.
+    #[command(arg_required_else_help = true)]
     Autocomplete {
         /// Which shell you want to generate completions for.
         shell: clap_complete::Shell,
