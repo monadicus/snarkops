@@ -239,13 +239,13 @@ impl AgentService for AgentRpcServer {
                         .arg("--bind")
                         .arg(state.cli.bind_addr.to_string())
                         .arg("--bft")
-                        .arg(state.cli.bft.to_string())
+                        .arg(state.cli.ports.bft.to_string())
                         .arg("--rest")
-                        .arg(state.cli.rest.to_string())
+                        .arg(state.cli.ports.rest.to_string())
                         .arg("--metrics")
-                        .arg(state.cli.metrics.to_string())
+                        .arg(state.cli.ports.metrics.to_string())
                         .arg("--node")
-                        .arg(state.cli.node.to_string());
+                        .arg(state.cli.ports.node.to_string());
 
                     if let Some(pk) = node.private_key {
                         command.arg("--private-key").arg(pk);
@@ -374,11 +374,7 @@ impl AgentService for AgentRpcServer {
 
     async fn get_addrs(self, _: context::Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
         (
-            PortConfig {
-                bft: self.state.cli.bft,
-                node: self.state.cli.node,
-                rest: self.state.cli.rest,
-            },
+            self.state.cli.ports.clone(),
             self.state.external_addr,
             self.state.internal_addrs.clone(),
         )
@@ -394,7 +390,7 @@ impl AgentService for AgentRpcServer {
 
         let url = format!(
             "http://127.0.0.1:{}/mainnet/latest/stateRoot",
-            self.state.cli.rest
+            self.state.cli.ports.rest
         );
         let response = reqwest::get(&url)
             .await
@@ -415,7 +411,7 @@ impl AgentService for AgentRpcServer {
 
         let url = format!(
             "http://127.0.0.1:{}/mainnet/transaction/broadcast",
-            self.state.cli.rest
+            self.state.cli.ports.rest
         );
         let response = reqwest::Client::new()
             .post(url)

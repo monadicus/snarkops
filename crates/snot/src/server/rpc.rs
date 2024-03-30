@@ -27,7 +27,7 @@ pub type MuxedMessageOutgoing =
 #[derive(Clone)]
 pub struct ControlRpcServer {
     pub state: AppState,
-    pub agent: usize,
+    pub agent: AgentId,
 }
 
 impl ControlService for ControlRpcServer {

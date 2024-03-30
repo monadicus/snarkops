@@ -1,10 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::Instant,
 };
 
@@ -12,8 +9,10 @@ use anyhow::{anyhow, Result};
 use bimap::BiMap;
 use jwt::SignWithKey;
 use snot_common::{
+    lasso::Spur,
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentState, NodeState, PortConfig},
+    state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
+    INTERN,
 };
 use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
@@ -25,8 +24,6 @@ use crate::{
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
 };
-
-pub type AgentId = usize;
 
 pub type AppState = Arc<GlobalState>;
 
@@ -54,6 +51,12 @@ pub struct Agent {
     connection: AgentConnection,
     state: AgentState,
 
+    /// CLI provided labels for this agent
+    labels: HashSet<Spur>,
+    /// Available modes for this agent
+    mode: AgentMode,
+
+    /// Count of how many executions this agent is currently working on
     busy: Arc<Busy>,
 
     /// The external address of the agent, along with its local addresses.
@@ -68,12 +71,14 @@ pub struct Busy;
 pub struct AgentClient(AgentServiceClient);
 
 impl Agent {
-    pub fn new(rpc: AgentServiceClient) -> Self {
-        static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-        let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-
+    pub fn new(rpc: AgentServiceClient, id: AgentId, mode: AgentMode, labels: Vec<String>) -> Self {
         Self {
             id,
+            mode,
+            labels: labels
+                .into_iter()
+                .map(|s| INTERN.get_or_intern(s))
+                .collect(),
             busy: Arc::new(Busy),
             claims: Claims {
                 id,
@@ -99,9 +104,30 @@ impl Agent {
         external.is_some() || !internal.is_empty()
     }
 
+    /// Check if an agent has a set of labels
+    pub fn has_labels(&self, labels: &HashSet<Spur>) -> bool {
+        labels.is_empty() || self.labels.intersection(labels).count() == labels.len()
+    }
+
+    /// Check if an agent has a specific label
+    pub fn has_label(&self, label: &str) -> bool {
+        INTERN
+            .get(label)
+            .map_or(false, |label| self.labels.contains(&label))
+    }
+
+    pub fn str_labels(&self) -> HashSet<&str> {
+        self.labels.iter().map(|s| INTERN.resolve(s)).collect()
+    }
+
     /// Check if an agent is in inventory state
     pub fn is_inventory(&self) -> bool {
         matches!(self.state, AgentState::Inventory)
+    }
+
+    /// Check if an agent is available for compute tasks
+    pub fn can_compute(&self) -> bool {
+        self.is_inventory() && self.mode.compute && !self.is_busy()
     }
 
     /// Check if a agent is working on an authorization
@@ -115,13 +141,17 @@ impl Agent {
     }
 
     /// The ID of this agent.
-    pub fn id(&self) -> usize {
+    pub fn id(&self) -> AgentId {
         self.id
     }
 
     /// The current state of this agent.
     pub fn state(&self) -> &AgentState {
         &self.state
+    }
+
+    pub fn modes(&self) -> AgentMode {
+        self.mode
     }
 
     pub fn claims(&self) -> &Claims {
@@ -194,7 +224,7 @@ impl Agent {
         self.addrs = Some((external_addr, internal_addrs));
     }
 
-    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(usize, AgentClient, AgentState)>
+    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(AgentId, AgentClient, AgentState)>
     where
         F: Fn(NodeState) -> NodeState,
     {

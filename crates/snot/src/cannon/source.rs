@@ -196,7 +196,7 @@ impl ComputeTarget {
             ComputeTarget::Agent => {
                 // find a client, mark it as busy
                 let Some((client, _busy)) = state.pool.read().await.values().find_map(|a| {
-                    if !a.is_busy() && a.is_inventory() {
+                    if a.can_compute() {
                         a.client_owned().map(|c| (c, a.make_busy()))
                     } else {
                         None

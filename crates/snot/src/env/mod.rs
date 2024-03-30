@@ -191,6 +191,10 @@ impl Environment {
                     // agent best suited to be a node,
                     // instead of naively picking an agent to fill the needs of
                     // a node
+
+                    // TODO: use node.agent and node.labels against the agent's id and labels
+                    // TODO: use node.mode to determine if the agent can be a node
+
                     node_map.extend(
                         initial_nodes
                             .keys()
@@ -354,7 +358,7 @@ impl Environment {
     pub fn matching_nodes<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<usize, Agent>,
+        pool: &'a HashMap<AgentId, Agent>,
         port_type: PortType,
     ) -> impl Iterator<Item = AgentPeer> + 'a {
         self.node_map
@@ -391,7 +395,7 @@ impl Environment {
     pub fn matching_agents<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<usize, Agent>,
+        pool: &'a HashMap<AgentId, Agent>,
     ) -> impl Iterator<Item = &'a Agent> + 'a {
         self.matching_nodes(targets, pool, PortType::Node) // ignore node type
             .filter_map(|agent_peer| match agent_peer {

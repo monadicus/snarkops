@@ -1,9 +1,12 @@
 use std::{
+    env,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
 };
 
 use clap::Parser;
+use http::Uri;
+use snot_common::state::{AgentId, AgentMode, PortConfig};
 
 pub const ENV_ENDPOINT: &str = "SNOT_ENDPOINT";
 pub const ENV_ENDPOINT_DEFAULT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
@@ -16,29 +19,63 @@ pub struct Cli {
     /// Control plane endpoint address
     pub endpoint: Option<SocketAddr>,
 
-    #[arg(long, default_value = "./snot-data")]
+    #[arg(long)]
+    pub id: Option<AgentId>,
+
+    #[arg(long, value_delimiter = ',', num_args = 1..)]
+    pub labels: Option<Vec<String>>,
+
     /// Path to the directory containing the stored data and configuration
+    #[arg(long, default_value = "./snot-data")]
     pub path: PathBuf,
 
-    #[arg(long, default_value_t = false)]
     /// Enable the agent to fetch its external address. Necessary to determine
     /// which agents are on shared networks, and for
     /// external-to-external connections
+    #[arg(long)]
     pub external: bool,
 
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
-    /// Specify the IP address and port for the node server
-    #[clap(long = "node", default_value_t = 4130)]
-    pub node: u16,
-    /// Specify the IP address and port for the BFT
-    #[clap(long = "bft", default_value = "5000")]
-    pub bft: u16,
-    /// Specify the IP address and port for the REST server
-    #[clap(long = "rest", default_value = "3030")]
-    pub rest: u16,
-    /// Specify the port for the metrics
-    #[clap(long = "metrics", default_value_t = 9000)]
-    pub metrics: u16,
-    // TODO: specify allowed modes (--validator --client --tx-gen)
+
+    #[clap(flatten)]
+    pub ports: PortConfig,
+
+    #[clap(flatten)]
+    pub modes: AgentMode,
+}
+
+impl Cli {
+    pub fn endpoint_and_uri(&self) -> (SocketAddr, Uri) {
+        // get the endpoint
+        let endpoint = self
+            .endpoint
+            .or_else(|| {
+                env::var(ENV_ENDPOINT)
+                    .ok()
+                    .and_then(|s| s.as_str().parse().ok())
+            })
+            .unwrap_or(ENV_ENDPOINT_DEFAULT);
+
+        let mut query = format!("/agent?mode={}", u8::from(self.modes));
+
+        // add ?id=
+        if let Some(id) = self.id {
+            query.push_str(&format!("&id={}", id));
+        }
+
+        // add ?labels= or &labels= if id is present
+        if let Some(labels) = &self.labels {
+            query.push_str(&format!("&labels={}", labels.join(",")));
+        }
+
+        let ws_uri = Uri::builder()
+            .scheme("ws")
+            .authority(endpoint.to_string())
+            .path_and_query(query)
+            .build()
+            .unwrap();
+
+        (endpoint, ws_uri)
+    }
 }

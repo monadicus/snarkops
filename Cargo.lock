@@ -1780,6 +1780,15 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
+dependencies = [
+ "ahash 0.8.7",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
@@ -2283,6 +2292,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "507460a910eb7b32ee961886ff48539633b788a36b65692b95f225b844c82553"
 dependencies = [
  "regex-automata 0.4.6",
+]
+
+[[package]]
+name = "lasso"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4644821e1c3d7a560fe13d842d13f587c07348a1a05d3a797152d41c90c56df2"
+dependencies = [
+ "dashmap",
+ "hashbrown 0.13.2",
 ]
 
 [[package]]
@@ -5431,7 +5450,9 @@ dependencies = [
 name = "snot-common"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "futures",
+ "lasso",
  "lazy_static",
  "regex",
  "serde",
