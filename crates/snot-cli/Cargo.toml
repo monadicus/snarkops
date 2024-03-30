@@ -9,6 +9,7 @@ edition = "2021"
 
 anyhow.workspace = true
 clap.workspace = true
+clap_complete.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
 serde_json = { workspace = true }
 url.workspace = true
