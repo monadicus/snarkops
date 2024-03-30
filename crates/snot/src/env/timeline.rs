@@ -1,6 +1,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
 };
 
 use anyhow::bail;
@@ -8,10 +8,15 @@ use futures_util::future::join_all;
 use snot_common::state::AgentState;
 use thiserror::Error;
 use tokio::{select, sync::RwLock, task::JoinError};
-use tracing::info;
+use tracing::{debug, info, warn};
 
 use super::Environment;
 use crate::{
+    cannon::{
+        sink::TxSink,
+        source::{QueryTarget, TxSource},
+        CannonInstance,
+    },
     schema::timeline::{Action, ActionInstance, EventDuration},
     state::{Agent, AgentClient, AgentId, GlobalState},
 };
@@ -24,6 +29,10 @@ pub enum ExecutionError {
     Reconcile(#[from] BatchReconcileError),
     #[error("join error: {0}")]
     Join(#[from] JoinError),
+    #[error("unknown cannon: {0}")]
+    UnknownCannon(String),
+    #[error("cannon error: {0}")]
+    Cannon(anyhow::Error),
 }
 
 /// The tuple to pass into `reconcile_agents`.
@@ -43,8 +52,6 @@ pub async fn reconcile_agents<I>(
 where
     I: Iterator<Item = PendingAgentReconcile>,
 {
-    use tracing::warn;
-
     let mut handles = vec![];
     let mut agent_ids = vec![];
 
@@ -98,11 +105,16 @@ where
 }
 
 impl Environment {
-    pub async fn execute(state: Arc<GlobalState>, id: usize) -> anyhow::Result<()> {
-        let env = Arc::clone(match state.envs.read().await.get(&id) {
+    pub async fn execute(state: Arc<GlobalState>, env_id: usize) -> anyhow::Result<()> {
+        let env = Arc::clone(match state.envs.read().await.get(&env_id) {
             Some(env) => env,
-            None => bail!("no env with id {id}"),
+            None => bail!("no env with id {env_id}"),
         });
+
+        info!(
+            "starting timeline playback for env {env_id} with {} events",
+            env.timeline.len()
+        );
 
         let handle_lock_env = Arc::clone(&env);
         let mut handle_lock = handle_lock_env.timeline_handle.lock().await;
@@ -117,10 +129,12 @@ impl Environment {
 
         *handle_lock = Some(tokio::spawn(async move {
             for event in env.timeline.iter() {
+                debug!("next event in timeline {event:?}");
                 let pool = state.pool.read().await;
 
                 // task handles that must be awaited for this timeline event
-                let mut awaiting_handles = vec![];
+                let mut awaiting_handles: Vec<tokio::task::JoinHandle<Result<(), ExecutionError>>> =
+                    vec![];
 
                 // add a duration sleep if a duration was specified
                 if let Some(duration) = &event.duration {
@@ -185,21 +199,83 @@ impl Environment {
                             }
                         }
 
-                        Action::Cannon(_) => unimplemented!(),
+                        Action::Cannon(cannons) => {
+                            for cannon in cannons.iter() {
+                                let cannon_id = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
+                                let Some((mut source, mut sink)) =
+                                    env.cannon_configs.get(&cannon.name).cloned()
+                                else {
+                                    return Err(ExecutionError::UnknownCannon(cannon.name.clone()));
+                                };
+
+                                // override the query and target if they are specified
+                                if let (Some(q), TxSource::RealTime { query, .. }) =
+                                    (&cannon.query, &mut source)
+                                {
+                                    *query = QueryTarget::Node(q.clone());
+                                };
+
+                                if let (Some(t), TxSink::RealTime { target, .. }) =
+                                    (&cannon.target, &mut sink)
+                                {
+                                    *target = t.clone();
+                                };
+                                let count = cannon.count;
+
+                                let (mut instance, rx) = CannonInstance::new(
+                                    state.clone(),
+                                    cannon_id,
+                                    env.clone(),
+                                    source,
+                                    sink,
+                                    count,
+                                )
+                                .await
+                                .map_err(ExecutionError::Cannon)?;
+
+                                if *awaited {
+                                    let ctx = instance.ctx().unwrap();
+                                    let env = env.clone();
+
+                                    // debug!("instance started await mode");
+                                    awaiting_handles.push(tokio::task::spawn(async move {
+                                        let res = ctx.spawn(rx).await;
+
+                                        // remove the cannon after the task is complete
+                                        env.cannons.write().await.remove(&cannon_id);
+                                        res.map_err(ExecutionError::Cannon)
+                                    }));
+                                } else {
+                                    instance
+                                        .spawn_local(rx)
+                                        .await
+                                        .map_err(ExecutionError::Cannon)?;
+                                }
+
+                                // insert the cannon
+                                env.cannons.write().await.insert(cannon_id, instance);
+                            }
+                        }
                         Action::Height(_) => unimplemented!(),
                     };
                 }
 
                 drop(pool);
 
-                let task_state = Arc::clone(&state);
-                let reconcile_handle = tokio::spawn(async move {
-                    reconcile_agents(pending_reconciliations.into_values(), &task_state.pool).await
-                });
+                // if there are any pending reconciliations,
+                if !pending_reconciliations.is_empty() {
+                    // reconcile all nodes
+                    let task_state = Arc::clone(&state);
+                    let reconcile_handle = tokio::spawn(async move {
+                        reconcile_agents(pending_reconciliations.into_values(), &task_state.pool)
+                            .await?;
+                        Ok(())
+                    });
 
-                // await the reconciliation if any of the actions were `.await`
-                if reconcile_async {
-                    awaiting_handles.push(reconcile_handle);
+                    // await the reconciliation if any of the actions were `.await`
+                    if reconcile_async {
+                        awaiting_handles.push(reconcile_handle);
+                    }
                 }
 
                 let handles_fut = join_all(awaiting_handles.into_iter());
@@ -208,8 +284,8 @@ impl Environment {
                 let handles_result = match &event.timeout {
                     // apply a timeout to `handles_fut`
                     Some(timeout) => match timeout {
-                        EventDuration::Time(duration) => select! {
-                            _ = tokio::time::sleep(*duration) => continue,
+                        EventDuration::Time(timeout_duration) => select! {
+                            _ = tokio::time::sleep(*timeout_duration) => continue,
                             res = handles_fut => res,
                         },
 
@@ -223,7 +299,7 @@ impl Environment {
                 for result in handles_result.into_iter() {
                     match result {
                         Ok(Ok(())) => (),
-                        Ok(Err(e)) => return Err(ExecutionError::Reconcile(e)),
+                        Ok(e) => return e,
                         Err(e) => return Err(ExecutionError::Join(e)),
                     }
                 }

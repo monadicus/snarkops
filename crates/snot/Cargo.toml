@@ -11,6 +11,7 @@ bincode.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
 duration-str = { version = "0.7", default-features = false }
+external-ip.workspace = true
 futures-util.workspace = true
 hmac = "0.12.1"
 indexmap.workspace = true
@@ -19,7 +20,7 @@ lazy_static.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
 regex.workspace = true
-reqwest = { workspace = true, features = ["stream"] }
+reqwest = { workspace = true, features = ["stream", "json"] }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

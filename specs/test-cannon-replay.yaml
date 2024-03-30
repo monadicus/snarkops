@@ -1,0 +1,27 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: base
+name: base-ledger
+
+---
+version: cannon.snarkos.testing.monadic.us/v1
+
+name: committee-tx-public
+
+source:
+  file-name: txs.json
+
+sink:
+  tx-request-delay-ms: 1000
+  file-name: txs-sink.json
+
+---
+version: timeline.snarkos.testing.monadic.us/v1
+
+name: tx-local
+
+timeline:
+  - cannon.await:
+      - name: committee-tx-public
+        count: 10

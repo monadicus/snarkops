@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{fmt::Display, net::SocketAddr, str::FromStr};
 
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
@@ -100,42 +100,7 @@ impl<'de> Visitor<'de> for KeySourceVisitor {
     where
         E: serde::de::Error,
     {
-        // use KeySource::Literal(String) when the string is 59 characters long and starts with "APrivateKey1zkp"
-        // use KeySource::Commitee(Option<usize>) when the string is "committee.0" or "committee.$"
-        // use KeySource::Named(String, Option<usize>) when the string is "\w+.0" or "\w+.$"
-
-        // aleo private key
-        if v.len() == 59 && v.starts_with("APrivateKey1") {
-            return Ok(KeySource::Literal(v.to_string()));
-
-        // committee key
-        } else if let Some(index) = v.strip_prefix("committee.") {
-            if index == "$" {
-                return Ok(KeySource::Committee(None));
-            }
-            let replica = index
-                .parse()
-                .map_err(|_e| E::custom("committee index must be a positive number"))?;
-            return Ok(KeySource::Committee(Some(replica)));
-        }
-
-        // named key (using regex with capture groups)
-        lazy_static! {
-            static ref NAMED_KEYSOURCE_REGEX: regex::Regex =
-                regex::Regex::new(r"^(?P<name>\w+)\.(?P<idx>\d+|\$)$").unwrap();
-        }
-        let groups = NAMED_KEYSOURCE_REGEX
-            .captures(v)
-            .ok_or_else(|| E::custom("invalid key source"))?;
-        let name = groups.name("name").unwrap().as_str().to_string();
-        let idx = match groups.name("idx").unwrap().as_str() {
-            "$" => None,
-            idx => Some(
-                idx.parse()
-                    .map_err(|_e| E::custom("index must be a positive number"))?,
-            ),
-        };
-        Ok(KeySource::Named(name, idx))
+        KeySource::from_str(v).map_err(E::custom)
     }
 }
 
@@ -150,17 +115,70 @@ impl<'de> Deserialize<'de> for KeySource {
 
 impl Serialize for KeySource {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            KeySource::Literal(key) => serializer.serialize_str(key),
-            KeySource::Committee(None) => serializer.serialize_str("committee.$"),
-            KeySource::Committee(Some(idx)) => {
-                serializer.serialize_str(&format!("committee.{}", idx))
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl FromStr for KeySource {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // use KeySource::Literal(String) when the string is 59 characters long and starts with "APrivateKey1zkp"
+        // use KeySource::Commitee(Option<usize>) when the string is "committee.0" or "committee.$"
+        // use KeySource::Named(String, Option<usize>) when the string is "\w+.0" or "\w+.$"
+
+        // aleo private key
+        if s.len() == 59 && s.starts_with("APrivateKey1") {
+            return Ok(KeySource::Literal(s.to_string()));
+
+        // committee key
+        } else if let Some(index) = s.strip_prefix("committee.") {
+            if index == "$" {
+                return Ok(KeySource::Committee(None));
             }
-            KeySource::Named(name, None) => serializer.serialize_str(&format!("{}.{}", name, "$")),
-            KeySource::Named(name, Some(idx)) => {
-                serializer.serialize_str(&format!("{}.{}", name, idx))
-            }
+            let replica = index
+                .parse()
+                .map_err(|_e| "committee index must be a positive number")?;
+            return Ok(KeySource::Committee(Some(replica)));
         }
+
+        // named key (using regex with capture groups)
+        lazy_static! {
+            static ref NAMED_KEYSOURCE_REGEX: regex::Regex =
+                regex::Regex::new(r"^(?P<name>\w+)\.(?P<idx>\d+|\$)$").unwrap();
+        }
+        let groups = NAMED_KEYSOURCE_REGEX
+            .captures(s)
+            .ok_or("invalid key source")?;
+        let name = groups.name("name").unwrap().as_str().to_string();
+        let idx = match groups.name("idx").unwrap().as_str() {
+            "$" => None,
+            idx => Some(
+                idx.parse()
+                    .map_err(|_e| "index must be a positive number")?,
+            ),
+        };
+        Ok(KeySource::Named(name, idx))
+    }
+}
+
+impl Display for KeySource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                KeySource::Literal(key) => key.to_owned(),
+                KeySource::Committee(None) => "committee.$".to_owned(),
+                KeySource::Committee(Some(idx)) => {
+                    format!("committee.{}", idx)
+                }
+                KeySource::Named(name, None) => format!("{}.{}", name, "$"),
+                KeySource::Named(name, Some(idx)) => {
+                    format!("{}.{}", name, idx)
+                }
+            }
+        )
     }
 }
 

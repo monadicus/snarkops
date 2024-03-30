@@ -405,11 +405,73 @@ impl AgentService for AgentRpcServer {
             .map_err(|_| AgentError::FailedToParseJson)
     }
 
+    async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {
+        if !matches!(
+            self.state.agent_state.read().await.deref(),
+            AgentState::Node(_, _)
+        ) {
+            return Err(AgentError::InvalidState);
+        }
+
+        let url = format!(
+            "http://127.0.0.1:{}/mainnet/transaction/broadcast",
+            self.state.cli.rest
+        );
+        let response = reqwest::Client::new()
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(tx)
+            .send()
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(AgentError::FailedToMakeRequest)
+        }
+    }
+
     async fn get_metric(self, _: context::Context, metric: AgentMetric) -> f64 {
         let metrics = self.state.metrics.read().await;
 
         match metric {
             AgentMetric::Tps => metrics.tps.get(),
         }
+    }
+
+    async fn execute_authorization(
+        self,
+        _: context::Context,
+        _env_id: usize,
+        query: String,
+        auth: String,
+    ) -> Result<(), AgentError> {
+        info!("executing authorization...");
+        // TODO: ensure binary associated with this env_id is present
+
+        let res = Command::new(dbg!(self.state.cli.path.join(SNARKOS_FILE)))
+            .stdout(std::io::stdout())
+            .stderr(std::io::stderr())
+            .arg("execute")
+            .arg("--query")
+            .arg(&format!("http://{}{query}", self.state.endpoint))
+            .arg(auth)
+            .spawn()
+            .map_err(|e| {
+                warn!("failed to spawn auth exec process: {e}");
+                AgentError::FailedToSpawnProcess
+            })?
+            .wait()
+            .await
+            .map_err(|e| {
+                warn!("auth exec process failed: {e}");
+                AgentError::ProcessFailed
+            })?;
+
+        if !res.success() {
+            warn!("auth exec process exited with status: {res}");
+            return Err(AgentError::ProcessFailed);
+        }
+        Ok(())
     }
 }
