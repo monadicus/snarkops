@@ -1,5 +1,6 @@
 pub mod rpc;
 pub mod state;
+pub use lasso;
 
 pub mod prelude {
     pub use crate::rpc::*;

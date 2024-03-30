@@ -5,7 +5,7 @@ use anyhow::Result;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        State, WebSocketUpgrade,
+        Query, State, WebSocketUpgrade,
     },
     http::HeaderMap,
     middleware,
@@ -14,6 +14,7 @@ use axum::{
     Router,
 };
 use futures_util::stream::StreamExt;
+use serde::Deserialize;
 use snot_common::{
     prelude::*,
     rpc::{agent::AgentServiceClient, control::ControlService},
@@ -78,15 +79,49 @@ pub async fn start(cli: Cli) -> Result<()> {
     Ok(())
 }
 
+fn deser_mode<'de, D>(deser: D) -> Result<AgentMode, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(AgentMode::from(u8::deserialize(deser)?))
+}
+
+fn deser_labels<'de, D>(deser: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deser)?.map(|s| {
+        s.split(',')
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect::<Vec<String>>()
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentWsQuery {
+    #[serde(deserialize_with = "deser_mode")]
+    mode: AgentMode,
+    id: Option<AgentId>,
+    #[serde(deserialize_with = "deser_labels")]
+    labels: Option<Vec<String>>,
+}
+
 async fn agent_ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
     State(state): State<AppState>,
+    Query(query): Query<AgentWsQuery>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, headers, state))
+    ws.on_upgrade(|socket| handle_socket(socket, headers, state, query))
 }
 
-async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppState) {
+async fn handle_socket(
+    mut socket: WebSocket,
+    headers: HeaderMap,
+    state: AppState,
+    query: AgentWsQuery,
+) {
     let claims = headers
         .get("Authorization")
         .and_then(|auth| -> Option<Claims> {
@@ -101,6 +136,14 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
             token.verify_with_key(&*JWT_SECRET).ok()
         })
         .filter(|claims| {
+            // ensure the id is correct
+            if let Some(id) = query.id {
+                if claims.id != id {
+                    warn!("connecting agent specified an id different than the claim");
+                    return false;
+                }
+            }
+
             // ensure the nonce is correct
             if claims.nonce == *JWT_NONCE {
                 true
@@ -150,9 +193,22 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
         }
 
         // otherwise, we need to create an agent and give it a new JWT
+        let id = query.id.unwrap_or_default();
+
+        // check if an agent with this id is already online
+        if pool.get(&id).map(Agent::is_connected).unwrap_or_default() {
+            warn!("an agent is trying to identify as an already-connected agent {id}");
+            socket.send(Message::Close(None)).await.ok();
+            return;
+        }
 
         // create a new agent
-        let agent = Agent::new(client.to_owned());
+        let agent = Agent::new(
+            client.to_owned(),
+            id,
+            query.mode,
+            query.labels.unwrap_or_default(),
+        );
 
         // sign the jwt and send it to the agent
         let signed_jwt = agent.sign_jwt();
@@ -164,7 +220,6 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
         });
 
         // insert a new agent into the pool
-        let id = agent.id();
         pool.insert(id, agent);
 
         info!("agent {id} connected; pool is now {} nodes", pool.len());
@@ -178,7 +233,11 @@ async fn handle_socket(mut socket: WebSocket, headers: HeaderMap, state: AppStat
         if let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await {
             let mut state = state2.pool.write().await;
             if let Some(agent) = state.get_mut(&id) {
-                info!("agent {id} addrs: {external:?} {internal:?} @ {ports}");
+                info!(
+                    "agent {id} [{}], labels: {:?}, addrs: {external:?} {internal:?} @ {ports}",
+                    agent.modes(),
+                    agent.str_labels(),
+                );
                 agent.set_ports(ports);
                 agent.set_addrs(external, internal);
             }

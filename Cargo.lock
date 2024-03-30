@@ -1776,7 +1776,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
 dependencies = [
  "ahash 0.8.7",
- "serde",
 ]
 
 [[package]]
@@ -2294,7 +2293,6 @@ checksum = "4644821e1c3d7a560fe13d842d13f587c07348a1a05d3a797152d41c90c56df2"
 dependencies = [
  "dashmap",
  "hashbrown 0.13.2",
- "serde",
 ]
 
 [[package]]

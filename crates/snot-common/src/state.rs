@@ -70,8 +70,18 @@ pub struct PortConfig {
     pub metrics: u16,
 }
 
-#[derive(Debug, Serialize, Deserialize, Parser)]
-pub struct ModeConfig {
+impl Display for PortConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "bft: {}, node: {}, rest: {}",
+            self.bft, self.node, self.rest
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Parser)]
+pub struct AgentMode {
     /// Enable running a validator node
     #[arg(long)]
     pub validator: bool,
@@ -89,13 +99,52 @@ pub struct ModeConfig {
     pub compute: bool,
 }
 
-impl Display for PortConfig {
+impl From<AgentMode> for u8 {
+    fn from(mode: AgentMode) -> u8 {
+        (mode.validator as u8)
+            | (mode.prover as u8) << 1
+            | (mode.client as u8) << 2
+            | (mode.compute as u8) << 3
+    }
+}
+
+impl From<u8> for AgentMode {
+    fn from(mode: u8) -> Self {
+        Self {
+            validator: mode & 1 != 0,
+            prover: mode & 1 << 1 != 0,
+            client: mode & 1 << 2 != 0,
+            compute: mode & 1 << 3 != 0,
+        }
+    }
+}
+
+impl Display for AgentMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "bft: {}, node: {}, rest: {}",
-            self.bft, self.node, self.rest
-        )
+        let mut s = String::new();
+        if self.validator {
+            s.push_str("validator");
+        }
+        if self.prover {
+            if !s.is_empty() {
+                s.push_str(", ");
+            }
+            s.push_str("prover");
+        }
+        if self.client {
+            if !s.is_empty() {
+                s.push_str(", ");
+            }
+            s.push_str("client");
+        }
+        if self.compute {
+            if !s.is_empty() {
+                s.push_str(", ");
+            }
+            s.push_str("compute");
+        }
+
+        f.write_str(&s)
     }
 }
 

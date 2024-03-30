@@ -1,9 +1,13 @@
-use std::{fmt::Display, net::SocketAddr, str::FromStr};
+use std::{collections::HashSet, fmt::Display, net::SocketAddr, str::FromStr};
 
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
-use snot_common::state::{HeightRequest, NodeState, NodeType};
+use snot_common::{
+    lasso::Spur,
+    state::{AgentId, HeightRequest, NodeState, NodeType},
+    INTERN,
+};
 
 use super::{NodeKey, NodeTargets};
 
@@ -35,6 +39,18 @@ fn please_be_online() -> bool {
     true
 }
 
+/// Parse the labels as strings, but intern them on load
+fn get_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let labels = Vec::<String>::deserialize(deserializer)?;
+    Ok(labels
+        .into_iter()
+        .map(|label| INTERN.get_or_intern(label))
+        .collect())
+}
+
 // TODO: could use some more clarification on some of these fields
 /// A node in the testing infrastructure.
 #[derive(Deserialize, Debug, Clone)]
@@ -53,8 +69,19 @@ pub struct Node {
     ///   inherited.
     pub height: Option<usize>,
 
+    /// When specified, agents must have these labels
+    #[serde(default, deserialize_with = "get_label")]
+    pub labels: HashSet<Spur>,
+
+    /// When specified, an agent must have this id
+    #[serde(default)]
+    pub agent: Option<AgentId>,
+
+    /// List of validators for the node to connect to
     #[serde(default)]
     pub validators: NodeTargets,
+
+    /// List of peers for the node to connect to
     #[serde(default)]
     pub peers: NodeTargets,
 }
