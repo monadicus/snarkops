@@ -427,6 +427,32 @@ impl AgentService for AgentRpcServer {
         }
     }
 
+    async fn get_metrics(self, _: context::Context) -> Result<String, AgentError> {
+        if !matches!(
+            self.state.agent_state.read().await.deref(),
+            AgentState::Node(_, _)
+        ) {
+            return Err(AgentError::InvalidState);
+        }
+
+        let url = format!("http://127.0.0.1:{}/", self.state.cli.ports.metrics);
+
+        let response = reqwest::Client::new()
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?;
+
+        if !response.status().is_success() {
+            return Err(AgentError::FailedToMakeRequest);
+        }
+
+        response
+            .text()
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)
+    }
+
     async fn get_metric(self, _: context::Context, metric: AgentMetric) -> f64 {
         let metrics = self.state.metrics.read().await;
 

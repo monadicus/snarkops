@@ -1,11 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
-    sync::Arc,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
@@ -246,6 +242,10 @@ impl Agent {
 }
 
 impl AgentClient {
+    pub fn into_inner(self) -> AgentServiceClient {
+        self.0
+    }
+
     pub async fn reconcile(
         &self,
         to: AgentState,

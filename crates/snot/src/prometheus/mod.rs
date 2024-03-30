@@ -1,3 +1,5 @@
+mod config;
+
 use anyhow::bail;
 use bollard::{
     container::{self, ListContainersOptions},
@@ -6,10 +8,12 @@ use bollard::{
     Docker,
 };
 use futures_util::TryStreamExt;
+use indexmap::IndexMap;
 use serde_json::json;
 use tracing::info;
 
-use crate::state::GlobalState;
+use self::config::{PrometheusConfig, ScrapeConfig, StaticConfig};
+use crate::{env::EnvPeer, state::GlobalState};
 
 const PROMETHEUS_IMAGE: &str = "prom/prometheus:latest";
 
@@ -21,9 +25,58 @@ const PROMETHEUS_CTR_DATA: &str = "/prometheus";
 const PROMETHEUS_CTR_LABEL: &str = "snops_prometheus";
 const PROMETHEUS_CTR_LABEL_VALUE: &str = "snops_prometheus=control_plane";
 
+// TODO: clean this function up, possibly make config zero-copy, or use json!
+// macro or something
 /// Save Prometheus config based on the current state of the control plane.
-pub fn save_prometheus_config() {
-    // ...
+pub async fn generate_prometheus_config(state: &GlobalState) -> PrometheusConfig {
+    let envs = state.envs.read().await;
+
+    let mut scrape_configs = vec![ScrapeConfig {
+        job_name: "prometheus".into(),
+        honor_timestamps: Some(true),
+        scrape_interval: None,
+        scrape_timeout: None,
+        metrics_path: Some("/metrics".into()),
+        scheme: Some("http".into()),
+        follow_redirects: Some(true),
+        static_configs: vec![StaticConfig {
+            targets: vec!["localhost:9090".into()],
+            labels: Default::default(),
+        }],
+    }];
+
+    for env in envs.iter() {
+        for (key, peer) in env.1.node_map.iter() {
+            let EnvPeer::Internal(agent_id) = peer else {
+                // TODO: support scraping from external peers
+                continue;
+            };
+
+            let mut labels = IndexMap::new();
+            labels.insert("env".into(), env.0.to_string());
+            labels.insert("agent".into(), agent_id.to_string());
+
+            // TODO: CLEANUP, possibly zero copy config
+            scrape_configs.push(ScrapeConfig {
+                job_name: format!("snarkos_env{}_{}", env.0, key),
+                metrics_path: Some(format!("/api/v1/agents/{}/metrics", agent_id)),
+                honor_timestamps: Some(true),
+                scrape_interval: None,
+                scrape_timeout: None,
+                scheme: Some("http".into()),
+                follow_redirects: Some(true),
+                static_configs: vec![StaticConfig {
+                    targets: vec![format!("host.docker.internal:{}", state.cli.port)],
+                    labels,
+                }],
+            });
+        }
+    }
+
+    PrometheusConfig {
+        global: Default::default(),
+        scrape_configs,
+    }
 }
 
 /// Initialize the Prometheus container.
@@ -58,8 +111,19 @@ pub async fn init(state: &GlobalState) -> anyhow::Result<()> {
 
             info!("found an existing prometheus container");
 
+            let id = container.id.unwrap_or_default();
+
+            // start the container if it is not already running
+            match &container.state {
+                Some(state) if state == "Running" => (),
+                _ => {
+                    docker.start_container::<&str>(&id, None).await?;
+                    info!("started the matching prometheus container");
+                }
+            }
+
             // save the container ID to state
-            *state.prom_ctr.lock().unwrap() = container.id.unwrap_or_default();
+            *state.prom_ctr.lock().unwrap() = id;
 
             return Ok(());
         }

@@ -17,6 +17,7 @@ pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
+        .route("/agents/:id/metrics", get(get_agent_metrics))
         .route("/env/prepare", post(post_env_prepare))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
@@ -51,6 +52,38 @@ async fn redirect_storage(
 async fn get_agents(state: State<AppState>) -> impl IntoResponse {
     // TODO: return actual relevant info about agents
     Json(json!({ "count": state.pool.read().await.len() }))
+}
+
+async fn get_agent_metrics(state: State<AppState>, Path(id): Path<AgentId>) -> Response {
+    let client = {
+        let pool = state.pool.read().await;
+        let Some(agent) = pool.get(&id) else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+
+        let Some(client) = agent.client_owned() else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "agent is not an active node"})),
+            )
+                .into_response();
+        };
+
+        client
+    };
+
+    match client
+        .into_inner()
+        .get_metrics(tarpc::context::current())
+        .await
+    {
+        Ok(Ok(body)) => body.into_response(),
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "could not fetch metrics"})),
+        )
+            .into_response(),
+    }
 }
 
 async fn get_agent_tps(state: State<AppState>, Path(id): Path<AgentId>) -> Response {
