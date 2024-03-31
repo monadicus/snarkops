@@ -1,5 +1,6 @@
 use std::{collections::HashSet, fmt::Display, net::SocketAddr, str::FromStr};
 
+use fixedbitset::FixedBitSet;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
@@ -73,7 +74,7 @@ pub struct Node {
     #[serde(default, deserialize_with = "get_label")]
     pub labels: HashSet<Spur>,
 
-    /// When specified, an agent must have this id
+    /// When specified, an agent must have this id. Overrides the labels field.
     #[serde(default)]
     pub agent: Option<AgentId>,
 
@@ -101,6 +102,26 @@ impl Node {
             validators: vec![],
             peers: vec![],
         }
+    }
+
+    pub fn mask(&self, key: &NodeKey, labels: &[Spur]) -> FixedBitSet {
+        let mut mask = FixedBitSet::with_capacity(labels.len() + 4);
+        if key.ty == NodeType::Validator {
+            mask.insert(0);
+        }
+        if key.ty == NodeType::Prover {
+            mask.insert(1);
+        }
+        if key.ty == NodeType::Client {
+            mask.insert(2);
+        }
+
+        for (i, label) in labels.iter().enumerate() {
+            if self.labels.contains(label) {
+                mask.insert(i + 4);
+            }
+        }
+        mask
     }
 }
 
