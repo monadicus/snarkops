@@ -34,8 +34,8 @@ impl Num {
                     util::CannonTx::Dependent(id, tx) => {
                         // println!(
                         //     "{id}\t{}",
-                        //     serde_json::to_string(&tx).expect("serialize proof")
-                        // );
+                        //     serde_json::to_string(&tx).expect("serialize
+                        // proof") );
                     }
                 })
                 .map(drop)

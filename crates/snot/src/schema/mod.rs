@@ -10,7 +10,10 @@ use serde::{
 use snot_common::state::{NodeKey, NodeType};
 use wildmatch::WildMatch;
 
+use self::error::{NodeTargetError, SchemaError};
+
 pub mod cannon;
+pub mod error;
 pub mod infrastructure;
 pub mod nodes;
 pub mod outcomes;
@@ -130,12 +133,11 @@ pub struct NodeTarget {
 }
 
 impl FromStr for NodeTarget {
-    // TODO: enum error for this?
-    type Err = &'static str;
+    type Err = SchemaError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let Some(captures) = NODE_TARGET_REGEX.captures(s) else {
-            return Err("invalid node target string");
+            return Err(NodeTargetError.into());
         };
 
         // match the type

@@ -2,6 +2,8 @@ use snot_common::state::NodeKey;
 use thiserror::Error;
 use tokio::task::JoinError;
 
+use crate::schema::error::SchemaError;
+
 #[derive(Debug, Error)]
 #[error("batch reconciliation failed with `{failures}` failed reconciliations")]
 pub struct BatchReconcileError {
@@ -78,4 +80,6 @@ pub enum EnvError {
     Prepare(#[from] PrepareError),
     #[error("reconcile error: `{0}`")]
     Reconcile(#[from] ReconcileError),
+    #[error("schema error: `{0}`")]
+    Schema(#[from] SchemaError),
 }

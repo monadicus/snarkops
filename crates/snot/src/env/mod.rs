@@ -113,7 +113,7 @@ impl Environment {
     pub async fn prepare(
         documents: Vec<ItemDocument>,
         state: &GlobalState,
-    ) -> Result<usize, PrepareError> {
+    ) -> Result<usize, EnvError> {
         static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         let mut state_lock = state.envs.write().await;
@@ -129,7 +129,7 @@ impl Environment {
             match document {
                 ItemDocument::Storage(doc) => {
                     if storage.is_none() {
-                        storage = Some(doc.prepare(state).await.expect("TODO"));
+                        storage = Some(doc.prepare(state).await?);
                     } else {
                         Err(PrepareError::MultipleStorage)?;
                     }
@@ -182,10 +182,10 @@ impl Environment {
                     let num_available_agents = available_agent.clone().count();
 
                     if num_available_agents > initial_nodes.len() {
-                        return Err(PrepareError::NotEnoughAvailableNodes(
+                        Err(PrepareError::NotEnoughAvailableNodes(
                             num_available_agents,
                             initial_nodes.len(),
-                        ));
+                        ))?;
                     }
 
                     // TODO: remove this naive delegation, replace with
@@ -284,14 +284,14 @@ impl Environment {
         Ok(env_id)
     }
 
-    pub async fn cleanup(id: &usize, state: &GlobalState) -> Result<(), CleanupError> {
+    pub async fn cleanup(id: &usize, state: &GlobalState) -> Result<(), EnvError> {
         // clear the env state
         info!("clearing env {id} state...");
         let Some(env) = ({
             let mut state_lock = state.envs.write().await;
             state_lock.remove(id)
         }) else {
-            return Err(CleanupError::EnvNotFound(*id));
+            return Err(CleanupError::EnvNotFound(*id).into());
         };
 
         // reconcile all online agents
@@ -405,7 +405,7 @@ impl Environment {
 }
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(), ReconcileError> {
+pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(), EnvError> {
     let mut pending_reconciliations = vec![];
     {
         let envs_lock = state.envs.read().await;
@@ -422,7 +422,7 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
 
             // get the internal agent ID from the node key
             let Some(id) = env.get_agent_by_key(key) else {
-                return Err(ReconcileError::ExpectedInternalAgentPeer { key: key.clone() });
+                return Err(ReconcileError::ExpectedInternalAgentPeer { key: key.clone() }.into());
             };
 
             let Some(client) = pool_lock.get(&id).and_then(|a| a.client_owned()) else {
@@ -453,6 +453,8 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
         }
     }
 
-    reconcile_agents(pending_reconciliations.into_iter(), &state.pool).await?;
+    reconcile_agents(pending_reconciliations.into_iter(), &state.pool)
+        .await
+        .map_err(ReconcileError::Batch)?;
     Ok(())
 }

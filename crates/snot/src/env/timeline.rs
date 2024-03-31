@@ -10,7 +10,7 @@ use tracing::{debug, error, info};
 
 use super::{
     error::{BatchReconcileError, ExecutionError},
-    Environment,
+    EnvError, Environment,
 };
 use crate::{
     cannon::{
@@ -83,7 +83,7 @@ where
 }
 
 impl Environment {
-    pub async fn execute(state: Arc<GlobalState>, env_id: usize) -> Result<(), ExecutionError> {
+    pub async fn execute(state: Arc<GlobalState>, env_id: usize) -> Result<(), EnvError> {
         let env = Arc::clone(match state.envs.read().await.get(&env_id) {
             Some(env) => env,
             None => Err(ExecutionError::EnvNotFound(env_id))?,

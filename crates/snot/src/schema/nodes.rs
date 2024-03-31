@@ -5,7 +5,10 @@ use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snot_common::state::{HeightRequest, NodeState, NodeType};
 
-use super::{NodeKey, NodeTargets};
+use super::{
+    error::{KeySourceError, SchemaError},
+    NodeKey, NodeTargets,
+};
 
 /// A document describing the node infrastructure for a test.
 #[derive(Deserialize, Debug, Clone)]
@@ -120,12 +123,14 @@ impl Serialize for KeySource {
 }
 
 impl FromStr for KeySource {
-    type Err = &'static str;
+    type Err = SchemaError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // use KeySource::Literal(String) when the string is 59 characters long and starts with "APrivateKey1zkp"
-        // use KeySource::Commitee(Option<usize>) when the string is "committee.0" or "committee.$"
-        // use KeySource::Named(String, Option<usize>) when the string is "\w+.0" or "\w+.$"
+        // use KeySource::Literal(String) when the string is 59 characters long and
+        // starts with "APrivateKey1zkp" use KeySource::Commitee(Option<usize>)
+        // when the string is "committee.0" or "committee.$"
+        // use KeySource::Named(String, Option<usize>) when the string is "\w+.0" or
+        // "\w+.$"
 
         // aleo private key
         if s.len() == 59 && s.starts_with("APrivateKey1") {
@@ -138,7 +143,7 @@ impl FromStr for KeySource {
             }
             let replica = index
                 .parse()
-                .map_err(|_e| "committee index must be a positive number")?;
+                .map_err(KeySourceError::InvalidCommitteeIndex)?;
             return Ok(KeySource::Committee(Some(replica)));
         }
 
@@ -149,14 +154,11 @@ impl FromStr for KeySource {
         }
         let groups = NAMED_KEYSOURCE_REGEX
             .captures(s)
-            .ok_or("invalid key source")?;
+            .ok_or(KeySourceError::InvalidKeySource)?;
         let name = groups.name("name").unwrap().as_str().to_string();
         let idx = match groups.name("idx").unwrap().as_str() {
             "$" => None,
-            idx => Some(
-                idx.parse()
-                    .map_err(|_e| "index must be a positive number")?,
-            ),
+            idx => Some(idx.parse().map_err(KeySourceError::InvalidCommitteeIndex)?),
         };
         Ok(KeySource::Named(name, idx))
     }

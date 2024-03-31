@@ -5,17 +5,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snot_common::state::NodeKey;
 
-use crate::{env::Environment, schema::nodes::KeySource, state::GlobalState};
-
 use super::{authorized::Authorize, net::get_available_port};
+use crate::{env::Environment, schema::nodes::KeySource, state::GlobalState};
 
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalService {
     /// Ledger & genesis block to use
     // pub storage_id: usize,
-    /// port to host the service on (needs to be unused by other cannons and services)
-    /// this port will be use when forwarding requests to the local query service
+    /// port to host the service on (needs to be unused by other cannons and
+    /// services) this port will be use when forwarding requests to the
+    /// local query service
     // pub port: u16,
 
     // TODO debate this
@@ -111,7 +111,8 @@ pub enum TxSource {
         /// defaults to committee addresses
         addresses: Vec<KeySource>,
     },
-    /// Receive authorizations from a persistent path /api/v1/env/:env_id/cannons/:id/auth
+    /// Receive authorizations from a persistent path
+    /// /api/v1/env/:env_id/cannons/:id/auth
     #[serde(rename_all = "kebab-case")]
     Listen {
         query: QueryTarget,

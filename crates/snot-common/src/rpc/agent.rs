@@ -27,7 +27,8 @@ pub trait AgentService {
     async fn broadcast_tx(tx: String) -> Result<(), AgentError>;
 
     /// Locally execute an authorization, using the given query
-    /// environment id is passed so the agent can determine which aot binary to use
+    /// environment id is passed so the agent can determine which aot binary to
+    /// use
     async fn execute_authorization(
         env_id: usize,
         query: String,
