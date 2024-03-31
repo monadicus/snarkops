@@ -12,7 +12,7 @@ use jwt::SignWithKey;
 use snot_common::{
     lasso::Spur,
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
+    state::{AgentId, AgentMode, AgentState, NodeState, NodeType, PortConfig},
     INTERN,
 };
 use surrealdb::{engine::local::Db, Surreal};
@@ -128,13 +128,13 @@ impl Agent {
     pub fn mask(&self, labels: &[Spur]) -> FixedBitSet {
         let mut mask = FixedBitSet::with_capacity(labels.len() + 4);
         if self.mode.validator {
-            mask.insert(0);
+            mask.insert(NodeType::Validator.bit());
         }
         if self.mode.prover {
-            mask.insert(1);
+            mask.insert(NodeType::Prover.bit());
         }
         if self.mode.client {
-            mask.insert(2);
+            mask.insert(NodeType::Client.bit());
         }
         if self.mode.compute {
             mask.insert(3);

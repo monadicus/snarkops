@@ -206,6 +206,14 @@ impl NodeType {
             Self::Prover => "--prover",
         }
     }
+
+    pub fn bit(self) -> usize {
+        match self {
+            Self::Validator => 0,
+            Self::Prover => 1,
+            Self::Client => 2,
+        }
+    }
 }
 
 impl Display for NodeType {

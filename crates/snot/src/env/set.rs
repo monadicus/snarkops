@@ -86,6 +86,8 @@ pub enum LabelSetError {
     AgentNotFound(AgentId, NodeKey),
     #[error("agent {0} already claimed for node {1}")]
     AgentAlreadyClaimed(AgentId, NodeKey),
+    #[error("agent {0} does not support the mode needed for {1}")]
+    AgentMissingMode(AgentId, NodeKey),
     #[error("could not find any agents for node {0}")]
     NoAvailableAgents(NodeKey),
 }
@@ -170,11 +172,19 @@ impl LabelSet {
 
         // walk through all the nodes that want specific agents and attempt to pair them with an agent
         want_ids.into_par_iter().for_each(|(key, id)| {
+            // ensure the agent exists
             let Some(agent) = agent_map.get(&id) else {
                 let _ = errors_tx.send(LabelSetError::AgentNotFound(id, key.clone()));
                 return;
             };
 
+            // ensure this agent supports the needed mode
+            if !agent.mask.contains(key.ty.bit()) {
+                let _ = errors_tx.send(LabelSetError::AgentMissingMode(id, key.clone()));
+                return;
+            }
+
+            // attempt to claim the agent
             if let Some(claim) = agent.claim() {
                 let _ = claimed_tx.send((key.clone(), id, claim));
             } else {

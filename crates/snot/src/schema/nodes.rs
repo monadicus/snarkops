@@ -106,15 +106,7 @@ impl Node {
 
     pub fn mask(&self, key: &NodeKey, labels: &[Spur]) -> FixedBitSet {
         let mut mask = FixedBitSet::with_capacity(labels.len() + 4);
-        if key.ty == NodeType::Validator {
-            mask.insert(0);
-        }
-        if key.ty == NodeType::Prover {
-            mask.insert(1);
-        }
-        if key.ty == NodeType::Client {
-            mask.insert(2);
-        }
+        mask.insert(key.ty.bit());
 
         for (i, label) in labels.iter().enumerate() {
             if self.labels.contains(label) {
