@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
-use anyhow::{ensure, Result};
 use tokio::process::Command;
+
+use super::error::{AuthorizeError, CannonError};
+use crate::error::CommandError;
 
 #[derive(Clone, Debug)]
 pub enum Authorize {
@@ -14,7 +16,7 @@ pub enum Authorize {
 }
 
 impl Authorize {
-    pub async fn run(self, bin: &PathBuf) -> Result<serde_json::Value> {
+    pub async fn run(self, bin: &PathBuf) -> Result<serde_json::Value, CannonError> {
         let mut command = Command::new(bin);
         command
             .stdout(std::io::stdout())
@@ -43,23 +45,32 @@ impl Authorize {
 
         command.arg("--broadcast");
 
-        let res = command.output().await?;
+        let res = command.output().await.map_err(|e| {
+            AuthorizeError::Command(CommandError::action("output", "aot authorize", e))
+        })?;
 
         if !res.status.success() {
-            return Err(anyhow::anyhow!(
-                "command failed with status {}: {}",
+            Err(AuthorizeError::Command(CommandError::status(
+                "aot authorize",
                 res.status,
-                String::from_utf8_lossy(&res.stderr)
-            ));
+                String::from_utf8_lossy(&res.stderr).to_string(),
+            )))?;
         }
 
-        let blob: serde_json::Value = serde_json::from_slice(&res.stdout)?;
+        let blob: serde_json::Value =
+            serde_json::from_slice(&res.stdout).map_err(AuthorizeError::Json)?;
 
-        ensure!(blob.is_object(), "expected JSON object in response");
-        ensure!(
-            blob.get("function").is_some() && blob.get("broadcast").is_some(),
-            "expected function, fee, and broadcast fields in response"
-        );
+        // TODO consider making a type for this json object
+        if !blob.is_object() {
+            Err(AuthorizeError::JsonNotObject)?;
+        }
+
+        if blob.get("function").is_none()
+            || blob.get("broadcast").is_none()
+            || blob.get("fee").is_none()
+        {
+            Err(AuthorizeError::InvalidJson)?;
+        }
 
         Ok(blob)
     }

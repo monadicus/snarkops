@@ -21,7 +21,7 @@ use super::{
     error::{SchemaError, StorageError},
     nodes::KeySource,
 };
-use crate::{schema::error::CommandError, state::GlobalState};
+use crate::{error::CommandError, state::GlobalState};
 
 /// A storage document. Explains how storage for a test should be set up.
 #[derive(Deserialize, Debug, Clone)]
@@ -255,7 +255,7 @@ impl Document {
                             .spawn()
                             .map_err(|e| {
                                 StorageError::Command(
-                                    CommandError::new("spawning", "aot genesis", e),
+                                    CommandError::action("spawning", "aot genesis", e),
                                     id.clone(),
                                 )
                             })?
@@ -263,7 +263,7 @@ impl Document {
                             .await
                             .map_err(|e| {
                                 StorageError::Command(
-                                    CommandError::new("waiting", "aot genesis", e),
+                                    CommandError::action("waiting", "aot genesis", e),
                                     id.clone(),
                                 )
                             })?;
@@ -287,7 +287,7 @@ impl Document {
                     .spawn()
                     .map_err(|e| {
                         StorageError::Command(
-                            CommandError::new("spawning", "tar ledger", e),
+                            CommandError::action("spawning", "tar ledger", e),
                             id.clone(),
                         )
                     })?
@@ -295,7 +295,7 @@ impl Document {
                     .await
                     .map_err(|e| {
                         StorageError::Command(
-                            CommandError::new("waiting", "tar ledger", e),
+                            CommandError::action("waiting", "tar ledger", e),
                             id.clone(),
                         )
                     })?;
@@ -339,7 +339,7 @@ impl Document {
                 .spawn()
                 .map_err(|e| {
                     StorageError::Command(
-                        CommandError::new("spawning", "tar ledger", e),
+                        CommandError::action("spawning", "tar ledger", e),
                         id.clone(),
                     )
                 })?;

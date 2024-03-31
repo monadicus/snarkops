@@ -1,4 +1,5 @@
 pub mod authorized;
+pub mod error;
 pub mod file;
 mod net;
 pub mod router;
@@ -10,7 +11,6 @@ use std::{
     sync::{atomic::AtomicUsize, Arc, OnceLock, Weak},
 };
 
-use anyhow::{bail, ensure, Result};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use snot_common::state::AgentPeer;
 use tokio::{
@@ -21,6 +21,7 @@ use tokio::{
 use tracing::{info, trace, warn};
 
 use self::{
+    error::CannonError,
     file::{TransactionDrain, TransactionSink},
     sink::TxSink,
     source::TxSource,
@@ -31,6 +32,7 @@ use crate::{
         source::{ComputeTarget, QueryTarget},
     },
     env::{Environment, PortType},
+    error::CommandError,
     state::GlobalState,
 };
 
@@ -137,7 +139,7 @@ impl CannonInstance {
         source: TxSource,
         sink: TxSink,
         count: usize,
-    ) -> Result<(Self, CannonReceivers)> {
+    ) -> Result<(Self, CannonReceivers), CannonError> {
         let (tx_sender, tx_receiver) = tokio::sync::mpsc::unbounded_channel();
         let query_port = source.get_query_port()?;
         let fired_txs = Arc::new(AtomicUsize::new(0));
@@ -161,7 +163,9 @@ impl CannonInstance {
                 .arg("127.0.0.1") // only bind to localhost as this is a private process
                 .arg("--readonly")
                 .spawn()
-                .map_err(|e| anyhow::anyhow!("error spawning query service: {e}"))?;
+                .map_err(|e| {
+                    CannonError::Command(id, CommandError::action("spawning", "aot leder", e))
+                })?;
             Some(child)
         } else {
             None
@@ -191,7 +195,7 @@ impl CannonInstance {
         ))
     }
 
-    pub fn ctx(&self) -> Result<ExecutionContext> {
+    pub fn ctx(&self) -> Result<ExecutionContext, CannonError> {
         Ok(ExecutionContext {
             id: self.id,
             env: self.env.clone(),
@@ -205,7 +209,7 @@ impl CannonInstance {
         })
     }
 
-    pub async fn spawn_local(&mut self, rx: CannonReceivers) -> Result<()> {
+    pub async fn spawn_local(&mut self, rx: CannonReceivers) -> Result<(), CannonError> {
         let ctx = self.ctx()?;
 
         let handle = tokio::task::spawn(async move { ctx.spawn(rx).await });
@@ -214,20 +218,20 @@ impl CannonInstance {
         Ok(())
     }
 
-    pub async fn spawn(&mut self, rx: CannonReceivers) -> Result<()> {
+    pub async fn spawn(&mut self, rx: CannonReceivers) -> Result<(), CannonError> {
         self.ctx()?.spawn(rx).await
     }
 
     /// Called by axum to forward /cannon/<id>/mainnet/latest/stateRoot
     /// to the ledger query service's /mainnet/latest/stateRoot
-    pub async fn proxy_state_root(&self) -> Result<String> {
+    pub async fn proxy_state_root(&self) -> Result<String, CannonError> {
         match &self.source {
             TxSource::RealTime { query, .. } | TxSource::Listen { query, .. } => match query {
                 QueryTarget::Local(qs) => {
                     if let Some(port) = self.query_port {
                         qs.get_state_root(port).await
                     } else {
-                        bail!("cannon is missing a query port")
+                        Err(CannonError::MissingQueryPort(self.id))
                     }
                 }
                 QueryTarget::Node(key) => {
@@ -237,30 +241,34 @@ impl CannonInstance {
 
                     // env_id must be Some because LedgerQueryService::Node requires it
                     let Some(agent_id) = env.get_agent_by_key(key) else {
-                        bail!("cannon target agent not found")
+                        return Err(CannonError::TargetAgentNotFound(self.id, key.clone()));
                     };
 
                     let Some(client) = self.global_state.get_client(agent_id).await else {
-                        bail!("cannon target agent is offline")
+                        return Err(CannonError::TargetAgentOffline(
+                            "cannon",
+                            self.id,
+                            key.to_string(),
+                        ));
                     };
 
                     // call client's rpc method to get the state root
                     // this will fail if the client is not running a node
-                    client.get_state_root().await
+                    Ok(client.get_state_root().await.expect("TODO"))
                 }
             },
-            TxSource::Playback { .. } => {
-                bail!("cannon is configured to playback from file.")
-            }
+            TxSource::Playback { .. } => Err(CannonError::ConfiguredToPlayback(self.id)),
         }
     }
 
     /// Called by axum to forward /cannon/<id>/mainnet/transaction/broadcast
     /// to the desired sink
-    pub fn proxy_broadcast(&self, body: String) -> Result<()> {
+    pub fn proxy_broadcast(&self, body: String) -> Result<(), CannonError> {
         match &self.source {
             TxSource::RealTime { .. } | TxSource::Listen { .. } => {
-                self.tx_sender.send(body)?;
+                self.tx_sender
+                    .send(body)
+                    .map_err(|e| CannonError::SendTxError(self.id, e))?;
             }
             TxSource::Playback { .. } => {
                 warn!("cannon received broadcasted transaction in playback mode. ignoring.")
@@ -270,10 +278,12 @@ impl CannonInstance {
     }
 
     /// Called by axum to forward /cannon/<id>/auth to a listen source
-    pub fn proxy_auth(&self, body: Authorization) -> Result<()> {
+    pub fn proxy_auth(&self, body: Authorization) -> Result<(), CannonError> {
         match &self.source {
             TxSource::Listen { .. } => {
-                self.auth_sender.send(body)?;
+                self.auth_sender
+                    .send(body)
+                    .map_err(|e| CannonError::SendAuthError(self.id, e))?;
             }
             TxSource::RealTime { .. } => {
                 warn!("cannon received broadcasted transaction in realtime mode. ignoring.")
@@ -311,7 +321,7 @@ pub struct ExecutionContext {
 }
 
 impl ExecutionContext {
-    pub async fn spawn(self, mut rx: CannonReceivers) -> Result<()> {
+    pub async fn spawn(self, mut rx: CannonReceivers) -> Result<(), CannonError> {
         let ExecutionContext {
             id: cannon_id,
             env: env_weak,
@@ -324,7 +334,7 @@ impl ExecutionContext {
         } = &self;
 
         let Some(env) = env_weak.upgrade() else {
-            bail!("env dropped")
+            return Err(CannonError::EnvDropped(Some(*cannon_id), Some(self.id)));
         };
         let env_id = env.id;
 
@@ -334,7 +344,13 @@ impl ExecutionContext {
         let (drain_pipe, query_path) = match &source {
             TxSource::Playback { file_name: name } => {
                 let pipe = env.tx_pipe.drains.get(name).cloned();
-                ensure!(pipe.is_some(), "transaction drain not found: {name}");
+                if pipe.is_none() {
+                    return Err(CannonError::TransactionDrainNotFound(
+                        env_id,
+                        *cannon_id,
+                        name.clone(),
+                    ));
+                }
                 (pipe, None)
             }
             TxSource::RealTime { compute, .. } | TxSource::Listen { compute, .. } => {
@@ -345,7 +361,7 @@ impl ExecutionContext {
                     // demox needs to locate it
                     ComputeTarget::Demox { .. } => {
                         let Some(host) = get_host(state).await else {
-                            bail!("no --host configured for demox based cannon");
+                            return Err(CannonError::NoDemoxHostConfigured);
                         };
                         format!("http://{host}:{}{suffix}", state.cli.port)
                     }
@@ -358,7 +374,14 @@ impl ExecutionContext {
         let sink_pipe = match &sink {
             TxSink::Record { file_name, .. } => {
                 let pipe = env.tx_pipe.sinks.get(file_name).cloned();
-                ensure!(pipe.is_some(), "transaction sink not found: {file_name}");
+                if pipe.is_none() {
+                    return Err(CannonError::TransactionSinkNotFound(
+                        env_id,
+                        *cannon_id,
+                        file_name.clone(),
+                    ));
+                }
+                // ensure!(pipe.is_some(), "transaction sink not found: {file_name}");
                 pipe
             }
             _ => None,
@@ -442,24 +465,31 @@ impl ExecutionContext {
     }
 
     /// Request a new transaction from the context's source
-    async fn request_tx(&self, drain_pipe: Option<Arc<TransactionDrain>>) -> Result<bool> {
+    async fn request_tx(
+        &self,
+        drain_pipe: Option<Arc<TransactionDrain>>,
+    ) -> Result<bool, CannonError> {
         match &self.source {
             TxSource::Playback { .. } => {
                 // if tx source is playback, read lines from the transaction file
                 let Some(transaction) = drain_pipe.unwrap().next()? else {
                     return Ok(false);
                 };
-                self.tx_sender.send(transaction)?;
+                self.tx_sender
+                    .send(transaction)
+                    .map_err(|e| CannonError::SendTxError(self.id, e))?;
                 Ok(true)
             }
             TxSource::RealTime { .. } => {
                 let Some(env) = self.env.upgrade() else {
-                    bail!("env dropped")
+                    return Err(CannonError::EnvDropped(None, Some(self.id)));
                 };
                 trace!("cannon {}.{} generating authorization...", env.id, self.id);
 
                 let auth = self.source.get_auth(&env)?.run(&env.aot_bin).await?;
-                self.auth_sender.send(auth)?;
+                self.auth_sender
+                    .send(auth)
+                    .map_err(|e| CannonError::SendAuthError(self.id, e))?;
                 Ok(true)
             }
             TxSource::Listen { .. } => {
@@ -469,7 +499,11 @@ impl ExecutionContext {
     }
 
     /// Execute an authorization on the source's compute target
-    async fn execute_auth(&self, auth: Authorization, query_path: String) -> Result<()> {
+    async fn execute_auth(
+        &self,
+        auth: Authorization,
+        query_path: String,
+    ) -> Result<(), CannonError> {
         match &self.source {
             TxSource::Playback { .. } => {
                 unreachable!("playback mode cannot receive authorizations")
@@ -478,14 +512,18 @@ impl ExecutionContext {
                 let env = self
                     .env
                     .upgrade()
-                    .ok_or_else(|| anyhow::anyhow!("env dropped"))?;
+                    .ok_or_else(|| CannonError::EnvDropped(None, Some(self.id)))?;
                 compute.execute(&self.state, &env, query_path, auth).await
             }
         }
     }
 
     /// Fire a transaction to the sink
-    async fn fire_tx(&self, sink_pipe: Option<Arc<TransactionSink>>, tx: String) -> Result<()> {
+    async fn fire_tx(
+        &self,
+        sink_pipe: Option<Arc<TransactionSink>>,
+        tx: String,
+    ) -> Result<(), CannonError> {
         match &self.sink {
             TxSink::Record { .. } => {
                 sink_pipe.unwrap().write(&tx)?;
@@ -495,38 +533,48 @@ impl ExecutionContext {
                 let nodes = self
                     .env
                     .upgrade()
-                    .ok_or_else(|| anyhow::anyhow!("env dropped"))?
+                    .ok_or_else(|| CannonError::EnvDropped(None, Some(self.id)))?
                     .matching_nodes(target, &pool, PortType::Rest)
                     .collect::<Vec<_>>();
 
                 if nodes.is_empty() {
-                    bail!("no nodes available to broadcast transactions")
+                    return Err(CannonError::NoAvailableAgents(
+                        "to broadcast transactions",
+                        self.id,
+                    ));
                 }
 
                 let Some(node) = nodes.get(rand::random::<usize>() % nodes.len()) else {
-                    bail!("no nodes available to broadcast transactions")
+                    return Err(CannonError::NoAvailableAgents(
+                        "to broadcast transactions",
+                        self.id,
+                    ));
                 };
                 match node {
                     AgentPeer::Internal(id, _) => {
                         let Some(client) = pool[id].client_owned() else {
-                            bail!("target agent {id} was offline");
+                            return Err(CannonError::TargetAgentOffline(
+                                "exec ctx",
+                                self.id,
+                                id.to_string(),
+                            ));
                         };
 
-                        client.broadcast_tx(tx).await?;
+                        client.broadcast_tx(tx).await.expect("TODO");
                     }
                     AgentPeer::External(addr) => {
                         let url = format!("http://{addr}/mainnet/transaction/broadcast");
-                        ensure!(
-                            reqwest::Client::new()
-                                .post(url)
-                                .header("Content-Type", "application/json")
-                                .body(tx)
-                                .send()
-                                .await?
-                                .status()
-                                .is_success(),
-                            "failed to post transaction to external target node {addr}"
-                        );
+                        let req = reqwest::Client::new()
+                            .post(url)
+                            .header("Content-Type", "application/json")
+                            .body(tx)
+                            .send()
+                            .await
+                            .map_err(|e| CannonError::BroadcastRequest(self.id, e))?;
+                        if !req.status().is_success() {
+                            // TODO maybe get response text?
+                            return Err(CannonError::Broadcast(self.id, req.status().to_string()));
+                        }
                     }
                 }
             }

@@ -2,7 +2,7 @@ use snot_common::state::NodeKey;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::schema::error::SchemaError;
+use crate::{cannon::error::CannonError, schema::error::SchemaError};
 
 #[derive(Debug, Error)]
 #[error("batch reconciliation failed with `{failures}` failed reconciliations")]
@@ -25,7 +25,7 @@ pub enum ExecutionError {
     #[error("unknown cannon: `{0}`")]
     UnknownCannon(String),
     #[error("cannon error: `{0}`")]
-    Cannon(anyhow::Error),
+    Cannon(#[from] CannonError),
 }
 
 #[derive(Debug, Error)]
@@ -82,4 +82,6 @@ pub enum EnvError {
     Reconcile(#[from] ReconcileError),
     #[error("schema error: `{0}`")]
     Schema(#[from] SchemaError),
+    #[error("cannon error: `{0}`")]
+    Cannon(#[from] CannonError),
 }

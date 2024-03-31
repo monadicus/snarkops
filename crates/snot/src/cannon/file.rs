@@ -4,31 +4,34 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{bail, Result};
 use tracing::debug;
 
-use crate::schema::storage::LoadedStorage;
+use super::error::CannonError;
+use crate::{
+    cannon::error::{TransactionDrainError, TransactionSinkError},
+    schema::storage::LoadedStorage,
+};
 
 #[derive(Debug)]
 pub struct TransactionDrain(Mutex<Option<BufReader<File>>>);
 
 impl TransactionDrain {
     /// Create a new transaction drain
-    pub fn new(storage: Arc<LoadedStorage>, source: &str) -> Result<Self> {
+    pub fn new(storage: Arc<LoadedStorage>, source: &str) -> Result<Self, CannonError> {
         let source = storage.path.join(source);
         debug!("opening tx drain @ {source:?}");
 
         let Ok(f) = File::open(&source) else {
-            bail!("error opening transaction source file: {source:?}");
+            return Err(TransactionDrainError::FailedToOpenSource(source).into());
         };
 
         Ok(Self(Mutex::new(Some(BufReader::new(f)))))
     }
 
     /// Read the next line from the transaction drain
-    pub fn next(&self) -> Result<Option<String>> {
+    pub fn next(&self) -> Result<Option<String>, CannonError> {
         let Ok(mut lock) = self.0.lock() else {
-            bail!("error locking transaction drain");
+            return Err(TransactionDrainError::FailedToLock.into());
         };
 
         if lock.is_none() {
@@ -37,7 +40,13 @@ impl TransactionDrain {
 
         let mut buf = String::new();
         // read a line and clear the lock on EOF
-        if lock.as_mut().unwrap().read_line(&mut buf)? == 0 {
+        if lock
+            .as_mut()
+            .unwrap()
+            .read_line(&mut buf)
+            .map_err(TransactionDrainError::FailedToReadLine)?
+            == 0
+        {
             *lock = None;
             return Ok(None);
         }
@@ -50,21 +59,21 @@ pub struct TransactionSink(Mutex<Option<BufWriter<File>>>);
 
 impl TransactionSink {
     /// Create a new transaction sink
-    pub fn new(storage: Arc<LoadedStorage>, target: &str) -> Result<Self> {
+    pub fn new(storage: Arc<LoadedStorage>, target: &str) -> Result<Self, CannonError> {
         let target = storage.path.join(target);
         debug!("opening tx sink @ {target:?}");
 
         let Ok(f) = File::options().create(true).append(true).open(&target) else {
-            bail!("error opening transaction target file: {target:?}");
+            return Err(TransactionSinkError::FailedToOpenSource(target).into());
         };
 
         Ok(Self(Mutex::new(Some(BufWriter::new(f)))))
     }
 
     /// Write a line to the transaction sink
-    pub fn write(&self, line: &str) -> Result<()> {
+    pub fn write(&self, line: &str) -> Result<(), CannonError> {
         let Ok(mut lock) = self.0.lock() else {
-            bail!("error locking transaction sink");
+            return Err(TransactionSinkError::FailedToLock.into());
         };
 
         if lock.is_none() {
@@ -72,9 +81,15 @@ impl TransactionSink {
         }
 
         let writer = lock.as_mut().unwrap();
-        writer.write_all(line.trim().as_bytes())?;
-        writer.write_all(b"\n")?;
-        writer.flush()?;
+        writer
+            .write_all(line.trim().as_bytes())
+            .map_err(TransactionSinkError::FailedToWrite)?;
+        writer
+            .write_all(b"\n")
+            .map_err(TransactionSinkError::FailedToWrite)?;
+        writer
+            .flush()
+            .map_err(TransactionSinkError::FailedToWrite)?;
         Ok(())
     }
 }

@@ -1,11 +1,14 @@
 use std::collections::HashSet;
 
-use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snot_common::state::NodeKey;
 
-use super::{authorized::Authorize, net::get_available_port};
+use super::{
+    authorized::Authorize,
+    error::{CannonError, SourceError},
+    net::get_available_port,
+};
 use crate::{env::Environment, schema::nodes::KeySource, state::GlobalState};
 
 /// Represents an instance of a local query service.
@@ -35,10 +38,15 @@ impl LocalService {
     // TODO: cache this when sync_from is false
     /// Fetch the state root from the local query service
     /// (non-cached)
-    pub async fn get_state_root(&self, port: u16) -> Result<String> {
+    pub async fn get_state_root(&self, port: u16) -> Result<String, CannonError> {
         let url = format!("http://127.0.0.1:{}/mainnet/latest/stateRoot", port);
-        let response = reqwest::get(&url).await?;
-        Ok(response.json().await?)
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| SourceError::FailedToGetStateRoot(url, e))?;
+        Ok(response
+            .json()
+            .await
+            .map_err(SourceError::StateRootInvalidJson)?)
     }
 }
 
@@ -122,7 +130,7 @@ pub enum TxSource {
 
 impl TxSource {
     /// Get an available port for the query service if applicable
-    pub fn get_query_port(&self) -> Result<Option<u16>> {
+    pub fn get_query_port(&self) -> Result<Option<u16>, CannonError> {
         matches!(
             self,
             TxSource::RealTime {
@@ -130,11 +138,11 @@ impl TxSource {
                 ..
             }
         )
-        .then(|| get_available_port().ok_or(anyhow!("could not get an available port")))
+        .then(|| get_available_port().ok_or(SourceError::TxSouceUnavailablePort.into()))
         .transpose()
     }
 
-    pub fn get_auth(&self, env: &Environment) -> Result<Authorize> {
+    pub fn get_auth(&self, env: &Environment) -> Result<Authorize, CannonError> {
         match self {
             TxSource::RealTime {
                 tx_modes,
@@ -146,20 +154,20 @@ impl TxSource {
                     private_keys
                         .get(rand::random::<usize>() % private_keys.len())
                         .and_then(|k| env.storage.sample_keysource_pk(k))
-                        .ok_or(anyhow!("error selecting a valid private key"))
+                        .ok_or(SourceError::CouldNotSelect("private key"))
                 };
                 let sample_addr = || {
                     addresses
                         .get(rand::random::<usize>() % addresses.len())
                         .and_then(|k| env.storage.sample_keysource_addr(k))
-                        .ok_or(anyhow!("error selecting a valid private key"))
+                        .ok_or(SourceError::CouldNotSelect("address"))
                 };
 
                 let Some(mode) = tx_modes
                     .iter()
                     .nth(rand::random::<usize>() % tx_modes.len())
                 else {
-                    bail!("no tx modes available for this cannon instance??")
+                    return Err(SourceError::NoTxModeAvailable.into());
                 };
 
                 let auth = match mode {
@@ -180,7 +188,7 @@ impl TxSource {
 
                 Ok(auth)
             }
-            _ => Err(anyhow!("cannot authorize playback transactions")),
+            _ => Err(SourceError::CannotAuthorizePlaybackTx.into()),
         }
     }
 }
@@ -192,7 +200,7 @@ impl ComputeTarget {
         env: &Environment,
         query_path: String,
         auth: serde_json::Value,
-    ) -> Result<()> {
+    ) -> Result<(), CannonError> {
         match self {
             ComputeTarget::Agent => {
                 // find a client, mark it as busy
@@ -203,13 +211,19 @@ impl ComputeTarget {
                         None
                     }
                 }) else {
-                    bail!("no agents available to execute authorization")
+                    return Err(SourceError::NoAvailableAgents("authorization").into());
                 };
 
                 // execute the authorization
                 client
-                    .execute_authorization(env.id, query_path, serde_json::to_string(&auth)?)
-                    .await?;
+                    .execute_authorization(
+                        env.id,
+                        query_path,
+                        serde_json::to_string(&auth)
+                            .map_err(|e| SourceError::Json("authorize", e))?,
+                    )
+                    .await
+                    .expect("TODO");
 
                 Ok(())
             }
@@ -219,8 +233,8 @@ impl ComputeTarget {
                     "id": 1,
                     "method": "generateTransaction",
                     "params": {
-                        "authorization": serde_json::to_string(&auth["authorization"])?,
-                        "fee": serde_json::to_string(&auth["fee"])?,
+                        "authorization": serde_json::to_string(&auth["authorization"]).map_err(|e| SourceError::Json("auth[authorize]", e))?,
+                        "fee": serde_json::to_string(&auth["fee"]).map_err(|e| SourceError::Json("auth[fee]", e))?,
                         "url": query_path,
                         "broadcast": true,
                     }

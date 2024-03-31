@@ -3,20 +3,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 use url::Url;
 
-#[derive(Debug, Error)]
-#[error("error {action} command `{cmd}`: {error}")]
-pub struct CommandError {
-    pub action: &'static str,
-    pub cmd: &'static str,
-    #[source]
-    pub error: std::io::Error,
-}
-
-impl CommandError {
-    pub fn new(action: &'static str, cmd: &'static str, error: std::io::Error) -> Self {
-        Self { action, cmd, error }
-    }
-}
+use crate::error::CommandError;
 
 #[derive(Debug, Error)]
 pub enum StorageError {

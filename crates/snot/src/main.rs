@@ -8,6 +8,7 @@ use tracing_subscriber::prelude::*;
 pub mod cannon;
 pub mod cli;
 pub mod env;
+pub mod error;
 pub mod logging;
 pub mod schema;
 pub mod server;
