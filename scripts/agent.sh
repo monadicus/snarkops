@@ -25,3 +25,5 @@ cargo run --release -p snot-agent -- \
   --labels "local,local-$INDEX" \
   --client --validator --compute \
   $@
+
+# --private-key-file "$DATA_PATH/key" \

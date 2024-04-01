@@ -15,6 +15,7 @@ use serde::{
     de::{DeserializeOwned, Visitor},
     Deserialize, Deserializer, Serialize,
 };
+use snot_common::state::KeyState;
 use tokio::process::Command;
 use tracing::warn;
 
@@ -347,75 +348,105 @@ async fn read_to_addrs<T: DeserializeOwned>(
 }
 
 impl LoadedStorage {
-    pub fn lookup_keysource_pk(&self, key: &KeySource) -> Option<String> {
+    pub fn lookup_keysource_pk(&self, key: &KeySource) -> KeyState {
         match key {
-            KeySource::Literal(pk) => Some(pk.clone()),
-            KeySource::Committee(Some(i)) => self.committee.get_index(*i).map(|(_, pk)| pk.clone()),
-            KeySource::Committee(None) => None,
+            KeySource::Local => KeyState::Local,
+            KeySource::Literal(pk) => KeyState::Literal(pk.clone()),
+            KeySource::Committee(Some(i)) => self
+                .committee
+                .get_index(*i)
+                .map(|(_, pk)| pk.clone())
+                .into(),
+            KeySource::Committee(None) => KeyState::None,
             KeySource::Named(name, Some(i)) => self
                 .accounts
                 .get(name)
-                .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone())),
-            KeySource::Named(_name, None) => None,
+                .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone()))
+                .into(),
+            KeySource::Named(_name, None) => KeyState::None,
         }
     }
 
-    pub fn lookup_keysource_addr(&self, key: &KeySource) -> Option<String> {
+    pub fn lookup_keysource_addr(&self, key: &KeySource) -> KeyState {
         match key {
-            KeySource::Literal(addr) => Some(addr.clone()),
-            KeySource::Committee(Some(i)) => {
-                self.committee.get_index(*i).map(|(addr, _)| addr.clone())
-            }
-            KeySource::Committee(None) => None,
+            KeySource::Local => KeyState::Local,
+            KeySource::Literal(addr) => KeyState::Literal(addr.clone()),
+            KeySource::Committee(Some(i)) => self
+                .committee
+                .get_index(*i)
+                .map(|(addr, _)| addr.clone())
+                .into(),
+            KeySource::Committee(None) => KeyState::None,
             KeySource::Named(name, Some(i)) => self
                 .accounts
                 .get(name)
-                .and_then(|a| a.get_index(*i).map(|(addr, _)| addr.clone())),
-            KeySource::Named(_name, None) => None,
+                .and_then(|a| a.get_index(*i).map(|(addr, _)| addr.clone()))
+                .into(),
+            KeySource::Named(_name, None) => KeyState::None,
         }
     }
 
-    pub fn sample_keysource_pk(&self, key: &KeySource) -> Option<String> {
+    pub fn sample_keysource_pk(&self, key: &KeySource) -> KeyState {
         match key {
-            KeySource::Literal(pk) => Some(pk.clone()),
-            KeySource::Committee(Some(i)) => self.committee.get_index(*i).map(|(_, pk)| pk.clone()),
+            KeySource::Local => KeyState::Local,
+            KeySource::Literal(pk) => KeyState::Literal(pk.clone()),
+            KeySource::Committee(Some(i)) => self
+                .committee
+                .get_index(*i)
+                .map(|(_, pk)| pk.clone())
+                .into(),
             KeySource::Committee(None) => self
                 .committee
                 .values()
                 .nth(rand::random::<usize>() % self.committee.len())
-                .cloned(),
+                .cloned()
+                .into(),
             KeySource::Named(name, Some(i)) => self
                 .accounts
                 .get(name)
-                .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone())),
-            KeySource::Named(name, None) => self.accounts.get(name).and_then(|a| {
-                a.values()
-                    .nth(rand::random::<usize>() % self.accounts.len())
-                    .cloned()
-            }),
+                .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone()))
+                .into(),
+            KeySource::Named(name, None) => self
+                .accounts
+                .get(name)
+                .and_then(|a| {
+                    a.values()
+                        .nth(rand::random::<usize>() % self.accounts.len())
+                        .cloned()
+                })
+                .into(),
         }
     }
 
-    pub fn sample_keysource_addr(&self, key: &KeySource) -> Option<String> {
+    pub fn sample_keysource_addr(&self, key: &KeySource) -> KeyState {
         match key {
-            KeySource::Literal(addr) => Some(addr.clone()),
-            KeySource::Committee(Some(i)) => {
-                self.committee.get_index(*i).map(|(addr, _)| addr.clone())
-            }
+            KeySource::Local => KeyState::Local,
+            KeySource::Literal(addr) => KeyState::Literal(addr.clone()),
+            KeySource::Committee(Some(i)) => self
+                .committee
+                .get_index(*i)
+                .map(|(addr, _)| addr.clone())
+                .into(),
             KeySource::Committee(None) => self
                 .committee
                 .keys()
                 .nth(rand::random::<usize>() % self.committee.len())
-                .cloned(),
+                .cloned()
+                .into(),
             KeySource::Named(name, Some(i)) => self
                 .accounts
                 .get(name)
-                .and_then(|a| a.get_index(*i).map(|(addr, _)| addr.clone())),
-            KeySource::Named(name, None) => self.accounts.get(name).and_then(|a| {
-                a.keys()
-                    .nth(rand::random::<usize>() % self.accounts.len())
-                    .cloned()
-            }),
+                .and_then(|a| a.get_index(*i).map(|(addr, _)| addr.clone()))
+                .into(),
+            KeySource::Named(name, None) => self
+                .accounts
+                .get(name)
+                .and_then(|a| {
+                    a.keys()
+                        .nth(rand::random::<usize>() % self.accounts.len())
+                        .cloned()
+                })
+                .into(),
         }
     }
 }

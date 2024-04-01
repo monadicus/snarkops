@@ -32,7 +32,7 @@ use crate::{
     cli::Cli,
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{Agent, AppState, GlobalState},
+    state::{Agent, AgentFlags, AppState, GlobalState},
 };
 
 mod api;
@@ -79,32 +79,11 @@ pub async fn start(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-fn deser_mode<'de, D>(deser: D) -> Result<AgentMode, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(AgentMode::from(u8::deserialize(deser)?))
-}
-
-pub fn deser_labels<'de, D>(deser: D) -> Result<Option<Vec<String>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(Option::<String>::deserialize(deser)?.map(|s| {
-        s.split(',')
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .collect::<Vec<String>>()
-    }))
-}
-
 #[derive(Debug, Deserialize)]
 struct AgentWsQuery {
-    #[serde(deserialize_with = "deser_mode")]
-    mode: AgentMode,
     id: Option<AgentId>,
-    #[serde(deserialize_with = "deser_labels")]
-    labels: Option<Vec<String>>,
+    #[serde(flatten)]
+    flags: AgentFlags,
 }
 
 async fn agent_ws_handler(
@@ -203,12 +182,7 @@ async fn handle_socket(
         }
 
         // create a new agent
-        let agent = Agent::new(
-            client.to_owned(),
-            id,
-            query.mode,
-            query.labels.unwrap_or_default(),
-        );
+        let agent = Agent::new(client.to_owned(), id, query.flags);
 
         // sign the jwt and send it to the agent
         let signed_jwt = agent.sign_jwt();
@@ -234,9 +208,10 @@ async fn handle_socket(
             let mut state = state2.pool.write().await;
             if let Some(agent) = state.get_mut(&id) {
                 info!(
-                    "agent {id} [{}], labels: {:?}, addrs: {external:?} {internal:?} @ {ports}",
+                    "agent {id} [{}], labels: {:?}, addrs: {external:?} {internal:?} @ {ports}, local pk: {}",
                     agent.modes(),
                     agent.str_labels(),
+                    if agent.has_local_pk() { "yes" } else { "no" },
                 );
                 agent.set_ports(ports);
                 agent.set_addrs(external, internal);

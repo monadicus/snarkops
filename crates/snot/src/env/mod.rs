@@ -442,7 +442,8 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> anyhow::Re
             node_state.private_key = node
                 .key
                 .as_ref()
-                .and_then(|key| env.storage.lookup_keysource_pk(key));
+                .map(|key| env.storage.lookup_keysource_pk(key))
+                .unwrap_or_default();
 
             let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
 

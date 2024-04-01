@@ -6,7 +6,8 @@ use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snot_common::{
     lasso::Spur,
-    state::{AgentId, HeightRequest, NodeState, NodeType},
+    set::{MaskBit, MASK_PREFIX_LEN},
+    state::{AgentId, HeightRequest, KeyState, NodeState, NodeType},
     INTERN,
 };
 
@@ -91,7 +92,7 @@ impl Node {
     pub fn into_state(&self, ty: NodeType) -> NodeState {
         NodeState {
             ty,
-            private_key: None,
+            private_key: KeyState::None,
 
             // TODO
             height: (0, HeightRequest::Top),
@@ -105,12 +106,20 @@ impl Node {
     }
 
     pub fn mask(&self, key: &NodeKey, labels: &[Spur]) -> FixedBitSet {
-        let mut mask = FixedBitSet::with_capacity(labels.len() + 4);
+        let mut mask = FixedBitSet::with_capacity(labels.len() + MASK_PREFIX_LEN);
+
+        // validator/prover/client
         mask.insert(key.ty.bit());
 
+        // local private key
+        if matches!(self.key, Some(KeySource::Local)) {
+            mask.insert(MaskBit::LocalPrivateKey as usize);
+        }
+
+        // labels
         for (i, label) in labels.iter().enumerate() {
             if self.labels.contains(label) {
-                mask.insert(i + 4);
+                mask.insert(i + MASK_PREFIX_LEN);
             }
         }
         mask
@@ -119,6 +128,8 @@ impl Node {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeySource {
+    /// Private key owned by the agent
+    Local,
     /// APrivateKey1zkp...
     Literal(String),
     /// committee.0 or committee.$ (for replicas)
@@ -167,8 +178,11 @@ impl FromStr for KeySource {
         // use KeySource::Commitee(Option<usize>) when the string is "committee.0" or "committee.$"
         // use KeySource::Named(String, Option<usize>) when the string is "\w+.0" or "\w+.$"
 
+        if s == "local" {
+            return Ok(KeySource::Local);
+        }
         // aleo private key
-        if s.len() == 59 && s.starts_with("APrivateKey1") {
+        else if s.len() == 59 && s.starts_with("APrivateKey1") {
             return Ok(KeySource::Literal(s.to_string()));
 
         // committee key
@@ -208,6 +222,7 @@ impl Display for KeySource {
             f,
             "{}",
             match self {
+                KeySource::Local => "local".to_owned(),
                 KeySource::Literal(key) => key.to_owned(),
                 KeySource::Committee(None) => "committee.$".to_owned(),
                 KeySource::Committee(Some(idx)) => {

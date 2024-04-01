@@ -1,5 +1,5 @@
 use std::{
-    env,
+    env, fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
 };
@@ -7,7 +7,7 @@ use std::{
 use clap::Parser;
 use http::Uri;
 use snot_common::state::{AgentId, AgentMode, PortConfig};
-use tracing::info;
+use tracing::{info, warn};
 
 pub const ENV_ENDPOINT: &str = "SNOT_ENDPOINT";
 pub const ENV_ENDPOINT_DEFAULT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
@@ -22,6 +22,11 @@ pub struct Cli {
 
     #[arg(long)]
     pub id: Option<AgentId>,
+
+    /// Locally provided private key file, used for envs where private keys are locally provided
+    #[arg(long)]
+    #[clap(long = "private-key-file")]
+    pub private_key_file: Option<PathBuf>,
 
     #[arg(long, value_delimiter = ',', num_args = 1..)]
     pub labels: Option<Vec<String>>,
@@ -60,12 +65,21 @@ impl Cli {
 
         let mut query = format!("/agent?mode={}", u8::from(self.modes));
 
-        // add ?id=
+        // add &id=
         if let Some(id) = self.id {
             query.push_str(&format!("&id={}", id));
         }
 
-        // add ?labels= or &labels= if id is present
+        // add local pk flag
+        if let Some(file) = self.private_key_file.as_ref() {
+            if fs::metadata(file).is_ok() {
+                query.push_str("&local_pk=true");
+            } else {
+                warn!("private-key-file flag ignored as the file was not found: {file:?}")
+            }
+        }
+
+        // add &labels= if id is present
         if let Some(labels) = &self.labels {
             info!("using labels: {:?}", labels);
             query.push_str(&format!("&labels={}", labels.join(",")));

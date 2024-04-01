@@ -45,6 +45,8 @@ pub enum ReconcileError {
     StorageAcquireError,
     #[error("failed to resolve addresses of stated peers")]
     ResolveAddrError(ResolveError),
+    #[error("agent did not provide a local private key")]
+    NoLocalPrivateKey,
     #[error("unknown error")]
     Unknown,
 }

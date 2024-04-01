@@ -9,10 +9,12 @@ use anyhow::{anyhow, Result};
 use bimap::BiMap;
 use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
+use serde::Deserialize;
 use snot_common::{
     lasso::Spur,
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentId, AgentMode, AgentState, NodeState, NodeType, PortConfig},
+    set::{MaskBit, MASK_PREFIX_LEN},
+    state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
     INTERN,
 };
 use surrealdb::{engine::local::Db, Surreal};
@@ -52,10 +54,8 @@ pub struct Agent {
     connection: AgentConnection,
     state: AgentState,
 
-    /// CLI provided labels for this agent
-    labels: HashSet<Spur>,
-    /// Available modes for this agent
-    mode: AgentMode,
+    /// CLI provided information (mode, labels, local private key)
+    flags: AgentFlags,
 
     /// Count of how many executions this agent is currently working on
     compute_claim: Arc<Busy>,
@@ -74,14 +74,10 @@ pub struct Busy;
 pub struct AgentClient(AgentServiceClient);
 
 impl Agent {
-    pub fn new(rpc: AgentServiceClient, id: AgentId, mode: AgentMode, labels: Vec<String>) -> Self {
+    pub fn new(rpc: AgentServiceClient, id: AgentId, flags: AgentFlags) -> Self {
         Self {
             id,
-            mode,
-            labels: labels
-                .into_iter()
-                .map(|s| INTERN.get_or_intern(s))
-                .collect(),
+            flags,
             compute_claim: Arc::new(Busy),
             env_claim: Arc::new(Busy),
             claims: Claims {
@@ -110,47 +106,32 @@ impl Agent {
 
     /// Check if an agent has a set of labels
     pub fn has_labels(&self, labels: &HashSet<Spur>) -> bool {
-        labels.is_empty() || self.labels.intersection(labels).count() == labels.len()
+        labels.is_empty() || self.flags.labels.intersection(labels).count() == labels.len()
     }
 
     /// Check if an agent has a specific label
     pub fn has_label(&self, label: Spur) -> bool {
-        self.labels.contains(&label)
+        self.flags.labels.contains(&label)
     }
 
     /// Check if an agent has a specific label
     pub fn has_label_str(&self, label: &str) -> bool {
         INTERN
             .get(label)
-            .map_or(false, |label| self.labels.contains(&label))
+            .map_or(false, |label| self.flags.labels.contains(&label))
     }
 
     pub fn str_labels(&self) -> HashSet<&str> {
-        self.labels.iter().map(|s| INTERN.resolve(s)).collect()
+        self.flags
+            .labels
+            .iter()
+            .map(|s| INTERN.resolve(s))
+            .collect()
     }
 
     // Get the mask of this agent
     pub fn mask(&self, labels: &[Spur]) -> FixedBitSet {
-        let mut mask = FixedBitSet::with_capacity(labels.len() + 4);
-        if self.mode.validator {
-            mask.insert(NodeType::Validator.bit());
-        }
-        if self.mode.prover {
-            mask.insert(NodeType::Prover.bit());
-        }
-        if self.mode.client {
-            mask.insert(NodeType::Client.bit());
-        }
-        if self.mode.compute {
-            mask.insert(3);
-        }
-
-        for (i, label) in labels.iter().enumerate() {
-            if self.labels.contains(label) {
-                mask.insert(i + 4);
-            }
-        }
-        mask
+        self.flags.mask(labels)
     }
 
     /// Check if an agent is in inventory state
@@ -160,7 +141,7 @@ impl Agent {
 
     /// Check if an agent is available for compute tasks
     pub fn can_compute(&self) -> bool {
-        self.is_inventory() && self.mode.compute && !self.is_compute_claimed()
+        self.is_inventory() && self.flags.mode.compute && !self.is_compute_claimed()
     }
 
     /// Check if an agent is working on an authorization
@@ -200,7 +181,7 @@ impl Agent {
     }
 
     pub fn modes(&self) -> AgentMode {
-        self.mode
+        self.flags.mode
     }
 
     pub fn claims(&self) -> &Claims {
@@ -265,6 +246,11 @@ impl Agent {
     // not.
     pub fn rest_port(&self) -> u16 {
         self.ports.as_ref().map(|p| p.rest).unwrap_or_default()
+    }
+
+    /// True when the agent is configured to provide its own local private key
+    pub fn has_local_pk(&self) -> bool {
+        self.flags.local_pk
     }
 
     /// Set the external and internal addresses of the agent. This does **not**
@@ -400,5 +386,78 @@ impl GlobalState {
             .await
             .get(&id)
             .and_then(|a| a.client_owned())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentFlags {
+    #[serde(deserialize_with = "deser_mode")]
+    mode: AgentMode,
+    #[serde(deserialize_with = "deser_labels")]
+    labels: HashSet<Spur>,
+    #[serde(deserialize_with = "deser_pk", default)]
+    local_pk: bool,
+}
+
+fn deser_mode<'de, D>(deser: D) -> Result<AgentMode, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // axum's querystring visitor marks all values as string
+    let byte: u8 = <&str>::deserialize(deser)?
+        .parse()
+        .map_err(|e| serde::de::Error::custom(format!("error parsing u8: {e}")))?;
+    Ok(AgentMode::from(byte))
+}
+
+pub fn deser_labels<'de, D>(deser: D) -> Result<HashSet<Spur>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deser)?
+        .map(|s| {
+            s.split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| INTERN.get_or_intern(s))
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+pub fn deser_pk<'de, D>(deser: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // axum's querystring visitor marks all values as string
+    Ok(Option::<&str>::deserialize(deser)?
+        .map(|s| s == "true")
+        .unwrap_or(false))
+}
+
+impl AgentFlags {
+    pub fn mask(&self, labels: &[Spur]) -> FixedBitSet {
+        let mut mask = FixedBitSet::with_capacity(labels.len() + MASK_PREFIX_LEN);
+        if self.mode.validator {
+            mask.insert(MaskBit::Validator as usize);
+        }
+        if self.mode.prover {
+            mask.insert(MaskBit::Prover as usize);
+        }
+        if self.mode.client {
+            mask.insert(MaskBit::Client as usize);
+        }
+        if self.mode.compute {
+            mask.insert(MaskBit::Compute as usize);
+        }
+        if self.local_pk {
+            mask.insert(MaskBit::LocalPrivateKey as usize);
+        }
+
+        for (i, label) in labels.iter().enumerate() {
+            if self.labels.contains(label) {
+                mask.insert(i + MASK_PREFIX_LEN);
+            }
+        }
+        mask
     }
 }

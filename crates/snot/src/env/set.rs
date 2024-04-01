@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use snot_common::{
     lasso::Spur,
+    set::MASK_PREFIX_LEN,
     state::{AgentId, NodeKey},
 };
 use thiserror::Error;
@@ -141,8 +142,8 @@ fn _find_compute_agent_by_mask<'a, I: Iterator<Item = &'a Agent>>(
     labels: &[Spur],
 ) -> Option<(&'a Agent, Arc<Busy>)> {
     // replace with
-    let mut mask = FixedBitSet::with_capacity(labels.len() + 4);
-    mask.insert_range(4..labels.len() + 4);
+    let mut mask = FixedBitSet::with_capacity(labels.len() + MASK_PREFIX_LEN);
+    mask.insert_range(MASK_PREFIX_LEN..labels.len() + MASK_PREFIX_LEN);
 
     agents.find_map(|agent| {
         AgentMapping::new(BusyMode::Compute, agent, labels)
