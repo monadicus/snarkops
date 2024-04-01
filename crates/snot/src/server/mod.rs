@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use ::jwt::VerifyWithKey;
-use anyhow::Result;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -25,6 +24,7 @@ use tokio::select;
 use tracing::{info, warn};
 
 use self::{
+    error::ServerError,
     jwt::{Claims, JWT_NONCE, JWT_SECRET},
     rpc::ControlRpcServer,
 };
@@ -37,13 +37,16 @@ use crate::{
 
 mod api;
 mod content;
+pub mod error;
 pub mod jwt;
 mod rpc;
 
-pub async fn start(cli: Cli) -> Result<()> {
+pub async fn start(cli: Cli) -> Result<(), ServerError> {
     let mut path = cli.path.clone();
     path.push("data.db");
-    let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
+    let db = Surreal::new::<surrealdb::engine::local::File>(path)
+        .await
+        .map_err(ServerError::DbInit)?;
     let state = GlobalState {
         cli,
         db,
@@ -73,8 +76,12 @@ pub async fn start(cli: Cli) -> Result<()> {
     //}),
     // );
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:1234").await?;
-    axum::serve(listener, app).await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:1234")
+        .await
+        .map_err(ServerError::TcpBind)?;
+    axum::serve(listener, app)
+        .await
+        .map_err(ServerError::Serve)?;
 
     Ok(())
 }

@@ -10,7 +10,7 @@ pub struct BatchReconcileError {
     pub failures: usize,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum ExecutionError {
     #[error("env `{0}` not found")]
     EnvNotFound(usize),
@@ -36,7 +36,7 @@ pub struct DeserializeError {
     pub e: serde_yaml::Error,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Error, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, strum_macros::AsRefStr)]
 pub enum DelegationError {
     #[error("insufficient number of agents to satisfy the request")]
     InsufficientAgentCount,
@@ -50,7 +50,7 @@ pub enum DelegationError {
     NoAvailableAgents(NodeKey),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum PrepareError {
     #[error("duplicate node key: {0}")]
     DuplicateNodeKey(NodeKey),
@@ -70,7 +70,7 @@ pub enum CleanupError {
     EnvNotFound(usize),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum ReconcileError {
     #[error(transparent)]
     Batch(#[from] BatchReconcileError),
@@ -80,11 +80,11 @@ pub enum ReconcileError {
     ExpectedInternalAgentPeer { key: NodeKey },
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum EnvError {
     #[error("cleanup error: `{0}`")]
     Cleanup(#[from] CleanupError),
-    #[error("delegation errors occured:\n{}", serde_json::to_string_pretty(&.0).unwrap())]
+    #[error("delegation errors occured:{}", .0.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n"))]
     Delegation(Vec<DelegationError>),
     #[error("exec error: `{0}`")]
     Execution(#[from] ExecutionError),

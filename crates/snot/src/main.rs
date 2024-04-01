@@ -37,8 +37,6 @@ async fn main() {
         .add_directive("tower_http::trace::on_request=off".parse().unwrap())
         .add_directive("tower_http::trace::on_response=off".parse().unwrap());
 
-    dbg!(env_filter.to_string());
-
     let (stdout, _guard) = tracing_appender::non_blocking(io::stdout());
 
     let output = tracing_subscriber::fmt::layer().with_writer(stdout);

@@ -11,6 +11,8 @@ use serde_json::{json, Value};
 use tracing::debug;
 use uuid::Uuid;
 
+use crate::server::error::ServerError;
+
 #[derive(Debug, Clone)]
 pub struct ReqStamp {
     pub uuid: Uuid,
@@ -69,7 +71,9 @@ struct RequestLogLine {
 pub async fn log_request(uri: Uri, method: Method, req_stamp: ReqStamp, res: Response) -> Response {
     // TODO: grab error data from response
     // something like:
-    // res.extensions_mut().get::<OurErrorType>();
+    let err = res.extensions().get::<ServerError>();
+    let error_type = err.map(|e| e.as_ref().to_string());
+    // let error_data = err.map(|e| json!(e));
 
     let ReqStamp { uuid, time_in } = req_stamp;
     let now = Utc::now();
@@ -82,7 +86,7 @@ pub async fn log_request(uri: Uri, method: Method, req_stamp: ReqStamp, res: Res
         duration_ms: duration.num_milliseconds(),
         http_path: uri.to_string(),
         http_method: method.to_string(),
-        error_type: None,
+        error_type,
         error_data: None,
     };
 

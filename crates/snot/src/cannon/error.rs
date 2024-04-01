@@ -6,39 +6,39 @@ use thiserror::Error;
 use super::Authorization;
 use crate::error::{CommandError, StateError};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum AuthorizeError {
     #[error("command error: {0}")]
     Command(#[from] CommandError),
     #[error("expected function, fee, and broadcast fields in response")]
     InvalidJson,
     #[error("parse json error: {0}")]
-    Json(#[from] serde_json::Error),
+    Json(serde_json::Error),
     #[error("expected JSON object in response")]
     JsonNotObject,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum TransactionDrainError {
     #[error("error locking tx drain")]
     FailedToLock,
     #[error("error opening tx drain source file: {0:#?}")]
     FailedToOpenSource(PathBuf),
-    #[error("error reading line from tx drain")]
-    FailedToReadLine(#[from] std::io::Error),
+    #[error("error reading line from tx drain: {0}")]
+    FailedToReadLine(#[source] std::io::Error),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum TransactionSinkError {
     #[error("error locking tx drain")]
     FailedToLock,
     #[error("error opening tx sink source file: {0:#?}")]
     FailedToOpenSource(PathBuf),
     #[error("error writing to tx sink: {0}")]
-    FailedToWrite(#[from] std::io::Error),
+    FailedToWrite(#[source] std::io::Error),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum SourceError {
     #[error("cannot authorize playback txs")]
     CannotAuthorizePlaybackTx,
@@ -53,7 +53,7 @@ pub enum SourceError {
     #[error("no tx modes available for this cannon instance??")]
     NoTxModeAvailable,
     #[error("error parsing state root JSON: {0}")]
-    StateRootInvalidJson(#[from] reqwest::Error),
+    StateRootInvalidJson(#[source] reqwest::Error),
     #[error("could not get an available port")]
     TxSouceUnavailablePort,
 }
@@ -61,7 +61,7 @@ pub enum SourceError {
 // TODO a lot of these could be split into the above.
 // Then in mod.rs could we can use the above errors to simplify
 // the errors
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum CannonError {
     #[error("authorize error: {0}")]
     Authorize(#[from] AuthorizeError),

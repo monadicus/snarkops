@@ -5,7 +5,7 @@ use url::Url;
 
 use crate::error::CommandError;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum StorageError {
     #[error("command error id: `{0}`: {1}")]
     Command(CommandError, String),
@@ -31,7 +31,7 @@ pub enum StorageError {
 #[error("invalid node target string")]
 pub struct NodeTargetError;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum KeySourceError {
     #[error("invalid key source string")]
     InvalidKeySource,
@@ -39,7 +39,7 @@ pub enum KeySourceError {
     InvalidCommitteeIndex(#[source] std::num::ParseIntError),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum SchemaError {
     #[error("key source error: {0}")]
     KeySource(#[from] KeySourceError),

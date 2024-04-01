@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::json;
 use snot_common::{rpc::agent::AgentMetric, state::AgentId};
 
-use super::AppState;
+use super::{error::ServerError, AppState};
 use crate::cannon::router::redirect_cannon_routes;
 use crate::env::Environment;
 
@@ -89,11 +89,7 @@ async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
 
     match Environment::prepare(documents, &state).await {
         Ok(env_id) => (StatusCode::OK, Json(json!({ "id": env_id }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("{e}") })),
-        )
-            .into_response(),
+        Err(e) => ServerError::from(e).into_response(),
     }
 }
 
