@@ -1,17 +1,18 @@
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
-    sync::Arc,
+    sync::{Arc, Weak},
     time::Instant,
 };
 
 use anyhow::{anyhow, Result};
 use bimap::BiMap;
+use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
 use snot_common::{
     lasso::Spur,
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
+    state::{AgentId, AgentMode, AgentState, NodeState, NodeType, PortConfig},
     INTERN,
 };
 use surrealdb::{engine::local::Db, Surreal};
@@ -57,7 +58,9 @@ pub struct Agent {
     mode: AgentMode,
 
     /// Count of how many executions this agent is currently working on
-    busy: Arc<Busy>,
+    compute_claim: Arc<Busy>,
+    /// Count of how many environments this agent is currently
+    env_claim: Arc<Busy>,
 
     /// The external address of the agent, along with its local addresses.
     ports: Option<PortConfig>,
@@ -79,7 +82,8 @@ impl Agent {
                 .into_iter()
                 .map(|s| INTERN.get_or_intern(s))
                 .collect(),
-            busy: Arc::new(Busy),
+            compute_claim: Arc::new(Busy),
+            env_claim: Arc::new(Busy),
             claims: Claims {
                 id,
                 nonce: *JWT_NONCE,
@@ -110,7 +114,12 @@ impl Agent {
     }
 
     /// Check if an agent has a specific label
-    pub fn has_label(&self, label: &str) -> bool {
+    pub fn has_label(&self, label: Spur) -> bool {
+        self.labels.contains(&label)
+    }
+
+    /// Check if an agent has a specific label
+    pub fn has_label_str(&self, label: &str) -> bool {
         INTERN
             .get(label)
             .map_or(false, |label| self.labels.contains(&label))
@@ -120,6 +129,30 @@ impl Agent {
         self.labels.iter().map(|s| INTERN.resolve(s)).collect()
     }
 
+    // Get the mask of this agent
+    pub fn mask(&self, labels: &[Spur]) -> FixedBitSet {
+        let mut mask = FixedBitSet::with_capacity(labels.len() + 4);
+        if self.mode.validator {
+            mask.insert(NodeType::Validator.bit());
+        }
+        if self.mode.prover {
+            mask.insert(NodeType::Prover.bit());
+        }
+        if self.mode.client {
+            mask.insert(NodeType::Client.bit());
+        }
+        if self.mode.compute {
+            mask.insert(3);
+        }
+
+        for (i, label) in labels.iter().enumerate() {
+            if self.labels.contains(label) {
+                mask.insert(i + 4);
+            }
+        }
+        mask
+    }
+
     /// Check if an agent is in inventory state
     pub fn is_inventory(&self) -> bool {
         matches!(self.state, AgentState::Inventory)
@@ -127,17 +160,33 @@ impl Agent {
 
     /// Check if an agent is available for compute tasks
     pub fn can_compute(&self) -> bool {
-        self.is_inventory() && self.mode.compute && !self.is_busy()
+        self.is_inventory() && self.mode.compute && !self.is_compute_claimed()
     }
 
-    /// Check if a agent is working on an authorization
-    pub fn is_busy(&self) -> bool {
-        Arc::strong_count(&self.busy) > 1
+    /// Check if an agent is working on an authorization
+    pub fn is_compute_claimed(&self) -> bool {
+        Arc::strong_count(&self.compute_claim) > 1
     }
 
     /// Mark an agent as busy. This is used to prevent multiple authorizations
     pub fn make_busy(&self) -> Arc<Busy> {
-        Arc::clone(&self.busy)
+        Arc::clone(&self.compute_claim)
+    }
+
+    /// Mark an agent as busy. This is used to prevent multiple authorizations
+    pub fn get_compute_claim(&self) -> Weak<Busy> {
+        Arc::downgrade(&self.compute_claim)
+    }
+
+    /// Check if an agent is owned by an environment
+    pub fn is_env_claimed(&self) -> bool {
+        Arc::strong_count(&self.env_claim) > 1
+    }
+
+    /// Get a weak reference to the env claim, which can be used to later lock this
+    /// agent for an environment.
+    pub fn get_env_claim(&self) -> Weak<Busy> {
+        Arc::downgrade(&self.env_claim)
     }
 
     /// The ID of this agent.

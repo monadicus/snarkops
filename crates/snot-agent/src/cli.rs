@@ -7,6 +7,7 @@ use std::{
 use clap::Parser;
 use http::Uri;
 use snot_common::state::{AgentId, AgentMode, PortConfig};
+use tracing::info;
 
 pub const ENV_ENDPOINT: &str = "SNOT_ENDPOINT";
 pub const ENV_ENDPOINT_DEFAULT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
@@ -66,6 +67,7 @@ impl Cli {
 
         // add ?labels= or &labels= if id is present
         if let Some(labels) = &self.labels {
+            info!("using labels: {:?}", labels);
             query.push_str(&format!("&labels={}", labels.join(",")));
         }
 
