@@ -10,8 +10,8 @@ version: cannon.snarkos.testing.monadic.us/v1
 name: committee-tx-public
 
 source:
-  query: { mode: local }
-  compute: agent
+  # query: { mode: local }
+  # compute: { labels: [local] }
   tx-modes: [transfer-public]
   private-keys: [committee.$]
   addresses: [committee.$]

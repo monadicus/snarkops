@@ -3,9 +3,13 @@ use std::collections::HashSet;
 use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snot_common::state::NodeKey;
+use snot_common::{lasso::Spur, state::NodeKey, INTERN};
 
-use crate::{env::Environment, schema::nodes::KeySource, state::GlobalState};
+use crate::{
+    env::{set::find_compute_agent, Environment},
+    schema::nodes::KeySource,
+    state::GlobalState,
+};
 
 use super::{authorized::Authorize, net::get_available_port};
 
@@ -56,15 +60,62 @@ pub enum QueryTarget {
     Node(NodeKey),
 }
 
+impl Default for QueryTarget {
+    fn default() -> Self {
+        QueryTarget::Local(LocalService { sync_from: None })
+    }
+}
+
+fn deser_labels<'de, D>(deser: D) -> Result<Option<Vec<Spur>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<Vec<String>>::deserialize(deser)?.map(|s| {
+        s.into_iter()
+            .map(|s| INTERN.get_or_intern(s))
+            .collect::<Vec<Spur>>()
+    }))
+}
+
+fn ser_labels<S>(labels: &Option<Vec<Spur>>, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match labels {
+        Some(labels) => {
+            let labels = labels
+                .iter()
+                .map(|s| INTERN.resolve(s))
+                .collect::<Vec<&str>>();
+            serde::Serialize::serialize(&labels, ser)
+        }
+        None => serde::Serialize::serialize(&None::<String>, ser),
+    }
+}
+
 /// Which service is providing the compute power for executing transactions
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", untagged)]
 pub enum ComputeTarget {
     /// Use the agent pool to generate executions
-    #[default]
-    Agent,
+    Agent {
+        #[serde(
+            default,
+            deserialize_with = "deser_labels",
+            serialize_with = "ser_labels",
+            skip_serializing_if = "Option::is_none"
+        )]
+        labels: Option<Vec<Spur>>,
+    },
     /// Use demox' API to generate executions
-    Demox { url: String },
+    #[serde(rename_all = "kebab-case")]
+    Demox { demox_api: String },
+}
+
+impl Default for ComputeTarget {
+    fn default() -> Self {
+        ComputeTarget::Agent { labels: None }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,7 +149,9 @@ pub enum TxSource {
     /// Generate transactions in real time
     #[serde(rename_all = "kebab-case")]
     RealTime {
+        #[serde(default)]
         query: QueryTarget,
+        #[serde(default)]
         compute: ComputeTarget,
 
         /// defaults to TransferPublic
@@ -193,15 +246,12 @@ impl ComputeTarget {
         auth: serde_json::Value,
     ) -> Result<()> {
         match self {
-            ComputeTarget::Agent => {
+            ComputeTarget::Agent { labels } => {
                 // find a client, mark it as busy
-                let Some((client, _busy)) = state.pool.read().await.values().find_map(|a| {
-                    if a.can_compute() {
-                        a.client_owned().map(|c| (c, a.make_busy()))
-                    } else {
-                        None
-                    }
-                }) else {
+                let Some((client, _busy)) = find_compute_agent(
+                    state.pool.read().await.values(),
+                    &labels.clone().unwrap_or_default(),
+                ) else {
                     bail!("no agents available to execute authorization")
                 };
 
@@ -212,7 +262,7 @@ impl ComputeTarget {
 
                 Ok(())
             }
-            ComputeTarget::Demox { url } => {
+            ComputeTarget::Demox { demox_api: url } => {
                 let _body = json!({
                     "jsonrpc": "2.0",
                     "id": 1,
@@ -236,9 +286,7 @@ impl ComputeTarget {
 mod test {
     use super::*;
     use crate::{
-        cannon::source::{
-            ComputeTarget, CreditsTxMode, LedgerQueryService, LocalQueryService, TxMode,
-        },
+        cannon::source::{ComputeTarget, CreditsTxMode, LocalService, TxMode},
         schema::nodes::KeySource,
     };
     use std::str::FromStr;
@@ -255,8 +303,8 @@ mod test {
         println!(
             "{}",
             serde_yaml::to_string(&TxSource::RealTime {
-                query: LedgerQueryService::Local(LocalQueryService { sync_from: None }),
-                compute: ComputeTarget::Agent,
+                query: QueryTarget::Local(LocalService { sync_from: None }),
+                compute: ComputeTarget::Agent { labels: None },
                 tx_modes: [TxMode::Credits(CreditsTxMode::TransferPublic)]
                     .into_iter()
                     .collect(),
@@ -266,4 +314,5 @@ mod test {
             .unwrap()
         );
     }
-} */
+}
+ */

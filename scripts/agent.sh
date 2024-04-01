@@ -22,6 +22,6 @@ cargo run --release -p snot-agent -- \
   --rest "303$INDEX" \
   --metrics "900$INDEX" \
   --node "413$INDEX" \
-  --labels "local" \
+  --labels "local,local-$INDEX" \
   --client --validator --compute \
   $@

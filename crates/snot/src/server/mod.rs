@@ -86,7 +86,7 @@ where
     Ok(AgentMode::from(u8::deserialize(deser)?))
 }
 
-fn deser_labels<'de, D>(deser: D) -> Result<Option<Vec<String>>, D::Error>
+pub fn deser_labels<'de, D>(deser: D) -> Result<Option<Vec<String>>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {

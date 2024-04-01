@@ -114,7 +114,12 @@ impl Agent {
     }
 
     /// Check if an agent has a specific label
-    pub fn has_label(&self, label: &str) -> bool {
+    pub fn has_label(&self, label: Spur) -> bool {
+        self.labels.contains(&label)
+    }
+
+    /// Check if an agent has a specific label
+    pub fn has_label_str(&self, label: &str) -> bool {
         INTERN
             .get(label)
             .map_or(false, |label| self.labels.contains(&label))
