@@ -272,8 +272,7 @@ impl ComputeTarget {
                         serde_json::to_string(&auth)
                             .map_err(|e| SourceError::Json("authorize", e))?,
                     )
-                    .await
-                    .expect("TODO");
+                    .await?;
 
                 Ok(())
             }

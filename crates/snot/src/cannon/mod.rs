@@ -254,7 +254,7 @@ impl CannonInstance {
 
                     // call client's rpc method to get the state root
                     // this will fail if the client is not running a node
-                    Ok(client.get_state_root().await.expect("TODO"))
+                    Ok(client.get_state_root().await?)
                 }
             },
             TxSource::Playback { .. } => Err(CannonError::ConfiguredToPlayback(self.id)),
@@ -560,7 +560,7 @@ impl ExecutionContext {
                             ));
                         };
 
-                        client.broadcast_tx(tx).await.expect("TODO");
+                        client.broadcast_tx(tx).await?;
                     }
                     AgentPeer::External(addr) => {
                         let url = format!("http://{addr}/mainnet/transaction/broadcast");

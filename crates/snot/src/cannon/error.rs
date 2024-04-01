@@ -4,7 +4,7 @@ use snot_common::state::NodeKey;
 use thiserror::Error;
 
 use super::Authorization;
-use crate::error::CommandError;
+use crate::error::{CommandError, StateError};
 
 #[derive(Debug, Error)]
 pub enum AuthorizeError {
@@ -102,6 +102,8 @@ pub enum CannonError {
     SendTxError(usize, #[source] tokio::sync::mpsc::error::SendError<String>),
     #[error("source error: {0}")]
     Source(#[from] SourceError),
+    #[error("state error: {0}")]
+    State(#[from] StateError),
     #[error("tx drain `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
     TransactionDrainNotFound(usize, usize, String),
     #[error("tx sink `{2}` not found for exec ctx `{0}` for cannon `{1}`")]

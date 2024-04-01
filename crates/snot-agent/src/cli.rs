@@ -23,7 +23,8 @@ pub struct Cli {
     #[arg(long)]
     pub id: Option<AgentId>,
 
-    /// Locally provided private key file, used for envs where private keys are locally provided
+    /// Locally provided private key file, used for envs where private keys are
+    /// locally provided
     #[arg(long)]
     #[clap(long = "private-key-file")]
     pub private_key_file: Option<PathBuf>,

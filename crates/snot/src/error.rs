@@ -1,5 +1,6 @@
 use std::process::ExitStatus;
 
+use snot_common::state::AgentId;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -31,4 +32,18 @@ impl CommandError {
             stderr,
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub enum StateError {
+    #[error("common agent error: {0}")]
+    Agent(#[from] snot_common::prelude::agent::AgentError),
+    #[error("source agent has no addr id: `{0}`")]
+    NoAddress(AgentId),
+    #[error("common reconcile error: {0}")]
+    Reconcile(#[from] snot_common::prelude::agent::ReconcileError),
+    #[error("rpc error: {0}")]
+    Rpc(#[from] tarpc::client::RpcError),
+    #[error("source agent not found id: `{0}`")]
+    SourceAgentNotFound(AgentId),
 }
