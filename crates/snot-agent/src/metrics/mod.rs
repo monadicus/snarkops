@@ -41,7 +41,7 @@ pub fn init(state: Arc<GlobalState>) {
                 let response = match client
                     .get(format!(
                         "http://{}/",
-                        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), state.cli.metrics,)
+                        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), state.cli.ports.metrics)
                     ))
                     .send()
                     .await

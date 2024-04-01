@@ -4,7 +4,7 @@ use std::{
 };
 
 use futures_util::future::join_all;
-use snot_common::state::AgentState;
+use snot_common::state::{AgentId, AgentState};
 use tokio::{select, sync::RwLock};
 use tracing::{debug, error, info};
 
@@ -19,7 +19,7 @@ use crate::{
         CannonInstance,
     },
     schema::timeline::{Action, ActionInstance, EventDuration},
-    state::{Agent, AgentClient, AgentId, GlobalState},
+    state::{Agent, AgentClient, GlobalState},
 };
 
 /// The tuple to pass into `reconcile_agents`.
@@ -134,7 +134,7 @@ impl Environment {
                 let mut reconcile_async = false;
 
                 // the pending reconciliations
-                let mut pending_reconciliations: HashMap<usize, PendingAgentReconcile> =
+                let mut pending_reconciliations: HashMap<AgentId, PendingAgentReconcile> =
                     HashMap::new();
 
                 macro_rules! set_node_field {

@@ -1,4 +1,5 @@
 pub mod error;
+pub mod set;
 pub mod timeline;
 
 use core::fmt;
@@ -30,6 +31,7 @@ use crate::{
         source::TxSource,
         CannonInstance,
     },
+    env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, BusyMode},
     schema::{
         nodes::{ExternalNode, Node},
         storage::LoadedStorage,
@@ -174,31 +176,42 @@ impl Environment {
                         }
                     }
 
-                    // delegate agents to become nodes
-                    let pool = state.pool.read().await;
-                    let available_agent = pool
-                        .values()
-                        .filter(|a| a.is_node_capable() && a.is_inventory());
-                    let num_available_agents = available_agent.clone().count();
+                    // get a set of all labels the nodes can reference
+                    let labels = labels_from_nodes(&initial_nodes);
 
-                    if num_available_agents > initial_nodes.len() {
-                        Err(PrepareError::NotEnoughAvailableNodes(
-                            num_available_agents,
-                            initial_nodes.len(),
-                        ))?;
-                    }
-
-                    // TODO: remove this naive delegation, replace with
-                    // some kind of "pick_agent" function that picks an
-                    // agent best suited to be a node,
-                    // instead of naively picking an agent to fill the needs of
-                    // a node
-                    node_map.extend(
-                        initial_nodes
-                            .keys()
-                            .cloned()
-                            .zip(available_agent.map(|agent| EnvPeer::Internal(agent.id()))),
+                    // temporarily lock the agent pool for reading to convert them into
+                    // masks against the labels.
+                    //
+                    // this also contains a "busy" that atomically prevents multiple
+                    // environment prepares from delegating the same agents as well
+                    // as preventing two nodes from claiming the same agent
+                    let agents = get_agent_mappings(
+                        BusyMode::Env,
+                        state.pool.read().await.values(),
+                        &labels,
                     );
+
+                    // ensure the "busy" is in scope until the initial reconcile completes and
+                    // locks the agents into a non-inventory state
+                    let _busy: Vec<_> = match pair_with_nodes(agents, &initial_nodes, &labels) {
+                        Ok(pairs) => pairs,
+                        Err(errors) => {
+                            for error in &errors {
+                                error!("delegation error: {error}");
+                            }
+                            // 	Err(PrepareError::NotEnoughAvailableNodes(
+                            // 		num_available_agents,
+                            // 		initial_nodes.len(),
+                            // ))?;
+                            return Err(EnvError::Delegation(errors));
+                        }
+                    }
+                    .map(|(key, id, busy)| {
+                        // extend the node map with the newly paired agent
+                        node_map.insert(key, EnvPeer::Internal(id));
+                        busy
+                    })
+                    .collect();
 
                     info!("delegated {} nodes to agents", node_map.len());
                     for (key, node) in &node_map {
@@ -357,7 +370,7 @@ impl Environment {
     pub fn matching_nodes<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<usize, Agent>,
+        pool: &'a HashMap<AgentId, Agent>,
         port_type: PortType,
     ) -> impl Iterator<Item = AgentPeer> + 'a {
         self.node_map
@@ -394,7 +407,7 @@ impl Environment {
     pub fn matching_agents<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<usize, Agent>,
+        pool: &'a HashMap<AgentId, Agent>,
     ) -> impl Iterator<Item = &'a Agent> + 'a {
         self.matching_nodes(targets, pool, PortType::Node) // ignore node type
             .filter_map(|agent_peer| match agent_peer {
@@ -434,7 +447,8 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
             node_state.private_key = node
                 .key
                 .as_ref()
-                .and_then(|key| env.storage.lookup_keysource_pk(key));
+                .map(|key| env.storage.lookup_keysource_pk(key))
+                .unwrap_or_default();
 
             let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
 

@@ -357,7 +357,7 @@ impl ExecutionContext {
                 let suffix = format!("/api/v1/env/{}/cannons/{cannon_id}", env.id);
                 let query = match compute {
                     // agents already know the host of the control plane
-                    ComputeTarget::Agent => suffix,
+                    ComputeTarget::Agent { .. } => suffix,
                     // demox needs to locate it
                     ComputeTarget::Demox { .. } => {
                         let Some(host) = get_host(state).await else {

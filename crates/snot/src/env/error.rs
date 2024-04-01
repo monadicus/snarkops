@@ -1,4 +1,4 @@
-use snot_common::state::NodeKey;
+use snot_common::state::{AgentId, NodeKey};
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -36,16 +36,26 @@ pub struct DeserializeError {
     pub e: serde_yaml::Error,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Error, serde::Serialize)]
+pub enum DelegationError {
+    #[error("insufficient number of agents to satisfy the request")]
+    InsufficientAgentCount,
+    #[error("agent {0} not found for node {1}")]
+    AgentNotFound(AgentId, NodeKey),
+    #[error("agent {0} already claimed for node {1}")]
+    AgentAlreadyClaimed(AgentId, NodeKey),
+    #[error("agent {0} does not support the mode needed for {1}")]
+    AgentMissingMode(AgentId, NodeKey),
+    #[error("could not find any agents for node {0}")]
+    NoAvailableAgents(NodeKey),
+}
+
 #[derive(Debug, Error)]
 pub enum PrepareError {
     #[error("duplicate node key: {0}")]
     DuplicateNodeKey(NodeKey),
     #[error("cannot have a node with zero replicas")]
     NodeHas0Replicas,
-    #[error(
-        "not enough available agents to satisfy node topology: needs {0}, but only {1} available"
-    )]
-    NotEnoughAvailableNodes(usize, usize),
     #[error("multiple storage documents found in env")]
     MultipleStorage,
     #[error("missing storage document in env")]
@@ -74,6 +84,8 @@ pub enum ReconcileError {
 pub enum EnvError {
     #[error("cleanup error: `{0}`")]
     Cleanup(#[from] CleanupError),
+    #[error("delegation errors occured:\n{}", serde_json::to_string_pretty(&.0).unwrap())]
+    Delegation(Vec<DelegationError>),
     #[error("exec error: `{0}`")]
     Execution(#[from] ExecutionError),
     #[error("prepare error: `{0}`")]

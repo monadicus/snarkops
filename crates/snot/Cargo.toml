@@ -12,6 +12,7 @@ chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
 duration-str = { version = "0.7", default-features = false }
 external-ip.workspace = true
+fixedbitset = "0.5.6"
 futures-util.workspace = true
 hmac = "0.12.1"
 indexmap.workspace = true
@@ -19,6 +20,7 @@ jwt = "0.16.0"
 lazy_static.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
+rayon.workspace = true
 regex.workspace = true
 reqwest = { workspace = true, features = ["stream", "json"] }
 serde.workspace = true

@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap.workspace = true
 futures.workspace = true
+lasso.workspace = true
 lazy_static.workspace = true
 regex.workspace = true
 serde.workspace = true

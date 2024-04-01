@@ -4,8 +4,9 @@ use std::{
 };
 
 use aleo_std::StorageMode;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Args;
+use core::str::FromStr;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
 use snarkos_node::Node;
@@ -15,6 +16,31 @@ use snot_common::state::NodeType;
 use crate::{ledger::Addrs, Account, PrivateKey};
 
 mod metrics;
+
+#[derive(Debug, Args, Serialize, Deserialize)]
+#[group(required = true, multiple = false)]
+pub struct Key {
+    /// Specify the account private key of the node
+    #[clap(long = "private-key")]
+    pub private_key: Option<PrivateKey>,
+    /// Specify the account private key of the node
+    #[clap(long = "private-key-file")]
+    pub private_key_file: Option<PathBuf>,
+}
+
+impl Key {
+    pub fn try_get(self) -> Result<PrivateKey> {
+        match (self.private_key, self.private_key_file) {
+            (Some(key), None) => Ok(key),
+            (None, Some(file)) => {
+                let raw = std::fs::read_to_string(file)?.trim().to_string();
+                Ok(PrivateKey::from_str(&raw)?)
+            }
+            // clap should make this unreachable, but serde might not
+            _ => bail!("Either `private-key` or `private-key-file` must be set"),
+        }
+    }
+}
 
 #[serde_clap_default]
 #[derive(Debug, Args, Serialize, Deserialize)]
@@ -30,9 +56,8 @@ pub struct Runner {
     #[arg(required = true, name = "type", short, long)]
     pub node_type: NodeType,
 
-    /// Specify the account private key of the node
-    #[clap(long = "private-key")]
-    pub private_key: PrivateKey,
+    #[clap(flatten)]
+    pub key: Key,
 
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
@@ -70,7 +95,7 @@ impl Runner {
         let bft_ip = SocketAddr::new(bind_addr, self.bft);
         let metrics_ip = SocketAddr::new(bind_addr, self.metrics);
 
-        let account = Account::try_from(self.private_key)?;
+        let account = Account::try_from(self.key.try_get()?)?;
 
         let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
         let storage_mode = StorageMode::Custom(self.ledger);

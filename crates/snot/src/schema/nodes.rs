@@ -1,9 +1,15 @@
-use std::{fmt::Display, net::SocketAddr, str::FromStr};
+use std::{collections::HashSet, fmt::Display, net::SocketAddr, str::FromStr};
 
+use fixedbitset::FixedBitSet;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
-use snot_common::state::{HeightRequest, NodeState, NodeType};
+use snot_common::{
+    lasso::Spur,
+    set::{MaskBit, MASK_PREFIX_LEN},
+    state::{AgentId, HeightRequest, KeyState, NodeState, NodeType},
+    INTERN,
+};
 
 use super::{
     error::{KeySourceError, SchemaError},
@@ -38,6 +44,18 @@ fn please_be_online() -> bool {
     true
 }
 
+/// Parse the labels as strings, but intern them on load
+fn get_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let labels = Vec::<String>::deserialize(deserializer)?;
+    Ok(labels
+        .into_iter()
+        .map(|label| INTERN.get_or_intern(label))
+        .collect())
+}
+
 // TODO: could use some more clarification on some of these fields
 /// A node in the testing infrastructure.
 #[derive(Deserialize, Debug, Clone)]
@@ -56,8 +74,19 @@ pub struct Node {
     ///   inherited.
     pub height: Option<usize>,
 
+    /// When specified, agents must have these labels
+    #[serde(default, deserialize_with = "get_label")]
+    pub labels: HashSet<Spur>,
+
+    /// When specified, an agent must have this id. Overrides the labels field.
+    #[serde(default)]
+    pub agent: Option<AgentId>,
+
+    /// List of validators for the node to connect to
     #[serde(default)]
     pub validators: NodeTargets,
+
+    /// List of peers for the node to connect to
     #[serde(default)]
     pub peers: NodeTargets,
 }
@@ -66,7 +95,7 @@ impl Node {
     pub fn into_state(&self, ty: NodeType) -> NodeState {
         NodeState {
             ty,
-            private_key: None,
+            private_key: KeyState::None,
 
             // TODO
             height: (0, HeightRequest::Top),
@@ -78,10 +107,32 @@ impl Node {
             peers: vec![],
         }
     }
+
+    pub fn mask(&self, key: &NodeKey, labels: &[Spur]) -> FixedBitSet {
+        let mut mask = FixedBitSet::with_capacity(labels.len() + MASK_PREFIX_LEN);
+
+        // validator/prover/client
+        mask.insert(key.ty.bit());
+
+        // local private key
+        if matches!(self.key, Some(KeySource::Local)) {
+            mask.insert(MaskBit::LocalPrivateKey as usize);
+        }
+
+        // labels
+        for (i, label) in labels.iter().enumerate() {
+            if self.labels.contains(label) {
+                mask.insert(i + MASK_PREFIX_LEN);
+            }
+        }
+        mask
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeySource {
+    /// Private key owned by the agent
+    Local,
     /// APrivateKey1zkp...
     Literal(String),
     /// committee.0 or committee.$ (for replicas)
@@ -132,8 +183,11 @@ impl FromStr for KeySource {
         // use KeySource::Named(String, Option<usize>) when the string is "\w+.0" or
         // "\w+.$"
 
+        if s == "local" {
+            return Ok(KeySource::Local);
+        }
         // aleo private key
-        if s.len() == 59 && s.starts_with("APrivateKey1") {
+        else if s.len() == 59 && s.starts_with("APrivateKey1") {
             return Ok(KeySource::Literal(s.to_string()));
 
         // committee key
@@ -170,6 +224,7 @@ impl Display for KeySource {
             f,
             "{}",
             match self {
+                KeySource::Local => "local".to_owned(),
                 KeySource::Literal(key) => key.to_owned(),
                 KeySource::Committee(None) => "committee.$".to_owned(),
                 KeySource::Committee(Some(idx)) => {

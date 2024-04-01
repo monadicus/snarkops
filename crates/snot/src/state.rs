@@ -1,19 +1,21 @@
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::{Arc, Weak},
     time::Instant,
 };
 
 use anyhow::{anyhow, Result};
 use bimap::BiMap;
+use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
+use serde::Deserialize;
 use snot_common::{
+    lasso::Spur,
     rpc::agent::{AgentServiceClient, ReconcileError},
-    state::{AgentState, NodeState, PortConfig},
+    set::{MaskBit, MASK_PREFIX_LEN},
+    state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
+    INTERN,
 };
 use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
@@ -25,8 +27,6 @@ use crate::{
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
 };
-
-pub type AgentId = usize;
 
 pub type AppState = Arc<GlobalState>;
 
@@ -54,7 +54,13 @@ pub struct Agent {
     connection: AgentConnection,
     state: AgentState,
 
-    busy: Arc<Busy>,
+    /// CLI provided information (mode, labels, local private key)
+    flags: AgentFlags,
+
+    /// Count of how many executions this agent is currently working on
+    compute_claim: Arc<Busy>,
+    /// Count of how many environments this agent is currently
+    env_claim: Arc<Busy>,
 
     /// The external address of the agent, along with its local addresses.
     ports: Option<PortConfig>,
@@ -68,13 +74,12 @@ pub struct Busy;
 pub struct AgentClient(AgentServiceClient);
 
 impl Agent {
-    pub fn new(rpc: AgentServiceClient) -> Self {
-        static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-        let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-
+    pub fn new(rpc: AgentServiceClient, id: AgentId, flags: AgentFlags) -> Self {
         Self {
             id,
-            busy: Arc::new(Busy),
+            flags,
+            compute_claim: Arc::new(Busy),
+            env_claim: Arc::new(Busy),
             claims: Claims {
                 id,
                 nonce: *JWT_NONCE,
@@ -99,29 +104,84 @@ impl Agent {
         external.is_some() || !internal.is_empty()
     }
 
+    /// Check if an agent has a set of labels
+    pub fn has_labels(&self, labels: &HashSet<Spur>) -> bool {
+        labels.is_empty() || self.flags.labels.intersection(labels).count() == labels.len()
+    }
+
+    /// Check if an agent has a specific label
+    pub fn has_label(&self, label: Spur) -> bool {
+        self.flags.labels.contains(&label)
+    }
+
+    /// Check if an agent has a specific label
+    pub fn has_label_str(&self, label: &str) -> bool {
+        INTERN
+            .get(label)
+            .map_or(false, |label| self.flags.labels.contains(&label))
+    }
+
+    pub fn str_labels(&self) -> HashSet<&str> {
+        self.flags
+            .labels
+            .iter()
+            .map(|s| INTERN.resolve(s))
+            .collect()
+    }
+
+    // Get the mask of this agent
+    pub fn mask(&self, labels: &[Spur]) -> FixedBitSet {
+        self.flags.mask(labels)
+    }
+
     /// Check if an agent is in inventory state
     pub fn is_inventory(&self) -> bool {
         matches!(self.state, AgentState::Inventory)
     }
 
-    /// Check if a agent is working on an authorization
-    pub fn is_busy(&self) -> bool {
-        Arc::strong_count(&self.busy) > 1
+    /// Check if an agent is available for compute tasks
+    pub fn can_compute(&self) -> bool {
+        self.is_inventory() && self.flags.mode.compute && !self.is_compute_claimed()
+    }
+
+    /// Check if an agent is working on an authorization
+    pub fn is_compute_claimed(&self) -> bool {
+        Arc::strong_count(&self.compute_claim) > 1
     }
 
     /// Mark an agent as busy. This is used to prevent multiple authorizations
     pub fn make_busy(&self) -> Arc<Busy> {
-        Arc::clone(&self.busy)
+        Arc::clone(&self.compute_claim)
+    }
+
+    /// Mark an agent as busy. This is used to prevent multiple authorizations
+    pub fn get_compute_claim(&self) -> Weak<Busy> {
+        Arc::downgrade(&self.compute_claim)
+    }
+
+    /// Check if an agent is owned by an environment
+    pub fn is_env_claimed(&self) -> bool {
+        Arc::strong_count(&self.env_claim) > 1
+    }
+
+    /// Get a weak reference to the env claim, which can be used to later lock this
+    /// agent for an environment.
+    pub fn get_env_claim(&self) -> Weak<Busy> {
+        Arc::downgrade(&self.env_claim)
     }
 
     /// The ID of this agent.
-    pub fn id(&self) -> usize {
+    pub fn id(&self) -> AgentId {
         self.id
     }
 
     /// The current state of this agent.
     pub fn state(&self) -> &AgentState {
         &self.state
+    }
+
+    pub fn modes(&self) -> AgentMode {
+        self.flags.mode
     }
 
     pub fn claims(&self) -> &Claims {
@@ -188,13 +248,18 @@ impl Agent {
         self.ports.as_ref().map(|p| p.rest).unwrap_or_default()
     }
 
+    /// True when the agent is configured to provide its own local private key
+    pub fn has_local_pk(&self) -> bool {
+        self.flags.local_pk
+    }
+
     /// Set the external and internal addresses of the agent. This does **not**
     /// trigger a reconcile
     pub fn set_addrs(&mut self, external_addr: Option<IpAddr>, internal_addrs: Vec<IpAddr>) {
         self.addrs = Some((external_addr, internal_addrs));
     }
 
-    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(usize, AgentClient, AgentState)>
+    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(AgentId, AgentClient, AgentState)>
     where
         F: Fn(NodeState) -> NodeState,
     {
@@ -321,5 +386,78 @@ impl GlobalState {
             .await
             .get(&id)
             .and_then(|a| a.client_owned())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentFlags {
+    #[serde(deserialize_with = "deser_mode")]
+    mode: AgentMode,
+    #[serde(deserialize_with = "deser_labels")]
+    labels: HashSet<Spur>,
+    #[serde(deserialize_with = "deser_pk", default)]
+    local_pk: bool,
+}
+
+fn deser_mode<'de, D>(deser: D) -> Result<AgentMode, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // axum's querystring visitor marks all values as string
+    let byte: u8 = <&str>::deserialize(deser)?
+        .parse()
+        .map_err(|e| serde::de::Error::custom(format!("error parsing u8: {e}")))?;
+    Ok(AgentMode::from(byte))
+}
+
+pub fn deser_labels<'de, D>(deser: D) -> Result<HashSet<Spur>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deser)?
+        .map(|s| {
+            s.split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| INTERN.get_or_intern(s))
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+pub fn deser_pk<'de, D>(deser: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // axum's querystring visitor marks all values as string
+    Ok(Option::<&str>::deserialize(deser)?
+        .map(|s| s == "true")
+        .unwrap_or(false))
+}
+
+impl AgentFlags {
+    pub fn mask(&self, labels: &[Spur]) -> FixedBitSet {
+        let mut mask = FixedBitSet::with_capacity(labels.len() + MASK_PREFIX_LEN);
+        if self.mode.validator {
+            mask.insert(MaskBit::Validator as usize);
+        }
+        if self.mode.prover {
+            mask.insert(MaskBit::Prover as usize);
+        }
+        if self.mode.client {
+            mask.insert(MaskBit::Client as usize);
+        }
+        if self.mode.compute {
+            mask.insert(MaskBit::Compute as usize);
+        }
+        if self.local_pk {
+            mask.insert(MaskBit::LocalPrivateKey as usize);
+        }
+
+        for (i, label) in labels.iter().enumerate() {
+            if self.labels.contains(label) {
+                mask.insert(i + MASK_PREFIX_LEN);
+            }
+        }
+        mask
     }
 }
