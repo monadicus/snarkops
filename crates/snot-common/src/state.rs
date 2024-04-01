@@ -11,7 +11,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{de::Error, Deserialize, Serialize};
 
-use crate::INTERN;
+use crate::{prelude::MaskBit, INTERN};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AgentId(Spur);
@@ -43,12 +43,43 @@ impl AgentState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
     pub ty: NodeType,
-    pub private_key: Option<String>,
+    pub private_key: KeyState,
     pub height: (usize, HeightRequest),
 
     pub online: bool,
     pub peers: Vec<AgentPeer>,
     pub validators: Vec<AgentPeer>,
+}
+
+/// A representation of which key to use for the agent.
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub enum KeyState {
+    /// No private key provided
+    #[default]
+    None,
+    /// A private key is provided by the agent
+    Local,
+    /// A literal private key
+    Literal(String),
+    // TODO: generated?/new
+}
+
+impl From<Option<String>> for KeyState {
+    fn from(s: Option<String>) -> Self {
+        match s {
+            Some(s) => Self::Literal(s),
+            None => Self::None,
+        }
+    }
+}
+
+impl KeyState {
+    pub fn try_string(&self) -> Option<String> {
+        match self {
+            Self::Literal(s) => Some(s.to_owned()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Parser)]
@@ -208,11 +239,11 @@ impl NodeType {
     }
 
     pub fn bit(self) -> usize {
-        match self {
-            Self::Validator => 0,
-            Self::Prover => 1,
-            Self::Client => 2,
-        }
+        (match self {
+            Self::Validator => MaskBit::Validator,
+            Self::Prover => MaskBit::Prover,
+            Self::Client => MaskBit::Client,
+        }) as usize
     }
 }
 

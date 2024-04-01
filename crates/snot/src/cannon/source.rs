@@ -197,14 +197,14 @@ impl TxSource {
                 let sample_pk = || {
                     private_keys
                         .get(rand::random::<usize>() % private_keys.len())
-                        .and_then(|k| env.storage.sample_keysource_pk(k))
+                        .and_then(|k| env.storage.sample_keysource_pk(k).try_string())
                         .ok_or(anyhow!("error selecting a valid private key"))
                 };
                 let sample_addr = || {
                     addresses
                         .get(rand::random::<usize>() % addresses.len())
-                        .and_then(|k| env.storage.sample_keysource_addr(k))
-                        .ok_or(anyhow!("error selecting a valid private key"))
+                        .and_then(|k| env.storage.sample_keysource_addr(k).try_string())
+                        .ok_or(anyhow!("error selecting a valid address"))
                 };
 
                 let Some(mode) = tx_modes

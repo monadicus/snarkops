@@ -9,7 +9,7 @@ use snot_common::{
         control::{ControlServiceRequest, ControlServiceResponse},
         MuxMessage,
     },
-    state::{AgentId, AgentPeer, AgentState, PortConfig},
+    state::{AgentId, AgentPeer, AgentState, KeyState, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::{
@@ -247,8 +247,20 @@ impl AgentService for AgentRpcServer {
                         .arg("--node")
                         .arg(state.cli.ports.node.to_string());
 
-                    if let Some(pk) = node.private_key {
-                        command.arg("--private-key").arg(pk);
+                    match node.private_key {
+                        KeyState::None => {}
+                        KeyState::Local => {
+                            command.arg("--private-key-file").arg(
+                                state
+                                    .cli
+                                    .private_key_file
+                                    .as_ref()
+                                    .ok_or(ReconcileError::NoLocalPrivateKey)?,
+                            );
+                        }
+                        KeyState::Literal(pk) => {
+                            command.arg("--private-key").arg(pk);
+                        }
                     }
 
                     // Find agents that do not have cached addresses
