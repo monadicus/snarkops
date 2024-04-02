@@ -1,11 +1,14 @@
 use std::path::PathBuf;
 
+use serde::{ser::SerializeStruct, Serialize, Serializer};
+use snot_common::rpc::error::PrettyError;
+use strum_macros::AsRefStr;
 use thiserror::Error;
 use url::Url;
 
 use crate::error::CommandError;
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+#[derive(Debug, Error, AsRefStr)]
 pub enum StorageError {
     #[error("command error id: `{0}`: {1}")]
     Command(CommandError, String),
@@ -27,11 +30,20 @@ pub enum StorageError {
     ParseBalances(PathBuf, #[source] serde_json::Error),
 }
 
+impl Serialize for StorageError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        PrettyError::from(self).serialize(serializer)
+    }
+}
+
 #[derive(Debug, Error)]
 #[error("invalid node target string")]
 pub struct NodeTargetError;
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+#[derive(Debug, Error, AsRefStr)]
 pub enum KeySourceError {
     #[error("invalid key source string")]
     InvalidKeySource,
@@ -39,7 +51,16 @@ pub enum KeySourceError {
     InvalidCommitteeIndex(#[source] std::num::ParseIntError),
 }
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+impl Serialize for KeySourceError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        PrettyError::from(self).serialize(serializer)
+    }
+}
+
+#[derive(Debug, Error, AsRefStr)]
 pub enum SchemaError {
     #[error("key source error: {0}")]
     KeySource(#[from] KeySourceError),
@@ -47,4 +68,22 @@ pub enum SchemaError {
     NodeTarget(#[from] NodeTargetError),
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
+}
+
+impl Serialize for SchemaError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Error", 2)?;
+        state.serialize_field("type", self.as_ref())?;
+
+        match self {
+            Self::KeySource(e) => state.serialize_field("error", e),
+            Self::NodeTarget(e) => state.serialize_field("error", &e.to_string()),
+            Self::Storage(e) => state.serialize_field("error", e),
+        }?;
+
+        state.end()
+    }
 }

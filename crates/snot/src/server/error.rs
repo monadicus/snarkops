@@ -1,8 +1,14 @@
 use axum::{response::IntoResponse, Json};
+use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
 use thiserror::Error;
 
-use crate::{cannon::error::CannonError, env::error::EnvError, schema::error::SchemaError};
+use crate::{
+    cannon::error::CannonError,
+    env::error::EnvError,
+    error::{CommandError, StateError},
+    schema::error::SchemaError,
+};
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
 // #[serde(tag = "type", content = "data")]
@@ -21,15 +27,24 @@ pub enum ServerError {
     TcpBind(#[source] std::io::Error),
 }
 
-impl serde::Serialize for ServerError {
+impl Serialize for ServerError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
-        use std::fmt::Write;
-        let mut s = String::new();
-        write!(s, "{}", self).unwrap();
-        serializer.serialize_str(&s)
+        let mut state = serializer.serialize_struct("Error", 2)?;
+        state.serialize_field("type", self.as_ref())?;
+
+        match self {
+            Self::DbInit(e) => state.serialize_field("error", &e.to_string()),
+            Self::Cannon(e) => state.serialize_field("error", e),
+            Self::Env(e) => state.serialize_field("error", e),
+            Self::Schema(e) => state.serialize_field("error", e),
+            Self::Serve(e) => state.serialize_field("error", &e.to_string()),
+            Self::TcpBind(e) => state.serialize_field("error", &e.to_string()),
+        }?;
+
+        state.end()
     }
 }
 
@@ -37,10 +52,7 @@ impl IntoResponse for ServerError {
     fn into_response(self) -> axum::response::Response {
         (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"errors": [{
-								"type": self.as_ref(),
-								"error": self,
-						}] })),
+            Json(json!(self)),
         )
             .into_response()
     }

@@ -1,24 +1,43 @@
 use std::path::PathBuf;
 
-use snot_common::state::NodeKey;
+use serde::{ser::SerializeStruct, Serialize, Serializer};
+use snot_common::{rpc::error::PrettyError, state::NodeKey};
+use strum_macros::AsRefStr;
 use thiserror::Error;
 
 use super::Authorization;
 use crate::error::{CommandError, StateError};
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+#[derive(Debug, Error, AsRefStr)]
 pub enum AuthorizeError {
     #[error("command error: {0}")]
     Command(#[from] CommandError),
     #[error("expected function, fee, and broadcast fields in response")]
     InvalidJson,
     #[error("parse json error: {0}")]
-    Json(serde_json::Error),
+    Json(#[source] serde_json::Error),
     #[error("expected JSON object in response")]
     JsonNotObject,
 }
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+impl Serialize for AuthorizeError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Error", 2)?;
+        state.serialize_field("type", self.as_ref())?;
+
+        match self {
+            Self::Command(e) => state.serialize_field("error", e),
+            _ => state.serialize_field("error", &self.to_string()),
+        }?;
+
+        state.end()
+    }
+}
+
+#[derive(Debug, Error, AsRefStr)]
 pub enum TransactionDrainError {
     #[error("error locking tx drain")]
     FailedToLock,
@@ -28,7 +47,16 @@ pub enum TransactionDrainError {
     FailedToReadLine(#[source] std::io::Error),
 }
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+impl Serialize for TransactionDrainError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        PrettyError::from(self).serialize(serializer)
+    }
+}
+
+#[derive(Debug, Error, AsRefStr)]
 pub enum TransactionSinkError {
     #[error("error locking tx drain")]
     FailedToLock,
@@ -38,7 +66,16 @@ pub enum TransactionSinkError {
     FailedToWrite(#[source] std::io::Error),
 }
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+impl Serialize for TransactionSinkError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        PrettyError::from(self).serialize(serializer)
+    }
+}
+
+#[derive(Debug, Error, AsRefStr)]
 pub enum SourceError {
     #[error("cannot authorize playback txs")]
     CannotAuthorizePlaybackTx,
@@ -58,10 +95,19 @@ pub enum SourceError {
     TxSouceUnavailablePort,
 }
 
+impl Serialize for SourceError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        PrettyError::from(self).serialize(serializer)
+    }
+}
+
 // TODO a lot of these could be split into the above.
 // Then in mod.rs could we can use the above errors to simplify
 // the errors
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+#[derive(Debug, Error, AsRefStr)]
 pub enum CannonError {
     #[error("authorize error: {0}")]
     Authorize(#[from] AuthorizeError),
@@ -108,4 +154,23 @@ pub enum CannonError {
     TransactionDrainNotFound(usize, usize, String),
     #[error("tx sink `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
     TransactionSinkNotFound(usize, usize, String),
+}
+
+impl Serialize for CannonError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Error", 2)?;
+        state.serialize_field("type", self.as_ref())?;
+
+        match self {
+            Self::Authorize(e) => state.serialize_field("error", e),
+            Self::TransactionDrain(e) => state.serialize_field("error", e),
+            Self::TransactionSink(e) => state.serialize_field("error", e),
+            _ => state.serialize_field("error", &self.to_string()),
+        }?;
+
+        state.end()
+    }
 }

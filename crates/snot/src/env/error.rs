@@ -1,4 +1,9 @@
-use snot_common::state::{AgentId, NodeKey};
+use serde::{ser::SerializeStruct, Serialize, Serializer};
+use snot_common::{
+    rpc::error::PrettyError,
+    state::{AgentId, NodeKey},
+};
+use strum_macros::AsRefStr;
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -10,7 +15,7 @@ pub struct BatchReconcileError {
     pub failures: usize,
 }
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+#[derive(Debug, Error, AsRefStr)]
 pub enum ExecutionError {
     #[error("env `{0}` not found")]
     EnvNotFound(usize),
@@ -28,6 +33,23 @@ pub enum ExecutionError {
     Cannon(#[from] CannonError),
 }
 
+impl Serialize for ExecutionError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Error", 2)?;
+        state.serialize_field("type", self.as_ref())?;
+
+        match self {
+            Self::Cannon(e) => state.serialize_field("error", e),
+            _ => state.serialize_field("error", &self.to_string()),
+        }?;
+
+        state.end()
+    }
+}
+
 #[derive(Debug, Error)]
 #[error("deserialize error: `{i}`: `{e}`")]
 pub struct DeserializeError {
@@ -36,7 +58,7 @@ pub struct DeserializeError {
     pub e: serde_yaml::Error,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Error, strum_macros::AsRefStr)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, AsRefStr)]
 pub enum DelegationError {
     #[error("insufficient number of agents to satisfy the request")]
     InsufficientAgentCount,
@@ -50,7 +72,16 @@ pub enum DelegationError {
     NoAvailableAgents(NodeKey),
 }
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+impl Serialize for DelegationError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        PrettyError::from(self).serialize(serializer)
+    }
+}
+
+#[derive(Debug, Error, AsRefStr)]
 pub enum PrepareError {
     #[error("duplicate node key: {0}")]
     DuplicateNodeKey(NodeKey),
@@ -64,13 +95,39 @@ pub enum PrepareError {
     Reconcile(#[from] ReconcileError),
 }
 
-#[derive(Debug, Error)]
+impl Serialize for PrepareError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Error", 2)?;
+        state.serialize_field("type", self.as_ref())?;
+
+        match self {
+            Self::Reconcile(e) => state.serialize_field("error", e),
+            _ => state.serialize_field("error", &self.to_string()),
+        }?;
+
+        state.end()
+    }
+}
+
+#[derive(Debug, Error, AsRefStr)]
 pub enum CleanupError {
     #[error("env `{0}` not found")]
     EnvNotFound(usize),
 }
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+impl Serialize for CleanupError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        PrettyError::from(self).serialize(serializer)
+    }
+}
+
+#[derive(Debug, Error, AsRefStr)]
 pub enum ReconcileError {
     #[error(transparent)]
     Batch(#[from] BatchReconcileError),
@@ -80,11 +137,22 @@ pub enum ReconcileError {
     ExpectedInternalAgentPeer { key: NodeKey },
 }
 
-#[derive(Debug, Error, strum_macros::AsRefStr)]
+impl Serialize for ReconcileError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        PrettyError::from(self).serialize(serializer)
+    }
+}
+
+#[derive(Debug, Error, AsRefStr)]
 pub enum EnvError {
+    #[error("cannon error: `{0}`")]
+    Cannon(#[from] CannonError),
     #[error("cleanup error: `{0}`")]
     Cleanup(#[from] CleanupError),
-    #[error("delegation errors occured:{}", .0.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n"))]
+    #[error("delegation errors occured:{}", .0.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"))]
     Delegation(Vec<DelegationError>),
     #[error("exec error: `{0}`")]
     Execution(#[from] ExecutionError),
@@ -94,6 +162,26 @@ pub enum EnvError {
     Reconcile(#[from] ReconcileError),
     #[error("schema error: `{0}`")]
     Schema(#[from] SchemaError),
-    #[error("cannon error: `{0}`")]
-    Cannon(#[from] CannonError),
+}
+
+impl Serialize for EnvError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Error", 2)?;
+        state.serialize_field("type", self.as_ref())?;
+
+        match self {
+            Self::Cannon(e) => state.serialize_field("error", e),
+            Self::Cleanup(e) => state.serialize_field("error", e),
+            Self::Delegation(e) => state.serialize_field("error", e),
+            Self::Execution(e) => state.serialize_field("error", e),
+            Self::Prepare(e) => state.serialize_field("error", e),
+            Self::Reconcile(e) => state.serialize_field("error", e),
+            Self::Schema(e) => state.serialize_field("error", e),
+        }?;
+
+        state.end()
+    }
 }

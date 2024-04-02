@@ -26,6 +26,7 @@ reqwest = { workspace = true, features = ["stream", "json"] }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
+serde_with = "3.7"
 sha2 = "0.10.8"
 snot-common = { path = "../snot-common" }
 strum_macros = "0.26"

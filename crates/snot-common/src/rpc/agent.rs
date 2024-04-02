@@ -1,9 +1,8 @@
 use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
-use super::control::ResolveError;
+use super::error::*;
 use crate::state::{AgentState, PortConfig};
 
 /// The RPC service that agents implement as a server.
@@ -38,33 +37,6 @@ pub trait AgentService {
     async fn get_metric(metric: AgentMetric) -> f64;
 }
 
-#[derive(Debug, Error, Serialize, Deserialize)]
-pub enum ReconcileError {
-    #[error("aborted by a more recent reconcilation request")]
-    Aborted,
-    #[error("failed to download the specified storage")]
-    StorageAcquireError,
-    #[error("failed to resolve addresses of stated peers")]
-    ResolveAddrError(ResolveError),
-    #[error("agent did not provide a local private key")]
-    NoLocalPrivateKey,
-    #[error("unknown error")]
-    Unknown,
-}
-
-#[derive(Debug, Error, Serialize, Deserialize)]
-pub enum AgentError {
-    #[error("invalid agent state")]
-    InvalidState,
-    #[error("failed to parse json")]
-    FailedToParseJson,
-    #[error("failed to make a request")]
-    FailedToMakeRequest,
-    #[error("failed to spawn a process")]
-    FailedToSpawnProcess,
-    #[error("process failed")]
-    ProcessFailed,
-}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentMetric {
     Tps,

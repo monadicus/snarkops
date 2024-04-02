@@ -11,7 +11,7 @@ use jwt::SignWithKey;
 use serde::Deserialize;
 use snot_common::{
     lasso::Spur,
-    rpc::agent::{AgentServiceClient, ReconcileError},
+    rpc::{agent::AgentServiceClient, error::ReconcileError},
     set::{MaskBit, MASK_PREFIX_LEN},
     state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
     INTERN,
