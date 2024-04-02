@@ -5,6 +5,7 @@ use std::{
 };
 
 use snot_common::{
+    api::StorageInfoResponse,
     rpc::control::ControlServiceClient,
     state::{AgentId, AgentPeer, AgentState},
 };
@@ -14,7 +15,7 @@ use tokio::{
     task::AbortHandle,
 };
 
-use crate::{cli::Cli, metrics::Metrics};
+use crate::{api, cli::Cli, metrics::Metrics};
 
 pub type AppState = Arc<GlobalState>;
 
@@ -28,6 +29,7 @@ pub struct GlobalState {
     pub endpoint: SocketAddr,
     pub jwt: Mutex<Option<String>>,
     pub agent_state: RwLock<AgentState>,
+    pub env_to_storage: RwLock<HashMap<usize, StorageInfoResponse>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,
     pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
                                        * not sure yet */
@@ -51,5 +53,27 @@ impl GlobalState {
                 AgentPeer::External(addr) => Some(addr.to_string()),
             })
             .collect::<Vec<_>>()
+    }
+
+    pub async fn get_env_info(&self, env_id: usize) -> anyhow::Result<StorageInfoResponse> {
+        if let Some(info) = self.env_to_storage.read().await.get(&env_id).cloned() {
+            return Ok(info);
+        }
+
+        // if an else was used here, the lock would be held for the entire function so we return early
+        // to prevent a deadlock
+
+        let info = api::get_storage_info(format!(
+            "http://{}/api/v1/env/{env_id}/storage",
+            &self.endpoint
+        ))
+        .await?;
+
+        self.env_to_storage
+            .write()
+            .await
+            .insert(env_id, info.clone());
+
+        Ok(info)
     }
 }

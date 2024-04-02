@@ -5433,6 +5433,7 @@ dependencies = [
  "http 1.1.0",
  "httpdate",
  "local-ip-address",
+ "nix",
  "reqwest 0.12.0",
  "simple_moving_average",
  "snot-common",

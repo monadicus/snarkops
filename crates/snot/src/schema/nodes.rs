@@ -7,7 +7,7 @@ use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snot_common::{
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, HeightRequest, KeyState, NodeState, NodeType},
+    state::{AgentId, DocHeightRequest, KeyState, NodeState, NodeType},
     INTERN,
 };
 
@@ -72,7 +72,8 @@ pub struct Node {
     /// * When null, a ledger is created when the node is started.
     /// * When zero, the ledger is empty and only the genesis block is
     ///   inherited.
-    pub height: Option<usize>,
+    #[serde(default)]
+    pub height: DocHeightRequest,
 
     /// When specified, agents must have these labels
     #[serde(default, deserialize_with = "get_label")]
@@ -98,7 +99,7 @@ impl Node {
             private_key: KeyState::None,
 
             // TODO
-            height: (0, HeightRequest::Top),
+            height: (0, self.height.into()),
 
             online: self.online,
 

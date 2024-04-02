@@ -7,7 +7,11 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use snot_common::{rpc::agent::AgentMetric, state::AgentId};
+use snot_common::{
+    api::StorageInfoResponse,
+    rpc::agent::AgentMetric,
+    state::{AgentId, EnvId},
+};
 
 use super::{error::ServerError, AppState};
 use crate::cannon::router::redirect_cannon_routes;
@@ -18,6 +22,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/prepare", post(post_env_prepare))
+        .route("/env/:env_id/storage", get(storage_id))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", post(post_env_timeline))
@@ -31,8 +36,17 @@ enum StorageType {
     Ledger,
 }
 
+async fn storage_id(Path(env_id): Path<EnvId>, state: State<AppState>) -> Response {
+    let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let id = env.storage.id.clone();
+
+    Json(StorageInfoResponse { id }).into_response()
+}
+
 async fn redirect_storage(
-    Path((env_id, ty)): Path<(usize, StorageType)>,
+    Path((env_id, ty)): Path<(EnvId, StorageType)>,
     state: State<AppState>,
 ) -> Response {
     let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
@@ -91,7 +105,7 @@ async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
     }
 }
 
-async fn post_env_timeline(Path(env_id): Path<usize>, State(state): State<AppState>) -> Response {
+async fn post_env_timeline(Path(env_id): Path<EnvId>, State(state): State<AppState>) -> Response {
     match Environment::execute(state, env_id).await {
         Ok(()) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
@@ -99,7 +113,7 @@ async fn post_env_timeline(Path(env_id): Path<usize>, State(state): State<AppSta
 }
 
 async fn delete_env_timeline(
-    Path(env_id): Path<usize>,
+    Path(env_id): Path<EnvId>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     match Environment::cleanup(&env_id, &state).await {

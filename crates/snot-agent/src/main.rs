@@ -6,8 +6,6 @@ mod rpc;
 mod state;
 
 use std::{
-    os::unix::fs::PermissionsExt,
-    path::Path,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -20,7 +18,6 @@ use http::HeaderValue;
 use snot_common::rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport};
 use tarpc::server::Channel;
 use tokio::{
-    io::AsyncWriteExt,
     select,
     signal::unix::{signal, Signal, SignalKind},
 };
@@ -101,7 +98,7 @@ async fn main() {
         .ok();
 
     // download the snarkOS binary
-    check_binary(&format!("http://{endpoint}"), &args.path.join(SNARKOS_FILE)) // TODO: http(s)?
+    api::check_binary(&format!("http://{endpoint}"), &args.path.join(SNARKOS_FILE)) // TODO: http(s)?
         .await
         .expect("failed to acquire snarkOS binary");
 
@@ -121,6 +118,7 @@ async fn main() {
         cli: args,
         endpoint,
         jwt: Mutex::new(jwt),
+        env_to_storage: Default::default(),
         agent_state: Default::default(),
         reconcilation_handle: Default::default(),
         child: Default::default(),
@@ -212,9 +210,12 @@ async fn main() {
                     // handle incoming messages
                     msg = ws_stream.next() => match msg {
                         Some(Ok(tungstenite::Message::Binary(bin))) => {
-                            let Ok(msg) = bincode::deserialize(&bin) else {
-                                warn!("failed to deserialize a message from the control plane");
-                                continue;
+                            let msg = match bincode::deserialize(&bin) {
+                                Ok(msg) => msg,
+                                Err(e) => {
+                                    error!("failed to deserialize a message from the control plane: {e}");
+                                    continue;
+                                }
                             };
 
                             match msg {
@@ -274,60 +275,4 @@ impl Signals {
 
         futs.next().await;
     }
-}
-
-async fn check_binary(base_url: &str, path: &Path) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
-
-    // check if we already have an up-to-date binary
-    let loc = format!("{base_url}/content/snarkos");
-    if !should_download_binary(&client, &loc, path)
-        .await
-        .unwrap_or(true)
-    {
-        return Ok(());
-    }
-
-    // download the binary
-    let mut file = tokio::fs::File::create(path).await?;
-    let mut stream = client.get(&loc).send().await?.bytes_stream();
-
-    while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
-    }
-
-    // ensure the permissions are set
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
-
-    Ok(())
-}
-
-async fn should_download_binary(
-    client: &reqwest::Client,
-    loc: &str,
-    path: &Path,
-) -> anyhow::Result<bool> {
-    Ok(match tokio::fs::metadata(&path).await {
-        Ok(meta) => {
-            // check last modified
-            let res = client.head(loc).send().await?;
-
-            let Some(last_modified_header) = res.headers().get(http::header::LAST_MODIFIED) else {
-                return Ok(true);
-            };
-
-            let remote_last_modified = httpdate::parse_http_date(last_modified_header.to_str()?)?;
-            let local_last_modified = meta.modified()?;
-
-            if remote_last_modified > local_last_modified {
-                info!("binary update is available, downloading...");
-                true
-            } else {
-                false
-            }
-        }
-
-        // no existing file, unconditionally download binary
-        Err(_) => true,
-    })
 }

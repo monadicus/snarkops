@@ -1,0 +1,23 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: my-local-mainnet
+name: my-local-mainnet
+description: |-
+  A local mainnet that persists ledger data between starts
+
+generate:
+  path: .
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+name: my-local-mainnet
+
+nodes:
+  validator/test:
+    replicas: 4
+    key: committee.$
+    # key: local # uncomment when every agent has its own --private-key-file
+    height: persist
+    validators: [validator/*]
+    peers: []

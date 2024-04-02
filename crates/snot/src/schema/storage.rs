@@ -333,9 +333,11 @@ impl Document {
         if ledger_exists && !ledger_tar_exists {
             let mut child = Command::new("tar")
                 .current_dir(&base)
-                .arg("-czf")
+                .arg("czf")
                 .arg("ledger.tar.gz")
-                .arg("ledger/")
+                .arg("-C") // tar the contents of the "ledger" directory
+                .arg("ledger")
+                .arg(".")
                 .kill_on_drop(true)
                 .spawn()
                 .map_err(|e| {

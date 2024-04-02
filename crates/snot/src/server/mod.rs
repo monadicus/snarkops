@@ -21,7 +21,7 @@ use snot_common::{
 use surrealdb::Surreal;
 use tarpc::server::Channel;
 use tokio::select;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use self::{
     error::StartError,
@@ -252,7 +252,7 @@ async fn handle_socket(
                         let msg = match bincode::deserialize(&bin) {
                             Ok(msg) => msg,
                             Err(e) => {
-                                warn!("failed to deserialize a message from agent {id}: {e}");
+                                error!("failed to deserialize a message from agent {id}: {e}");
                                 continue;
                             }
                         };

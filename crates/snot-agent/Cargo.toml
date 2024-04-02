@@ -15,6 +15,7 @@ futures-util.workspace = true
 http.workspace = true
 httpdate = "1.0.3"
 local-ip-address = "0.6.1"
+nix = { workspace = true, features = ["signal"] }
 reqwest = { workspace = true, features = ["stream", "json"] }
 snot-common = { path = "../snot-common" }
 tarpc.workspace = true

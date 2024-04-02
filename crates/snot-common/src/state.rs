@@ -38,12 +38,26 @@ impl AgentState {
             Self::Node(id, state) => Self::Node(id, f(state)),
         }
     }
+
+    pub fn is_persist(&self) -> bool {
+        matches!(
+            self,
+            AgentState::Node(
+                _,
+                NodeState {
+                    height: (_, HeightRequest::Persist),
+                    ..
+                }
+            )
+        )
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
     pub ty: NodeType,
     pub private_key: KeyState,
+    /// Increment the usize whenever the request is updated.
     pub height: (usize, HeightRequest),
 
     pub online: bool,
@@ -179,14 +193,95 @@ impl Display for AgentMode {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub enum HeightRequest {
+// https://github.com/serde-rs/serde/issues/1560#issuecomment-506915291
+macro_rules! named_unit_variant {
+    ($variant:ident) => {
+        pub mod $variant {
+            pub fn serialize<S>(serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_str(stringify!($variant))
+            }
+
+            pub fn deserialize<'de, D>(deserializer: D) -> Result<(), D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct V;
+                impl<'de> serde::de::Visitor<'de> for V {
+                    type Value = ();
+                    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        f.write_str(concat!("\"", stringify!($variant), "\""))
+                    }
+                    fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                        if value == stringify!($variant) {
+                            Ok(())
+                        } else {
+                            Err(E::invalid_value(serde::de::Unexpected::Str(value), &self))
+                        }
+                    }
+                }
+                deserializer.deserialize_str(V)
+            }
+        }
+    };
+}
+
+mod strings {
+    named_unit_variant!(top);
+    named_unit_variant!(persist);
+}
+
+/// for some reason bincode does not allow deserialize_any so if i want to allow
+/// end users to type "top", 42, or "persist" i need to do have to copies of this
+/// where one is not untagged.
+///
+/// bincode. please.
+#[derive(Debug, Copy, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase", untagged)]
+pub enum DocHeightRequest {
     #[default]
+    /// Use the latest height for the ledger
+    #[serde(with = "strings::top")]
     Top,
+    /// Set the height to the given block
     Absolute(u32),
+    /// Use the same ledger as configured when the same storage was used.
+    /// WARNING: this may create issues if the same storage id is reused between tests
+    /// with different nodes.
+    #[serde(with = "strings::persist")]
+    Persist,
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum HeightRequest {
+    #[default]
+    /// Use the latest height for the ledger
+    Top,
+    /// Set the height to the given block
+    Absolute(u32),
+    /// Use the same ledger as configured when the same storage was used.
+    /// WARNING: this may create issues if the same storage id is reused between tests
+    /// with different nodes.
+    Persist,
+    // the control plane doesn't know the heights the nodes are at
+    // TruncateHeight(u32),
+    // TruncateTime(i64),
+}
+
+impl From<DocHeightRequest> for HeightRequest {
+    fn from(req: DocHeightRequest) -> Self {
+        match req {
+            DocHeightRequest::Top => Self::Top,
+            DocHeightRequest::Absolute(h) => Self::Absolute(h),
+            DocHeightRequest::Persist => Self::Persist,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
