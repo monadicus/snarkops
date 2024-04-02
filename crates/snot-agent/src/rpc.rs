@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration,
+    collections::HashSet, fs, net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration,
 };
 
 use snot_common::{
@@ -197,11 +197,15 @@ impl AgentService for AgentRpcServer {
                     .await
                     .map_err(|_| ReconcileError::StorageAcquireError)?;
 
-                trace!("untarring ledger...");
-
                 // use a persisted directory for the untar when configured
                 let (untar_base, untar_dir) = if target.is_persist() {
+                    if fs::metadata(storage_path.join(LEDGER_PERSIST_DIR)).is_ok() {
+                        info!("persisted ledger already exists for {storage_id}");
+                        break 'storage;
+                    }
+
                     info!("using persisted ledger for {storage_id}");
+
                     (&storage_path, LEDGER_PERSIST_DIR)
                 } else {
                     info!("using fresh ledger for {storage_id}");
@@ -211,6 +215,8 @@ impl AgentService for AgentRpcServer {
                 tokio::fs::create_dir_all(&untar_base.join(untar_dir))
                     .await
                     .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                trace!("untarring ledger...");
 
                 // use `tar` to decompress the storage to the untar dir
                 let status = Command::new("tar")
