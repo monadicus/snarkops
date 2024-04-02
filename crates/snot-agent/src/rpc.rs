@@ -1,4 +1,6 @@
-use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
+use std::{
+    collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration,
+};
 
 use snot_common::{
     rpc::{
@@ -15,6 +17,7 @@ use tarpc::{context, ClientMessage, Response};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
+    select,
 };
 use tracing::{debug, error, info, trace, warn, Level};
 
@@ -34,6 +37,8 @@ pub const LEDGER_BASE_DIR: &str = "ledger";
 pub const LEDGER_PERSIST_DIR: &str = "persist";
 /// Temporary storage archive file name.
 pub const LEDGER_STORAGE_FILE: &str = "ledger.tar.gz";
+
+pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -92,8 +97,31 @@ impl AgentService for AgentRpcServer {
                     // kill existing child if running
                     AgentState::Node(_, node) if node.online => {
                         info!("cleaning up snarkos process...");
-                        if let Some(mut child) = state.child.write().await.take() {
-                            child.kill().await.expect("failed to kill child process");
+
+                        if let Some((mut child, id)) =
+                            state.child.write().await.take().and_then(|ch| {
+                                let id = ch.id()?;
+                                Some((ch, id))
+                            })
+                        {
+                            use nix::{
+                                sys::signal::{self, Signal},
+                                unistd::Pid,
+                            };
+
+                            // send SIGINT to the child process
+                            signal::kill(Pid::from_raw(id as i32), Signal::SIGINT).unwrap();
+
+                            // wait for graceful shutdown or kill process after 10 seconds
+                            let timeout = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT);
+
+                            select! {
+                                _ = child.wait() => (),
+                                _ = timeout => {
+                                    info!("snarkos process did not gracefully shut down, killing...");
+                                    child.kill().await.unwrap();
+                                }
+                            }
                         }
                     }
 
@@ -189,7 +217,8 @@ impl AgentService for AgentRpcServer {
                     .current_dir(untar_base)
                     .arg("xzf")
                     .arg(&storage_path.join(LEDGER_STORAGE_FILE))
-                    .arg("-C") // the untar_dir must exist. this will extract the contents of the tar to the directory
+                    .arg("-C") // the untar_dir must exist. this will extract the contents of the tar to the
+                    // directory
                     .arg(untar_dir)
                     .kill_on_drop(true)
                     .spawn()
