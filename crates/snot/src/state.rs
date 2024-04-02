@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Weak},
     time::Instant,
 };
 
@@ -19,7 +19,7 @@ use snot_common::{
 };
 use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     cli::Cli,

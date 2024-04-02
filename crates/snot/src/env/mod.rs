@@ -121,7 +121,7 @@ impl Environment {
         static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         let mut state_lock = state.envs.write().await;
-        state.prom_httpsd.lock().unwrap().set_dirty();
+        state.prom_httpsd.lock().await.set_dirty();
 
         let mut storage = None;
         let mut node_map = BiHashMap::default();
@@ -297,7 +297,7 @@ impl Environment {
         info!("clearing env {id} state...");
         let Some(env) = ({
             let mut state_lock = state.envs.write().await;
-            state.prom_httpsd.lock().unwrap().set_dirty();
+            state.prom_httpsd.lock().await.set_dirty();
             state_lock.remove(id)
         }) else {
             bail!("env {id} not found")
