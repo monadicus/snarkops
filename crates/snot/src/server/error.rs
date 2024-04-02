@@ -17,9 +17,9 @@ pub enum ServerError {
     Cannon(#[from] CannonError),
     #[error("deserialize error: {0}")]
     Deserialize(#[from] DeserializeError),
-    #[error("cannon error: {0}")]
+    #[error("env error: {0}")]
     Env(#[from] EnvError),
-    #[error("cannon error: {0}")]
+    #[error("schema error: {0}")]
     Schema(#[from] SchemaError),
 }
 
