@@ -53,10 +53,14 @@ async fn get_agents(state: State<AppState>) -> impl IntoResponse {
     Json(json!({ "count": state.pool.read().await.len() }))
 }
 
+fn status_ok() -> Response {
+    (StatusCode::OK, Json(json!({"status": "ok"}))).into_response()
+}
+
 async fn get_agent_tps(state: State<AppState>, Path(id): Path<AgentId>) -> Response {
     let pool = state.pool.read().await;
     let Some(agent) = pool.get(&id) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return ServerError::AgentNotFound(id).into_response();
     };
 
     // TODO: get rid of these unwraps
@@ -73,13 +77,7 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<AgentId>) -> Respo
 async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
     let documents = match Environment::deserialize(&body) {
         Ok(documents) => documents,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("{e}")})),
-            )
-                .into_response();
-        }
+        Err(e) => return ServerError::from(e).into_response(),
     };
 
     // TODO: some live state to report to the calling CLI or something would be
@@ -95,12 +93,8 @@ async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
 
 async fn post_env_timeline(Path(env_id): Path<usize>, State(state): State<AppState>) -> Response {
     match Environment::execute(state, env_id).await {
-        Ok(()) => StatusCode::OK.into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("{e}") })),
-        )
-            .into_response(),
+        Ok(()) => status_ok(),
+        Err(e) => ServerError::from(e).into_response(),
     }
 }
 
@@ -109,11 +103,7 @@ async fn delete_env_timeline(
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     match Environment::cleanup(&env_id, &state).await {
-        Ok(_) => StatusCode::OK.into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("{e}") })),
-        )
-            .into_response(),
+        Ok(_) => status_ok(),
+        Err(e) => ServerError::from(e).into_response(),
     }
 }

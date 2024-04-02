@@ -67,21 +67,6 @@ impl Serialize for ExecutionError {
     }
 }
 
-// TODO move to a more common error and re-use?
-#[derive(Debug, Error)]
-#[error("deserialize error: `{i}`: `{e}`")]
-pub struct DeserializeError {
-    pub i: usize,
-    #[source]
-    pub e: serde_yaml::Error,
-}
-
-impl DeserializeError {
-    fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Error, AsRefStr)]
 pub enum DelegationError {
     #[error("agent {0} already claimed for node {1}")]

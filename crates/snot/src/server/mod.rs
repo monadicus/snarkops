@@ -24,7 +24,7 @@ use tokio::select;
 use tracing::{info, warn};
 
 use self::{
-    error::ServerError,
+    error::StartError,
     jwt::{Claims, JWT_NONCE, JWT_SECRET},
     rpc::ControlRpcServer,
 };
@@ -41,12 +41,12 @@ pub mod error;
 pub mod jwt;
 mod rpc;
 
-pub async fn start(cli: Cli) -> Result<(), ServerError> {
+pub async fn start(cli: Cli) -> Result<(), StartError> {
     let mut path = cli.path.clone();
     path.push("data.db");
     let db = Surreal::new::<surrealdb::engine::local::File>(path)
         .await
-        .map_err(ServerError::DbInit)?;
+        .map_err(StartError::DbInit)?;
     let state = GlobalState {
         cli,
         db,
@@ -78,10 +78,10 @@ pub async fn start(cli: Cli) -> Result<(), ServerError> {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1234")
         .await
-        .map_err(ServerError::TcpBind)?;
+        .map_err(StartError::TcpBind)?;
     axum::serve(listener, app)
         .await
-        .map_err(ServerError::Serve)?;
+        .map_err(StartError::Serve)?;
 
     Ok(())
 }

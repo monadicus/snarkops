@@ -53,6 +53,20 @@ impl CommandError {
     }
 }
 
+#[derive(Debug, Error)]
+#[error("deserialize error: `{i}`: `{e}`")]
+pub struct DeserializeError {
+    pub i: usize,
+    #[source]
+    pub e: serde_yaml::Error,
+}
+
+impl DeserializeError {
+    pub fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
 #[derive(Debug, Error, AsRefStr)]
 pub enum StateError {
     #[error("common agent error: {0}")]

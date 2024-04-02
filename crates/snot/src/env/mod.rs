@@ -32,6 +32,7 @@ use crate::{
         CannonInstance,
     },
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, BusyMode},
+    error::DeserializeError,
     schema::{
         nodes::{ExternalNode, Node},
         storage::LoadedStorage,
