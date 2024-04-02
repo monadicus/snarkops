@@ -17,7 +17,10 @@ use futures_util::stream::StreamExt;
 use serde::Deserialize;
 use snot_common::{
     prelude::*,
-    rpc::{agent::AgentServiceClient, control::ControlService},
+    rpc::{
+        agent::{AgentServiceClient, Handshake},
+        control::ControlService,
+    },
 };
 use surrealdb::Surreal;
 use tarpc::server::Channel;
@@ -38,6 +41,7 @@ use crate::{
 mod api;
 mod content;
 pub mod jwt;
+pub mod prometheus;
 mod rpc;
 
 pub async fn start(cli: Cli) -> Result<()> {
@@ -51,11 +55,13 @@ pub async fn start(cli: Cli) -> Result<()> {
         storage_ids: Default::default(),
         storage: Default::default(),
         envs: Default::default(),
+        prom_httpsd: Default::default(),
     };
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
+        .nest("/prometheus", prometheus::routes())
         // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
         .with_state(Arc::new(state))
@@ -146,6 +152,7 @@ async fn handle_socket(
     let id: AgentId = 'insertion: {
         let client = client.clone();
         let mut pool = state.pool.write().await;
+        let mut handshake = Handshake::default();
 
         // attempt to reconnect if claims were passed
         'reconnect: {
@@ -167,6 +174,15 @@ async fn handle_socket(
 
                 // TODO: probably want to reconcile with old state?
 
+                // handshake with client
+                let client = agent.rpc().cloned().unwrap();
+                tokio::spawn(async move {
+                    // we do this in a separate task because we don't want to hold up pool insertion
+                    if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
+                        warn!("failed to perform client handshake: {e}");
+                    }
+                });
+
                 break 'insertion id;
             }
         }
@@ -184,12 +200,15 @@ async fn handle_socket(
         // create a new agent
         let agent = Agent::new(client.to_owned(), id, query.flags);
 
-        // sign the jwt and send it to the agent
+        // sign the jwt
         let signed_jwt = agent.sign_jwt();
+        handshake.jwt = Some(signed_jwt);
+
+        // handshake with the client
         tokio::spawn(async move {
             // we do this in a separate task because we don't want to hold up pool insertion
-            if let Err(e) = client.keep_jwt(tarpc::context::current(), signed_jwt).await {
-                warn!("failed to inform client of JWT: {e}");
+            if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
+                warn!("failed to perform client handshake: {e}");
             }
         });
 

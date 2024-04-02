@@ -6,11 +6,16 @@ use thiserror::Error;
 use super::control::ResolveError;
 use crate::state::{AgentState, PortConfig};
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Handshake {
+    pub jwt: Option<String>,
+}
+
 /// The RPC service that agents implement as a server.
 #[tarpc::service]
 pub trait AgentService {
-    /// Control plane instructs the agent to use a JWT when reconnecting later.
-    async fn keep_jwt(jwt: String);
+    /// Handshake with some initial connection details.
+    async fn handshake(handshake: Handshake);
 
     /// Control plane asks the agent for its external network address, along
     /// with local addrs.
@@ -27,7 +32,8 @@ pub trait AgentService {
     async fn broadcast_tx(tx: String) -> Result<(), AgentError>;
 
     /// Locally execute an authorization, using the given query
-    /// environment id is passed so the agent can determine which aot binary to use
+    /// environment id is passed so the agent can determine which aot binary to
+    /// use
     async fn execute_authorization(
         env_id: usize,
         query: String,

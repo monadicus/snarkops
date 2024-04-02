@@ -10,8 +10,6 @@ use crate::state::AgentId;
 
 #[tarpc::service]
 pub trait ControlService {
-    async fn placeholder() -> String;
-
     /// Resolve the addresses of the given agents.
     async fn resolve_addrs(
         peers: HashSet<AgentId>,

@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
-    sync::{Arc, Weak},
+    sync::{Arc, Mutex, Weak},
     time::Instant,
 };
 
@@ -25,7 +25,10 @@ use crate::{
     cli::Cli,
     env::Environment,
     schema::storage::LoadedStorage,
-    server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
+    server::{
+        jwt::{Claims, JWT_NONCE, JWT_SECRET},
+        prometheus::HttpsdResponse,
+    },
 };
 
 pub type AppState = Arc<GlobalState>;
@@ -41,10 +44,28 @@ pub struct GlobalState {
     pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
 
     pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
+    pub prom_httpsd: Mutex<HttpsdResponse>,
 }
 
 /// This is the representation of a public addr or a list of internal addrs.
-pub type AgentAddrs = (Option<IpAddr>, Vec<IpAddr>);
+#[derive(Debug, Clone)]
+pub struct AgentAddrs {
+    pub external: Option<IpAddr>,
+    pub internal: Vec<IpAddr>,
+}
+
+impl AgentAddrs {
+    pub fn usable(&self) -> Option<IpAddr> {
+        self.external
+            .as_ref()
+            .or_else(|| self.internal.first())
+            .copied()
+    }
+
+    pub fn is_some(&self) -> bool {
+        self.external.is_some() || !self.internal.is_empty()
+    }
+}
 
 /// An active agent, known by the control plane.
 #[derive(Debug)]
@@ -97,11 +118,14 @@ impl Agent {
 
     /// Whether this agent is capable of being a node in the network.
     pub fn is_node_capable(&self) -> bool {
-        if !self.is_connected() || self.addrs.is_none() {
+        if !self.is_connected() {
             return false;
         };
-        let (external, internal) = self.addrs.as_ref().unwrap();
-        external.is_some() || !internal.is_empty()
+
+        self.addrs
+            .as_ref()
+            .map(AgentAddrs::is_some)
+            .unwrap_or_default()
     }
 
     /// Check if an agent has a set of labels
@@ -164,8 +188,8 @@ impl Agent {
         Arc::strong_count(&self.env_claim) > 1
     }
 
-    /// Get a weak reference to the env claim, which can be used to later lock this
-    /// agent for an environment.
+    /// Get a weak reference to the env claim, which can be used to later lock
+    /// this agent for an environment.
     pub fn get_env_claim(&self) -> Weak<Busy> {
         Arc::downgrade(&self.env_claim)
     }
@@ -253,10 +277,14 @@ impl Agent {
         self.flags.local_pk
     }
 
+    pub fn addrs(&self) -> Option<&AgentAddrs> {
+        self.addrs.as_ref()
+    }
+
     /// Set the external and internal addresses of the agent. This does **not**
     /// trigger a reconcile
-    pub fn set_addrs(&mut self, external_addr: Option<IpAddr>, internal_addrs: Vec<IpAddr>) {
-        self.addrs = Some((external_addr, internal_addrs));
+    pub fn set_addrs(&mut self, external: Option<IpAddr>, internal: Vec<IpAddr>) {
+        self.addrs = Some(AgentAddrs { external, internal });
     }
 
     pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(AgentId, AgentClient, AgentState)>
@@ -328,7 +356,9 @@ pub fn resolve_addrs(
         .get(&src)
         .ok_or_else(|| anyhow!("source agent not found"))?;
 
-    let all_internal = addr_map.values().all(|(ext, _)| ext.is_none());
+    let all_internal = addr_map
+        .values()
+        .all(|AgentAddrs { external, .. }| external.is_none());
 
     Ok(peers
         .iter()
@@ -344,10 +374,10 @@ pub fn resolve_addrs(
             // if there are no external addresses in the entire addr map,
             // use the first internal address
             if all_internal {
-                return addrs.1.first().copied().map(|addr| (*id, addr));
+                return addrs.internal.first().copied().map(|addr| (*id, addr));
             }
 
-            match (src_addrs.0, addrs.0, addrs.1.first()) {
+            match (src_addrs.external, addrs.external, addrs.internal.first()) {
                 // if peers have the same external address, use the first internal address
                 (Some(src_ext), Some(peer_ext), Some(peer_int)) if src_ext == peer_ext => {
                     Some((*id, *peer_int))

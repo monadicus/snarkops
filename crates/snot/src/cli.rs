@@ -1,15 +1,19 @@
-use std::path::PathBuf;
+use std::{net::SocketAddr, path::PathBuf};
 
 use clap::Parser;
 
 #[derive(Debug, Parser)]
 pub struct Cli {
-    #[arg(long, default_value = "1234")]
     /// Control plane server port
+    #[arg(long, default_value = "1234")]
     pub port: u16,
 
-    #[arg(long, default_value = "snot-control-data")]
+    /// Optional IP:port that a Prometheus server is running on
+    #[arg(long)]
+    pub prometheus: Option<SocketAddr>,
+
     /// Path to the directory containing the stored data
+    #[arg(long, default_value = "snot-control-data")]
     pub path: PathBuf,
 
     #[arg(long)]
