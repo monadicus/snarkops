@@ -1,5 +1,6 @@
 use std::process::ExitStatus;
 
+use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snot_common::rpc::error::PrettyError;
 use snot_common::state::AgentId;
@@ -21,6 +22,12 @@ pub enum CommandError {
         status: ExitStatus,
         stderr: String,
     },
+}
+
+impl CommandError {
+    pub fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
 }
 
 impl Serialize for CommandError {
@@ -58,6 +65,12 @@ pub enum StateError {
     Rpc(#[from] tarpc::client::RpcError),
     #[error("source agent not found id: `{0}`")]
     SourceAgentNotFound(AgentId),
+}
+
+impl StateError {
+    pub fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
 }
 
 impl Serialize for StateError {

@@ -21,7 +21,7 @@ use tokio::{
 use tracing::{info, trace, warn};
 
 use self::{
-    error::CannonError,
+    error::{CannonError, CannonInstanceError, ExecutionContextError},
     file::{TransactionDrain, TransactionSink},
     sink::TxSink,
     source::TxSource,
@@ -231,7 +231,7 @@ impl CannonInstance {
                     if let Some(port) = self.query_port {
                         qs.get_state_root(port).await
                     } else {
-                        Err(CannonError::MissingQueryPort(self.id))
+                        Err(CannonInstanceError::MissingQueryPort(self.id).into())
                     }
                 }
                 QueryTarget::Node(key) => {
@@ -241,7 +241,9 @@ impl CannonInstance {
 
                     // env_id must be Some because LedgerQueryService::Node requires it
                     let Some(agent_id) = env.get_agent_by_key(key) else {
-                        return Err(CannonError::TargetAgentNotFound(self.id, key.clone()));
+                        return Err(
+                            CannonInstanceError::TargetAgentNotFound(self.id, key.clone()).into(),
+                        );
                     };
 
                     let Some(client) = self.global_state.get_client(agent_id).await else {
@@ -257,7 +259,9 @@ impl CannonInstance {
                     Ok(client.get_state_root().await?)
                 }
             },
-            TxSource::Playback { .. } => Err(CannonError::ConfiguredToPlayback(self.id)),
+            TxSource::Playback { .. } => {
+                Err(CannonInstanceError::NotConfiguredToPlayback(self.id))?
+            }
         }
     }
 
@@ -334,7 +338,7 @@ impl ExecutionContext {
         } = &self;
 
         let Some(env) = env_weak.upgrade() else {
-            return Err(CannonError::EnvDropped(Some(*cannon_id), Some(self.id)));
+            return Err(ExecutionContextError::EnvDropped(Some(*cannon_id), Some(self.id)).into());
         };
         let env_id = env.id;
 
@@ -345,11 +349,12 @@ impl ExecutionContext {
             TxSource::Playback { file_name: name } => {
                 let pipe = env.tx_pipe.drains.get(name).cloned();
                 if pipe.is_none() {
-                    return Err(CannonError::TransactionDrainNotFound(
+                    return Err(ExecutionContextError::TransactionDrainNotFound(
                         env_id,
                         *cannon_id,
                         name.clone(),
-                    ));
+                    )
+                    .into());
                 }
                 (pipe, None)
             }
@@ -361,7 +366,7 @@ impl ExecutionContext {
                     // demox needs to locate it
                     ComputeTarget::Demox { .. } => {
                         let Some(host) = get_host(state).await else {
-                            return Err(CannonError::NoDemoxHostConfigured);
+                            return Err(ExecutionContextError::NoDemoxHostConfigured.into());
                         };
                         format!("http://{host}:{}{suffix}", state.cli.port)
                     }
@@ -375,11 +380,12 @@ impl ExecutionContext {
             TxSink::Record { file_name, .. } => {
                 let pipe = env.tx_pipe.sinks.get(file_name).cloned();
                 if pipe.is_none() {
-                    return Err(CannonError::TransactionSinkNotFound(
+                    return Err(ExecutionContextError::TransactionSinkNotFound(
                         env_id,
                         *cannon_id,
                         file_name.clone(),
-                    ));
+                    )
+                    .into());
                 }
                 // ensure!(pipe.is_some(), "transaction sink not found: {file_name}");
                 pipe
@@ -482,7 +488,7 @@ impl ExecutionContext {
             }
             TxSource::RealTime { .. } => {
                 let Some(env) = self.env.upgrade() else {
-                    return Err(CannonError::EnvDropped(None, Some(self.id)));
+                    return Err(ExecutionContextError::EnvDropped(None, Some(self.id)).into());
                 };
                 trace!("cannon {}.{} generating authorization...", env.id, self.id);
 
@@ -512,7 +518,7 @@ impl ExecutionContext {
                 let env = self
                     .env
                     .upgrade()
-                    .ok_or_else(|| CannonError::EnvDropped(None, Some(self.id)))?;
+                    .ok_or_else(|| ExecutionContextError::EnvDropped(None, Some(self.id)))?;
                 compute.execute(&self.state, &env, query_path, auth).await
             }
         }
@@ -533,22 +539,24 @@ impl ExecutionContext {
                 let nodes = self
                     .env
                     .upgrade()
-                    .ok_or_else(|| CannonError::EnvDropped(None, Some(self.id)))?
+                    .ok_or_else(|| ExecutionContextError::EnvDropped(None, Some(self.id)))?
                     .matching_nodes(target, &pool, PortType::Rest)
                     .collect::<Vec<_>>();
 
                 if nodes.is_empty() {
-                    return Err(CannonError::NoAvailableAgents(
+                    return Err(ExecutionContextError::NoAvailableAgents(
                         "to broadcast transactions",
                         self.id,
-                    ));
+                    )
+                    .into());
                 }
 
                 let Some(node) = nodes.get(rand::random::<usize>() % nodes.len()) else {
-                    return Err(CannonError::NoAvailableAgents(
+                    return Err(ExecutionContextError::NoAvailableAgents(
                         "to broadcast transactions",
                         self.id,
-                    ));
+                    )
+                    .into());
                 };
                 match node {
                     AgentPeer::Internal(id, _) => {
@@ -570,10 +578,13 @@ impl ExecutionContext {
                             .body(tx)
                             .send()
                             .await
-                            .map_err(|e| CannonError::BroadcastRequest(self.id, e))?;
+                            .map_err(|e| ExecutionContextError::BroadcastRequest(self.id, e))?;
                         if !req.status().is_success() {
                             // TODO maybe get response text?
-                            return Err(CannonError::Broadcast(self.id, req.status().to_string()));
+                            Err(ExecutionContextError::Broadcast(
+                                self.id,
+                                req.status().to_string(),
+                            ))?;
                         }
                     }
                 }

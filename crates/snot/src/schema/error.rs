@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snot_common::rpc::error::PrettyError;
 use strum_macros::AsRefStr;
@@ -30,6 +31,17 @@ pub enum StorageError {
     ParseBalances(PathBuf, #[source] serde_json::Error),
 }
 
+impl StorageError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            StorageError::Command(e, _) => e.status_code(),
+            StorageError::FailedToFetchGenesis(_, _, _) => StatusCode::MISDIRECTED_REQUEST,
+            StorageError::NoGenerationParams(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 impl Serialize for StorageError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -43,12 +55,27 @@ impl Serialize for StorageError {
 #[error("invalid node target string")]
 pub struct NodeTargetError;
 
+impl NodeTargetError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::BAD_REQUEST
+    }
+}
+
 #[derive(Debug, Error, AsRefStr)]
 pub enum KeySourceError {
     #[error("invalid key source string")]
     InvalidKeySource,
     #[error("invalid committee index: {0}")]
     InvalidCommitteeIndex(#[source] std::num::ParseIntError),
+}
+
+impl KeySourceError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::InvalidKeySource => StatusCode::BAD_REQUEST,
+            Self::InvalidCommitteeIndex(_) => StatusCode::BAD_REQUEST,
+        }
+    }
 }
 
 impl Serialize for KeySourceError {
@@ -68,6 +95,16 @@ pub enum SchemaError {
     NodeTarget(#[from] NodeTargetError),
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
+}
+
+impl SchemaError {
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            Self::KeySource(e) => e.status_code(),
+            Self::NodeTarget(e) => e.status_code(),
+            Self::Storage(e) => e.status_code(),
+        }
+    }
 }
 
 impl Serialize for SchemaError {

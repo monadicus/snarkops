@@ -3,15 +3,9 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
 use thiserror::Error;
 
-use crate::{
-    cannon::error::CannonError,
-    env::error::EnvError,
-    error::{CommandError, StateError},
-    schema::error::SchemaError,
-};
+use crate::{cannon::error::CannonError, env::error::EnvError, schema::error::SchemaError};
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
-// #[serde(tag = "type", content = "data")]
 pub enum ServerError {
     #[error("failed to initialize the database: {0}")]
     DbInit(#[source] surrealdb::Error),
@@ -25,6 +19,17 @@ pub enum ServerError {
     Serve(#[source] std::io::Error),
     #[error("failed to bind to tcp: {0}")]
     TcpBind(#[source] std::io::Error),
+}
+
+impl ServerError {
+    pub fn status_code(&self) -> axum::http::StatusCode {
+        match self {
+            Self::Cannon(e) => e.status_code(),
+            Self::Env(e) => e.status_code(),
+            Self::Schema(e) => e.status_code(),
+            _ => unreachable!("we should never hit this case since the server isn't running yet"),
+        }
+    }
 }
 
 impl Serialize for ServerError {
@@ -50,10 +55,6 @@ impl Serialize for ServerError {
 
 impl IntoResponse for ServerError {
     fn into_response(self) -> axum::response::Response {
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!(self)),
-        )
-            .into_response()
+        (self.status_code(), Json(json!(self))).into_response()
     }
 }
