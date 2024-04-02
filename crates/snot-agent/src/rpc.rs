@@ -1,4 +1,6 @@
-use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
+use std::{
+    collections::HashSet, fs, net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration,
+};
 
 use snot_common::{
     rpc::{
@@ -15,8 +17,9 @@ use tarpc::{context, ClientMessage, Response};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
+    select,
 };
-use tracing::{debug, error, info, warn, Level};
+use tracing::{debug, error, info, trace, warn, Level};
 
 use crate::{api, metrics::MetricComputer, state::AppState};
 
@@ -28,14 +31,14 @@ pub const SNARKOS_FILE: &str = "snarkos";
 pub const SNARKOS_LOG_FILE: &str = "snarkos.log";
 /// The genesis block file name.
 pub const SNARKOS_GENESIS_FILE: &str = "genesis.block";
-/// The base genesis block file name.
-pub const SNARKOS_GENESIS_BASE_FILE: &str = "genesis.block.base";
 /// The ledger directory name.
-pub const SNARKOS_LEDGER_DIR: &str = "ledger";
-/// The base ledger directory name.
-pub const SNARKOS_LEDGER_BASE_DIR: &str = "ledger.base";
+pub const LEDGER_BASE_DIR: &str = "ledger";
+/// The directory name for persisted ledgers within the storage dir.
+pub const LEDGER_PERSIST_DIR: &str = "persist";
 /// Temporary storage archive file name.
 pub const LEDGER_STORAGE_FILE: &str = "ledger.tar.gz";
+
+pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -94,8 +97,31 @@ impl AgentService for AgentRpcServer {
                     // kill existing child if running
                     AgentState::Node(_, node) if node.online => {
                         info!("cleaning up snarkos process...");
-                        if let Some(mut child) = state.child.write().await.take() {
-                            child.kill().await.expect("failed to kill child process");
+
+                        if let Some((mut child, id)) =
+                            state.child.write().await.take().and_then(|ch| {
+                                let id = ch.id()?;
+                                Some((ch, id))
+                            })
+                        {
+                            use nix::{
+                                sys::signal::{self, Signal},
+                                unistd::Pid,
+                            };
+
+                            // send SIGINT to the child process
+                            signal::kill(Pid::from_raw(id as i32), Signal::SIGINT).unwrap();
+
+                            // wait for graceful shutdown or kill process after 10 seconds
+                            let timeout = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT);
+
+                            select! {
+                                _ = child.wait() => (),
+                                _ = timeout => {
+                                    info!("snarkos process did not gracefully shut down, killing...");
+                                    child.kill().await.unwrap();
+                                }
+                            }
                         }
                     }
 
@@ -122,18 +148,8 @@ impl AgentService for AgentRpcServer {
 
                 // clean up old storage
                 let base_path = &state.cli.path;
-                let filenames = &[
-                    base_path.join(SNARKOS_GENESIS_FILE),
-                    base_path.join(SNARKOS_GENESIS_BASE_FILE),
-                ];
-                let directories = &[
-                    base_path.join(SNARKOS_LEDGER_DIR),
-                    base_path.join(SNARKOS_LEDGER_BASE_DIR),
-                ];
+                let directories = &[base_path.join(LEDGER_BASE_DIR)];
 
-                for filename in filenames {
-                    let _ = tokio::fs::remove_file(filename).await;
-                }
                 for dir in directories {
                     let _ = tokio::fs::remove_dir_all(dir).await;
                 }
@@ -145,67 +161,79 @@ impl AgentService for AgentRpcServer {
                     break 'storage;
                 };
 
+                // get the storage info for this environment if we don't have it cached
+                let info = state
+                    .get_env_info(*env_id)
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                let storage_id = &info.id;
+                let storage_path = base_path.join("storage").join(storage_id);
+
+                // create the directory containing the storage files
+                tokio::fs::create_dir_all(&storage_path)
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                trace!("checking storage files...");
+
                 let genesis_url = format!(
-                    "http://{}/api/v1/env/{env_id}/storage/genesis",
+                    "http://{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
                     &state.endpoint
                 );
 
                 let ledger_url = format!(
-                    "http://{}/api/v1/env/{env_id}/storage/ledger",
+                    "http://{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
                     &state.endpoint
                 );
 
-                debug!("downloading genesis block");
-
                 // download the genesis block
-                api::download_file(genesis_url, base_path.join(SNARKOS_GENESIS_FILE))
+                api::check_file(genesis_url, &storage_path.join(SNARKOS_GENESIS_FILE))
                     .await
                     .map_err(|_| ReconcileError::StorageAcquireError)?;
-                debug!("downloaded genesis block...");
 
-                // download the ledger
-                let mut fail = false;
+                // download the ledger file
+                api::check_file(ledger_url, &storage_path.join(LEDGER_STORAGE_FILE))
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError)?;
 
-                debug!("downloading ledger");
-
-                match api::download_file(ledger_url, base_path.join(LEDGER_STORAGE_FILE)).await {
-                    Ok(Some(())) => {
-                        // TODO: remove existing ledger probably
-                        debug!("downloaded ledger...");
-
-                        // use `tar` to decompress the storage
-                        let mut tar_child = Command::new("tar")
-                            .current_dir(base_path)
-                            .arg("xzf")
-                            .arg(LEDGER_STORAGE_FILE)
-                            .kill_on_drop(true)
-                            .spawn()
-                            .map_err(|_| ReconcileError::StorageAcquireError)?;
-
-                        let status = tar_child
-                            .wait()
-                            .await
-                            .map_err(|_| ReconcileError::StorageAcquireError)?;
-
-                        if !status.success() {
-                            fail = true;
-                        }
+                // use a persisted directory for the untar when configured
+                let (untar_base, untar_dir) = if target.is_persist() {
+                    if fs::metadata(storage_path.join(LEDGER_PERSIST_DIR)).is_ok() {
+                        info!("persisted ledger already exists for {storage_id}");
+                        break 'storage;
                     }
 
-                    Ok(None) => {
-                        debug!("no ledger found");
-                    }
+                    info!("using persisted ledger for {storage_id}");
 
-                    Err(e) => {
-                        error!("error downloading ledger: {e}");
-                    }
-                }
+                    (&storage_path, LEDGER_PERSIST_DIR)
+                } else {
+                    info!("using fresh ledger for {storage_id}");
+                    (base_path, LEDGER_BASE_DIR)
+                };
 
-                // unconditionally remove the tar regardless of success
-                let _ = tokio::fs::remove_file(base_path.join(LEDGER_STORAGE_FILE)).await;
+                tokio::fs::create_dir_all(&untar_base.join(untar_dir))
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError)?;
 
-                // return an error if the storage acquisition failed
-                if fail {
+                trace!("untarring ledger...");
+
+                // use `tar` to decompress the storage to the untar dir
+                let status = Command::new("tar")
+                    .current_dir(untar_base)
+                    .arg("xzf")
+                    .arg(&storage_path.join(LEDGER_STORAGE_FILE))
+                    .arg("-C") // the untar_dir must exist. this will extract the contents of the tar to the
+                    // directory
+                    .arg(untar_dir)
+                    .kill_on_drop(true)
+                    .spawn()
+                    .map_err(|_| ReconcileError::StorageAcquireError)?
+                    .wait()
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                if !status.success() {
                     return Err(ReconcileError::StorageAcquireError);
                 }
             }
@@ -216,9 +244,23 @@ impl AgentService for AgentRpcServer {
                 AgentState::Inventory => (),
 
                 // start snarkOS node when node
-                AgentState::Node(_, node) => {
+                AgentState::Node(env_id, node) => {
                     let mut child_lock = state.child.write().await;
                     let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
+
+                    // get the storage info for this environment if we don't have it cached
+                    let info = state
+                        .get_env_info(env_id)
+                        .await
+                        .map_err(|_| ReconcileError::StorageAcquireError)?;
+
+                    let storage_id = &info.id;
+                    let storage_path = state.cli.path.join("storage").join(storage_id);
+                    let ledger_path = if target.is_persist() {
+                        storage_path.join(LEDGER_PERSIST_DIR)
+                    } else {
+                        state.cli.path.join(LEDGER_BASE_DIR)
+                    };
 
                     command
                         // .kill_on_drop(true)
@@ -232,9 +274,9 @@ impl AgentService for AgentRpcServer {
                         .arg(node.ty.to_string())
                         // storage configuration
                         .arg("--genesis")
-                        .arg(state.cli.path.join(SNARKOS_GENESIS_FILE))
+                        .arg(storage_path.join(SNARKOS_GENESIS_FILE))
                         .arg("--ledger")
-                        .arg(state.cli.path.join(SNARKOS_LEDGER_DIR))
+                        .arg(ledger_path)
                         // port configuration
                         .arg("--bind")
                         .arg(state.cli.bind_addr.to_string())
