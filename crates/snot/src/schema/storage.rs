@@ -2,14 +2,13 @@ use std::{
     collections::HashMap,
     ops::Deref,
     path::PathBuf,
-    process::Stdio,
+    process::{ExitStatus, Stdio},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
 };
 
-use anyhow::{anyhow, ensure};
 use indexmap::IndexMap;
 use serde::{
     de::{DeserializeOwned, Visitor},
@@ -17,10 +16,13 @@ use serde::{
 };
 use snot_common::state::KeyState;
 use tokio::process::Command;
-use tracing::warn;
+use tracing::{error, warn};
 
-use super::nodes::KeySource;
-use crate::state::GlobalState;
+use super::{
+    error::{SchemaError, StorageError},
+    nodes::KeySource,
+};
+use crate::{error::CommandError, state::GlobalState};
 
 /// A storage document. Explains how storage for a test should be set up.
 #[derive(Deserialize, Debug, Clone)]
@@ -169,7 +171,7 @@ impl From<FilenameString> for String {
 }
 
 impl Document {
-    pub async fn prepare(self, state: &GlobalState) -> anyhow::Result<Arc<LoadedStorage>> {
+    pub async fn prepare(self, state: &GlobalState) -> Result<Arc<LoadedStorage>, SchemaError> {
         static STORAGE_ID_INT: AtomicUsize = AtomicUsize::new(0);
 
         let id = String::from(self.id.clone());
@@ -198,7 +200,9 @@ impl Document {
                     break 'generate;
                 } else {
                     tracing::debug!("generating storage for {id}");
-                    tokio::fs::create_dir_all(&base).await?;
+                    tokio::fs::create_dir_all(&base)
+                        .await
+                        .map_err(|e| StorageError::GenerateStorage(id.clone(), e))?;
                 }
 
                 // generate the genesis block using the aot cli
@@ -209,10 +213,25 @@ impl Document {
                 let output = base.join(&generation.genesis.output);
 
                 match self.connect {
-                    Some(url) => {
-                        let res = reqwest::get(url).await?.error_for_status()?.bytes().await?;
+                    Some(ref url) => {
+                        let err =
+                            |e| StorageError::FailedToFetchGenesis(id.clone(), url.clone(), e);
 
-                        tokio::fs::write(&output, res).await?;
+                        // I think its ok to reuse this error here
+                        // because it just turns a failing response into an error
+                        // or failing to turn it into bytes
+                        let res = reqwest::get(url.clone())
+                            .await
+                            .map_err(err)?
+                            .error_for_status()
+                            .map_err(err)?
+                            .bytes()
+                            .await
+                            .map_err(err)?;
+
+                        tokio::fs::write(&output, res)
+                            .await
+                            .map_err(|e| StorageError::FailedToWriteGenesis(id.clone(), e))?;
                     }
                     None => {
                         let res = Command::new(bin)
@@ -231,9 +250,21 @@ impl Document {
                             .arg(base.join("accounts.json"))
                             .arg("--ledger")
                             .arg(base.join("ledger"))
-                            .spawn()?
+                            .spawn()
+                            .map_err(|e| {
+                                StorageError::Command(
+                                    CommandError::action("spawning", "aot genesis", e),
+                                    id.clone(),
+                                )
+                            })?
                             .wait()
-                            .await?;
+                            .await
+                            .map_err(|e| {
+                                StorageError::Command(
+                                    CommandError::action("waiting", "aot genesis", e),
+                                    id.clone(),
+                                )
+                            })?;
 
                         if !res.success() {
                             warn!("failed to run genesis generation command...");
@@ -241,9 +272,9 @@ impl Document {
                     }
                 }
 
-                if tokio::fs::try_exists(&output).await.is_err() {
-                    anyhow::bail!("failed to generate {:#?}", output);
-                }
+                tokio::fs::try_exists(&output)
+                    .await
+                    .map_err(|e| StorageError::FailedToGenGenesis(id.clone(), e))?;
 
                 let res = Command::new("tar")
                     .current_dir(&base)
@@ -251,20 +282,29 @@ impl Document {
                     .arg("ledger.tar.gz") // TODO: move constants from client...
                     .arg("ledger")
                     .kill_on_drop(true)
-                    .spawn()?
+                    .spawn()
+                    .map_err(|e| {
+                        StorageError::Command(
+                            CommandError::action("spawning", "tar ledger", e),
+                            id.clone(),
+                        )
+                    })?
                     .wait()
-                    .await?;
+                    .await
+                    .map_err(|e| {
+                        StorageError::Command(
+                            CommandError::action("waiting", "tar ledger", e),
+                            id.clone(),
+                        )
+                    })?;
 
                 if !res.success() {
                     warn!("error running tar command...");
                 }
 
-                if tokio::fs::try_exists(&base.join("ledger.tar.gz"))
+                tokio::fs::try_exists(&base.join("ledger.tar.gz"))
                     .await
-                    .is_err()
-                {
-                    anyhow::bail!("failed to tar the ledger");
-                }
+                    .map_err(|e| StorageError::FailedToTarLedger(id.clone(), e))?;
 
                 // TODO: transactions
             }
@@ -272,7 +312,9 @@ impl Document {
             // no generation params passed
             None => {
                 // assert that an existing block and ledger exists
-                ensure!(exists, "the specified storage ID {id} doesn't exist, and no generation params were specified");
+                if exists {
+                    Err(StorageError::NoGenerationParams(id.clone()))?;
+                }
             }
         }
 
@@ -294,10 +336,22 @@ impl Document {
                 .arg("ledger")
                 .arg(".")
                 .kill_on_drop(true)
-                .spawn()?;
+                .spawn()
+                .map_err(|e| {
+                    StorageError::Command(
+                        CommandError::action("spawning", "tar ledger", e),
+                        id.clone(),
+                    )
+                })?;
 
-            if !child.wait().await.map(|s| s.success()).unwrap_or(false) {
-                warn!("failed to compress ledger");
+            if !child
+                .wait()
+                .await
+                .as_ref()
+                .map(ExitStatus::success)
+                .unwrap_or(false)
+            {
+                error!("failed to compress ledger");
             }
         }
 
@@ -339,12 +393,12 @@ fn pick_commitee_addr(entry: (String, u64)) -> String {
 async fn read_to_addrs<T: DeserializeOwned>(
     f: impl Fn(T) -> String,
     file: PathBuf,
-) -> anyhow::Result<AleoAddrMap> {
+) -> Result<AleoAddrMap, SchemaError> {
     let data = tokio::fs::read_to_string(&file)
         .await
-        .map_err(|e| anyhow!("error reading balances {file:?}: {e}"))?;
+        .map_err(|e| StorageError::ReadBalances(file.clone(), e))?;
     let parsed: IndexMap<String, T> =
-        serde_json::from_str(&data).map_err(|e| anyhow!("error parsing balances {file:?}: {e}"))?;
+        serde_json::from_str(&data).map_err(|e| StorageError::ParseBalances(file, e))?;
 
     Ok(parsed.into_iter().map(|(k, v)| (k, f(v))).collect())
 }

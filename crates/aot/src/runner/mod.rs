@@ -1,3 +1,4 @@
+use core::str::FromStr;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
@@ -6,7 +7,6 @@ use std::{
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
 use clap::Args;
-use core::str::FromStr;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
 use snarkos_node::Node;

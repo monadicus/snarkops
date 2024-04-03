@@ -3,9 +3,7 @@ use std::{
     net::IpAddr,
 };
 
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
+use super::error::ResolveError;
 use crate::state::AgentId;
 
 #[tarpc::service]
@@ -16,12 +14,4 @@ pub trait ControlService {
     async fn resolve_addrs(
         peers: HashSet<AgentId>,
     ) -> Result<HashMap<AgentId, IpAddr>, ResolveError>;
-}
-
-#[derive(Debug, Error, Serialize, Deserialize)]
-pub enum ResolveError {
-    #[error("source agent not found")]
-    SourceAgentNotFound,
-    #[error("agent has no addresses")]
-    AgentHasNoAddresses,
 }

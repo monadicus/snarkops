@@ -6,7 +6,8 @@ use std::{
 use snot_common::{
     rpc::{
         agent::{AgentServiceRequest, AgentServiceResponse},
-        control::{ControlService, ControlServiceRequest, ControlServiceResponse, ResolveError},
+        control::{ControlService, ControlServiceRequest, ControlServiceResponse},
+        error::ResolveError,
         MuxMessage,
     },
     state::AgentId,

@@ -9,9 +9,8 @@ use axum::{
 use reqwest::StatusCode;
 use serde_json::json;
 
-use crate::state::AppState;
-
 use super::Authorization;
+use crate::state::AppState;
 
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
@@ -44,7 +43,8 @@ async fn state_root(
             .into_response();
     };
 
-    // TODO: lock this with a mutex or something so that multiple route callers can't bombard the cannon with proxy_state_root call attempts
+    // TODO: lock this with a mutex or something so that multiple route callers
+    // can't bombard the cannon with proxy_state_root call attempts
     let mut attempts = 0;
     loop {
         attempts += 1;

@@ -1,25 +1,28 @@
 use std::collections::HashSet;
 
-use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snot_common::{lasso::Spur, state::NodeKey, INTERN};
 
+use super::{
+    authorized::Authorize,
+    error::{CannonError, SourceError},
+    net::get_available_port,
+};
 use crate::{
     env::{set::find_compute_agent, Environment},
     schema::nodes::KeySource,
     state::GlobalState,
 };
 
-use super::{authorized::Authorize, net::get_available_port};
-
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalService {
     /// Ledger & genesis block to use
     // pub storage_id: usize,
-    /// port to host the service on (needs to be unused by other cannons and services)
-    /// this port will be use when forwarding requests to the local query service
+    /// port to host the service on (needs to be unused by other cannons and
+    /// services) this port will be use when forwarding requests to the
+    /// local query service
     // pub port: u16,
 
     // TODO debate this
@@ -39,10 +42,15 @@ impl LocalService {
     // TODO: cache this when sync_from is false
     /// Fetch the state root from the local query service
     /// (non-cached)
-    pub async fn get_state_root(&self, port: u16) -> Result<String> {
+    pub async fn get_state_root(&self, port: u16) -> Result<String, CannonError> {
         let url = format!("http://127.0.0.1:{}/mainnet/latest/stateRoot", port);
-        let response = reqwest::get(&url).await?;
-        Ok(response.json().await?)
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| SourceError::FailedToGetStateRoot(url, e))?;
+        Ok(response
+            .json()
+            .await
+            .map_err(SourceError::StateRootInvalidJson)?)
     }
 }
 
@@ -164,7 +172,8 @@ pub enum TxSource {
         /// defaults to committee addresses
         addresses: Vec<KeySource>,
     },
-    /// Receive authorizations from a persistent path /api/v1/env/:env_id/cannons/:id/auth
+    /// Receive authorizations from a persistent path
+    /// /api/v1/env/:env_id/cannons/:id/auth
     #[serde(rename_all = "kebab-case")]
     Listen {
         query: QueryTarget,
@@ -174,7 +183,7 @@ pub enum TxSource {
 
 impl TxSource {
     /// Get an available port for the query service if applicable
-    pub fn get_query_port(&self) -> Result<Option<u16>> {
+    pub fn get_query_port(&self) -> Result<Option<u16>, CannonError> {
         matches!(
             self,
             TxSource::RealTime {
@@ -182,11 +191,11 @@ impl TxSource {
                 ..
             }
         )
-        .then(|| get_available_port().ok_or(anyhow!("could not get an available port")))
+        .then(|| get_available_port().ok_or(SourceError::TxSouceUnavailablePort.into()))
         .transpose()
     }
 
-    pub fn get_auth(&self, env: &Environment) -> Result<Authorize> {
+    pub fn get_auth(&self, env: &Environment) -> Result<Authorize, CannonError> {
         match self {
             TxSource::RealTime {
                 tx_modes,
@@ -198,21 +207,19 @@ impl TxSource {
                     private_keys
                         .get(rand::random::<usize>() % private_keys.len())
                         .and_then(|k| env.storage.sample_keysource_pk(k).try_string())
-                        .ok_or(anyhow!("error selecting a valid private key"))
+                        .ok_or(SourceError::CouldNotSelect("private key"))
                 };
                 let sample_addr = || {
                     addresses
                         .get(rand::random::<usize>() % addresses.len())
                         .and_then(|k| env.storage.sample_keysource_addr(k).try_string())
-                        .ok_or(anyhow!("error selecting a valid address"))
+                        .ok_or(SourceError::CouldNotSelect("address"))
                 };
 
-                let Some(mode) = tx_modes
+                let mode = tx_modes
                     .iter()
                     .nth(rand::random::<usize>() % tx_modes.len())
-                else {
-                    bail!("no tx modes available for this cannon instance??")
-                };
+                    .ok_or(SourceError::NoTxModeAvailable)?;
 
                 let auth = match mode {
                     TxMode::Credits(credit) => match credit {
@@ -232,7 +239,7 @@ impl TxSource {
 
                 Ok(auth)
             }
-            _ => Err(anyhow!("cannot authorize playback transactions")),
+            _ => Err(SourceError::CannotAuthorizePlaybackTx.into()),
         }
     }
 }
@@ -244,20 +251,24 @@ impl ComputeTarget {
         env: &Environment,
         query_path: String,
         auth: serde_json::Value,
-    ) -> Result<()> {
+    ) -> Result<(), CannonError> {
         match self {
             ComputeTarget::Agent { labels } => {
                 // find a client, mark it as busy
-                let Some((client, _busy)) = find_compute_agent(
+                let (client, _busy) = find_compute_agent(
                     state.pool.read().await.values(),
                     &labels.clone().unwrap_or_default(),
-                ) else {
-                    bail!("no agents available to execute authorization")
-                };
+                )
+                .ok_or(SourceError::NoAvailableAgents("authorization"))?;
 
                 // execute the authorization
                 client
-                    .execute_authorization(env.id, query_path, serde_json::to_string(&auth)?)
+                    .execute_authorization(
+                        env.id,
+                        query_path,
+                        serde_json::to_string(&auth)
+                            .map_err(|e| SourceError::Json("authorize", e))?,
+                    )
                     .await?;
 
                 Ok(())
@@ -268,8 +279,8 @@ impl ComputeTarget {
                     "id": 1,
                     "method": "generateTransaction",
                     "params": {
-                        "authorization": serde_json::to_string(&auth["authorization"])?,
-                        "fee": serde_json::to_string(&auth["fee"])?,
+                        "authorization": serde_json::to_string(&auth["authorization"]).map_err(|e| SourceError::Json("auth[authorize]", e))?,
+                        "fee": serde_json::to_string(&auth["fee"]).map_err(|e| SourceError::Json("auth[fee]", e))?,
                         "url": query_path,
                         "broadcast": true,
                     }

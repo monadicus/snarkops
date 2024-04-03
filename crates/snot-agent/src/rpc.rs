@@ -4,11 +4,9 @@ use std::{
 
 use snot_common::{
     rpc::{
-        agent::{
-            AgentError, AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse,
-            ReconcileError,
-        },
+        agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse},
         control::{ControlServiceRequest, ControlServiceResponse},
+        error::{AgentError, ReconcileError},
         MuxMessage,
     },
     state::{AgentId, AgentPeer, AgentState, KeyState, PortConfig},

@@ -37,7 +37,8 @@ pub struct LedgerQuery {
     pub readonly: bool,
 
     #[arg(long)]
-    /// Receive messages from /mainnet/transaction/broadcast and record them to the output
+    /// Receive messages from /mainnet/transaction/broadcast and record them to
+    /// the output
     pub record: bool,
 
     #[arg(long, short, default_value = "transactions.json")]
@@ -81,8 +82,8 @@ impl LedgerQuery {
             .route("/mainnet/block/hash/latest", get(Self::latest_hash))
             .route("/mainnet/transaction/broadcast", post(Self::broadcast_tx))
             .route("/block", post(Self::add_block))
-            // TODO: for ahead of time ledger generation, support a /beacon_block endpoint to write beacon block
-            // TODO: api to get and decrypt records for a private key
+            // TODO: for ahead of time ledger generation, support a /beacon_block endpoint to write
+            // beacon block TODO: api to get and decrypt records for a private key
             .with_state(Arc::new(state));
 
         let listener = tokio::net::TcpListener::bind(SocketAddr::new(self.bind, self.port)).await?;

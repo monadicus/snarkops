@@ -5391,6 +5391,7 @@ dependencies = [
  "fixedbitset 0.5.6",
  "futures-util",
  "hmac",
+ "http 1.1.0",
  "indexmap 2.2.5",
  "jwt",
  "lazy_static",
@@ -5401,9 +5402,11 @@ dependencies = [
  "reqwest 0.12.0",
  "serde",
  "serde_json",
+ "serde_with",
  "serde_yaml",
  "sha2",
  "snot-common",
+ "strum_macros",
  "surrealdb",
  "tarpc",
  "thiserror",
@@ -5461,11 +5464,13 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "futures",
+ "http 1.1.0",
  "lasso",
  "lazy_static",
  "regex",
  "serde",
  "serde_json",
+ "strum_macros",
  "tarpc",
  "thiserror",
  "tokio",
@@ -5588,6 +5593,19 @@ name = "strsim"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ee073c9e4cd00e28217186dbe12796d692868f432bf2e97ee73bed0c56dfa01"
+
+[[package]]
+name = "strum_macros"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6cf59daf282c0a494ba14fd21610a0325f9f90ec9d1231dea26bcb1d696c946"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote 1.0.35",
+ "rustversion",
+ "syn 2.0.52",
+]
 
 [[package]]
 name = "subtle"

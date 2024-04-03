@@ -69,7 +69,9 @@ struct RequestLogLine {
 pub async fn log_request(uri: Uri, method: Method, req_stamp: ReqStamp, res: Response) -> Response {
     // TODO: grab error data from response
     // something like:
-    // res.extensions_mut().get::<OurErrorType>();
+    let err = res.extensions().get::<serde_json::Value>();
+    let error_type = err.map(|e| e["type"].as_str().unwrap().to_string());
+    let error_data = err.map(|e| e["error"].clone());
 
     let ReqStamp { uuid, time_in } = req_stamp;
     let now = Utc::now();
@@ -82,8 +84,8 @@ pub async fn log_request(uri: Uri, method: Method, req_stamp: ReqStamp, res: Res
         duration_ms: duration.num_milliseconds(),
         http_path: uri.to_string(),
         http_method: method.to_string(),
-        error_type: None,
-        error_data: None,
+        error_type,
+        error_data,
     };
 
     // TODO: send to logging services

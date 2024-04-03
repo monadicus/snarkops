@@ -5,14 +5,13 @@ use std::{
     time::Instant,
 };
 
-use anyhow::{anyhow, Result};
 use bimap::BiMap;
 use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
 use serde::Deserialize;
 use snot_common::{
     lasso::Spur,
-    rpc::agent::{AgentServiceClient, ReconcileError},
+    rpc::{agent::AgentServiceClient, error::ReconcileError},
     set::{MaskBit, MASK_PREFIX_LEN},
     state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
     INTERN,
@@ -24,6 +23,7 @@ use tokio::sync::RwLock;
 use crate::{
     cli::Cli,
     env::Environment,
+    error::StateError,
     schema::storage::LoadedStorage,
     server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
 };
@@ -164,8 +164,8 @@ impl Agent {
         Arc::strong_count(&self.env_claim) > 1
     }
 
-    /// Get a weak reference to the env claim, which can be used to later lock this
-    /// agent for an environment.
+    /// Get a weak reference to the env claim, which can be used to later lock
+    /// this agent for an environment.
     pub fn get_env_claim(&self) -> Weak<Busy> {
         Arc::downgrade(&self.env_claim)
     }
@@ -285,7 +285,7 @@ impl AgentClient {
             .map(|res| res.map(|_| to))
     }
 
-    pub async fn get_state_root(&self) -> Result<String> {
+    pub async fn get_state_root(&self) -> Result<String, StateError> {
         Ok(self.0.get_state_root(context::current()).await??)
     }
 
@@ -294,18 +294,15 @@ impl AgentClient {
         env_id: usize,
         query: String,
         auth: String,
-    ) -> Result<()> {
-        self.0
+    ) -> Result<(), StateError> {
+        Ok(self
+            .0
             .execute_authorization(context::current(), env_id, query, auth)
-            .await?
-            .map_err(anyhow::Error::from)
+            .await??)
     }
 
-    pub async fn broadcast_tx(&self, tx: String) -> Result<()> {
-        self.0
-            .broadcast_tx(context::current(), tx)
-            .await?
-            .map_err(anyhow::Error::from)
+    pub async fn broadcast_tx(&self, tx: String) -> Result<(), StateError> {
+        Ok(self.0.broadcast_tx(context::current(), tx).await??)
     }
 }
 
@@ -323,10 +320,10 @@ pub fn resolve_addrs(
     addr_map: &AddrMap,
     src: AgentId,
     peers: &HashSet<AgentId>,
-) -> Result<HashMap<AgentId, IpAddr>> {
+) -> Result<HashMap<AgentId, IpAddr>, StateError> {
     let src_addrs = addr_map
         .get(&src)
-        .ok_or_else(|| anyhow!("source agent not found"))?;
+        .ok_or_else(|| StateError::SourceAgentNotFound(src))?;
 
     let all_internal = addr_map.values().all(|(ext, _)| ext.is_none());
 
@@ -362,7 +359,10 @@ pub fn resolve_addrs(
 impl GlobalState {
     /// Get a peer-to-addr mapping for a set of agents
     /// Locks pools for reading
-    pub async fn get_addr_map(&self, filter: Option<&HashSet<AgentId>>) -> Result<AddrMap> {
+    pub async fn get_addr_map(
+        &self,
+        filter: Option<&HashSet<AgentId>>,
+    ) -> Result<AddrMap, StateError> {
         self.pool
             .read()
             .await
@@ -372,7 +372,7 @@ impl GlobalState {
                 let addrs = agent
                     .addrs
                     .as_ref()
-                    .ok_or_else(|| anyhow!("agent has no addresses"))?;
+                    .ok_or_else(|| StateError::NoAddress(*id))?;
                 Ok((*id, addrs.clone()))
             })
             .collect()

@@ -4,7 +4,7 @@ use clap::Parser;
 
 #[derive(Debug, Parser)]
 pub struct Cli {
-    #[arg(long, default_value = "1234")]
+    #[arg(long, default_value_t = 1234)]
     /// Control plane server port
     pub port: u16,
 

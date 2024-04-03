@@ -11,11 +11,9 @@ use snot_common::{
     set::MASK_PREFIX_LEN,
     state::{AgentId, NodeKey},
 };
-use thiserror::Error;
 
+use super::{DelegationError, EnvNode};
 use crate::state::{Agent, AgentClient, Busy};
-
-use super::EnvNode;
 
 pub struct AgentMapping {
     id: AgentId,
@@ -75,9 +73,9 @@ impl AgentMapping {
 
         let arc = self.claim.upgrade()?;
         // 2 because the agent owns arc, and this would be the second
-        // there is a slim chance that two nodes could claim the same agent. if we run into this
-        // we can add an AtomicBool to the mapping to determine if the agent is claimed by
-        // the node on this thread
+        // there is a slim chance that two nodes could claim the same agent. if we run
+        // into this we can add an AtomicBool to the mapping to determine if the
+        // agent is claimed by the node on this thread
         (Arc::strong_count(&arc) == 2).then_some(arc)
     }
 
@@ -91,22 +89,9 @@ impl AgentMapping {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum DelegationError {
-    #[error("insufficient number of agents to satisfy the request")]
-    InsufficientAgentCount,
-    #[error("agent {0} not found for node {1}")]
-    AgentNotFound(AgentId, NodeKey),
-    #[error("agent {0} already claimed for node {1}")]
-    AgentAlreadyClaimed(AgentId, NodeKey),
-    #[error("agent {0} does not support the mode needed for {1}")]
-    AgentMissingMode(AgentId, NodeKey),
-    #[error("could not find any agents for node {0}")]
-    NoAvailableAgents(NodeKey),
-}
-
 /// Convert an iterator of agents into a vec of agent mappings
-/// This is necessary the so the pool of agents can be dropped for longer running tasks
+/// This is necessary the so the pool of agents can be dropped for longer
+/// running tasks
 pub fn get_agent_mappings<'a, I: Iterator<Item = &'a Agent>>(
     mode: BusyMode,
     agents: I,
@@ -133,10 +118,11 @@ pub fn labels_from_nodes(nodes: &IndexMap<NodeKey, EnvNode>) -> Vec<Spur> {
     labels.into_iter().collect()
 }
 
-/// Find an agent that can compute and has the given labels using a fixedbitset (SIMD)
+/// Find an agent that can compute and has the given labels using a fixedbitset
+/// (SIMD)
 ///
-/// This approach would make more sense if we had a variety of masks (sets of labels)
-/// Rather than checking against a finite mask.
+/// This approach would make more sense if we had a variety of masks (sets of
+/// labels) Rather than checking against a finite mask.
 fn _find_compute_agent_by_mask<'a, I: Iterator<Item = &'a Agent>>(
     mut agents: I,
     labels: &[Spur],
@@ -151,7 +137,8 @@ fn _find_compute_agent_by_mask<'a, I: Iterator<Item = &'a Agent>>(
     })
 }
 
-/// Find an agent that can compute and has the given labels by checking each label individually
+/// Find an agent that can compute and has the given labels by checking each
+/// label individually
 pub fn find_compute_agent<'a, I: Iterator<Item = &'a Agent>>(
     mut agents: I,
     labels: &[Spur],
@@ -166,7 +153,8 @@ pub fn find_compute_agent<'a, I: Iterator<Item = &'a Agent>>(
     })
 }
 
-/// Given a map of nodes and list of agent mappings, attempt to pair each node with an agent in parallel
+/// Given a map of nodes and list of agent mappings, attempt to pair each node
+/// with an agent in parallel
 pub fn pair_with_nodes(
     agents: Vec<AgentMapping>,
     nodes: &IndexMap<NodeKey, EnvNode>,
@@ -174,7 +162,8 @@ pub fn pair_with_nodes(
 ) -> Result<impl Iterator<Item = (NodeKey, AgentId, Arc<Busy>)>, Vec<DelegationError>> {
     // errors that occurred while pairing nodes with agents
     let (errors_tx, errors_rx) = mpsc::channel();
-    // nodes that were successfully claimed. dropping this will automatically unclaim the agents
+    // nodes that were successfully claimed. dropping this will automatically
+    // unclaim the agents
     let (claimed_tx, claimed_rx) = mpsc::channel();
 
     let (want_ids, want_labels) = nodes
@@ -203,17 +192,20 @@ pub fn pair_with_nodes(
         return Err(vec![DelegationError::InsufficientAgentCount]);
     }
 
-    // another optimization that could be made is to sort nodes based on the number of agents with the specific labels.
-    // this would be useful for when some agents have unique labels as well as other common labels and
+    // another optimization that could be made is to sort nodes based on the number
+    // of agents with the specific labels. this would be useful for when some
+    // agents have unique labels as well as other common labels and
     // there are nodes asking for agents with either.
 
-    // TODO: potential performance improvement by splitting this agent map up available modes
-    // eg. client map, prover map, validator map, then pick by the key.ty
+    // TODO: potential performance improvement by splitting this agent map up
+    // available modes eg. client map, prover map, validator map, then pick by
+    // the key.ty
 
     // handle the nodes that want specific agents first
     let agent_map = agents.iter().map(|a| (a.id, a)).collect::<HashMap<_, _>>();
 
-    // walk through all the nodes that want specific agents and attempt to pair them with an agent
+    // walk through all the nodes that want specific agents and attempt to pair them
+    // with an agent
     want_ids.into_par_iter().for_each(|(key, id)| {
         // ensure the agent exists
         let Some(agent) = agent_map.get(&id) else {
@@ -235,8 +227,8 @@ pub fn pair_with_nodes(
         }
     });
 
-    // walk through all the nodes that want specific labels/modes and attempt to pair them with an agent
-    // that has the matching mask
+    // walk through all the nodes that want specific labels/modes and attempt to
+    // pair them with an agent that has the matching mask
     want_labels.into_par_iter().for_each(|(key, mask)| {
         // find the first agent that can be claimed that fits the mask
         if let Some((id, claim)) = agents

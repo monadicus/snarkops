@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 
 pub mod agent;
 pub mod control;
+pub mod error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MuxMessage<Control, Agent> {
