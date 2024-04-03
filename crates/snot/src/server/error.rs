@@ -1,7 +1,8 @@
 use axum::{response::IntoResponse, Json};
+use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
-use snot_common::state::AgentId;
+use snot_common::{impl_into_status_code, state::AgentId};
 use thiserror::Error;
 
 use crate::{
@@ -23,17 +24,13 @@ pub enum ServerError {
     Schema(#[from] SchemaError),
 }
 
-impl ServerError {
-    pub fn status_code(&self) -> axum::http::StatusCode {
-        match self {
-            Self::AgentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
-            Self::Cannon(e) => e.status_code(),
-            Self::Deserialize(e) => e.status_code(),
-            Self::Env(e) => e.status_code(),
-            Self::Schema(e) => e.status_code(),
-        }
-    }
-}
+impl_into_status_code!(ServerError, |value| match value {
+    ServerError::AgentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
+    ServerError::Cannon(e) => e.into(),
+    ServerError::Deserialize(e) => e.into(),
+    ServerError::Env(e) => e.into(),
+    ServerError::Schema(e) => e.into(),
+});
 
 impl Serialize for ServerError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -58,7 +55,7 @@ impl Serialize for ServerError {
 impl IntoResponse for ServerError {
     fn into_response(self) -> axum::response::Response {
         let json = json!(self);
-        let mut res = (self.status_code(), Json(&json)).into_response();
+        let mut res = (StatusCode::from(&self), Json(&json)).into_response();
 
         res.extensions_mut().insert(json);
         res

@@ -5391,6 +5391,7 @@ dependencies = [
  "fixedbitset 0.5.6",
  "futures-util",
  "hmac",
+ "http 1.1.0",
  "indexmap 2.2.5",
  "jwt",
  "lazy_static",
@@ -5463,6 +5464,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "futures",
+ "http 1.1.0",
  "lasso",
  "lazy_static",
  "regex",

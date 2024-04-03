@@ -16,6 +16,33 @@ macro_rules! impl_serialize_pretty_error {
     };
 }
 
+#[macro_export]
+macro_rules! impl_into_status_code {
+    ($name:path) => {
+        impl From<&$name> for ::http::status::StatusCode {
+            fn from(_: &$name) -> Self {
+                ::http::status::StatusCode::INTERNAL_SERVER_ERROR
+            }
+        }
+    };
+
+    ($name:path, |_| $body:expr) => {
+        impl From<&$name> for ::http::status::StatusCode {
+            fn from(_: &$name) -> Self {
+                $body
+            }
+        }
+    };
+
+    ($name:path, |$from_var:ident| $body:expr) => {
+        impl From<&$name> for ::http::status::StatusCode {
+            fn from($from_var: &$name) -> Self {
+                $body
+            }
+        }
+    };
+}
+
 #[derive(Debug, Serialize)]
 pub struct PrettyError {
     #[serde(rename = "type")]

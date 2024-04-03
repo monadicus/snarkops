@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snot_common::{impl_serialize_pretty_error, rpc::error::PrettyError, state::NodeKey};
+use snot_common::{
+    impl_into_status_code, impl_serialize_pretty_error, rpc::error::PrettyError, state::NodeKey,
+};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
@@ -25,14 +27,10 @@ pub enum AuthorizeError {
     JsonNotObject,
 }
 
-impl AuthorizeError {
-    fn status_code(&self) -> StatusCode {
-        match self {
-            Self::Command(e) => e.status_code(),
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
+impl_into_status_code!(AuthorizeError, |value| match value {
+    AuthorizeError::Command(e) => e.into(),
+    _ => StatusCode::INTERNAL_SERVER_ERROR,
+});
 
 impl Serialize for AuthorizeError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -58,18 +56,13 @@ pub enum TransactionDrainError {
     FailedToLock,
     /// For when the tx drain source file cannot be opened
     #[error("error opening tx drain source file: {0:#?}")]
-    FailedToOpenSource(PathBuf),
+    FailedToOpenSource(PathBuf, #[source] std::io::Error),
     /// For when a line cannot be read from the tx drain file
     #[error("error reading line from tx drain: {0}")]
     FailedToReadLine(#[source] std::io::Error),
 }
 
-impl TransactionDrainError {
-    fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
-
+impl_into_status_code!(TransactionDrainError);
 impl_serialize_pretty_error!(TransactionDrainError);
 
 #[derive(Debug, Error, AsRefStr)]
@@ -85,12 +78,7 @@ pub enum TransactionSinkError {
     FailedToWrite(#[source] std::io::Error),
 }
 
-impl TransactionSinkError {
-    fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
-
+impl_into_status_code!(TransactionSinkError);
 impl_serialize_pretty_error!(TransactionSinkError);
 
 #[derive(Debug, Error, AsRefStr)]
@@ -113,12 +101,7 @@ pub enum SourceError {
     TxSouceUnavailablePort,
 }
 
-impl SourceError {
-    fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
-
+impl_into_status_code!(SourceError);
 impl_serialize_pretty_error!(SourceError);
 
 #[derive(Debug, Error, AsRefStr)]
@@ -131,14 +114,11 @@ pub enum CannonInstanceError {
     TargetAgentNotFound(usize, NodeKey),
 }
 
-impl CannonInstanceError {
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            Self::MissingQueryPort(_) | Self::NotConfiguredToPlayback(_) => StatusCode::BAD_REQUEST,
-            Self::TargetAgentNotFound(_, _) => StatusCode::NOT_FOUND,
-        }
-    }
-}
+impl_into_status_code!(CannonInstanceError, |value| match value {
+    CannonInstanceError::MissingQueryPort(_) | CannonInstanceError::NotConfiguredToPlayback(_) =>
+        StatusCode::BAD_REQUEST,
+    CannonInstanceError::TargetAgentNotFound(_, _) => StatusCode::NOT_FOUND,
+});
 
 impl Serialize for CannonInstanceError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -175,17 +155,17 @@ pub enum ExecutionContextError {
     TransactionSinkNotFound(usize, usize, String),
 }
 
-impl ExecutionContextError {
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            Self::Broadcast(_, _) | Self::BroadcastRequest(_, _) => StatusCode::MISDIRECTED_REQUEST,
-            Self::NoAvailableAgents(_, _) | Self::NoDemoxHostConfigured => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        }
+impl_into_status_code!(ExecutionContextError, |value| match value {
+    ExecutionContextError::Broadcast(_, _) | ExecutionContextError::BroadcastRequest(_, _) =>
+        StatusCode::MISDIRECTED_REQUEST,
+
+    ExecutionContextError::NoAvailableAgents(_, _)
+    | ExecutionContextError::NoDemoxHostConfigured => {
+        StatusCode::SERVICE_UNAVAILABLE
     }
-}
+
+    _ => StatusCode::INTERNAL_SERVER_ERROR,
+});
 
 impl Serialize for ExecutionContextError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -229,22 +209,18 @@ pub enum CannonError {
     State(#[from] StateError),
 }
 
-impl CannonError {
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            Self::Authorize(e) => e.status_code(),
-            Self::CannonInstance(e) => e.status_code(),
-            Self::Command(_, e) => e.status_code(),
-            Self::ExecutionContext(e) => e.status_code(),
-            Self::TargetAgentOffline(_, _, _) => StatusCode::SERVICE_UNAVAILABLE,
-            Self::TransactionDrain(e) => e.status_code(),
-            Self::TransactionSink(e) => e.status_code(),
-            Self::Source(e) => e.status_code(),
-            Self::State(e) => e.status_code(),
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
+impl_into_status_code!(CannonError, |value| match value {
+    CannonError::Authorize(e) => e.into(),
+    CannonError::CannonInstance(e) => e.into(),
+    CannonError::Command(_, e) => e.into(),
+    CannonError::ExecutionContext(e) => e.into(),
+    CannonError::TargetAgentOffline(_, _, _) => StatusCode::SERVICE_UNAVAILABLE,
+    CannonError::TransactionDrain(e) => e.into(),
+    CannonError::TransactionSink(e) => e.into(),
+    CannonError::Source(e) => e.into(),
+    CannonError::State(e) => e.into(),
+    _ => StatusCode::INTERNAL_SERVER_ERROR,
+});
 
 impl Serialize for CannonError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

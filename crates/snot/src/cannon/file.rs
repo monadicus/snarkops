@@ -21,8 +21,8 @@ impl TransactionDrain {
         let source = storage.path.join(source);
         debug!("opening tx drain @ {source:?}");
 
-        let f =
-            File::open(&source).map_err(|_| TransactionDrainError::FailedToOpenSource(source))?;
+        let f = File::open(&source)
+            .map_err(|e| TransactionDrainError::FailedToOpenSource(source, e))?;
 
         Ok(Self(Mutex::new(Some(BufReader::new(f)))))
     }

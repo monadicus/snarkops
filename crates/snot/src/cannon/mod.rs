@@ -164,7 +164,7 @@ impl CannonInstance {
                 .arg("--readonly")
                 .spawn()
                 .map_err(|e| {
-                    CannonError::Command(id, CommandError::action("spawning", "aot leder", e))
+                    CannonError::Command(id, CommandError::action("spawning", "aot ledger", e))
                 })?;
             Some(child)
         } else {

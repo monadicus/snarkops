@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snot_common::{
-    impl_serialize_pretty_error,
+    impl_into_status_code, impl_serialize_pretty_error,
     rpc::error::PrettyError,
     state::{AgentId, NodeKey},
 };
@@ -17,11 +17,7 @@ pub struct BatchReconcileError {
     pub failures: usize,
 }
 
-impl BatchReconcileError {
-    fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
+impl_into_status_code!(BatchReconcileError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum ExecutionError {
@@ -41,15 +37,11 @@ pub enum ExecutionError {
     UnknownCannon(String),
 }
 
-impl ExecutionError {
-    fn status_code(&self) -> StatusCode {
-        match self {
-            Self::Cannon(e) => e.status_code(),
-            Self::Reconcile(e) => e.status_code(),
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
+impl_into_status_code!(ExecutionError, |value| match value {
+    ExecutionError::Cannon(e) => e.into(),
+    ExecutionError::Reconcile(e) => e.into(),
+    _ => StatusCode::INTERNAL_SERVER_ERROR,
+});
 
 impl Serialize for ExecutionError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -82,18 +74,14 @@ pub enum DelegationError {
     NoAvailableAgents(NodeKey),
 }
 
-impl DelegationError {
-    fn status_code(&self) -> StatusCode {
-        match self {
-            Self::AgentAlreadyClaimed(_, _) => StatusCode::IM_USED,
-            Self::AgentNotFound(_, _) => StatusCode::NOT_FOUND,
-            Self::AgentMissingMode(_, _) => StatusCode::BAD_REQUEST,
-            Self::InsufficientAgentCount | Self::NoAvailableAgents(_) => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
-        }
+impl_into_status_code!(DelegationError, |value| match value {
+    DelegationError::AgentAlreadyClaimed(_, _) => StatusCode::IM_USED,
+    DelegationError::AgentNotFound(_, _) => StatusCode::NOT_FOUND,
+    DelegationError::AgentMissingMode(_, _) => StatusCode::BAD_REQUEST,
+    DelegationError::InsufficientAgentCount | DelegationError::NoAvailableAgents(_) => {
+        StatusCode::SERVICE_UNAVAILABLE
     }
-}
+});
 
 impl_serialize_pretty_error!(DelegationError);
 
@@ -111,17 +99,17 @@ pub enum PrepareError {
     Reconcile(#[from] ReconcileError),
 }
 
-impl PrepareError {
-    fn status_code(&self) -> StatusCode {
-        match self {
-            Self::DuplicateNodeKey(_) | Self::MultipleStorage | Self::NodeHas0Replicas => {
-                StatusCode::BAD_REQUEST
-            }
-            Self::MissingStorage => StatusCode::NOT_FOUND,
-            Self::Reconcile(e) => e.status_code(),
-        }
+impl_into_status_code!(PrepareError, |value| match value {
+    PrepareError::DuplicateNodeKey(_)
+    | PrepareError::MultipleStorage
+    | PrepareError::NodeHas0Replicas => {
+        StatusCode::BAD_REQUEST
     }
-}
+
+    PrepareError::MissingStorage => StatusCode::NOT_FOUND,
+
+    PrepareError::Reconcile(e) => e.into(),
+});
 
 impl Serialize for PrepareError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -146,14 +134,7 @@ pub enum CleanupError {
     EnvNotFound(usize),
 }
 
-impl CleanupError {
-    fn status_code(&self) -> StatusCode {
-        match self {
-            Self::EnvNotFound(_) => StatusCode::NOT_FOUND,
-        }
-    }
-}
-
+impl_into_status_code!(CleanupError, |_| StatusCode::NOT_FOUND);
 impl_serialize_pretty_error!(CleanupError);
 
 #[derive(Debug, Error, AsRefStr)]
@@ -166,14 +147,11 @@ pub enum ReconcileError {
     ExpectedInternalAgentPeer { key: NodeKey },
 }
 
-impl ReconcileError {
-    fn status_code(&self) -> StatusCode {
-        match self {
-            Self::Batch(e) => e.status_code(),
-            Self::EnvNotFound(_) | Self::ExpectedInternalAgentPeer { .. } => StatusCode::NOT_FOUND,
-        }
-    }
-}
+impl_into_status_code!(ReconcileError, |value| match value {
+    ReconcileError::Batch(e) => e.into(),
+    ReconcileError::EnvNotFound(_) | ReconcileError::ExpectedInternalAgentPeer { .. } =>
+        StatusCode::NOT_FOUND,
+});
 
 impl_serialize_pretty_error!(ReconcileError);
 
@@ -195,21 +173,15 @@ pub enum EnvError {
     Schema(#[from] SchemaError),
 }
 
-impl EnvError {
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            Self::Cannon(e) => e.status_code(),
-            Self::Cleanup(e) => e.status_code(),
-            Self::Delegation(e) => e
-                .iter()
-                .fold(StatusCode::OK, |acc, x| acc.max(x.status_code())),
-            Self::Execution(e) => e.status_code(),
-            Self::Prepare(e) => e.status_code(),
-            Self::Reconcile(e) => e.status_code(),
-            Self::Schema(e) => e.status_code(),
-        }
-    }
-}
+impl_into_status_code!(EnvError, |value| match value {
+    EnvError::Cannon(e) => e.into(),
+    EnvError::Cleanup(e) => e.into(),
+    EnvError::Delegation(e) => e.iter().fold(StatusCode::OK, |acc, x| acc.max(x.into())),
+    EnvError::Execution(e) => e.into(),
+    EnvError::Prepare(e) => e.into(),
+    EnvError::Reconcile(e) => e.into(),
+    EnvError::Schema(e) => e.into(),
+});
 
 impl Serialize for EnvError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

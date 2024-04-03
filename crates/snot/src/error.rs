@@ -1,10 +1,9 @@
 use std::process::ExitStatus;
 
-use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snot_common::impl_serialize_pretty_error;
 use snot_common::rpc::error::PrettyError;
 use snot_common::state::AgentId;
+use snot_common::{impl_into_status_code, impl_serialize_pretty_error};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
@@ -25,12 +24,7 @@ pub enum CommandError {
     },
 }
 
-impl CommandError {
-    pub fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
-
+impl_into_status_code!(CommandError);
 impl_serialize_pretty_error!(CommandError);
 
 impl CommandError {
@@ -55,11 +49,7 @@ pub struct DeserializeError {
     pub e: serde_yaml::Error,
 }
 
-impl DeserializeError {
-    pub fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
+impl_into_status_code!(DeserializeError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum StateError {
@@ -75,11 +65,7 @@ pub enum StateError {
     SourceAgentNotFound(AgentId),
 }
 
-impl StateError {
-    pub fn status_code(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
+impl_into_status_code!(StateError);
 
 impl Serialize for StateError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
