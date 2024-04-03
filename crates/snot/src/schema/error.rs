@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snot_common::rpc::error::PrettyError;
+use snot_common::{impl_serialize_pretty_error, rpc::error::PrettyError};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 use url::Url;
@@ -42,14 +42,7 @@ impl StorageError {
     }
 }
 
-impl Serialize for StorageError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(StorageError);
 
 #[derive(Debug, Error)]
 #[error("invalid node target string")]
@@ -78,14 +71,7 @@ impl KeySourceError {
     }
 }
 
-impl Serialize for KeySourceError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(KeySourceError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum SchemaError {

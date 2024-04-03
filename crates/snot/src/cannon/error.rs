@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snot_common::{rpc::error::PrettyError, state::NodeKey};
+use snot_common::{impl_serialize_pretty_error, rpc::error::PrettyError, state::NodeKey};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
@@ -70,14 +70,7 @@ impl TransactionDrainError {
     }
 }
 
-impl Serialize for TransactionDrainError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(TransactionDrainError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum TransactionSinkError {
@@ -98,14 +91,7 @@ impl TransactionSinkError {
     }
 }
 
-impl Serialize for TransactionSinkError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(TransactionSinkError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum SourceError {
@@ -133,14 +119,7 @@ impl SourceError {
     }
 }
 
-impl Serialize for SourceError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(SourceError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum CannonInstanceError {

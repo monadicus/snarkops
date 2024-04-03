@@ -21,18 +21,18 @@ impl TransactionDrain {
         let source = storage.path.join(source);
         debug!("opening tx drain @ {source:?}");
 
-        let Ok(f) = File::open(&source) else {
-            return Err(TransactionDrainError::FailedToOpenSource(source).into());
-        };
+        let f =
+            File::open(&source).map_err(|_| TransactionDrainError::FailedToOpenSource(source))?;
 
         Ok(Self(Mutex::new(Some(BufReader::new(f)))))
     }
 
     /// Read the next line from the transaction drain
     pub fn next(&self) -> Result<Option<String>, CannonError> {
-        let Ok(mut lock) = self.0.lock() else {
-            return Err(TransactionDrainError::FailedToLock.into());
-        };
+        let mut lock = self
+            .0
+            .lock()
+            .map_err(|_| TransactionDrainError::FailedToLock)?;
 
         if lock.is_none() {
             return Ok(None);
@@ -63,18 +63,21 @@ impl TransactionSink {
         let target = storage.path.join(target);
         debug!("opening tx sink @ {target:?}");
 
-        let Ok(f) = File::options().create(true).append(true).open(&target) else {
-            return Err(TransactionSinkError::FailedToOpenSource(target).into());
-        };
+        let f = File::options()
+            .create(true)
+            .append(true)
+            .open(&target)
+            .map_err(|_| TransactionSinkError::FailedToOpenSource(target))?;
 
         Ok(Self(Mutex::new(Some(BufWriter::new(f)))))
     }
 
     /// Write a line to the transaction sink
     pub fn write(&self, line: &str) -> Result<(), CannonError> {
-        let Ok(mut lock) = self.0.lock() else {
-            return Err(TransactionSinkError::FailedToLock.into());
-        };
+        let mut lock = self
+            .0
+            .lock()
+            .map_err(|_| TransactionSinkError::FailedToLock)?;
 
         if lock.is_none() {
             return Ok(());

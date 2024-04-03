@@ -136,9 +136,7 @@ impl FromStr for NodeTarget {
     type Err = SchemaError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let Some(captures) = NODE_TARGET_REGEX.captures(s) else {
-            return Err(NodeTargetError.into());
-        };
+        let captures = NODE_TARGET_REGEX.captures(s).ok_or(NodeTargetError)?;
 
         // match the type
         let ty = match &captures["ty"] {

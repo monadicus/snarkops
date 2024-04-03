@@ -2,6 +2,7 @@ use std::process::ExitStatus;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
+use snot_common::impl_serialize_pretty_error;
 use snot_common::rpc::error::PrettyError;
 use snot_common::state::AgentId;
 use strum_macros::AsRefStr;
@@ -30,14 +31,7 @@ impl CommandError {
     }
 }
 
-impl Serialize for CommandError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(CommandError);
 
 impl CommandError {
     pub fn action(action: &'static str, cmd: &'static str, error: std::io::Error) -> Self {

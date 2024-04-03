@@ -216,12 +216,10 @@ impl TxSource {
                         .ok_or(SourceError::CouldNotSelect("address"))
                 };
 
-                let Some(mode) = tx_modes
+                let mode = tx_modes
                     .iter()
                     .nth(rand::random::<usize>() % tx_modes.len())
-                else {
-                    return Err(SourceError::NoTxModeAvailable.into());
-                };
+                    .ok_or(SourceError::NoTxModeAvailable)?;
 
                 let auth = match mode {
                     TxMode::Credits(credit) => match credit {
@@ -257,12 +255,11 @@ impl ComputeTarget {
         match self {
             ComputeTarget::Agent { labels } => {
                 // find a client, mark it as busy
-                let Some((client, _busy)) = find_compute_agent(
+                let (client, _busy) = find_compute_agent(
                     state.pool.read().await.values(),
                     &labels.clone().unwrap_or_default(),
-                ) else {
-                    return Err(SourceError::NoAvailableAgents("authorization").into());
-                };
+                )
+                .ok_or(SourceError::NoAvailableAgents("authorization"))?;
 
                 // execute the authorization
                 client

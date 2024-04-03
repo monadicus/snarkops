@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snot_common::{
+    impl_serialize_pretty_error,
     rpc::error::PrettyError,
     state::{AgentId, NodeKey},
 };
@@ -94,14 +95,7 @@ impl DelegationError {
     }
 }
 
-impl Serialize for DelegationError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(DelegationError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum PrepareError {
@@ -160,14 +154,7 @@ impl CleanupError {
     }
 }
 
-impl Serialize for CleanupError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(CleanupError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum ReconcileError {
@@ -188,14 +175,7 @@ impl ReconcileError {
     }
 }
 
-impl Serialize for ReconcileError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        PrettyError::from(self).serialize(serializer)
-    }
-}
+impl_serialize_pretty_error!(ReconcileError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum EnvError {

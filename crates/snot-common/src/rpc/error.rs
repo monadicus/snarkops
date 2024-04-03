@@ -2,10 +2,24 @@ use serde::{Deserialize, Serialize};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
+#[macro_export]
+macro_rules! impl_serialize_pretty_error {
+    ($name:path) => {
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                PrettyError::from(self).serialize(serializer)
+            }
+        }
+    };
+}
+
 #[derive(Debug, Serialize)]
 pub struct PrettyError {
     #[serde(rename = "type")]
-    pub type_: String,
+    pub ty: String,
     pub error: String,
 }
 
@@ -15,7 +29,7 @@ where
 {
     fn from(error: &E) -> Self {
         Self {
-            type_: error.as_ref().to_string(),
+            ty: error.as_ref().to_string(),
             error: error.to_string(),
         }
     }

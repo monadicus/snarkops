@@ -200,10 +200,6 @@ impl Environment {
                             for error in &errors {
                                 error!("delegation error: {error}");
                             }
-                            // 	Err(PrepareError::NotEnoughAvailableNodes(
-                            // 		num_available_agents,
-                            // 		initial_nodes.len(),
-                            // ))?;
                             return Err(EnvError::Delegation(errors));
                         }
                     }
@@ -301,12 +297,12 @@ impl Environment {
     pub async fn cleanup(id: &usize, state: &GlobalState) -> Result<(), EnvError> {
         // clear the env state
         info!("clearing env {id} state...");
-        let Some(env) = ({
-            let mut state_lock = state.envs.write().await;
-            state_lock.remove(id)
-        }) else {
-            return Err(CleanupError::EnvNotFound(*id).into());
-        };
+        let env = state
+            .envs
+            .write()
+            .await
+            .remove(id)
+            .ok_or_else(|| CleanupError::EnvNotFound(*id))?;
 
         // reconcile all online agents
         let (ids, handles): (Vec<_>, Vec<_>) = {
@@ -435,9 +431,9 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
             };
 
             // get the internal agent ID from the node key
-            let Some(id) = env.get_agent_by_key(key) else {
-                return Err(ReconcileError::ExpectedInternalAgentPeer { key: key.clone() }.into());
-            };
+            let id = env
+                .get_agent_by_key(key)
+                .ok_or_else(|| ReconcileError::ExpectedInternalAgentPeer { key: key.clone() })?;
 
             let Some(client) = pool_lock.get(&id).and_then(|a| a.client_owned()) else {
                 continue;

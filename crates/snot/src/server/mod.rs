@@ -44,9 +44,7 @@ mod rpc;
 pub async fn start(cli: Cli) -> Result<(), StartError> {
     let mut path = cli.path.clone();
     path.push("data.db");
-    let db = Surreal::new::<surrealdb::engine::local::File>(path)
-        .await
-        .map_err(StartError::DbInit)?;
+    let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
     let state = GlobalState {
         cli,
         db,

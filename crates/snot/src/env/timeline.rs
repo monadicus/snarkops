@@ -5,7 +5,7 @@ use std::{
 
 use futures_util::future::join_all;
 use snot_common::state::{AgentId, AgentState};
-use tokio::{select, sync::RwLock};
+use tokio::{select, sync::RwLock, task::JoinHandle};
 use tracing::{debug, error, info};
 
 use super::{
@@ -84,10 +84,14 @@ where
 
 impl Environment {
     pub async fn execute(state: Arc<GlobalState>, env_id: usize) -> Result<(), EnvError> {
-        let env = Arc::clone(match state.envs.read().await.get(&env_id) {
-            Some(env) => env,
-            None => Err(ExecutionError::EnvNotFound(env_id))?,
-        });
+        let env = Arc::clone(
+            state
+                .envs
+                .read()
+                .await
+                .get(&env_id)
+                .ok_or_else(|| ExecutionError::EnvNotFound(env_id))?,
+        );
 
         info!(
             "starting timeline playback for env {env_id} with {} events",
@@ -98,11 +102,12 @@ impl Environment {
         let mut handle_lock = handle_lock_env.timeline_handle.lock().await;
 
         // abort if timeline is already being executed
-        match &*handle_lock {
-            Some(handle) if !handle.is_finished() => {
-                Err(ExecutionError::TimelineAlreadyStarted)?;
-            }
-            _ => (),
+        if !handle_lock
+            .as_ref()
+            .map(JoinHandle::is_finished)
+            .unwrap_or(true)
+        {
+            Err(ExecutionError::TimelineAlreadyStarted)?;
         }
 
         *handle_lock = Some(tokio::spawn(async move {
@@ -278,7 +283,7 @@ impl Environment {
                     match result {
                         Ok(Ok(())) => (),
                         Ok(e) => return e,
-                        Err(e) => Err(ExecutionError::Join(e))?,
+                        Err(e) => return Err(ExecutionError::Join(e)),
                     }
                 }
             }

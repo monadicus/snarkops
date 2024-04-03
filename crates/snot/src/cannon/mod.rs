@@ -337,9 +337,9 @@ impl ExecutionContext {
             ..
         } = &self;
 
-        let Some(env) = env_weak.upgrade() else {
-            return Err(ExecutionContextError::EnvDropped(Some(*cannon_id), Some(self.id)).into());
-        };
+        let env = env_weak
+            .upgrade()
+            .ok_or_else(|| ExecutionContextError::EnvDropped(Some(*cannon_id), Some(self.id)))?;
         let env_id = env.id;
 
         trace!("cannon {env_id}.{cannon_id} spawned");
@@ -365,9 +365,9 @@ impl ExecutionContext {
                     ComputeTarget::Agent { .. } => suffix,
                     // demox needs to locate it
                     ComputeTarget::Demox { .. } => {
-                        let Some(host) = get_host(state).await else {
-                            return Err(ExecutionContextError::NoDemoxHostConfigured.into());
-                        };
+                        let host = get_host(state)
+                            .await
+                            .ok_or(ExecutionContextError::NoDemoxHostConfigured)?;
                         format!("http://{host}:{}{suffix}", state.cli.port)
                     }
                 };
@@ -387,7 +387,6 @@ impl ExecutionContext {
                     )
                     .into());
                 }
-                // ensure!(pipe.is_some(), "transaction sink not found: {file_name}");
                 pipe
             }
             _ => None,

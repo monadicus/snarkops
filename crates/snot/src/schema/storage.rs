@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     ops::Deref,
     path::PathBuf,
-    process::Stdio,
+    process::{ExitStatus, Stdio},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -214,23 +214,20 @@ impl Document {
 
                 match self.connect {
                     Some(ref url) => {
+                        let err =
+                            |e| StorageError::FailedToFetchGenesis(id.clone(), url.clone(), e);
+
                         // I think its ok to reuse this error here
                         // because it just turns a failing response into an error
                         // or failing to turn it into bytes
                         let res = reqwest::get(url.clone())
                             .await
-                            .map_err(|e| {
-                                StorageError::FailedToFetchGenesis(id.clone(), url.clone(), e)
-                            })?
+                            .map_err(err)?
                             .error_for_status()
-                            .map_err(|e| {
-                                StorageError::FailedToFetchGenesis(id.clone(), url.clone(), e)
-                            })?
+                            .map_err(err)?
                             .bytes()
                             .await
-                            .map_err(|e| {
-                                StorageError::FailedToFetchGenesis(id.clone(), url.clone(), e)
-                            })?;
+                            .map_err(err)?;
 
                         tokio::fs::write(&output, res)
                             .await
@@ -275,9 +272,9 @@ impl Document {
                     }
                 }
 
-                if let Err(e) = tokio::fs::try_exists(&output).await {
-                    Err(StorageError::FailedToGenGenesis(id.clone(), e))?;
-                }
+                tokio::fs::try_exists(&output)
+                    .await
+                    .map_err(|e| StorageError::FailedToGenGenesis(id.clone(), e))?;
 
                 let res = Command::new("tar")
                     .current_dir(&base)
@@ -305,9 +302,9 @@ impl Document {
                     warn!("error running tar command...");
                 }
 
-                if let Err(e) = tokio::fs::try_exists(&base.join("ledger.tar.gz")).await {
-                    Err(StorageError::FailedToTarLedger(id.clone(), e))?;
-                }
+                tokio::fs::try_exists(&base.join("ledger.tar.gz"))
+                    .await
+                    .map_err(|e| StorageError::FailedToTarLedger(id.clone(), e))?;
 
                 // TODO: transactions
             }
@@ -347,7 +344,13 @@ impl Document {
                     )
                 })?;
 
-            if !child.wait().await.map(|s| s.success()).unwrap_or(false) {
+            if !child
+                .wait()
+                .await
+                .as_ref()
+                .map(ExitStatus::success)
+                .unwrap_or(false)
+            {
                 error!("failed to compress ledger");
             }
         }
