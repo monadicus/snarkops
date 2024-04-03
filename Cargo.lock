@@ -4315,7 +4315,7 @@ dependencies = [
  "snarkos-node",
  "snarkos-node-metrics",
  "snarkvm",
- "snot-common",
+ "snops-common",
  "tikv-jemallocator",
  "tokio",
  "tower-http",
@@ -5377,7 +5377,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "snot"
+name = "snops"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5405,7 +5405,7 @@ dependencies = [
  "serde_with",
  "serde_yaml",
  "sha2",
- "snot-common",
+ "snops-common",
  "strum_macros",
  "surrealdb",
  "tarpc",
@@ -5422,7 +5422,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "snot-agent"
+name = "snops-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5437,7 +5437,7 @@ dependencies = [
  "nix",
  "reqwest 0.12.0",
  "simple_moving_average",
- "snot-common",
+ "snops-common",
  "tarpc",
  "tokio",
  "tokio-tungstenite",
@@ -5447,7 +5447,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "snot-cli"
+name = "snops-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -5459,7 +5459,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "snot-common"
+name = "snops-common"
 version = "0.1.0"
 dependencies = [
  "clap",
