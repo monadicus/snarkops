@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-cargo run -p snot
+cargo run -p snops

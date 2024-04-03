@@ -11,10 +11,10 @@ if [ -z "$INDEX" ]; then
   exit 1
 fi
 
-DATA_PATH="$(pwd)/snot-data/$INDEX"
+DATA_PATH="$(pwd)/snops-data/$INDEX"
 
 echo "Starting ${DATA_PATH}"
-cargo run --release -p snot-agent -- \
+cargo run --release -p snops-agent -- \
   --id "local-$INDEX" \
   --path "$DATA_PATH" \
   --bind "0.0.0.0" \

@@ -36,7 +36,7 @@ serde_json.workspace = true
 snarkos-account.workspace = true
 snarkos-node = { workspace = true, optional = true }
 snarkvm.workspace = true
-snot-common.workspace = true
+snops-common.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 tracing-flame = "0.2.0"

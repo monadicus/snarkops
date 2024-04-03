@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
 use snarkos_node::Node;
 use snarkvm::{prelude::Block, utilities::FromBytes};
-use snot_common::state::NodeType;
+use snops_common::state::NodeType;
 
 use crate::{ledger::Addrs, Account, PrivateKey};
 
