@@ -21,7 +21,7 @@ macro_rules! impl_into_status_code {
     ($name:path) => {
         impl From<&$name> for ::http::status::StatusCode {
             fn from(_: &$name) -> Self {
-                ::http::status::StatusCode::INTERNAL_SERVER_ERROR
+                Self::INTERNAL_SERVER_ERROR
             }
         }
     };
@@ -37,6 +37,8 @@ macro_rules! impl_into_status_code {
     ($name:path, |$from_var:ident| $body:expr) => {
         impl From<&$name> for ::http::status::StatusCode {
             fn from($from_var: &$name) -> Self {
+                use $name::*;
+
                 $body
             }
         }

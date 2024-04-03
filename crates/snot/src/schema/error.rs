@@ -32,9 +32,9 @@ pub enum StorageError {
 }
 
 impl_into_status_code!(StorageError, |value| match value {
-    StorageError::Command(e, _) => e.into(),
-    StorageError::FailedToFetchGenesis(_, _, _) => StatusCode::MISDIRECTED_REQUEST,
-    StorageError::NoGenerationParams(_) => StatusCode::BAD_REQUEST,
+    Command(e, _) => e.into(),
+    FailedToFetchGenesis(_, _, _) => StatusCode::MISDIRECTED_REQUEST,
+    NoGenerationParams(_) => StatusCode::BAD_REQUEST,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
@@ -55,8 +55,8 @@ pub enum KeySourceError {
 }
 
 impl_into_status_code!(KeySourceError, |value| match value {
-    KeySourceError::InvalidKeySource => StatusCode::BAD_REQUEST,
-    KeySourceError::InvalidCommitteeIndex(_) => StatusCode::BAD_REQUEST,
+    InvalidKeySource => StatusCode::BAD_REQUEST,
+    InvalidCommitteeIndex(_) => StatusCode::BAD_REQUEST,
 });
 
 impl_serialize_pretty_error!(KeySourceError);
@@ -72,9 +72,9 @@ pub enum SchemaError {
 }
 
 impl_into_status_code!(SchemaError, |value| match value {
-    SchemaError::KeySource(e) => e.into(),
-    SchemaError::NodeTarget(e) => e.into(),
-    SchemaError::Storage(e) => e.into(),
+    KeySource(e) => e.into(),
+    NodeTarget(e) => e.into(),
+    Storage(e) => e.into(),
 });
 
 impl Serialize for SchemaError {

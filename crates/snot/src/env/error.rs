@@ -38,8 +38,8 @@ pub enum ExecutionError {
 }
 
 impl_into_status_code!(ExecutionError, |value| match value {
-    ExecutionError::Cannon(e) => e.into(),
-    ExecutionError::Reconcile(e) => e.into(),
+    Cannon(e) => e.into(),
+    Reconcile(e) => e.into(),
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
@@ -75,10 +75,10 @@ pub enum DelegationError {
 }
 
 impl_into_status_code!(DelegationError, |value| match value {
-    DelegationError::AgentAlreadyClaimed(_, _) => StatusCode::IM_USED,
-    DelegationError::AgentNotFound(_, _) => StatusCode::NOT_FOUND,
-    DelegationError::AgentMissingMode(_, _) => StatusCode::BAD_REQUEST,
-    DelegationError::InsufficientAgentCount | DelegationError::NoAvailableAgents(_) => {
+    AgentAlreadyClaimed(_, _) => StatusCode::IM_USED,
+    AgentNotFound(_, _) => StatusCode::NOT_FOUND,
+    AgentMissingMode(_, _) => StatusCode::BAD_REQUEST,
+    InsufficientAgentCount | NoAvailableAgents(_) => {
         StatusCode::SERVICE_UNAVAILABLE
     }
 });
@@ -100,15 +100,9 @@ pub enum PrepareError {
 }
 
 impl_into_status_code!(PrepareError, |value| match value {
-    PrepareError::DuplicateNodeKey(_)
-    | PrepareError::MultipleStorage
-    | PrepareError::NodeHas0Replicas => {
-        StatusCode::BAD_REQUEST
-    }
-
-    PrepareError::MissingStorage => StatusCode::NOT_FOUND,
-
-    PrepareError::Reconcile(e) => e.into(),
+    DuplicateNodeKey(_) | MultipleStorage | NodeHas0Replicas => StatusCode::BAD_REQUEST,
+    MissingStorage => StatusCode::NOT_FOUND,
+    Reconcile(e) => e.into(),
 });
 
 impl Serialize for PrepareError {
@@ -148,9 +142,8 @@ pub enum ReconcileError {
 }
 
 impl_into_status_code!(ReconcileError, |value| match value {
-    ReconcileError::Batch(e) => e.into(),
-    ReconcileError::EnvNotFound(_) | ReconcileError::ExpectedInternalAgentPeer { .. } =>
-        StatusCode::NOT_FOUND,
+    Batch(e) => e.into(),
+    EnvNotFound(_) | ExpectedInternalAgentPeer { .. } => StatusCode::NOT_FOUND,
 });
 
 impl_serialize_pretty_error!(ReconcileError);
@@ -174,13 +167,13 @@ pub enum EnvError {
 }
 
 impl_into_status_code!(EnvError, |value| match value {
-    EnvError::Cannon(e) => e.into(),
-    EnvError::Cleanup(e) => e.into(),
-    EnvError::Delegation(e) => e.iter().fold(StatusCode::OK, |acc, x| acc.max(x.into())),
-    EnvError::Execution(e) => e.into(),
-    EnvError::Prepare(e) => e.into(),
-    EnvError::Reconcile(e) => e.into(),
-    EnvError::Schema(e) => e.into(),
+    Cannon(e) => e.into(),
+    Cleanup(e) => e.into(),
+    Delegation(e) => e.iter().fold(StatusCode::OK, |acc, x| acc.max(x.into())),
+    Execution(e) => e.into(),
+    Prepare(e) => e.into(),
+    Reconcile(e) => e.into(),
+    Schema(e) => e.into(),
 });
 
 impl Serialize for EnvError {

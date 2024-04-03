@@ -28,7 +28,7 @@ pub enum AuthorizeError {
 }
 
 impl_into_status_code!(AuthorizeError, |value| match value {
-    AuthorizeError::Command(e) => e.into(),
+    Command(e) => e.into(),
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
@@ -115,9 +115,8 @@ pub enum CannonInstanceError {
 }
 
 impl_into_status_code!(CannonInstanceError, |value| match value {
-    CannonInstanceError::MissingQueryPort(_) | CannonInstanceError::NotConfiguredToPlayback(_) =>
-        StatusCode::BAD_REQUEST,
-    CannonInstanceError::TargetAgentNotFound(_, _) => StatusCode::NOT_FOUND,
+    MissingQueryPort(_) | NotConfiguredToPlayback(_) => StatusCode::BAD_REQUEST,
+    TargetAgentNotFound(_, _) => StatusCode::NOT_FOUND,
 });
 
 impl Serialize for CannonInstanceError {
@@ -156,14 +155,8 @@ pub enum ExecutionContextError {
 }
 
 impl_into_status_code!(ExecutionContextError, |value| match value {
-    ExecutionContextError::Broadcast(_, _) | ExecutionContextError::BroadcastRequest(_, _) =>
-        StatusCode::MISDIRECTED_REQUEST,
-
-    ExecutionContextError::NoAvailableAgents(_, _)
-    | ExecutionContextError::NoDemoxHostConfigured => {
-        StatusCode::SERVICE_UNAVAILABLE
-    }
-
+    Broadcast(_, _) | BroadcastRequest(_, _) => StatusCode::MISDIRECTED_REQUEST,
+    NoAvailableAgents(_, _) | NoDemoxHostConfigured => StatusCode::SERVICE_UNAVAILABLE,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
@@ -210,15 +203,15 @@ pub enum CannonError {
 }
 
 impl_into_status_code!(CannonError, |value| match value {
-    CannonError::Authorize(e) => e.into(),
-    CannonError::CannonInstance(e) => e.into(),
-    CannonError::Command(_, e) => e.into(),
-    CannonError::ExecutionContext(e) => e.into(),
-    CannonError::TargetAgentOffline(_, _, _) => StatusCode::SERVICE_UNAVAILABLE,
-    CannonError::TransactionDrain(e) => e.into(),
-    CannonError::TransactionSink(e) => e.into(),
-    CannonError::Source(e) => e.into(),
-    CannonError::State(e) => e.into(),
+    Authorize(e) => e.into(),
+    CannonInstance(e) => e.into(),
+    Command(_, e) => e.into(),
+    ExecutionContext(e) => e.into(),
+    TargetAgentOffline(_, _, _) => StatusCode::SERVICE_UNAVAILABLE,
+    TransactionDrain(e) => e.into(),
+    TransactionSink(e) => e.into(),
+    Source(e) => e.into(),
+    State(e) => e.into(),
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 

@@ -25,11 +25,11 @@ pub enum ServerError {
 }
 
 impl_into_status_code!(ServerError, |value| match value {
-    ServerError::AgentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
-    ServerError::Cannon(e) => e.into(),
-    ServerError::Deserialize(e) => e.into(),
-    ServerError::Env(e) => e.into(),
-    ServerError::Schema(e) => e.into(),
+    AgentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
+    Cannon(e) => e.into(),
+    Deserialize(e) => e.into(),
+    Env(e) => e.into(),
+    Schema(e) => e.into(),
 });
 
 impl Serialize for ServerError {
