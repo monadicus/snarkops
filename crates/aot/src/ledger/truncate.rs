@@ -13,7 +13,7 @@ use snarkvm::{
 };
 use tracing::info;
 
-use crate::{ledger::util, runner::checkpoint::Checkpoint, DbLedger, Network};
+use crate::{checkpoint::Checkpoint, ledger::util, DbLedger, Network};
 
 #[derive(Debug, Args)]
 pub struct Truncate {

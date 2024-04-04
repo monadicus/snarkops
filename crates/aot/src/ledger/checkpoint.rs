@@ -1,4 +1,4 @@
-use crate::{ledger::util, runner::checkpoint::Checkpoint, DbLedger, Network};
+use crate::{checkpoint::Checkpoint, ledger::util, DbLedger, Network};
 use aleo_std::StorageMode;
 use anyhow::Result;
 use snarkvm::utilities::ToBytes;

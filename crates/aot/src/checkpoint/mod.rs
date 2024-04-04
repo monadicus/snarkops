@@ -1,4 +1,4 @@
-use std::{io, sync::Arc};
+use std::sync::Arc;
 
 use aleo_std::StorageMode;
 use anyhow::{bail, ensure, Result};
@@ -6,7 +6,7 @@ use snarkos_node::bft::{
     helpers::Storage, ledger_service::CoreLedgerService, storage_service::BFTMemoryService,
 };
 use snarkvm::{
-    console::program::{Identifier, Network as NetworkTrait, Plaintext, ProgramID, Value},
+    console::program::Network as NetworkTrait,
     ledger::{
         store::{
             helpers::{
@@ -17,154 +17,13 @@ use snarkvm::{
         },
         Ledger,
     },
-    utilities::{FromBytes, ToBytes},
 };
 
-/// Committee store round key (this will probably never change)
-const ROUND_KEY: u8 = 0;
-const CHECKPOINT_VERSION: u8 = 1;
+mod content;
+mod header;
 
-pub struct CheckpointHeader<N: NetworkTrait> {
-    /// Block height
-    pub block_height: u32,
-    /// Block timestamp
-    pub timestamp: i64,
-    /// Block's hash
-    pub block_hash: N::BlockHash,
-    /// Genesis block's hash - used to ensure the checkpoint is applicable to this network
-    pub genesis_hash: N::BlockHash,
-    /// Size of the checkpoint
-    pub content_len: u64,
-}
-
-impl<N: NetworkTrait> ToBytes for CheckpointHeader<N> {
-    fn write_le<W: snarkvm::prelude::Write>(&self, mut writer: W) -> snarkvm::prelude::IoResult<()>
-    where
-        Self: Sized,
-    {
-        CHECKPOINT_VERSION.write_le(&mut writer)?;
-        self.block_height.write_le(&mut writer)?;
-        self.timestamp.write_le(&mut writer)?;
-        self.block_hash.write_le(&mut writer)?;
-        self.genesis_hash.write_le(&mut writer)?;
-        self.content_len.write_le(&mut writer)?;
-        Ok(())
-    }
-}
-
-impl<N: NetworkTrait> FromBytes for CheckpointHeader<N> {
-    fn read_le<R: snarkvm::prelude::Read>(mut reader: R) -> snarkvm::prelude::IoResult<Self>
-    where
-        Self: Sized,
-    {
-        let version = u8::read_le(&mut reader)?;
-        if version != CHECKPOINT_VERSION {
-            return snarkvm::prelude::IoResult::Err(io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("invalid checkpoint version: {version}, expected {CHECKPOINT_VERSION}"),
-            ));
-        }
-
-        let block_height = u32::read_le(&mut reader)?;
-        let timestamp = i64::read_le(&mut reader)?;
-        let block_hash = N::BlockHash::read_le(&mut reader)?;
-        let genesis_hash = N::BlockHash::read_le(&mut reader)?;
-        let content_len = u64::read_le(&mut reader)?;
-
-        Ok(Self {
-            block_height,
-            timestamp,
-            block_hash,
-            genesis_hash,
-            content_len,
-        })
-    }
-}
-
-/// Storage of key-value pairs for each program ID and identifier
-/// Note, the structure is this way as ToBytes derives 2 sized tuples, but not 3 sized tuples
-pub struct CheckpointContent<N: NetworkTrait> {
-    #[allow(clippy::type_complexity)]
-    key_values: Vec<((ProgramID<N>, Identifier<N>), Vec<(Plaintext<N>, Value<N>)>)>,
-}
-
-impl<N: NetworkTrait> ToBytes for CheckpointContent<N> {
-    fn write_le<W: snarkvm::prelude::Write>(&self, mut writer: W) -> snarkvm::prelude::IoResult<()>
-    where
-        Self: Sized,
-    {
-        // the default vec writer does not include the length
-        (self.key_values.len() as u64).write_le(&mut writer)?;
-        for (key, entries) in &self.key_values {
-            key.write_le(&mut writer)?;
-            (entries.len() as u64).write_le(&mut writer)?;
-            entries.write_le(&mut writer)?;
-        }
-        Ok(())
-    }
-}
-
-impl<N: NetworkTrait> FromBytes for CheckpointContent<N> {
-    fn read_le<R: snarkvm::prelude::Read>(mut reader: R) -> snarkvm::prelude::IoResult<Self>
-    where
-        Self: Sized,
-    {
-        let len = u64::read_le(&mut reader)?;
-        let mut key_values = Vec::with_capacity(len as usize);
-
-        for _ in 0..len {
-            let key = <(ProgramID<N>, Identifier<N>)>::read_le(&mut reader)?;
-            let len = u64::read_le(&mut reader)?;
-            let mut entries = Vec::with_capacity(len as usize);
-            for _ in 0..len {
-                entries.push(<(Plaintext<N>, Value<N>)>::read_le(&mut reader)?);
-            }
-            key_values.push((key, entries));
-        }
-
-        Ok(Self { key_values })
-    }
-}
-
-pub struct Checkpoint<N: NetworkTrait> {
-    header: CheckpointHeader<N>,
-    content: CheckpointContent<N>,
-}
-
-impl<N: NetworkTrait> ToBytes for Checkpoint<N> {
-    fn write_le<W: snarkvm::prelude::Write>(&self, mut writer: W) -> snarkvm::prelude::IoResult<()>
-    where
-        Self: Sized,
-    {
-        let content_bytes = self.content.to_bytes_le().map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("error serializing content: {e}"),
-            )
-        })?;
-
-        CheckpointHeader {
-            content_len: content_bytes.len() as u64,
-            ..self.header
-        }
-        .write_le(&mut writer)?;
-
-        writer.write_all(&content_bytes)?;
-        Ok(())
-    }
-}
-
-impl<N: NetworkTrait> FromBytes for Checkpoint<N> {
-    fn read_le<R: snarkvm::prelude::Read>(mut reader: R) -> snarkvm::prelude::IoResult<Self>
-    where
-        Self: Sized,
-    {
-        let header = CheckpointHeader::read_le(&mut reader)?;
-        let content = CheckpointContent::read_le(&mut reader)?;
-
-        Ok(Self { header, content })
-    }
-}
+pub use content::*;
+pub use header::*;
 
 impl<N: NetworkTrait> Checkpoint<N> {
     pub fn new(storage_mode: StorageMode) -> Result<Self> {

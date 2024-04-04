@@ -19,9 +19,8 @@ use snarkvm::{
 use snops_common::state::NodeType;
 use tracing::{info, trace};
 
-use crate::{ledger::Addrs, runner::checkpoint::Checkpoint, Account, Network, PrivateKey};
+use crate::{checkpoint::Checkpoint, ledger::Addrs, Account, Network, PrivateKey};
 
-pub mod checkpoint;
 mod metrics;
 
 #[derive(Debug, Args, Serialize, Deserialize)]
