@@ -11,7 +11,7 @@ pub fn open_and_checkpoint(genesis: PathBuf, ledger: PathBuf) -> Result<()> {
     let height = ledger.latest_height();
 
     info!("creating checkpoint @ {height}...");
-    let bytes = Checkpoint::<Network>::new(height, storage_mode.clone())?.to_bytes_le()?;
+    let bytes = Checkpoint::<Network>::new(storage_mode.clone())?.to_bytes_le()?;
 
     info!("created checkpoint; {} bytes", bytes.len());
 

@@ -66,7 +66,7 @@ impl Truncate {
 
         let bytes = std::fs::read(path)?;
         let checkpoint = Checkpoint::<Network>::from_bytes_le(&bytes)?;
-        info!("read checkpoint for height {}", checkpoint.height);
+        info!("read checkpoint for height {}", checkpoint.height());
 
         info!("applying checkpoint to ledger...");
         checkpoint.rewind(&ledger, storage_mode.clone())?;

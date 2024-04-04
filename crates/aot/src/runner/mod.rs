@@ -197,7 +197,7 @@ impl Runner {
 
 async fn backup_loop<N: NetworkTrait>(height: u32, storage_mode: StorageMode) -> Result<()> {
     info!("creating checkpoint @ {height}...");
-    let bytes = Checkpoint::<N>::new(height, storage_mode.clone())?.to_bytes_le()?;
+    let bytes = Checkpoint::<N>::new(storage_mode.clone())?.to_bytes_le()?;
 
     info!("created checkpoint; {} bytes", bytes.len());
 
