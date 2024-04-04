@@ -37,6 +37,7 @@ jobs:
       - name: Install nightly and cranelift
         uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: nightly-2024-04-01
           components: rustc-codegen-cranelift-preview
 
       - uses: Swatinem/rust-cache@v2
@@ -77,6 +78,7 @@ jobs:
       - name: Install nightly and cranelift
         uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: nightly-2024-04-01
           components: rustc-codegen-cranelift-preview
 
       - uses: Swatinem/rust-cache@v2
