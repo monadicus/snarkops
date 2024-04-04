@@ -3,11 +3,14 @@ use std::{net::SocketAddr, ops::Deref, path::PathBuf, str::FromStr};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use rand::{seq::SliceRandom, CryptoRng, Rng};
+use tracing::warn;
 
 use crate::{authorized::Execute, Address, PrivateKey};
 
 pub mod add;
+pub mod checkpoint;
 pub mod distribute;
+pub mod hash;
 pub mod init;
 pub mod query;
 pub mod truncate;
@@ -98,6 +101,8 @@ pub enum Commands {
     Truncate(truncate::Truncate),
     Execute(Execute),
     Query(query::LedgerQuery),
+    Hash,
+    Checkpoint,
 }
 
 impl Ledger {
@@ -152,6 +157,9 @@ impl Ledger {
                 let ledger = util::open_ledger(genesis, ledger)?;
                 query.parse(&ledger)
             }
+
+            Commands::Hash => hash::hash_ledger(ledger),
+            Commands::Checkpoint => checkpoint::open_and_checkpoint(genesis, ledger),
         }
     }
 }

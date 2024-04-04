@@ -199,7 +199,7 @@ async fn backup_loop<N: NetworkTrait>(height: u32, storage_mode: StorageMode) ->
     info!("creating checkpoint @ {height}...");
     let bytes = Checkpoint::<N>::new(height, storage_mode.clone())?.to_bytes_le()?;
 
-    info!("created checkpoint {} bytes", bytes.len());
+    info!("created checkpoint; {} bytes", bytes.len());
 
     if let StorageMode::Custom(path) = storage_mode {
         // write the checkpoint file

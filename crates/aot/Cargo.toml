@@ -8,16 +8,17 @@ version = "0.1.0"
 [features]
 default = ["node"]
 node = [
-    "snarkos-node",
-    "crossterm",
-    "snarkos-node/metrics",
-    "metrics-exporter-prometheus",
+  "snarkos-node",
+  "crossterm",
+  "snarkos-node/metrics",
+  "metrics-exporter-prometheus",
 ]
 
 [dependencies]
 aleo-std.workspace = true
 anyhow.workspace = true
 axum.workspace = true
+bincode.workspace = true
 clap.workspace = true
 colored.workspace = true
 crossterm = { version = "0.27", optional = true }
@@ -43,6 +44,11 @@ tracing-flame = "0.2.0"
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 tracing.workspace = true
+
+[dependencies.rocksdb]
+version = "0.21"
+default-features = false
+features = ["lz4"]
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 tikv-jemallocator = "0.5"
