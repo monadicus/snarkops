@@ -12,7 +12,10 @@ use std::{
 };
 
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use snops_common::state::AgentPeer;
+use snops_common::{
+    constant::{LEDGER_BASE_DIR, SNARKOS_GENESIS_FILE},
+    state::AgentPeer,
+};
 use tokio::{
     process::Command,
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
@@ -153,9 +156,9 @@ impl CannonInstance {
                 .stderr(Stdio::piped())
                 .arg("ledger")
                 .arg("-l")
-                .arg(env.storage.path.join("ledger"))
+                .arg(env.storage.path.join(LEDGER_BASE_DIR))
                 .arg("-g")
-                .arg(env.storage.path.join("genesis.block"))
+                .arg(env.storage.path.join(SNARKOS_GENESIS_FILE))
                 .arg("query")
                 .arg("--port")
                 .arg(port.to_string())

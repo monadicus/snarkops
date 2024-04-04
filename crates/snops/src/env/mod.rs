@@ -35,7 +35,7 @@ use crate::{
     error::DeserializeError,
     schema::{
         nodes::{ExternalNode, Node},
-        storage::LoadedStorage,
+        storage::{LoadedStorage, DEFAULT_AOT_BIN},
         timeline::TimelineEvent,
         ItemDocument, NodeTargets,
     },
@@ -272,15 +272,8 @@ impl Environment {
             cannon_configs,
             cannons_counter: Default::default(),
             cannons: Default::default(),
-            aot_bin: {
-                // TODO: specify the binary when uploading the test or something
-                std::env::var("AOT_BIN")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| {
-                        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                            .join("../../target/release/snarkos-aot")
-                    })
-            },
+            // TODO: specify the binary when uploading the test or something
+            aot_bin: DEFAULT_AOT_BIN.clone(),
             timeline,
             timeline_handle: Default::default(),
         };
@@ -302,7 +295,7 @@ impl Environment {
             .write()
             .await
             .remove(id)
-            .ok_or_else(|| CleanupError::EnvNotFound(*id))?;
+            .ok_or(CleanupError::EnvNotFound(*id))?;
 
         // reconcile all online agents
         let (ids, handles): (Vec<_>, Vec<_>) = {

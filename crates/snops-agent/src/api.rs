@@ -3,7 +3,7 @@ use std::{os::unix::fs::PermissionsExt, path::Path};
 use futures::StreamExt;
 use http::StatusCode;
 use reqwest::IntoUrl;
-use snops_common::api::StorageInfoResponse;
+use snops_common::{api::StorageInfoResponse, state::EnvId};
 use tokio::{fs::File, io::AsyncWriteExt};
 use tracing::info;
 
@@ -56,11 +56,11 @@ pub async fn get_storage_info(url: impl IntoUrl) -> anyhow::Result<StorageInfoRe
     Ok(body)
 }
 
-pub async fn check_binary(base_url: &str, path: &Path) -> anyhow::Result<()> {
+pub async fn check_binary(env_id: EnvId, base_url: &str, path: &Path) -> anyhow::Result<()> {
     let client = reqwest::Client::new();
 
     // check if we already have an up-to-date binary
-    let loc = format!("{base_url}/content/snarkos");
+    let loc = format!("{base_url}/api/v1/env/{env_id}/storage/binary");
     if !should_download_file(&client, &loc, path)
         .await
         .unwrap_or(true)

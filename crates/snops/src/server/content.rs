@@ -2,7 +2,7 @@ use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 
 use super::AppState;
-use crate::state::GlobalState;
+use crate::{schema::storage::DEFAULT_AOT_BIN, state::GlobalState};
 
 pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
     // create storage path
@@ -14,7 +14,7 @@ pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
 
     Router::new()
         // the snarkOS binary
-        .route_service("/snarkos", ServeFile::new("./target/release/snarkos-aot"))
+        .route_service("/snarkos", ServeFile::new(DEFAULT_AOT_BIN.clone()))
         // ledger/block storage derived from tests (.tar.gz'd)
         .nest_service("/storage", ServeDir::new(storage_path))
 }

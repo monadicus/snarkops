@@ -10,11 +10,15 @@ use std::{
 };
 
 use indexmap::IndexMap;
+use lazy_static::lazy_static;
 use serde::{
     de::{DeserializeOwned, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-use snops_common::state::KeyState;
+use snops_common::{
+    constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
+    state::KeyState,
+};
 use tokio::process::Command;
 use tracing::{error, warn};
 
@@ -85,7 +89,7 @@ pub struct GenesisGeneration {
 impl Default for GenesisGeneration {
     fn default() -> Self {
         Self {
-            output: PathBuf::from("genesis.block"),
+            output: PathBuf::from(SNARKOS_GENESIS_FILE),
             committee: 5,
             committee_balances: 10_000_000_000_000,
             additional_accounts: 5,
@@ -117,7 +121,7 @@ pub struct LedgerGeneration {
 impl Default for LedgerGeneration {
     fn default() -> Self {
         Self {
-            output: PathBuf::from("ledger"),
+            output: PathBuf::from(LEDGER_BASE_DIR),
         }
     }
 }
@@ -170,6 +174,13 @@ impl From<FilenameString> for String {
     }
 }
 
+lazy_static! {
+    pub static ref DEFAULT_AOT_BIN: PathBuf =
+        std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/snarkos-aot"),
+        );
+}
+
 impl Document {
     pub async fn prepare(self, state: &GlobalState) -> Result<Arc<LoadedStorage>, SchemaError> {
         static STORAGE_ID_INT: AtomicUsize = AtomicUsize::new(0);
@@ -206,10 +217,6 @@ impl Document {
                 }
 
                 // generate the genesis block using the aot cli
-                let bin = std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
-                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("../../target/release/snarkos-aot"),
-                );
                 let output = base.join(&generation.genesis.output);
 
                 match self.connect {
@@ -234,7 +241,7 @@ impl Document {
                             .map_err(|e| StorageError::FailedToWriteGenesis(id.clone(), e))?;
                     }
                     None => {
-                        let res = Command::new(bin)
+                        let res = Command::new(DEFAULT_AOT_BIN.clone())
                             .stdout(Stdio::inherit())
                             .stderr(Stdio::inherit())
                             .arg("genesis")
@@ -249,7 +256,7 @@ impl Document {
                             .arg("--additional-accounts-output")
                             .arg(base.join("accounts.json"))
                             .arg("--ledger")
-                            .arg(base.join("ledger"))
+                            .arg(base.join(LEDGER_BASE_DIR))
                             .spawn()
                             .map_err(|e| {
                                 StorageError::Command(
@@ -279,8 +286,8 @@ impl Document {
                 let res = Command::new("tar")
                     .current_dir(&base)
                     .arg("czf")
-                    .arg("ledger.tar.gz") // TODO: move constants from client...
-                    .arg("ledger")
+                    .arg(LEDGER_STORAGE_FILE) // TODO: move constants from client...
+                    .arg(LEDGER_BASE_DIR)
                     .kill_on_drop(true)
                     .spawn()
                     .map_err(|e| {
@@ -302,7 +309,7 @@ impl Document {
                     warn!("error running tar command...");
                 }
 
-                tokio::fs::try_exists(&base.join("ledger.tar.gz"))
+                tokio::fs::try_exists(&base.join(LEDGER_STORAGE_FILE))
                     .await
                     .map_err(|e| StorageError::FailedToTarLedger(id.clone(), e))?;
 
@@ -321,9 +328,12 @@ impl Document {
         // tar the ledger so that it can be served to agents
         // the genesis block is not compressed because it is already binary and might
         // not be served independently
-        let ledger_exists = matches!(tokio::fs::try_exists(base.join("ledger")).await, Ok(true));
+        let ledger_exists = matches!(
+            tokio::fs::try_exists(base.join(LEDGER_BASE_DIR)).await,
+            Ok(true)
+        );
         let ledger_tar_exists = matches!(
-            tokio::fs::try_exists(base.join("ledger.tar.gz")).await,
+            tokio::fs::try_exists(base.join(LEDGER_STORAGE_FILE)).await,
             Ok(true)
         );
 
@@ -331,9 +341,9 @@ impl Document {
             let mut child = Command::new("tar")
                 .current_dir(&base)
                 .arg("czf")
-                .arg("ledger.tar.gz")
+                .arg(LEDGER_STORAGE_FILE)
                 .arg("-C") // tar the contents of the "ledger" directory
-                .arg("ledger")
+                .arg(LEDGER_BASE_DIR)
                 .arg(".")
                 .kill_on_drop(true)
                 .spawn()

@@ -3,6 +3,10 @@ use std::{
 };
 
 use snops_common::{
+    constant::{
+        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, LEDGER_STORAGE_FILE, SNARKOS_FILE,
+        SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
+    },
     rpc::{
         agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse},
         control::{ControlServiceRequest, ControlServiceResponse},
@@ -23,18 +27,6 @@ use crate::{api, metrics::MetricComputer, state::AppState};
 
 /// The JWT file name.
 pub const JWT_FILE: &str = "jwt";
-/// The snarkOS binary file name.
-pub const SNARKOS_FILE: &str = "snarkos";
-/// The snarkOS log file name.
-pub const SNARKOS_LOG_FILE: &str = "snarkos.log";
-/// The genesis block file name.
-pub const SNARKOS_GENESIS_FILE: &str = "genesis.block";
-/// The ledger directory name.
-pub const LEDGER_BASE_DIR: &str = "ledger";
-/// The directory name for persisted ledgers within the storage dir.
-pub const LEDGER_PERSIST_DIR: &str = "persist";
-/// Temporary storage archive file name.
-pub const LEDGER_STORAGE_FILE: &str = "ledger.tar.gz";
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -187,6 +179,7 @@ impl AgentService for AgentRpcServer {
 
                 // download the snarkOS binary
                 api::check_binary(
+                    *env_id,
                     &format!("http://{}", &state.endpoint),
                     &base_path.join(SNARKOS_FILE),
                 ) // TODO: http(s)?
@@ -498,16 +491,17 @@ impl AgentService for AgentRpcServer {
     async fn execute_authorization(
         self,
         _: context::Context,
-        _env_id: usize,
+        env_id: usize,
         query: String,
         auth: String,
     ) -> Result<(), AgentError> {
         info!("executing authorization...");
 
-        // TODO: ensure binary associated with this env_id is present
+        // TODO: maybe in the env config store a branch label for the binary so it won't be put in storage and won't overwrite itself
 
         // download the snarkOS binary
         api::check_binary(
+            env_id,
             &format!("http://{}", &self.state.endpoint),
             &self.state.cli.path.join(SNARKOS_FILE),
         ) // TODO: http(s)?
