@@ -4,6 +4,9 @@ version: storage.snarkos.testing.monadic.us/v1
 id: base
 name: base-ledger
 
+generate:
+  path: .
+
 ---
 version: cannon.snarkos.testing.monadic.us/v1
 

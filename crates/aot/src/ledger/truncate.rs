@@ -1,6 +1,7 @@
 use std::{os::fd::AsRawFd, path::PathBuf};
 
-use anyhow::Result;
+use aleo_std::StorageMode;
+use anyhow::{bail, ensure, Result};
 use clap::Args;
 use nix::{
     sys::wait::waitpid,
@@ -10,22 +11,70 @@ use snarkvm::{
     ledger::Block,
     utilities::{FromBytes, ToBytes},
 };
+use tracing::info;
 
-use crate::{ledger::util, DbLedger};
+use crate::{ledger::util, runner::checkpoint::Checkpoint, DbLedger, Network};
 
 #[derive(Debug, Args)]
-#[group(required = true, multiple = false)]
 pub struct Truncate {
     #[arg(long)]
     height: Option<u32>,
     #[arg(long)]
     amount: Option<u32>,
+    /// How many blocks to skip when reading
+    #[arg(long, default_value_t = 1)]
+    skip: u32,
+
+    /// When replay mode is enabled, checkpoints are not used
+    #[arg(long, default_value_t = false)]
+    replay: bool,
     // TODO: duration based truncation (blocks within a duration before now)
     // TODO: timestamp based truncation (blocks after a certain date)
 }
 
 impl Truncate {
-    pub fn parse(self, genesis: PathBuf, mut ledger: PathBuf) -> Result<()> {
+    pub fn parse(self, genesis: PathBuf, ledger: PathBuf) -> Result<()> {
+        if self.replay {
+            self.replay(genesis, ledger)
+        } else {
+            self.truncate(genesis, ledger)
+        }
+    }
+
+    fn truncate(self, genesis: PathBuf, ledger_path: PathBuf) -> Result<()> {
+        let genesis = Block::from_bytes_le(&std::fs::read(genesis)?)?;
+        let storage_mode = StorageMode::Custom(ledger_path.clone());
+
+        // open the ledger
+        let ledger = DbLedger::load(genesis.clone(), storage_mode.clone())?;
+
+        let height = match (self.height, self.amount) {
+            (Some(height), _) => height,
+            (None, Some(amount)) => ledger.latest_height().saturating_sub(amount),
+            // Clap should prevent this case
+            _ => bail!("Either height or amount must be specified"),
+        };
+
+        // write the checkpoint file
+        info!("loading checkpoint...");
+        let path = ledger_path
+            .parent()
+            .unwrap()
+            .join(format!("{height}.checkpoint"));
+
+        ensure!(path.exists(), "checkpoint file does not exist");
+
+        let bytes = std::fs::read(path)?;
+        let checkpoint = Checkpoint::<Network>::from_bytes_le(&bytes)?;
+        info!("read checkpoint for height {}", checkpoint.height);
+
+        info!("applying checkpoint to ledger...");
+        checkpoint.rewind(&ledger, storage_mode.clone())?;
+        info!("successfully applied checkpoint");
+        Ok(())
+    }
+
+    fn replay(self, genesis: PathBuf, mut ledger: PathBuf) -> Result<()> {
         let (read_fd, write_fd) = unistd::pipe()?;
 
         match unsafe { unistd::fork() }? {
@@ -35,15 +84,15 @@ impl Truncate {
                 let db_ledger: DbLedger = util::open_ledger(genesis, ledger)?;
 
                 let amount = match (self.height, self.amount) {
-                    (Some(height), None) => db_ledger.latest_height() - height,
+                    (Some(height), _) => db_ledger.latest_height() - height,
                     (None, Some(amount)) => amount,
                     // Clap should prevent this case
-                    _ => unreachable!(),
+                    _ => bail!("Either height or amount must be specified"),
                 };
 
                 let target_height = db_ledger.latest_height().saturating_sub(amount);
 
-                for i in 1..target_height {
+                for i in self.skip..target_height {
                     let block = db_ledger.get_block(i)?;
                     let buf = block.to_bytes_le()?;
                     // println!("Writing block {i}... {}", buf.len());

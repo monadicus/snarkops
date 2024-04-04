@@ -1,3 +1,4 @@
+use core::str::FromStr;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
@@ -6,15 +7,21 @@ use std::{
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
 use clap::Args;
-use core::str::FromStr;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
 use snarkos_node::Node;
-use snarkvm::{prelude::Block, utilities::FromBytes};
-use snot_common::state::NodeType;
+use snarkvm::{
+    console::program::Network as NetworkTrait,
+    ledger::store::{helpers::rocksdb::CommitteeDB, CommitteeStorage},
+    prelude::Block,
+    utilities::{FromBytes, ToBytes},
+};
+use snops_common::state::NodeType;
+use tracing::{info, trace};
 
-use crate::{ledger::Addrs, Account, PrivateKey};
+use crate::{ledger::Addrs, runner::checkpoint::Checkpoint, Account, Network, PrivateKey};
 
+pub mod checkpoint;
 mod metrics;
 
 #[derive(Debug, Args, Serialize, Deserialize)]
@@ -136,14 +143,15 @@ impl Runner {
                     &self.validators,
                     genesis,
                     None,
-                    storage_mode,
+                    storage_mode.clone(),
                     false,
                     false,
                 )
-                .await?;
+                .await?
             }
             NodeType::Prover => {
-                Node::new_prover(node_ip, account, &self.peers, genesis, storage_mode).await?;
+                Node::new_prover(node_ip, account, &self.peers, genesis, storage_mode.clone())
+                    .await?
             }
             NodeType::Client => {
                 Node::new_client(
@@ -154,15 +162,51 @@ impl Runner {
                     &self.peers,
                     genesis,
                     None,
-                    storage_mode,
+                    storage_mode.clone(),
                 )
-                .await?;
+                .await?
             }
         };
+
+        let committee = CommitteeDB::<Network>::open(storage_mode.clone())?;
+
+        let mut last_height = committee.current_height()?;
+        tokio::spawn(async move {
+            loop {
+                let Ok(height) = committee.current_height() else {
+                    continue;
+                };
+
+                if last_height != height {
+                    last_height = height;
+                    if let Err(e) = backup_loop::<Network>(height, storage_mode.clone()).await {
+                        tracing::error!("backup loop error: {e:?}");
+                    }
+                }
+
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        });
 
         // snarkos will close itself if this is not here...
         std::future::pending::<()>().await;
 
         Ok(())
     }
+}
+
+async fn backup_loop<N: NetworkTrait>(height: u32, storage_mode: StorageMode) -> Result<()> {
+    info!("creating checkpoint @ {height}...");
+    let bytes = Checkpoint::<N>::new(height, storage_mode.clone())?.to_bytes_le()?;
+
+    info!("created checkpoint; {} bytes", bytes.len());
+
+    if let StorageMode::Custom(path) = storage_mode {
+        // write the checkpoint file
+        let path = path.parent().unwrap().join(format!("{height}.checkpoint"));
+        std::fs::write(&path, bytes)?;
+        trace!("checkpoint written to {path:?}");
+    };
+
+    Ok(())
 }

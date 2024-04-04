@@ -1,10 +1,10 @@
 [workspace]
 members = [
 	"crates/aot",
-	"crates/snot",
-	"crates/snot-agent",
-	"crates/snot-cli",
-	"crates/snot-common",
+	"crates/snops",
+	"crates/snops-agent",
+	"crates/snops-cli",
+	"crates/snops-common",
 ]
 resolver = "2"
 
@@ -50,7 +50,7 @@ snarkos-account = { path = "../snarkos/account" }
 snarkos-cli = { path = "../snarkos/cli" }
 snarkos-node = { path = "../snarkos/node" }
 snarkvm = { path = "../snarkvm", features = ["rocks"] }
-snot-common = { path = "./crates/snot-common" }
+snops-common = { path = "./crates/snops-common" }
 
 [patch."https://github.com/AleoHQ/snarkVM.git"]
 snarkvm = { path = "../snarkvm" }
