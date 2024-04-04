@@ -2,7 +2,7 @@ use axum::{response::IntoResponse, Json};
 use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
-use snops_common::{impl_into_status_code, state::AgentId};
+use snops_common::{impl_into_status_code, impl_into_type_str, state::AgentId};
 use thiserror::Error;
 
 use crate::{
@@ -14,13 +14,13 @@ use crate::{
 pub enum ServerError {
     #[error("agent `{0}` not found")]
     AgentNotFound(AgentId),
-    #[error("cannon error: {0}")]
+    #[error(transparent)]
     Cannon(#[from] CannonError),
-    #[error("deserialize error: {0}")]
+    #[error(transparent)]
     Deserialize(#[from] DeserializeError),
-    #[error("env error: {0}")]
+    #[error(transparent)]
     Env(#[from] EnvError),
-    #[error("schema error: {0}")]
+    #[error(transparent)]
     Schema(#[from] SchemaError),
 }
 
@@ -32,21 +32,21 @@ impl_into_status_code!(ServerError, |value| match value {
     Schema(e) => e.into(),
 });
 
+impl_into_type_str!(ServerError, |value| match value {
+    Cannon(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    Env(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    Schema(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    _ => value.as_ref().to_string(),
+});
+
 impl Serialize for ServerError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("Error", 2)?;
-        state.serialize_field("type", self.as_ref())?;
-
-        match self {
-            Self::Cannon(e) => state.serialize_field("error", e),
-            Self::Deserialize(e) => state.serialize_field("error", &e.to_string()),
-            Self::Env(e) => state.serialize_field("error", e),
-            Self::Schema(e) => state.serialize_field("error", e),
-            _ => state.serialize_field("error", &self.to_string()),
-        }?;
+        state.serialize_field("type", &String::from(self))?;
+        state.serialize_field("error", &self.to_string())?;
 
         state.end()
     }
