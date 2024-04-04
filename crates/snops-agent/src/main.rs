@@ -28,9 +28,7 @@ use tokio_tungstenite::{
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::rpc::{
-    AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing, JWT_FILE, SNARKOS_FILE,
-};
+use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing, JWT_FILE};
 use crate::state::GlobalState;
 
 #[tokio::main]
@@ -96,11 +94,6 @@ async fn main() {
     let jwt = tokio::fs::read_to_string(args.path.join(JWT_FILE))
         .await
         .ok();
-
-    // download the snarkOS binary
-    api::check_binary(&format!("http://{endpoint}"), &args.path.join(SNARKOS_FILE)) // TODO: http(s)?
-        .await
-        .expect("failed to acquire snarkOS binary");
 
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();

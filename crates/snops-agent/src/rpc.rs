@@ -185,6 +185,14 @@ impl AgentService for AgentRpcServer {
                     &state.endpoint
                 );
 
+                // download the snarkOS binary
+                api::check_binary(
+                    &format!("http://{}", &state.endpoint),
+                    &base_path.join(SNARKOS_FILE),
+                ) // TODO: http(s)?
+                .await
+                .expect("failed to acquire snarkOS binary");
+
                 // download the genesis block
                 api::check_file(genesis_url, &storage_path.join(SNARKOS_GENESIS_FILE))
                     .await
@@ -495,7 +503,16 @@ impl AgentService for AgentRpcServer {
         auth: String,
     ) -> Result<(), AgentError> {
         info!("executing authorization...");
+
         // TODO: ensure binary associated with this env_id is present
+
+        // download the snarkOS binary
+        api::check_binary(
+            &format!("http://{}", &self.state.endpoint),
+            &self.state.cli.path.join(SNARKOS_FILE),
+        ) // TODO: http(s)?
+        .await
+        .expect("failed to acquire snarkOS binary");
 
         let res = Command::new(dbg!(self.state.cli.path.join(SNARKOS_FILE)))
             .stdout(std::io::stdout())
