@@ -37,6 +37,7 @@ jobs:
       - name: Install nightly and cranelift
         uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: nightly-2024-04-01
           components: rustc-codegen-cranelift-preview
 
       - uses: Swatinem/rust-cache@v2
@@ -48,7 +49,7 @@ jobs:
         working-directory: ./snarkos-test
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
-        run: cargo +nightly build --verbose
+        run: cargo +nightly-2024-04-01 build --verbose
 
   test:
     runs-on: ubuntu-latest
@@ -77,6 +78,7 @@ jobs:
       - name: Install nightly and cranelift
         uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: nightly-2024-04-01
           components: rustc-codegen-cranelift-preview
 
       - uses: Swatinem/rust-cache@v2
@@ -90,4 +92,4 @@ jobs:
         working-directory: ./snarkos-test
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
-        run: cargo +nightly nextest run --all --verbose --fail-fast
+        run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast
