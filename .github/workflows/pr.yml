@@ -58,6 +58,18 @@ jobs:
         with:
           path: snarkos-test
 
+      - name: 📥 Checkout snarkOS
+        uses: actions/checkout@v4
+        with:
+          repository: AleoNet/snarkOS
+          path: snarkos
+
+      - name: 📥 Checkout snarkVM
+        uses: actions/checkout@v4
+        with:
+          repository: AleoNet/snarkVM
+          path: snarkvm
+
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
