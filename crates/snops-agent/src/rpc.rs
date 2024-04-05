@@ -497,7 +497,8 @@ impl AgentService for AgentRpcServer {
     ) -> Result<(), AgentError> {
         info!("executing authorization...");
 
-        // TODO: maybe in the env config store a branch label for the binary so it won't be put in storage and won't overwrite itself
+        // TODO: maybe in the env config store a branch label for the binary so it won't
+        // be put in storage and won't overwrite itself
 
         // download the snarkOS binary
         api::check_binary(

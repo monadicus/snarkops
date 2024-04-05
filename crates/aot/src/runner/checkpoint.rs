@@ -26,7 +26,8 @@ const ROUND_KEY: u8 = 0;
 pub struct Checkpoint<N: NetworkTrait> {
     pub height: u32,
     /// Storage of key-value pairs for each program ID and identifier
-    /// Note, the structure is this way as ToBytes derives 2 sized tuples, but not 3 sized tuples
+    /// Note, the structure is this way as ToBytes derives 2 sized tuples, but
+    /// not 3 sized tuples
     #[allow(clippy::type_complexity)]
     key_values: Vec<((ProgramID<N>, Identifier<N>), Vec<(Plaintext<N>, Value<N>)>)>,
 }
@@ -119,12 +120,13 @@ impl<N: NetworkTrait> Checkpoint<N> {
 
         assert!(self.height < height);
 
-        // the act of creating this ledger service with a "max_gc_rounds" set to 0 should clear
-        // all BFT documents
+        // the act of creating this ledger service with a "max_gc_rounds" set to 0
+        // should clear all BFT documents
         let ledger_service = Arc::new(CoreLedgerService::new(ledger.clone(), Default::default()));
         Storage::new(ledger_service, Arc::new(BFTMemoryService::new()), 0);
 
-        // TODO: parallel and test out of order removal by moving the guts of these functions out of the "atomic writes"
+        // TODO: parallel and test out of order removal by moving the guts of these
+        // functions out of the "atomic writes"
         for h in ((self.height + 1)..=height).rev() {
             if let Some(hash) = blocks.get_block_hash(h)? {
                 blocks.remove(&hash)?;
@@ -148,10 +150,12 @@ impl<N: NetworkTrait> Checkpoint<N> {
         }
 
         // set the current round to the last round in the new top block
-        // using the committee store to determine what the first round of the new top block is
+        // using the committee store to determine what the first round of the new top
+        // block is
         if let Some(c) = committee.get_committee(self.height)? {
             let mut round = c.starting_round();
-            // loop until the the next round is different (it will be None, but this is cleaner)
+            // loop until the the next round is different (it will be None, but this is
+            // cleaner)
             while committee.get_height_for_round(round + 1)? == Some(height) {
                 round += 1;
             }

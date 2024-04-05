@@ -234,8 +234,8 @@ mod strings {
 }
 
 /// for some reason bincode does not allow deserialize_any so if i want to allow
-/// end users to type "top", 42, or "persist" i need to do have to copies of this
-/// where one is not untagged.
+/// end users to type "top", 42, or "persist" i need to do have to copies of
+/// this where one is not untagged.
 ///
 /// bincode. please.
 #[derive(Debug, Copy, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -248,8 +248,8 @@ pub enum DocHeightRequest {
     /// Set the height to the given block
     Absolute(u32),
     /// Use the same ledger as configured when the same storage was used.
-    /// WARNING: this may create issues if the same storage id is reused between tests
-    /// with different nodes.
+    /// WARNING: this may create issues if the same storage id is reused between
+    /// tests with different nodes.
     #[serde(with = "strings::persist")]
     Persist,
     // the control plane doesn't know the heights the nodes are at
@@ -266,8 +266,8 @@ pub enum HeightRequest {
     /// Set the height to the given block
     Absolute(u32),
     /// Use the same ledger as configured when the same storage was used.
-    /// WARNING: this may create issues if the same storage id is reused between tests
-    /// with different nodes.
+    /// WARNING: this may create issues if the same storage id is reused between
+    /// tests with different nodes.
     Persist,
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
