@@ -35,7 +35,7 @@ use crate::{
     cli::Cli,
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{Agent, AgentFlags, AppState, GlobalState},
+    state::{util::OpaqueDebug, Agent, AgentFlags, AppState, GlobalState},
 };
 
 mod api;
@@ -49,6 +49,11 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
     let mut path = cli.path.clone();
     path.push("data.db");
     let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
+
+    let prometheus = cli
+        .prometheus
+        .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
+
     let state = GlobalState {
         cli,
         db,
@@ -57,6 +62,7 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
         storage: Default::default(),
         envs: Default::default(),
         prom_httpsd: Default::default(),
+        prometheus: OpaqueDebug(prometheus),
     };
 
     let app = Router::new()
@@ -68,17 +74,6 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
         .with_state(Arc::new(state))
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
-    // .layer(
-    // TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().
-    // include_headers(true)),
-    //.on_request(|request: &Request<Body>, _span: &Span| {
-    //    tracing::info!("req {} - {}", request.method(), request.uri());
-    //})
-    //.on_response(|response: &Response, _latency: Duration, span: &Span| {
-    //    span.record("status_code", &tracing::field::display(response.status()));
-    //    tracing::info!("res {}", response.status())
-    //}),
-    // );
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1234")
         .await

@@ -1,12 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Write};
 
 use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 use serde::Serialize;
 use snops_common::state::AgentState;
-use tracing::{debug, info};
+use tracing::debug;
 
 use super::AppState;
-use crate::{env::EnvPeer, state::AgentAddrs};
+use crate::{cli::PrometheusLocation, env::EnvPeer};
 pub(super) fn routes() -> Router<AppState> {
     Router::new().route("/httpsd", get(get_httpsd))
 }
@@ -32,7 +32,6 @@ impl HttpsdResponse {
     }
 }
 
-#[axum::debug_handler]
 async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
     let mut prom_httpsd = state.prom_httpsd.lock().await;
 
@@ -49,7 +48,30 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
             let mut static_configs = vec![];
 
             for (agent_id, agent) in pool.iter() {
-                let Some(agent_addr) = agent.addrs().and_then(AgentAddrs::usable) else {
+                let Some(mut agent_addr) =
+                    (match (state.cli.prometheus_location, agent.has_label_str("local")) {
+                        // agent is external: serve its external IP
+                        (_, false) => agent
+                            .addrs()
+                            .and_then(|addrs| addrs.external.as_ref())
+                            .map(ToString::to_string),
+
+                        // prometheus and agent are local: use internal IP
+                        (PrometheusLocation::Internal, true) => agent
+                            .addrs()
+                            .and_then(|addrs| addrs.internal.first())
+                            .map(ToString::to_string),
+
+                        // prometheus in docker but agent is local: use host.docker.internal
+                        (PrometheusLocation::Docker, true) => {
+                            Some(String::from("host.docker.internal"))
+                        }
+
+                        // prometheus is external but agent is local: agent might not be forwarded;
+                        // TODO
+                        (PrometheusLocation::External, true) => continue,
+                    })
+                else {
                     continue;
                 };
 
@@ -67,11 +89,12 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
                             continue;
                         };
 
-                        info!("agent {} addrs: {:#?}", agent_id, agent.addrs());
+                        agent_addr
+                            .write_fmt(format_args!(":{}", agent.metrics_port()))
+                            .unwrap();
 
                         static_configs.push(StaticConfig {
-                            // targets: [format!("{agent_addr}:9000")], // TODO: metrics port
-                            targets: ["host.docker.internal:9000".into()], // TODO: don't hard-code this :(
+                            targets: [agent_addr],
                             labels: [
                                 ("env_id".into(), env_id.to_string()),
                                 ("agent_id".into(), node_key.to_string()),

@@ -4,9 +4,11 @@ use std::{
 };
 
 use futures_util::future::join_all;
+use prometheus_http_query::response::Data;
+use promql_parser::label::{MatchOp, Matcher};
 use snops_common::state::{AgentId, AgentState};
 use tokio::{select, sync::RwLock, task::JoinHandle};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use super::{
     error::{BatchReconcileError, ExecutionError},
@@ -284,6 +286,47 @@ impl Environment {
                         Ok(Ok(())) => (),
                         Ok(e) => return e,
                         Err(e) => return Err(ExecutionError::Join(e)),
+                    }
+                }
+            }
+
+            // perform outcome validation
+            if let Some(prometheus) = &*state.prometheus {
+                for (outcome_name, outcome) in env.outcomes.iter() {
+                    // TODO: support built-in queries
+                    let Some(mut query) = outcome.query.clone() else {
+                        warn!("built-in queries are unsupported for probably only this commit");
+                        continue;
+                    };
+
+                    // inject env ID matchers into the PromQL query
+                    query.add_matchers(&[Matcher {
+                        op: MatchOp::Equal,
+                        name: String::from("env_id"),
+                        value: env_id.to_string(),
+                    }]);
+
+                    // TODO: store pass/fails in environment
+                    // TODO: prettier output
+                    // TODO: format validation checking (show value and expected range)
+
+                    let query_response = prometheus.query(query.into_inner()).get().await;
+                    match query_response {
+                        Ok(result) => match result.data() {
+                            Data::Scalar(sample) => {
+                                let pass = outcome.validation.validate(sample.value());
+                                if pass {
+                                    info!("OUTCOME {outcome_name}: PASS");
+                                } else {
+                                    error!("OUTCOME {outcome_name}: FAIL");
+                                }
+                            }
+                            _ => warn!("unsupported prometheus query response"),
+                        },
+
+                        Err(e) => {
+                            warn!("failed to validate outcome {outcome_name}: {e}");
+                        }
                     }
                 }
             }

@@ -8,6 +8,7 @@ use std::{
 use bimap::BiMap;
 use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
+use prometheus_http_query::Client as PrometheusClient;
 use serde::Deserialize;
 use snops_common::{
     lasso::Spur,
@@ -20,6 +21,7 @@ use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
 use tokio::sync::{Mutex, RwLock};
 
+use self::util::OpaqueDebug;
 use crate::{
     cli::Cli,
     env::Environment,
@@ -44,7 +46,9 @@ pub struct GlobalState {
     pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
 
     pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
+
     pub prom_httpsd: Mutex<HttpsdResponse>,
+    pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
 }
 
 /// This is the representation of a public addr or a list of internal addrs.
@@ -272,6 +276,12 @@ impl Agent {
         self.ports.as_ref().map(|p| p.rest).unwrap_or_default()
     }
 
+    /// Gets the metrics port of the agent. Assumes the agent is ready, returns
+    /// 0 if not.
+    pub fn metrics_port(&self) -> u16 {
+        self.ports.as_ref().map(|p| p.metrics).unwrap_or_default()
+    }
+
     /// True when the agent is configured to provide its own local private key
     pub fn has_local_pk(&self) -> bool {
         self.flags.local_pk
@@ -489,5 +499,33 @@ impl AgentFlags {
             }
         }
         mask
+    }
+}
+
+pub mod util {
+    use std::fmt::Debug;
+
+    /// A wrapper struct that has an "opaque" `Debug` implementation for types
+    /// that do not implement `Debug`.
+    pub struct OpaqueDebug<T>(pub T);
+
+    impl<T> Debug for OpaqueDebug<T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("(...)")
+        }
+    }
+
+    impl<T> std::ops::Deref for OpaqueDebug<T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl<T> std::ops::DerefMut for OpaqueDebug<T> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
+        }
     }
 }
