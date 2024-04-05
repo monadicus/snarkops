@@ -1,4 +1,8 @@
-use crate::{checkpoint::Checkpoint, ledger::util, DbLedger, Network};
+use crate::{
+    checkpoint::{path_from_storage, Checkpoint},
+    ledger::util,
+    DbLedger, Network,
+};
 use aleo_std::StorageMode;
 use anyhow::Result;
 use snarkvm::utilities::ToBytes;
@@ -15,9 +19,8 @@ pub fn open_and_checkpoint(genesis: PathBuf, ledger: PathBuf) -> Result<()> {
 
     info!("created checkpoint; {} bytes", bytes.len());
 
-    if let StorageMode::Custom(path) = storage_mode {
+    if let Some(path) = path_from_storage(&storage_mode, height) {
         // write the checkpoint file
-        let path = path.parent().unwrap().join(format!("{height}.checkpoint"));
         std::fs::write(&path, bytes)?;
         trace!("checkpoint written to {path:?}");
     };

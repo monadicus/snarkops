@@ -1,8 +1,11 @@
+use anyhow::Result;
 use snarkvm::{
     console::program::Network as NetworkTrait,
     utilities::{FromBytes, ToBytes},
 };
-use std::io;
+use std::{io, path::Path};
+
+use crate::Network;
 
 const CHECKPOINT_VERSION: u8 = 1;
 
@@ -60,5 +63,13 @@ impl<N: NetworkTrait> FromBytes for CheckpointHeader<N> {
             genesis_hash,
             content_len,
         })
+    }
+}
+
+impl<N: NetworkTrait> CheckpointHeader<N> {
+    pub fn read_file(path: &Path) -> Result<Self> {
+        let reader = std::fs::File::options().read(true).open(path)?;
+        let header = Self::read_le(&reader)?;
+        Ok(header)
     }
 }

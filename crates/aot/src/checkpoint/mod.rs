@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt::Display, path::PathBuf, sync::Arc};
 
 use aleo_std::StorageMode;
 use anyhow::{bail, ensure, Result};
@@ -21,9 +21,22 @@ use snarkvm::{
 
 mod content;
 mod header;
+mod manager;
+mod retention;
 
 pub use content::*;
 pub use header::*;
+pub use manager::*;
+pub use retention::*;
+
+pub fn path_from_storage<D: Display>(mode: &StorageMode, height: D) -> Option<PathBuf> {
+    match mode {
+        StorageMode::Custom(path) => path
+            .parent()
+            .map(|p| p.join(format!("{height}.checkpoint"))),
+        _ => None,
+    }
+}
 
 impl<N: NetworkTrait> Checkpoint<N> {
     pub fn new(storage_mode: StorageMode) -> Result<Self> {
