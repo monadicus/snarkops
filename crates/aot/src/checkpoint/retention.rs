@@ -32,13 +32,8 @@ impl RetentionPolicy {
         Self { rules }
     }
 
-    /// Returns true if the policy is ready to be applied based on the current time
-    pub fn is_ready(&self, last_time: &DateTime<Utc>) -> bool {
-        self.is_ready_with_time(Utc::now(), last_time)
-    }
-
     /// Returns true if the policy is ready to be applied based on a given time
-    pub fn is_ready_with_time(&self, now: DateTime<Utc>, last_time: &DateTime<Utc>) -> bool {
+    pub fn is_ready_with_time(&self, new_time: &DateTime<Utc>, last_time: &DateTime<Utc>) -> bool {
         // if there are no rules, the policy does not apply
         let Some(rule) = self.rules.first() else {
             return false;
@@ -50,7 +45,7 @@ impl RetentionPolicy {
         };
 
         // amount of time since the last checkpoint
-        let delta = now.signed_duration_since(last_time);
+        let delta = new_time.signed_duration_since(last_time);
 
         // if the time since the last checkpoint is greater than the minimum delta
         // the policy indicates a new checkpoint should be created
@@ -58,14 +53,14 @@ impl RetentionPolicy {
     }
 
     /// Receives a list of checkpoint times, and returns a list of times to reject
-    pub fn reject(&self, times: Vec<DateTime<Utc>>) -> Vec<DateTime<Utc>> {
+    pub fn reject(&self, times: Vec<&DateTime<Utc>>) -> Vec<DateTime<Utc>> {
         self.reject_with_time(Utc::now(), times)
     }
     /// Receives a list of checkpoint times, and returns a list of times to reject given a time
     pub fn reject_with_time(
         &self,
         now: DateTime<Utc>,
-        times: Vec<DateTime<Utc>>,
+        times: Vec<&DateTime<Utc>>,
     ) -> Vec<DateTime<Utc>> {
         // if the policy is empty, we should technically reject ALL checkpoints but
         // for safety we will not reject any
@@ -109,7 +104,7 @@ impl RetentionPolicy {
                         last_delta.num_seconds() / 3600,
                         duration.num_seconds() / 3600
                     ); */
-                    rejected.push(last_kept);
+                    rejected.push(*last_kept);
                     // promote the next time to the last kept time
                     last_kept = time;
                     times.next();
@@ -166,7 +161,7 @@ impl RetentionPolicy {
                     time.signed_duration_since(last_kept).num_seconds() / 3600,
                     keep.num_seconds() / 3600
                 ); */
-                rejected.push(time);
+                rejected.push(*time);
                 times.next();
                 continue;
             }
@@ -361,7 +356,7 @@ mod test {
             now += add_interval;
 
             // if the policy indicates it's okay to create a new checkpoint, add it
-            if policy.is_ready_with_time(now, &last_insert) {
+            if policy.is_ready_with_time(&now, &last_insert) {
                 // println!("adding checkpoint {now}");
                 times.insert(now);
                 last_insert = now;
@@ -370,7 +365,7 @@ mod test {
 
             // give a specific interval for "gc" to occur
             if now.signed_duration_since(last_gc) >= gc_interval {
-                let rejected = policy.reject_with_time(now, times.clone().into_iter().collect());
+                let rejected = policy.reject_with_time(now, times.iter().collect());
                 for time in rejected {
                     // println!("removing checkpoint {time}");
                     times.remove(&time);

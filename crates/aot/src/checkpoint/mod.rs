@@ -1,4 +1,8 @@
-use std::{fmt::Display, path::PathBuf, sync::Arc};
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use aleo_std::StorageMode;
 use anyhow::{bail, ensure, Result};
@@ -31,67 +35,27 @@ pub use retention::*;
 
 pub fn path_from_storage<D: Display>(mode: &StorageMode, height: D) -> Option<PathBuf> {
     match mode {
-        StorageMode::Custom(path) => path
-            .parent()
-            .map(|p| p.join(format!("{height}.checkpoint"))),
+        StorageMode::Custom(path) => path_from_height(path, height),
         _ => None,
     }
 }
 
+pub fn path_from_height<D: Display>(path: &Path, height: D) -> Option<PathBuf> {
+    path.parent()
+        .map(|p| p.join(format!("{height}.checkpoint")))
+}
+
 impl<N: NetworkTrait> Checkpoint<N> {
-    pub fn new(storage_mode: StorageMode) -> Result<Self> {
-        let commitee = CommitteeDB::<N>::open(storage_mode.clone())?;
-        let finalize = FinalizeDB::<N>::open(storage_mode.clone())?;
-        let blocks = BlockDB::<N>::open(storage_mode.clone())?;
+    pub fn new_from_header(path: PathBuf, header: CheckpointHeader<N>) -> Result<Self> {
+        let content = CheckpointContent::read_ledger(path)?;
+        Ok(Self { header, content })
+    }
 
-        let height = commitee.current_height()?;
-        let Some(block_hash) = blocks.get_block_hash(height)? else {
-            bail!("no block found at height {height}");
-        };
-        let Some(genesis_hash) = blocks.get_block_hash(0)? else {
-            bail!("genesis block missing a hash... somehow");
-        };
-        let Some(block_header) = blocks.get_block_header(&block_hash)? else {
-            bail!("no block header found for block hash {block_hash} at height {height}");
-        };
+    pub fn new(path: PathBuf) -> Result<Self> {
+        let header = CheckpointHeader::read_ledger(path.clone())?;
+        let content = CheckpointContent::read_ledger(path)?;
 
-        // let timestamp = blocks.
-
-        let key_values = finalize
-            .program_id_map()
-            .iter_confirmed()
-            .map(|(prog, mappings)| {
-                mappings
-                    .iter()
-                    .map(|mapping| {
-                        finalize
-                            .get_mapping_confirmed(*prog, *mapping)
-                            .map(|entries| ((*prog, *mapping), entries))
-                    })
-                    .collect::<Result<Vec<_>>>()
-            })
-            .flat_map(|res| match res {
-                // yeah... you have to collect again just for this to work
-                Ok(v) => v.into_iter().map(Ok).collect::<Vec<_>>(),
-                Err(e) => {
-                    tracing::error!("error reading key-values: {e}");
-                    vec![Err(e)]
-                }
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        let header = CheckpointHeader {
-            block_height: height,
-            timestamp: block_header.timestamp(),
-            block_hash,
-            genesis_hash,
-            content_len: 0,
-        };
-
-        Ok(Self {
-            header,
-            content: CheckpointContent { key_values },
-        })
+        Ok(Self { header, content })
     }
 
     pub fn check(&self, storage_mode: StorageMode) -> Result<()> {

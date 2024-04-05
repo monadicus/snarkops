@@ -98,6 +98,7 @@ pub enum Commands {
     #[clap(subcommand)]
     View(view::View),
     Distribute(distribute::Distribute),
+    #[clap(flatten)]
     Truncate(truncate::Truncate),
     Execute(Execute),
     Query(query::LedgerQuery),

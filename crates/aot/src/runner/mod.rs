@@ -11,15 +11,18 @@ use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
 use snarkos_node::Node;
 use snarkvm::{
-    console::program::Network as NetworkTrait,
     ledger::store::{helpers::rocksdb::CommitteeDB, CommitteeStorage},
     prelude::Block,
-    utilities::{FromBytes, ToBytes},
+    utilities::FromBytes,
 };
 use snops_common::state::NodeType;
-use tracing::{info, trace};
+use tracing::info;
 
-use crate::{checkpoint::Checkpoint, ledger::Addrs, Account, Network, PrivateKey};
+use crate::{
+    checkpoint::{CheckpointManager, RetentionPolicy},
+    ledger::Addrs,
+    Account, Network, PrivateKey,
+};
 
 mod metrics;
 
@@ -104,7 +107,10 @@ impl Runner {
         let account = Account::try_from(self.key.try_get()?)?;
 
         let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
-        let storage_mode = StorageMode::Custom(self.ledger);
+
+        let mut manager =
+            CheckpointManager::<Network>::load(self.ledger.clone(), RetentionPolicy::default())?;
+        let storage_mode = StorageMode::Custom(self.ledger.clone());
 
         // slight alterations to the normal `metrics::initialize_metrics` because of
         // visibility issues
@@ -167,8 +173,12 @@ impl Runner {
             }
         };
 
+        // cull incompatible checkpoints
+        manager.cull_incompatible()?;
+
         let committee = CommitteeDB::<Network>::open(storage_mode.clone())?;
 
+        // check for height changes and poll the manager when a new block comes in
         let mut last_height = committee.current_height()?;
         tokio::spawn(async move {
             loop {
@@ -178,7 +188,9 @@ impl Runner {
 
                 if last_height != height {
                     last_height = height;
-                    if let Err(e) = backup_loop::<Network>(height, storage_mode.clone()).await {
+
+                    info!("creating checkpoint @ {height}...");
+                    if let Err(e) = manager.poll() {
                         tracing::error!("backup loop error: {e:?}");
                     }
                 }
@@ -192,20 +204,4 @@ impl Runner {
 
         Ok(())
     }
-}
-
-async fn backup_loop<N: NetworkTrait>(height: u32, storage_mode: StorageMode) -> Result<()> {
-    info!("creating checkpoint @ {height}...");
-    let bytes = Checkpoint::<N>::new(storage_mode.clone())?.to_bytes_le()?;
-
-    info!("created checkpoint; {} bytes", bytes.len());
-
-    if let StorageMode::Custom(path) = storage_mode {
-        // write the checkpoint file
-        let path = path.parent().unwrap().join(format!("{height}.checkpoint"));
-        std::fs::write(&path, bytes)?;
-        trace!("checkpoint written to {path:?}");
-    };
-
-    Ok(())
 }
