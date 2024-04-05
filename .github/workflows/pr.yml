@@ -58,28 +58,10 @@ jobs:
         with:
           path: snarkos-test
 
-      - name: 📥 Checkout snarkOS
-        uses: actions/checkout@v4
-        with:
-          repository: AleoNet/snarkOS
-          path: snarkos
-
-      - name: 📥 Checkout snarkVM
-        uses: actions/checkout@v4
-        with:
-          repository: AleoNet/snarkVM
-          path: snarkvm
-
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
-
-      - name: 🫙 Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: snarkos-test
-          key: cache-v1
 
       - name: 📋 Format Check
         working-directory: ./snarkos-test
@@ -120,6 +102,7 @@ jobs:
         with:
           workspaces: snarkos-test
           key: cache-v1
+          cache-on-failure: true
 
       - name: ☁️ Install Nextest
         uses: taiki-e/install-action@nextest

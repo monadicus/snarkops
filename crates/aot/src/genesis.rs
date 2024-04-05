@@ -361,6 +361,7 @@ impl Genesis {
         block.write_le(
             fs::File::options()
                 .append(false)
+                .truncate(true)
                 .create(true)
                 .write(true)
                 .open(&self.output)?,
@@ -389,6 +390,7 @@ impl Genesis {
                 let file = fs::File::options()
                     .append(false)
                     .create(true)
+                    .truncate(true)
                     .write(true)
                     .open(&accounts_file)?;
                 serde_json::to_writer_pretty(file, &accounts)?;
@@ -422,6 +424,7 @@ impl Genesis {
                 let file = fs::File::options()
                     .append(false)
                     .create(true)
+                    .truncate(true)
                     .write(true)
                     .open(&committee_file)?;
                 serde_json::to_writer_pretty(file, &committee_members)?;
