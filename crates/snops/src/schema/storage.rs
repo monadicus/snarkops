@@ -197,6 +197,8 @@ impl Document {
         let mut base = state.cli.path.join("storage");
         base.push(&id);
 
+        // TODO: The dir can be made by a previous run and the aot stuff can fail
+        // i.e an empty/incomplete directory can exist and we should check those
         let exists = matches!(tokio::fs::try_exists(&base).await, Ok(true));
 
         // TODO: respect self.prefer_existing
@@ -400,6 +402,8 @@ fn pick_commitee_addr(entry: (String, u64)) -> String {
     entry.0
 }
 
+// TODO: function should also take storage id
+// in case of error, the storage id can be used to provide more context
 async fn read_to_addrs<T: DeserializeOwned>(
     f: impl Fn(T) -> String,
     file: PathBuf,

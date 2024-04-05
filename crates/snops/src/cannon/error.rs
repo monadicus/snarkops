@@ -2,9 +2,7 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snops_common::{
-    impl_into_status_code, impl_serialize_pretty_error, rpc::error::PrettyError, state::NodeKey,
-};
+use snops_common::{impl_into_status_code, impl_into_type_str, state::NodeKey};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
@@ -14,13 +12,13 @@ use crate::error::{CommandError, StateError};
 #[derive(Debug, Error, AsRefStr)]
 pub enum AuthorizeError {
     /// For when a bad AOT command is run
-    #[error("command error: {0}")]
+    #[error(transparent)]
     Command(#[from] CommandError),
     /// For if invalid JSON is returned from the AOT command
     #[error("expected function, fee, and broadcast fields in response")]
     InvalidJson,
     /// For if invalid JSON is returned from the AOT command
-    #[error("parse json error: {0}")]
+    #[error("{0}")]
     Json(#[source] serde_json::Error),
     /// For if invalid JSON is returned from the AOT command
     #[error("expected JSON object in response")]
@@ -32,19 +30,19 @@ impl_into_status_code!(AuthorizeError, |value| match value {
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
+impl_into_type_str!(AuthorizeError, |value| match value {
+    Command(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    _ => value.as_ref().to_string(),
+});
+
 impl Serialize for AuthorizeError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("Error", 2)?;
-        state.serialize_field("type", self.as_ref())?;
-
-        match self {
-            Self::Command(e) => state.serialize_field("error", e),
-            _ => state.serialize_field("error", &self.to_string()),
-        }?;
-
+        state.serialize_field("type", &String::from(self))?;
+        state.serialize_field("error", &self.to_string())?;
         state.end()
     }
 }
@@ -63,7 +61,6 @@ pub enum TransactionDrainError {
 }
 
 impl_into_status_code!(TransactionDrainError);
-impl_serialize_pretty_error!(TransactionDrainError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum TransactionSinkError {
@@ -79,7 +76,6 @@ pub enum TransactionSinkError {
 }
 
 impl_into_status_code!(TransactionSinkError);
-impl_serialize_pretty_error!(TransactionSinkError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum SourceError {
@@ -102,7 +98,6 @@ pub enum SourceError {
 }
 
 impl_into_status_code!(SourceError);
-impl_serialize_pretty_error!(SourceError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum CannonInstanceError {
@@ -175,19 +170,19 @@ impl Serialize for ExecutionContextError {
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum CannonError {
-    #[error("authorize error: {0}")]
+    #[error(transparent)]
     Authorize(#[from] AuthorizeError),
-    #[error("cannon instance error: {0}")]
+    #[error(transparent)]
     CannonInstance(#[from] CannonInstanceError),
-    #[error("command error cannon `{0}`: {1}")]
+    #[error("cannon `{0}`: {1}")]
     Command(usize, #[source] CommandError),
-    #[error("exec ctx error: {0}")]
+    #[error(transparent)]
     ExecutionContext(#[from] ExecutionContextError),
     #[error("target agent offline for {0} `{1}`: {2}")]
     TargetAgentOffline(&'static str, usize, String),
-    #[error("tx drain error: {0}")]
+    #[error(transparent)]
     TransactionDrain(#[from] TransactionDrainError),
-    #[error("tx sink error: {0}")]
+    #[error(transparent)]
     TransactionSink(#[from] TransactionSinkError),
     #[error("send `auth` error for cannon `{0}`: {1}")]
     SendAuthError(
@@ -196,9 +191,9 @@ pub enum CannonError {
     ),
     #[error("send `tx` error for cannon `{0}`: {1}")]
     SendTxError(usize, #[source] tokio::sync::mpsc::error::SendError<String>),
-    #[error("source error: {0}")]
+    #[error(transparent)]
     Source(#[from] SourceError),
-    #[error("state error: {0}")]
+    #[error(transparent)]
     State(#[from] StateError),
 }
 
@@ -215,23 +210,26 @@ impl_into_status_code!(CannonError, |value| match value {
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
+impl_into_type_str!(CannonError, |value| match value {
+    Authorize(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    CannonInstance(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    Command(_, e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    ExecutionContext(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    TransactionDrain(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    TransactionSink(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    Source(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    State(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    _ => value.as_ref().to_string(),
+});
+
 impl Serialize for CannonError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("Error", 2)?;
-        state.serialize_field("type", self.as_ref())?;
-
-        match self {
-            Self::Authorize(e) => state.serialize_field("error", e),
-            Self::CannonInstance(e) => state.serialize_field("error", e),
-            Self::Command(_, e) => state.serialize_field("error", e),
-            Self::ExecutionContext(e) => state.serialize_field("error", e),
-            Self::TransactionDrain(e) => state.serialize_field("error", e),
-            Self::TransactionSink(e) => state.serialize_field("error", e),
-            _ => state.serialize_field("error", &self.to_string()),
-        }?;
+        state.serialize_field("type", &String::from(self))?;
+        state.serialize_field("error", &self.to_string())?;
 
         state.end()
     }
