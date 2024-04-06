@@ -1,5 +1,5 @@
 use chrono::{DateTime, TimeDelta, Utc};
-use rayon::iter::ParallelIterator;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::BTreeMap,
     fs::{self, FileTimes},
@@ -27,7 +27,6 @@ fn datetime_from_int(timestamp: i64) -> DateTime<Utc> {
 impl CheckpointManager {
     /// Given a storage path, load headers from the available checkpoints into memory
     pub fn load(storage_path: PathBuf, policy: RetentionPolicy) -> Result<Self, ManagerLoadError> {
-        use rayon::iter::IntoParallelIterator;
         use ManagerLoadError::*;
 
         // assemble glob checkpoint files based on the provided storage path

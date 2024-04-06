@@ -1,6 +1,6 @@
 use std::{io, path::PathBuf, sync::Arc};
 
-use rayon::iter::ParallelIterator;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     aleo::*,
@@ -96,7 +96,6 @@ impl Checkpoint {
         ledger: &DbLedger,
         storage_mode: StorageMode,
     ) -> Result<(), CheckpointRewindError> {
-        use rayon::iter::IntoParallelIterator;
         use CheckpointRewindError::*;
 
         let stores = ledger::Stores::open(storage_mode.clone()).map_err(OpenLedger)?;
