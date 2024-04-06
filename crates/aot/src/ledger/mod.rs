@@ -7,6 +7,8 @@ use tracing::warn;
 
 use crate::{authorized::Execute, Address, PrivateKey};
 
+use self::checkpoint::CheckpointCommand;
+
 pub mod add;
 pub mod checkpoint;
 pub mod distribute;
@@ -103,7 +105,8 @@ pub enum Commands {
     Execute(Execute),
     Query(query::LedgerQuery),
     Hash,
-    Checkpoint,
+    #[clap(subcommand)]
+    Checkpoint(CheckpointCommand),
 }
 
 impl Ledger {
@@ -160,7 +163,7 @@ impl Ledger {
             }
 
             Commands::Hash => hash::hash_ledger(ledger),
-            Commands::Checkpoint => checkpoint::open_and_checkpoint(genesis, ledger),
+            Commands::Checkpoint(command) => command.parse(genesis, ledger),
         }
     }
 }

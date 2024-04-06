@@ -7,7 +7,11 @@ use snarkvm::{
     ledger::store::{helpers::rocksdb::BlockDB, BlockStorage},
     utilities::ToBytes,
 };
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs::{self, FileTimes},
+    path::PathBuf,
+};
 use tracing::{error, trace};
 
 use crate::checkpoint::path_from_height;
@@ -72,6 +76,25 @@ impl<N: Network> CheckpointManager<N> {
         })
     }
 
+    pub fn print(&self) {
+        let mut prev_time: Option<DateTime<Utc>> = None;
+        for (time, (header, _)) in &self.checkpoints {
+            println!(
+                "{time}: {} {}",
+                header.block_height,
+                if let Some(prev) = prev_time {
+                    format!(
+                        "{}hr",
+                        time.signed_duration_since(prev).num_seconds() / 3600
+                    )
+                } else {
+                    "".to_string()
+                }
+            );
+            prev_time = Some(*time);
+        }
+    }
+
     /// Cull checkpoints that are incompatible with the current block database
     pub fn cull_incompatible(&mut self) -> Result<usize> {
         let blocks = BlockDB::<N>::open(StorageMode::Custom(self.storage_path.clone()))?;
@@ -133,6 +156,7 @@ impl<N: Network> CheckpointManager<N> {
 
         // write to a file
         let mut writer = fs::File::options().write(true).create(true).open(&path)?;
+        writer.set_times(FileTimes::new().set_modified(checkpoint.header.time().into()))?;
         checkpoint.write_le(&mut writer)?;
 
         trace!(

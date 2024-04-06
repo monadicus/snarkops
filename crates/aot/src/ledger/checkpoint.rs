@@ -1,12 +1,48 @@
 use crate::{
-    checkpoint::{path_from_height, Checkpoint},
+    checkpoint::{path_from_height, Checkpoint, CheckpointManager, RetentionPolicy},
     ledger::util,
     DbLedger, Network,
 };
 use anyhow::Result;
+use clap::Parser;
 use snarkvm::utilities::ToBytes;
 use std::path::PathBuf;
 use tracing::{info, trace};
+
+use super::truncate::Truncate;
+
+#[derive(Debug, Parser)]
+pub enum CheckpointCommand {
+    /// Create a checkpoint for the given ledger
+    Create,
+    /// Apply a checkpoint to the given ledger
+    Apply { checkpoint: PathBuf },
+    /// View the available checkpoints
+    View,
+    /// Cleanup old checkpoints
+    Clean,
+}
+
+impl CheckpointCommand {
+    pub fn parse(self, genesis: PathBuf, ledger: PathBuf) -> Result<()> {
+        match self {
+            CheckpointCommand::Create => open_and_checkpoint(genesis, ledger),
+            CheckpointCommand::Apply { checkpoint } => {
+                Truncate::rewind(genesis, ledger, checkpoint)
+            }
+            CheckpointCommand::View => {
+                CheckpointManager::<Network>::load(ledger, RetentionPolicy::default())?.print();
+                Ok(())
+            }
+            CheckpointCommand::Clean => {
+                let mut manager =
+                    CheckpointManager::<Network>::load(ledger, RetentionPolicy::default())?;
+                info!("removed {} old checkpoints", manager.cull_incompatible()?);
+                Ok(())
+            }
+        }
+    }
+}
 
 pub fn open_and_checkpoint(genesis: PathBuf, ledger_path: PathBuf) -> Result<()> {
     let ledger: DbLedger = util::open_ledger(genesis, ledger_path.clone())?;
