@@ -290,6 +290,10 @@ impl Environment {
                 }
             }
 
+            info!("------------------------------------------");
+            info!("playback of environment timeline completed");
+            info!("------------------------------------------");
+
             // perform outcome validation
             if let Some(prometheus) = &*state.prometheus {
                 for (outcome_name, outcome) in env.outcomes.iter() {
@@ -312,17 +316,24 @@ impl Environment {
 
                     let query_response = prometheus.query(query.into_inner()).get().await;
                     match query_response {
-                        Ok(result) => match result.data() {
-                            Data::Scalar(sample) => {
-                                let pass = outcome.validation.validate(sample.value());
-                                if pass {
-                                    info!("OUTCOME {outcome_name}: PASS");
-                                } else {
-                                    error!("OUTCOME {outcome_name}: FAIL");
+                        Ok(result) => {
+                            let value = match result.data() {
+                                Data::Scalar(sample) => sample.value(),
+                                Data::Vector(vector) => match vector.last() {
+                                    Some(item) => item.sample().value(),
+                                    None => {
+                                        warn!("empty vector response from prometheus");
+                                        continue;
+                                    }
+                                },
+                                _ => {
+                                    warn!("unsupported prometheus query response");
+                                    continue;
                                 }
-                            }
-                            _ => warn!("unsupported prometheus query response"),
-                        },
+                            };
+                            let message = outcome.validation.show_validation(value);
+                            info!("OUTCOME {outcome_name}: {message}");
+                        }
 
                         Err(e) => {
                             warn!("failed to validate outcome {outcome_name}: {e}");
@@ -330,10 +341,6 @@ impl Environment {
                     }
                 }
             }
-
-            info!("------------------------------------------");
-            info!("playback of environment timeline completed");
-            info!("------------------------------------------");
 
             Ok(())
         }));

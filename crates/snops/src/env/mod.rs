@@ -158,7 +158,9 @@ impl Environment {
                                 1 => doc_node_key.to_owned(),
                                 _ => {
                                     let mut node_key = doc_node_key.to_owned();
-                                    node_key.id.push('-');
+                                    if !node_key.id.is_empty() {
+                                        node_key.id.push('-');
+                                    }
                                     node_key.id.push_str(&i.to_string());
                                     node_key
                                 }
@@ -311,6 +313,11 @@ impl Environment {
             .remove(id)
             .ok_or(CleanupError::EnvNotFound(*id))?;
         state.prom_httpsd.lock().await.set_dirty();
+
+        // stop the timeline if it's running
+        if let Some(handle) = &*env.timeline_handle.lock().await {
+            handle.abort();
+        }
 
         // reconcile all online agents
         let (ids, handles): (Vec<_>, Vec<_>) = {

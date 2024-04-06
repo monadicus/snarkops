@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use indexmap::IndexMap;
 use promql_parser::{label::Matcher, parser::ast::Expr as PromExpr};
 use serde::{de::Visitor, Deserialize};
@@ -7,6 +9,8 @@ use serde::{de::Visitor, Deserialize};
 /// A document describing a test's expected outcomes.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Document {
+    pub name: String,
+    pub description: Option<String>,
     pub metrics: OutcomeMetrics,
 }
 
@@ -16,8 +20,6 @@ pub type OutcomeMetrics = IndexMap<String, OutcomeExpectation>;
 /// after a timeline ends.
 #[derive(Deserialize, Debug, Clone)]
 pub struct OutcomeExpectation {
-    /// The name of the expected outcome, like `network/tps`.
-    pub name: String,
     /// A PromQL query that will be used to verify the outcome.
     ///
     /// If unspecified, the metric outcome name used may refer to a built-in
@@ -72,6 +74,32 @@ impl OutcomeValidation {
                 let epsilon = epsilon.unwrap_or(f64::EPSILON);
                 ((eq - epsilon)..=(eq + epsilon)).contains(&value)
             }
+        }
+    }
+
+    pub fn show_validation(&self, value: f64) -> String {
+        if self.validate(value) {
+            format!("✅ pass, {value} is {self}")
+        } else {
+            format!("⚠️ expected {value} to be {self}")
+        }
+    }
+}
+
+impl Display for OutcomeValidation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use OutcomeValidation::*;
+        match self {
+            Range { min, max } => match (min, max) {
+                (Some(min), Some(max)) => write!(f, "between {min} and {max}"),
+                (Some(min), None) => write!(f, "at least {min}"),
+                (None, Some(max)) => write!(f, "at most {max}"),
+                (None, None) => write!(f, "anything"),
+            },
+            Eq { eq, epsilon } => match epsilon {
+                Some(epsilon) => write!(f, "equal to {eq} ± {epsilon}"),
+                None => write!(f, "equal to {eq}"),
+            },
         }
     }
 }

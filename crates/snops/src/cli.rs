@@ -16,7 +16,7 @@ pub struct Cli {
     pub prometheus_location: PrometheusLocation,
 
     /// Path to the directory containing the stored data
-    #[arg(long, default_value = "snot-control-data")]
+    #[arg(long, default_value = "snops-control-data")]
     pub path: PathBuf,
 
     #[arg(long)]
