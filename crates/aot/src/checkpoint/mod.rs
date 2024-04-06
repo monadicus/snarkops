@@ -28,6 +28,9 @@ mod header;
 mod manager;
 mod retention;
 
+#[cfg(test)]
+mod retention_tests;
+
 pub use content::*;
 pub use header::*;
 pub use manager::*;
