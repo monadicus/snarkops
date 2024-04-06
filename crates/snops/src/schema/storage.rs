@@ -129,34 +129,34 @@ impl Default for LedgerGeneration {
 #[derive(Debug, Clone, Serialize)]
 pub struct FilenameString(String);
 
-struct FilenameStringVisitor;
-
-impl<'de> Visitor<'de> for FilenameStringVisitor {
-    type Value = FilenameString;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a string that can be used as a filename")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        if v.contains('/') {
-            Err(E::custom("filename string cannot have a path separator"))
-        } else if v == "." || v == ".." {
-            Err(E::custom("filename string cannot be relative"))
-        } else {
-            Ok(FilenameString(String::from(v)))
-        }
-    }
-}
-
 impl<'de> Deserialize<'de> for FilenameString {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
+        struct FilenameStringVisitor;
+
+        impl<'de> Visitor<'de> for FilenameStringVisitor {
+            type Value = FilenameString;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string that can be used as a filename")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v.contains('/') {
+                    Err(E::custom("filename string cannot have a path separator"))
+                } else if v == "." || v == ".." {
+                    Err(E::custom("filename string cannot be relative"))
+                } else {
+                    Ok(FilenameString(String::from(v)))
+                }
+            }
+        }
+
         deserializer.deserialize_str(FilenameStringVisitor)
     }
 }

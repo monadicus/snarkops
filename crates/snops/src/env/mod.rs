@@ -433,7 +433,7 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
             };
 
             // resolve the peers and validators
-            let mut node_state = node.into_state(key.ty);
+            let mut node_state = node.into_state(key.to_owned());
             node_state.private_key = node
                 .key
                 .as_ref()

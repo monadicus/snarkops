@@ -262,10 +262,8 @@ impl AgentService for AgentRpcServer {
                     };
 
                     command
-                        // .kill_on_drop(true)
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
-                        // .stdin(Stdio::null())
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
@@ -287,6 +285,11 @@ impl AgentService for AgentRpcServer {
                         .arg(state.cli.ports.metrics.to_string())
                         .arg("--node")
                         .arg(state.cli.ports.node.to_string());
+
+                    // inject environment variables
+                    for (key, val) in &node.env {
+                        command.env(key, val);
+                    }
 
                     match node.private_key {
                         KeyState::None => {}
@@ -497,7 +500,8 @@ impl AgentService for AgentRpcServer {
     ) -> Result<(), AgentError> {
         info!("executing authorization...");
 
-        // TODO: maybe in the env config store a branch label for the binary so it won't be put in storage and won't overwrite itself
+        // TODO: maybe in the env config store a branch label for the binary so it won't
+        // be put in storage and won't overwrite itself
 
         // download the snarkOS binary
         api::check_binary(
