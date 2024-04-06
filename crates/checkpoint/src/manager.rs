@@ -1,12 +1,6 @@
-use aleo_std::StorageMode;
 use anyhow::{bail, Result};
 use chrono::{DateTime, TimeDelta, Utc};
 use rayon::iter::ParallelIterator;
-use snarkvm::{
-    console::program::{Itertools, Network},
-    ledger::store::{helpers::rocksdb::BlockDB, BlockStorage},
-    utilities::ToBytes,
-};
 use std::{
     collections::BTreeMap,
     fs::{self, FileTimes},
@@ -14,15 +8,13 @@ use std::{
 };
 use tracing::{error, trace};
 
-use crate::checkpoint::path_from_height;
+use crate::{path_from_height, CheckpointHeader, RetentionPolicy};
 
-use super::{Checkpoint, CheckpointHeader, RetentionPolicy};
-
-pub struct CheckpointManager<N: Network> {
+pub struct CheckpointManager {
     storage_path: PathBuf,
     policy: RetentionPolicy,
     /// timestamp -> checkpoint header
-    checkpoints: BTreeMap<DateTime<Utc>, (CheckpointHeader<N>, PathBuf)>,
+    checkpoints: BTreeMap<DateTime<Utc>, (CheckpointHeader, PathBuf)>,
 }
 
 /// Block timestamps are seconds since Unix epoch UTC
@@ -30,7 +22,7 @@ fn datetime_from_int(timestamp: i64) -> DateTime<Utc> {
     DateTime::UNIX_EPOCH + TimeDelta::new(timestamp, 0).unwrap()
 }
 
-impl<N: Network> CheckpointManager<N> {
+impl CheckpointManager {
     /// Given a storage path, load headers from the available checkpoints into memory
     pub fn load(storage_path: PathBuf, policy: RetentionPolicy) -> Result<Self> {
         use rayon::iter::IntoParallelIterator;
@@ -56,7 +48,7 @@ impl<N: Network> CheckpointManager<N> {
                 };
 
                 // parse only the header from the given path
-                let header = match CheckpointHeader::<N>::read_file(&path) {
+                let header = match CheckpointHeader::read_file(&path) {
                     Ok(header) => header,
                     Err(err) => {
                         error!("error parsing {path:?}: {err}");
@@ -96,15 +88,19 @@ impl<N: Network> CheckpointManager<N> {
     }
 
     /// Cull checkpoints that are incompatible with the current block database
+    #[cfg(feature = "write")]
     pub fn cull_incompatible(&mut self) -> Result<usize> {
-        let blocks = BlockDB::<N>::open(StorageMode::Custom(self.storage_path.clone()))?;
+        use crate::snarkos::{self, BlockStorage, LazyBytes};
+
+        let blocks =
+            snarkos::BlockDB::open(snarkos::StorageMode::Custom(self.storage_path.clone()))?;
 
         let mut rejected = vec![];
 
         for (time, (header, path)) in self.checkpoints.iter() {
             let height = header.block_height;
             let block_hash = blocks.get_block_hash(height)?;
-            if block_hash != Some(header.block_hash) {
+            if block_hash.map(|h| h.bytes()) != Some(header.block_hash) {
                 trace!("checkpoint {path:?} is incompatible with block at height {height}");
                 rejected.push(*time);
             }
@@ -124,15 +120,16 @@ impl<N: Network> CheckpointManager<N> {
 
     /// Poll the ledger for a new checkpoint and write it to disk
     /// Also reject old checkpoints that are no longer needed
+    #[cfg(feature = "write")]
     pub fn poll(&mut self) -> Result<bool> {
-        let header = CheckpointHeader::<N>::read_ledger(self.storage_path.clone())?;
+        let header = CheckpointHeader::read_ledger(self.storage_path.clone())?;
         let time = header.time();
 
         if !self.is_ready(&time) || header.block_height == 0 {
             return Ok(false);
         }
 
-        let checkpoint = Checkpoint::<N>::new_from_header(self.storage_path.clone(), header)?;
+        let checkpoint = crate::Checkpoint::new_from_header(self.storage_path.clone(), header)?;
         self.write_and_insert(checkpoint)?;
         self.cull_timestamp(time);
         Ok(true)
@@ -149,7 +146,10 @@ impl<N: Network> CheckpointManager<N> {
     }
 
     /// Write a checkpoint to disk and insert it into the manager
-    pub fn write_and_insert(&mut self, checkpoint: Checkpoint<N>) -> Result<()> {
+    #[cfg(feature = "write")]
+    pub fn write_and_insert(&mut self, checkpoint: crate::Checkpoint) -> Result<()> {
+        use crate::snarkos::ToBytes;
+
         let Some(path) = path_from_height(&self.storage_path, checkpoint.height()) else {
             bail!("invalid storage path");
         };
@@ -170,12 +170,16 @@ impl<N: Network> CheckpointManager<N> {
         Ok(())
     }
 
+    #[cfg(feature = "write")]
     pub fn cull(&mut self) {
         self.cull_timestamp(Utc::now());
     }
 
     /// Remove the oldest checkpoints that are no longer needed
+    #[cfg(feature = "write")]
     pub fn cull_timestamp(&mut self, timestamp: DateTime<Utc>) {
+        use crate::snarkos::Itertools;
+
         let times = self.checkpoints.keys().collect_vec();
         let rejected = self.policy.reject_with_time(timestamp, times);
         for time in rejected {

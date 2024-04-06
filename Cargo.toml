@@ -5,6 +5,7 @@ members = [
 	"crates/snops-agent",
 	"crates/snops-cli",
 	"crates/snops-common",
+	"crates/checkpoint",
 ]
 resolver = "2"
 
@@ -52,6 +53,7 @@ snarkos-cli = { path = "../snarkos/cli" }
 snarkos-node = { path = "../snarkos/node" }
 snarkvm = { path = "../snarkvm", features = ["rocks"] }
 snops-common = { path = "./crates/snops-common" }
+checkpoint = { path = "./crates/checkpoint" }
 
 [patch."https://github.com/AleoHQ/snarkVM.git"]
 snarkvm = { path = "../snarkvm" }

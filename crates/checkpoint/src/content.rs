@@ -1,30 +1,28 @@
-use aleo_std::StorageMode;
-use anyhow::Result;
-use snarkvm::{
-    console::program::{Identifier, Network as NetworkTrait, Plaintext, ProgramID, Value},
-    ledger::store::{
-        helpers::{rocksdb::FinalizeDB, MapRead},
-        FinalizeStorage,
+use crate::{
+    snarkos::{
+        FinalizeDB, FinalizeStorage, FromBytes, Identifier, MapRead, Plaintext, ProgramID,
+        StorageMode, ToBytes, Value,
     },
-    utilities::{FromBytes, ToBytes},
+    CheckpointContentError as Error,
 };
-use std::{io, path::PathBuf};
-
-use super::CheckpointHeader;
+use anyhow::Result;
+use std::path::PathBuf;
 
 /// Committee store round key (this will probably never change)
 pub const ROUND_KEY: u8 = 0;
 
 /// Storage of key-value pairs for each program ID and identifier
 /// Note, the structure is this way as ToBytes derives 2 sized tuples, but not 3 sized tuples
-pub struct CheckpointContent<N: NetworkTrait> {
+pub struct CheckpointContent {
     #[allow(clippy::type_complexity)]
-    pub key_values: Vec<((ProgramID<N>, Identifier<N>), Vec<(Plaintext<N>, Value<N>)>)>,
+    pub key_values: Vec<((ProgramID, Identifier), Vec<(Plaintext, Value)>)>,
 }
 
-impl<N: NetworkTrait> CheckpointContent<N> {
-    pub fn read_ledger(path: PathBuf) -> Result<Self> {
-        let finalize = FinalizeDB::<N>::open(StorageMode::Custom(path))?;
+impl CheckpointContent {
+    pub fn read_ledger(path: PathBuf) -> Result<Self, Error> {
+        use Error::*;
+
+        let finalize = FinalizeDB::open(StorageMode::Custom(path)).map_err(OpenLedger)?;
         // let timestamp = blocks.
 
         let key_values = finalize
@@ -48,13 +46,14 @@ impl<N: NetworkTrait> CheckpointContent<N> {
                     vec![Err(e)]
                 }
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()
+            .map_err(ReadLedger)?;
 
         Ok(Self { key_values })
     }
 }
 
-impl<N: NetworkTrait> ToBytes for CheckpointContent<N> {
+impl ToBytes for CheckpointContent {
     fn write_le<W: snarkvm::prelude::Write>(&self, mut writer: W) -> snarkvm::prelude::IoResult<()>
     where
         Self: Sized,
@@ -70,7 +69,7 @@ impl<N: NetworkTrait> ToBytes for CheckpointContent<N> {
     }
 }
 
-impl<N: NetworkTrait> FromBytes for CheckpointContent<N> {
+impl FromBytes for CheckpointContent {
     fn read_le<R: snarkvm::prelude::Read>(mut reader: R) -> snarkvm::prelude::IoResult<Self>
     where
         Self: Sized,
@@ -79,55 +78,15 @@ impl<N: NetworkTrait> FromBytes for CheckpointContent<N> {
         let mut key_values = Vec::with_capacity(len as usize);
 
         for _ in 0..len {
-            let key = <(ProgramID<N>, Identifier<N>)>::read_le(&mut reader)?;
+            let key = <(ProgramID, Identifier)>::read_le(&mut reader)?;
             let len = u64::read_le(&mut reader)?;
             let mut entries = Vec::with_capacity(len as usize);
             for _ in 0..len {
-                entries.push(<(Plaintext<N>, Value<N>)>::read_le(&mut reader)?);
+                entries.push(<(Plaintext, Value)>::read_le(&mut reader)?);
             }
             key_values.push((key, entries));
         }
 
         Ok(Self { key_values })
-    }
-}
-
-pub struct Checkpoint<N: NetworkTrait> {
-    pub header: CheckpointHeader<N>,
-    pub content: CheckpointContent<N>,
-}
-
-impl<N: NetworkTrait> ToBytes for Checkpoint<N> {
-    fn write_le<W: snarkvm::prelude::Write>(&self, mut writer: W) -> snarkvm::prelude::IoResult<()>
-    where
-        Self: Sized,
-    {
-        let content_bytes = self.content.to_bytes_le().map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("error serializing content: {e}"),
-            )
-        })?;
-
-        CheckpointHeader {
-            content_len: content_bytes.len() as u64,
-            ..self.header
-        }
-        .write_le(&mut writer)?;
-
-        writer.write_all(&content_bytes)?;
-        Ok(())
-    }
-}
-
-impl<N: NetworkTrait> FromBytes for Checkpoint<N> {
-    fn read_le<R: snarkvm::prelude::Read>(mut reader: R) -> snarkvm::prelude::IoResult<Self>
-    where
-        Self: Sized,
-    {
-        let header = CheckpointHeader::read_le(&mut reader)?;
-        let content = CheckpointContent::read_le(&mut reader)?;
-
-        Ok(Self { header, content })
     }
 }

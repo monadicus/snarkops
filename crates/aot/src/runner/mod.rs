@@ -18,11 +18,8 @@ use snarkvm::{
 use snops_common::state::NodeType;
 use tracing::info;
 
-use crate::{
-    checkpoint::{CheckpointManager, RetentionPolicy},
-    ledger::Addrs,
-    Account, Network, PrivateKey,
-};
+use crate::{ledger::Addrs, Account, Network, PrivateKey};
+use checkpoint::{CheckpointManager, RetentionPolicy};
 
 mod metrics;
 
@@ -108,8 +105,7 @@ impl Runner {
 
         let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
 
-        let mut manager =
-            CheckpointManager::<Network>::load(self.ledger.clone(), RetentionPolicy::default())?;
+        let mut manager = CheckpointManager::load(self.ledger.clone(), RetentionPolicy::default())?;
         let storage_mode = StorageMode::Custom(self.ledger.clone());
 
         // slight alterations to the normal `metrics::initialize_metrics` because of

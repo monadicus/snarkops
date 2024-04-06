@@ -791,6 +791,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
 
 [[package]]
+name = "checkpoint"
+version = "0.1.0"
+dependencies = [
+ "aleo-std",
+ "anyhow",
+ "chrono",
+ "clap",
+ "glob",
+ "rayon",
+ "serde",
+ "serde-clap-deserialize",
+ "snarkos-node",
+ "snarkvm",
+ "thiserror",
+ "tikv-jemallocator",
+ "tracing",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4297,6 +4316,7 @@ dependencies = [
  "anyhow",
  "axum",
  "bincode",
+ "checkpoint",
  "chrono",
  "clap",
  "colored",

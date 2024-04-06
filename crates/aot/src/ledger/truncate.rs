@@ -13,11 +13,8 @@ use snarkvm::{
 };
 use tracing::info;
 
-use crate::{
-    checkpoint::{Checkpoint, CheckpointManager, RetentionPolicy},
-    ledger::util,
-    DbLedger, Network,
-};
+use crate::{ledger::util, DbLedger};
+use checkpoint::{Checkpoint, CheckpointManager, RetentionPolicy};
 
 #[derive(Debug, Args)]
 pub struct Replay {
@@ -59,7 +56,7 @@ impl Truncate {
         ensure!(checkpoint_path.exists(), "checkpoint file does not exist");
 
         let bytes = std::fs::read(checkpoint_path)?;
-        let checkpoint = Checkpoint::<Network>::from_bytes_le(&bytes)?;
+        let checkpoint = Checkpoint::from_bytes_le(&bytes)?;
         info!("read checkpoint for height {}", checkpoint.height());
 
         info!("applying checkpoint to ledger...");
@@ -107,12 +104,7 @@ impl Replay {
 
                 let mut manager = self
                     .checkpoint
-                    .then(|| {
-                        CheckpointManager::<Network>::load(
-                            ledger.clone(),
-                            RetentionPolicy::default(),
-                        )
-                    })
+                    .then(|| CheckpointManager::load(ledger.clone(), RetentionPolicy::default()))
                     .transpose()?;
 
                 let db_ledger: DbLedger = util::open_ledger(genesis, ledger)?;

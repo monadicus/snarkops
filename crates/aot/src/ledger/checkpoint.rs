@@ -1,9 +1,6 @@
-use crate::{
-    checkpoint::{path_from_height, Checkpoint, CheckpointManager, RetentionPolicy},
-    ledger::util,
-    DbLedger, Network,
-};
+use crate::{ledger::util, DbLedger};
 use anyhow::Result;
+use checkpoint::{path_from_height, Checkpoint, CheckpointManager, RetentionPolicy};
 use clap::Parser;
 use snarkvm::utilities::ToBytes;
 use std::path::PathBuf;
@@ -31,12 +28,11 @@ impl CheckpointCommand {
                 Truncate::rewind(genesis, ledger, checkpoint)
             }
             CheckpointCommand::View => {
-                CheckpointManager::<Network>::load(ledger, RetentionPolicy::default())?.print();
+                CheckpointManager::load(ledger, RetentionPolicy::default())?.print();
                 Ok(())
             }
             CheckpointCommand::Clean => {
-                let mut manager =
-                    CheckpointManager::<Network>::load(ledger, RetentionPolicy::default())?;
+                let mut manager = CheckpointManager::load(ledger, RetentionPolicy::default())?;
                 info!("removed {} old checkpoints", manager.cull_incompatible()?);
                 Ok(())
             }
@@ -49,7 +45,7 @@ pub fn open_and_checkpoint(genesis: PathBuf, ledger_path: PathBuf) -> Result<()>
     let height = ledger.latest_height();
 
     info!("creating checkpoint @ {height}...");
-    let bytes = Checkpoint::<Network>::new(ledger_path.clone())?.to_bytes_le()?;
+    let bytes = Checkpoint::new(ledger_path.clone())?.to_bytes_le()?;
 
     info!("created checkpoint; {} bytes", bytes.len());
 

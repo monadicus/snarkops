@@ -1,5 +1,4 @@
 pub mod authorized;
-pub mod checkpoint;
 pub mod cli;
 pub mod credits;
 pub mod genesis;

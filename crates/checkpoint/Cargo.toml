@@ -1,0 +1,28 @@
+[package]
+edition = "2021"
+name = "checkpoint"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = []
+write = ["snarkvm", "snarkos-node", "aleo-std", "anyhow"]
+
+[dependencies]
+aleo-std = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+chrono.workspace = true
+clap.workspace = true
+glob.workspace = true
+rayon.workspace = true
+serde-clap-deserialize = "0.1.0"
+serde.workspace = true
+snarkvm = { workspace = true, optional = true }
+snarkos-node = { workspace = true, optional = true }
+thiserror.workspace = true
+
+tracing.workspace = true
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+tikv-jemallocator = "0.5"
