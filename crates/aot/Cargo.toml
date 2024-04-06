@@ -7,6 +7,7 @@ version = "0.1.0"
 
 [features]
 default = ["node"]
+flame = ["tracing-flame"]
 node = [
 	"snarkos-node",
 	"crossterm",
@@ -31,7 +32,7 @@ rand.workspace = true
 rand_chacha.workspace = true
 rayon.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
-serde-clap-deserialize = { workspace = true }
+serde-clap-deserialize.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 snarkos-account.workspace = true
@@ -39,7 +40,7 @@ snarkos-node = { workspace = true, optional = true }
 snarkvm.workspace = true
 snops-common.workspace = true
 tokio.workspace = true
-tracing-flame = { workspace = true }
+tracing-flame = { workspace = true, optional = true }
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 tracing.workspace = true

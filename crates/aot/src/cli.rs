@@ -1,6 +1,9 @@
+#[cfg(feature = "flame")]
+use std::fs::File;
+#[cfg(feature = "flame")]
+use std::io::BufWriter;
 use std::{
-    fs::File,
-    io::{self, BufWriter},
+    io::{self},
     path::PathBuf,
 };
 
@@ -8,6 +11,7 @@ use anyhow::Result;
 use clap::Parser;
 use crossterm::tty::IsTty;
 use tracing_appender::non_blocking::WorkerGuard;
+#[cfg(feature = "flame")]
 use tracing_flame::FlushGuard;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
@@ -41,6 +45,21 @@ pub enum Command {
     Authorize(Authorize),
 }
 
+pub trait Flushable {
+    fn flush(&self);
+}
+
+impl Flushable for () {
+    fn flush(&self) {}
+}
+
+#[cfg(feature = "flame")]
+impl Flushable for tracing_flame::FlushGuard<BufWriter<File>> {
+    fn flush(&self) {
+        // Implementation for flushing if necessary
+    }
+}
+
 impl Cli {
     /// Initializes the logger.
     ///
@@ -53,7 +72,7 @@ impl Cli {
     /// 5 => info, debug, trace, snarkos_node_router=trace
     /// 6 => info, debug, trace, snarkos_node_tcp=trace
     /// ```
-    pub fn init_logger(&self) -> (Option<FlushGuard<BufWriter<File>>>, Vec<WorkerGuard>) {
+    pub fn init_logger(&self) -> (Box<dyn Flushable>, Vec<WorkerGuard>) {
         let verbosity = self.verbosity;
 
         match verbosity {
@@ -108,14 +127,23 @@ impl Cli {
         let mut layers = vec![];
         let mut guards = vec![];
 
+        if cfg!(not(feature = "flame")) && self.enable_profiling {
+            // TODO should be an error
+            panic!("Flame feature is not enabled");
+        }
+
+        #[cfg(feature = "flame")]
         let guard = if self.enable_profiling {
             let (flame_layer, guard) =
                 tracing_flame::FlameLayer::with_file("./tracing.folded").unwrap();
             layers.push(flame_layer.boxed());
-            Some(guard)
+            Box::new(guard) as Box<dyn Flushable>
         } else {
-            None
+            Box::new(())
         };
+
+        #[cfg(not(feature = "flame"))]
+        let guard = Box::new(());
 
         if let Some(logfile) = self.log.as_ref() {
             // Create the directories tree for a logfile if it doesn't exist.

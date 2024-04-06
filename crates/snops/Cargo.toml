@@ -4,31 +4,37 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { workspace = true, features = ["ws"] }
+axum = { workspace = true, features = [
+	"http2",
+	"json",
+	"query",
+	"tokio",
+	"ws",
+] }
 bimap.workspace = true
 bincode.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
-duration-str = { workspace = true }
+duration-str.workspace = true
 external-ip.workspace = true
-fixedbitset = { workspace = true }
+fixedbitset.workspace = true
 futures-util.workspace = true
-hmac = { workspace = true }
+hmac.workspace = true
 http.workspace = true
 indexmap.workspace = true
-jwt = { workspace = true }
+jwt.workspace = true
 lazy_static.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
 rayon.workspace = true
 regex.workspace = true
-reqwest = { workspace = true, features = ["stream", "json"] }
+reqwest = { workspace = true, features = ["json", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
-sha2 = { workspace = true }
+sha2.workspace = true
 snops-common = { path = "../snops-common" }
-strum_macros = { workspace = true }
+strum_macros.workspace = true
 surrealdb = { workspace = true, features = ["kv-rocksdb"] }
 tarpc.workspace = true
 thiserror.workspace = true
@@ -39,5 +45,5 @@ tracing-appender.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url = { workspace = true, features = ["serde"] }
-uuid = { workspace = true, features = ["v4", "fast-rng"] }
-wildmatch = { workspace = true }
+uuid = { workspace = true, features = ["fast-rng", "v4"] }
+wildmatch.workspace = true
