@@ -1,4 +1,8 @@
-use std::{fmt::Display, num::NonZeroU8, str::FromStr};
+use std::{
+    fmt::{Display, Write},
+    num::NonZeroU8,
+    str::FromStr,
+};
 
 use chrono::{DateTime, TimeDelta, Utc};
 use snarkvm::console::program::Itertools;
@@ -85,14 +89,11 @@ impl RetentionPolicy {
         let mut rules = self.rules.iter().rev().peekable();
         let mut times = times.into_iter().sorted().peekable();
 
-        // println!("\n[debug] times: {:?}", times.clone().collect_vec());
-
         // step 2 - keep track of the last kept time
         let mut last_kept = times.next().unwrap();
         let mut curr_rule = rules.next().unwrap();
 
         'outer: while let Some(time) = times.peek().cloned() {
-            // println!("VISIT {time}");
             let delta = now.signed_duration_since(time);
             let last_delta = now.signed_duration_since(last_kept);
 
@@ -135,7 +136,6 @@ impl RetentionPolicy {
 
                     // update the last step time if the current time is within the next duration
                     if delta < next_duration {
-                        // println!("OK {curr_rule}: {last_kept}");
                         last_kept = time;
                         times.next();
                     }
@@ -147,7 +147,6 @@ impl RetentionPolicy {
 
             // keep the current time if the current rule is unlimited
             let Some(keep) = curr_rule.keep.as_duration() else {
-                // println!("{curr_rule}: keep is unlimited, keeping {time}");
                 last_kept = time;
                 times.next();
                 continue;
@@ -219,15 +218,13 @@ impl FromStr for RetentionPolicy {
 
 impl Display for RetentionPolicy {
     fn fmt(&self, f: &mut snarkvm::prelude::Formatter<'_>) -> snarkvm::prelude::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.rules
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
-        )
+        for (i, rule) in self.rules.iter().enumerate() {
+            if i > 0 {
+                f.write_char(',')?;
+            }
+            rule.fmt(f)?;
+        }
+        Ok(())
     }
 }
 

@@ -39,7 +39,6 @@ fn walk_policy(
 
         // if the policy indicates it's okay to create a new checkpoint, add it
         if policy.is_ready_with_time(&now, &last_insert) {
-            // println!("adding checkpoint {now}");
             times.insert(now);
             last_insert = now;
             num_added += 1;
@@ -49,7 +48,6 @@ fn walk_policy(
         if now.signed_duration_since(last_gc) >= gc_interval {
             let rejected = policy.reject_with_time(now, times.iter().collect());
             for time in rejected {
-                // println!("removing checkpoint {time}");
                 times.remove(&time);
             }
 
