@@ -20,7 +20,10 @@ use crate::{
         source::{QueryTarget, TxSource},
         CannonInstance,
     },
-    schema::timeline::{Action, ActionInstance, EventDuration},
+    schema::{
+        outcomes::PromQuery,
+        timeline::{Action, ActionInstance, EventDuration},
+    },
     state::{Agent, AgentClient, GlobalState},
 };
 
@@ -297,9 +300,13 @@ impl Environment {
             // perform outcome validation
             if let Some(prometheus) = &*state.prometheus {
                 for (outcome_name, outcome) in env.outcomes.iter() {
-                    // TODO: support built-in queries
-                    let Some(mut query) = outcome.query.clone() else {
-                        warn!("built-in queries are unsupported for probably only this commit");
+                    let Some(mut query) = outcome
+                        .query
+                        .as_ref()
+                        .or_else(|| PromQuery::builtin(&outcome_name))
+                        .cloned()
+                    else {
+                        warn!("unrecognized metric name (no built-in query found)");
                         continue;
                     };
 
@@ -311,8 +318,6 @@ impl Environment {
                     }]);
 
                     // TODO: store pass/fails in environment
-                    // TODO: prettier output
-                    // TODO: format validation checking (show value and expected range)
 
                     let query_response = prometheus.query(query.into_inner()).get().await;
                     match query_response {

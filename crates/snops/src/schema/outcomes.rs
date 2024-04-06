@@ -1,6 +1,7 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use indexmap::IndexMap;
+use lazy_static::lazy_static;
 use promql_parser::{label::Matcher, parser::ast::Expr as PromExpr};
 use serde::{de::Visitor, Deserialize};
 
@@ -106,9 +107,35 @@ impl Display for OutcomeValidation {
 
 /// A PromQL query.
 #[derive(Debug, Clone)]
-pub struct PromQuery(pub PromExpr);
+pub struct PromQuery(PromExpr);
 
 impl PromQuery {
+    /// Parse a PromQL query into a `PromQuery`.
+    pub fn new(query: &str) -> Result<Self, String> {
+        promql_parser::parser::parse(query).map(Self)
+    }
+
+    pub fn builtin(name: &str) -> Option<&Self> {
+        macro_rules! builtins {
+            { $($name:literal : $query:literal),+ , } => {
+                lazy_static! {
+                    static ref QUERY_BUILTINS: HashMap<&'static str, PromQuery> = [
+                        $(($name, PromQuery::new($query).unwrap())),+
+                    ]
+                    .into_iter()
+                    .collect();
+                }
+            }
+        }
+
+        builtins! {
+            "network/tps": "avg(rate(snarkos_blocks_transactions_total[10s]))", // TODO: time
+        }
+
+        QUERY_BUILTINS.get(name)
+    }
+
+    /// Fetch the inner PromQL expression from this query.
     pub fn into_inner(self) -> PromExpr {
         self.0
     }
@@ -178,9 +205,7 @@ impl<'de> Deserialize<'de> for PromQuery {
             where
                 E: serde::de::Error,
             {
-                promql_parser::parser::parse(v)
-                    .map(PromQuery)
-                    .map_err(E::custom)
+                PromQuery::new(v).map_err(E::custom)
             }
         }
 
