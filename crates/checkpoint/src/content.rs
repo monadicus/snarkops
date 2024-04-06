@@ -1,9 +1,9 @@
 use crate::{
-    snarkos::{
+    aleo::{
         FinalizeDB, FinalizeStorage, FromBytes, Identifier, MapRead, Plaintext, ProgramID,
         StorageMode, ToBytes, Value,
     },
-    CheckpointContentError as Error,
+    errors::CheckpointContentError as Error,
 };
 use anyhow::Result;
 use std::path::PathBuf;
@@ -54,7 +54,7 @@ impl CheckpointContent {
 }
 
 impl ToBytes for CheckpointContent {
-    fn write_le<W: snarkvm::prelude::Write>(&self, mut writer: W) -> snarkvm::prelude::IoResult<()>
+    fn write_le<W: std::io::Write>(&self, mut writer: W) -> std::io::Result<()>
     where
         Self: Sized,
     {
@@ -70,7 +70,7 @@ impl ToBytes for CheckpointContent {
 }
 
 impl FromBytes for CheckpointContent {
-    fn read_le<R: snarkvm::prelude::Read>(mut reader: R) -> snarkvm::prelude::IoResult<Self>
+    fn read_le<R: std::io::Read>(mut reader: R) -> std::io::Result<Self>
     where
         Self: Sized,
     {

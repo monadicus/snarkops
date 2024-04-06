@@ -1,4 +1,3 @@
-use anyhow::{bail, Result};
 use chrono::{DateTime, TimeDelta, Utc};
 use rayon::iter::ParallelIterator;
 use std::{
@@ -8,7 +7,10 @@ use std::{
 };
 use tracing::{error, trace};
 
-use crate::{path_from_height, CheckpointHeader, RetentionPolicy};
+use crate::{
+    errors::{ManagerCullError, ManagerInsertError, ManagerLoadError, ManagerPollError},
+    path_from_height, CheckpointHeader, RetentionPolicy,
+};
 
 pub struct CheckpointManager {
     storage_path: PathBuf,
@@ -24,12 +26,13 @@ fn datetime_from_int(timestamp: i64) -> DateTime<Utc> {
 
 impl CheckpointManager {
     /// Given a storage path, load headers from the available checkpoints into memory
-    pub fn load(storage_path: PathBuf, policy: RetentionPolicy) -> Result<Self> {
+    pub fn load(storage_path: PathBuf, policy: RetentionPolicy) -> Result<Self, ManagerLoadError> {
         use rayon::iter::IntoParallelIterator;
+        use ManagerLoadError::*;
 
         // assemble glob checkpoint files based on the provided storage path
         let Some(storage_glob) = path_from_height(&storage_path, "*") else {
-            bail!("invalid storage path");
+            return Err(InvalidStoragePath(storage_path));
         };
         let paths = glob::glob(&storage_glob.to_string_lossy())?;
         // this ridiculous Path result from glob is NOT IntoParallelIterator
@@ -89,17 +92,18 @@ impl CheckpointManager {
 
     /// Cull checkpoints that are incompatible with the current block database
     #[cfg(feature = "write")]
-    pub fn cull_incompatible(&mut self) -> Result<usize> {
-        use crate::snarkos::{self, BlockStorage, LazyBytes};
+    pub fn cull_incompatible(&mut self) -> Result<usize, ManagerCullError> {
+        use crate::aleo::*;
+        use ManagerCullError::*;
 
-        let blocks =
-            snarkos::BlockDB::open(snarkos::StorageMode::Custom(self.storage_path.clone()))?;
+        let blocks = BlockDB::open(StorageMode::Custom(self.storage_path.clone()))
+            .map_err(StorageOpenError)?;
 
         let mut rejected = vec![];
 
         for (time, (header, path)) in self.checkpoints.iter() {
             let height = header.block_height;
-            let block_hash = blocks.get_block_hash(height)?;
+            let block_hash = blocks.get_block_hash(height).map_err(ReadLedger)?;
             if block_hash.map(|h| h.bytes()) != Some(header.block_hash) {
                 trace!("checkpoint {path:?} is incompatible with block at height {height}");
                 rejected.push(*time);
@@ -121,7 +125,7 @@ impl CheckpointManager {
     /// Poll the ledger for a new checkpoint and write it to disk
     /// Also reject old checkpoints that are no longer needed
     #[cfg(feature = "write")]
-    pub fn poll(&mut self) -> Result<bool> {
+    pub fn poll(&mut self) -> Result<bool, ManagerPollError> {
         let header = CheckpointHeader::read_ledger(self.storage_path.clone())?;
         let time = header.time();
 
@@ -147,17 +151,27 @@ impl CheckpointManager {
 
     /// Write a checkpoint to disk and insert it into the manager
     #[cfg(feature = "write")]
-    pub fn write_and_insert(&mut self, checkpoint: crate::Checkpoint) -> Result<()> {
-        use crate::snarkos::ToBytes;
+    pub fn write_and_insert(
+        &mut self,
+        checkpoint: crate::Checkpoint,
+    ) -> Result<(), ManagerInsertError> {
+        use crate::aleo::ToBytes;
+        use ManagerInsertError::*;
 
         let Some(path) = path_from_height(&self.storage_path, checkpoint.height()) else {
-            bail!("invalid storage path");
+            return Err(InvalidStoragePath(self.storage_path.clone()));
         };
 
         // write to a file
-        let mut writer = fs::File::options().write(true).create(true).open(&path)?;
-        writer.set_times(FileTimes::new().set_modified(checkpoint.header.time().into()))?;
-        checkpoint.write_le(&mut writer)?;
+        let mut writer = fs::File::options()
+            .write(true)
+            .create(true)
+            .open(&path)
+            .map_err(FileError)?;
+        writer
+            .set_times(FileTimes::new().set_modified(checkpoint.header.time().into()))
+            .map_err(ModifyError)?;
+        checkpoint.write_le(&mut writer).map_err(WriteError)?;
 
         trace!(
             "checkpoint on {} @ {} written to {path:?}",
@@ -178,9 +192,7 @@ impl CheckpointManager {
     /// Remove the oldest checkpoints that are no longer needed
     #[cfg(feature = "write")]
     pub fn cull_timestamp(&mut self, timestamp: DateTime<Utc>) {
-        use crate::snarkos::Itertools;
-
-        let times = self.checkpoints.keys().collect_vec();
+        let times = self.checkpoints.keys().collect();
         let rejected = self.policy.reject_with_time(timestamp, times);
         for time in rejected {
             if let Some((_header, path)) = self.checkpoints.remove(&time) {

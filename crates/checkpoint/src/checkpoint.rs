@@ -3,13 +3,9 @@ use std::{io, path::PathBuf, sync::Arc};
 use rayon::iter::ParallelIterator;
 
 use crate::{
-    ledger,
-    snarkos::{
-        self, BlockHash, BlockStorage, CommitteeStorage, FinalizeStorage, FromBytes, LazyBytes,
-        Map, MapRead,
-    },
-    CheckpointCheckError, CheckpointContent, CheckpointHeader, CheckpointReadError,
-    CheckpointRewindError, ROUND_KEY,
+    aleo::*,
+    errors::{CheckpointCheckError, CheckpointReadError, CheckpointRewindError},
+    ledger, CheckpointContent, CheckpointHeader, ROUND_KEY,
 };
 
 pub struct Checkpoint {
@@ -17,8 +13,8 @@ pub struct Checkpoint {
     pub content: CheckpointContent,
 }
 
-impl snarkos::ToBytes for Checkpoint {
-    fn write_le<W: snarkvm::prelude::Write>(&self, mut writer: W) -> snarkvm::prelude::IoResult<()>
+impl ToBytes for Checkpoint {
+    fn write_le<W: std::io::Write>(&self, mut writer: W) -> std::io::Result<()>
     where
         Self: Sized,
     {
@@ -40,8 +36,8 @@ impl snarkos::ToBytes for Checkpoint {
     }
 }
 
-impl snarkos::FromBytes for Checkpoint {
-    fn read_le<R: snarkvm::prelude::Read>(mut reader: R) -> snarkvm::prelude::IoResult<Self>
+impl FromBytes for Checkpoint {
+    fn read_le<R: std::io::Read>(mut reader: R) -> std::io::Result<Self>
     where
         Self: Sized,
     {
@@ -68,15 +64,11 @@ impl Checkpoint {
         Ok(Self { header, content })
     }
 
-    pub fn check(
-        &self,
-        storage_mode: crate::snarkos::StorageMode,
-    ) -> Result<(), CheckpointCheckError> {
+    pub fn check(&self, storage_mode: StorageMode) -> Result<(), CheckpointCheckError> {
         use CheckpointCheckError::*;
 
-        let blocks = snarkos::BlockDB::open(storage_mode.clone()).map_err(StorageOpenError)?;
-        let committee =
-            snarkos::CommitteeDB::open(storage_mode.clone()).map_err(StorageOpenError)?;
+        let blocks = BlockDB::open(storage_mode.clone()).map_err(StorageOpenError)?;
+        let committee = CommitteeDB::open(storage_mode.clone()).map_err(StorageOpenError)?;
         let height = committee.current_height().map_err(ReadLedger)?;
 
         if height <= self.height() {
@@ -101,8 +93,8 @@ impl Checkpoint {
 
     pub fn rewind(
         self,
-        ledger: &snarkos::DbLedger,
-        storage_mode: snarkos::StorageMode,
+        ledger: &DbLedger,
+        storage_mode: StorageMode,
     ) -> Result<(), CheckpointRewindError> {
         use rayon::iter::IntoParallelIterator;
         use CheckpointRewindError::*;
@@ -116,15 +108,8 @@ impl Checkpoint {
 
         // the act of creating this ledger service with a "max_gc_rounds" set to 0 should clear
         // all BFT documents
-        let ledger_service = Arc::new(snarkos::CoreLedgerService::new(
-            ledger.clone(),
-            Default::default(),
-        ));
-        snarkos::Storage::new(
-            ledger_service,
-            Arc::new(snarkos::BFTMemoryService::new()),
-            0,
-        );
+        let ledger_service = Arc::new(CoreLedgerService::new(ledger.clone(), Default::default()));
+        Storage::new(ledger_service, Arc::new(BFTMemoryService::new()), 0);
 
         // TODO: parallel and test out of order removal by moving the guts of these functions out of the "atomic writes"
         ((my_height + 1)..=height)

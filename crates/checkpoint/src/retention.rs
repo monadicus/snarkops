@@ -1,11 +1,6 @@
-use std::{
-    fmt::{Display, Write},
-    num::NonZeroU8,
-    str::FromStr,
-};
+use std::{collections::BinaryHeap, fmt::Write, num::NonZeroU8, str::FromStr};
 
 use chrono::{DateTime, TimeDelta, Utc};
-use snarkvm::console::program::Itertools;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A comma separated list of retention rules ordered by duration,
@@ -87,7 +82,11 @@ impl RetentionPolicy {
 
         // step 1 - walk backwards through rules and times
         let mut rules = self.rules.iter().rev().peekable();
-        let mut times = times.into_iter().sorted().peekable();
+        let mut times = times
+            .into_iter()
+            .collect::<BinaryHeap<_>>()
+            .into_iter()
+            .peekable();
 
         // step 2 - keep track of the last kept time
         let mut last_kept = times.next().unwrap();
@@ -216,8 +215,8 @@ impl FromStr for RetentionPolicy {
     }
 }
 
-impl Display for RetentionPolicy {
-    fn fmt(&self, f: &mut snarkvm::prelude::Formatter<'_>) -> snarkvm::prelude::fmt::Result {
+impl std::fmt::Display for RetentionPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (i, rule) in self.rules.iter().enumerate() {
             if i > 0 {
                 f.write_char(',')?;
@@ -240,8 +239,8 @@ impl FromStr for RetentionRule {
     }
 }
 
-impl Display for RetentionRule {
-    fn fmt(&self, f: &mut snarkvm::prelude::Formatter<'_>) -> snarkvm::prelude::fmt::Result {
+impl std::fmt::Display for RetentionRule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.duration, self.keep)
     }
 }
@@ -301,8 +300,8 @@ impl FromStr for RetentionSpan {
     }
 }
 
-impl Display for RetentionSpan {
-    fn fmt(&self, f: &mut snarkvm::prelude::Formatter<'_>) -> snarkvm::prelude::fmt::Result {
+impl std::fmt::Display for RetentionSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RetentionSpan::Unlimited => write!(f, "U"),
             RetentionSpan::Hour(value) => write!(f, "{}h", value),

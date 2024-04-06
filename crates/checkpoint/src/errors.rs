@@ -1,6 +1,46 @@
-use std::io;
-
+use std::{io, path::PathBuf};
 use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ManagerLoadError {
+    #[error("invalid storage path: {0}")]
+    InvalidStoragePath(PathBuf),
+    #[error("error globbing storage path: {0}")]
+    GlobError(#[from] glob::PatternError),
+}
+
+#[derive(Debug, Error)]
+#[cfg(feature = "write")]
+pub enum ManagerCullError {
+    #[error("error opening storage: {0}")]
+    StorageOpenError(#[source] anyhow::Error),
+    #[error("error reading ledger: {0}")]
+    ReadLedger(#[source] anyhow::Error),
+}
+
+#[derive(Debug, Error)]
+#[cfg(feature = "write")]
+pub enum ManagerPollError {
+    #[error("error reading checkpoint header: {0}")]
+    Header(#[from] CheckpointHeaderError),
+    #[error("error reading checkpoint: {0}")]
+    Read(#[from] CheckpointReadError),
+    #[error("error inserting checkpoint: {0}")]
+    Insert(#[from] ManagerInsertError),
+}
+
+#[derive(Debug, Error)]
+#[cfg(feature = "write")]
+pub enum ManagerInsertError {
+    #[error("invalid storage path: {0}")]
+    InvalidStoragePath(PathBuf),
+    #[error("error opening file: {0}")]
+    FileError(#[source] io::Error),
+    #[error("error modifying file times: {0}")]
+    ModifyError(#[source] io::Error),
+    #[error("error writing file: {0}")]
+    WriteError(#[source] io::Error),
+}
 
 #[derive(Debug, Error)]
 #[cfg(feature = "write")]

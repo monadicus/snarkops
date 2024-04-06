@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::CheckpointHeaderError::{self as Error, *};
+use crate::errors::CheckpointHeaderError::{self as Error, *};
 
 const CHECKPOINT_VERSION: u8 = 2;
 
@@ -34,9 +34,7 @@ impl CheckpointHeader {
 
     #[cfg(feature = "write")]
     pub fn read_ledger(path: PathBuf) -> Result<Self, Error> {
-        use crate::snarkos::{
-            BlockDB, BlockStorage, CommitteeDB, CommitteeStorage, LazyBytes, StorageMode,
-        };
+        use crate::aleo::*;
         use Error::*;
 
         let commitee = CommitteeDB::open(StorageMode::Custom(path.clone())).map_err(OpenLedger)?;

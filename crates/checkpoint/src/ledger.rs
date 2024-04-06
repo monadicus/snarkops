@@ -1,33 +1,24 @@
+use crate::aleo::*;
+use anyhow::{bail, Result};
 use std::borrow::Cow;
 
-use super::snarkos::{TransactionID, TransitionID, N};
-use aleo_std::StorageMode;
-use anyhow::{bail, Result};
-use snarkvm::ledger::{
-    authority::Authority,
-    store::{
-        helpers::{rocksdb::*, Map, MapRead},
-        *,
-    },
-};
-
 pub struct Stores {
-    pub blocks: BlockDB<N>,
-    pub committee: CommitteeDB<N>,
-    pub transactions: TransactionDB<N>,
-    pub deployments: DeploymentDB<N>,
-    pub executions: ExecutionDB<N>,
-    pub fees: FeeDB<N>,
-    pub transition: TransitionDB<N>,
-    pub finalize: FinalizeDB<N>,
-    pub inputs: InputDB<N>,
-    pub outputs: OutputDB<N>,
+    pub blocks: BlockDB,
+    pub committee: CommitteeDB,
+    pub transactions: TransactionDB,
+    pub deployments: DeploymentDB,
+    pub executions: ExecutionDB,
+    pub fees: FeeDB,
+    pub transition: TransitionDB,
+    pub finalize: FinalizeDB,
+    pub inputs: InputDB,
+    pub outputs: OutputDB,
 }
 
 impl Stores {
     pub fn open(storage_mode: StorageMode) -> Result<Self> {
-        let transition_store = TransitionStore::<N, TransitionDB<N>>::open(storage_mode.clone())?;
-        let fee_store = FeeStore::<N, FeeDB<N>>::open(transition_store.clone())?;
+        let transition_store = TransitionStore::open(storage_mode.clone())?;
+        let fee_store = FeeStore::open(transition_store.clone())?;
         Ok(Self {
             blocks: BlockDB::open(storage_mode.clone())?,
             committee: CommitteeDB::open(storage_mode.clone())?,

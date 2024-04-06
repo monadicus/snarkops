@@ -6,24 +6,23 @@ use std::{
 #[cfg(test)]
 mod retention_tests;
 
-mod errors;
+pub mod errors;
 mod header;
 mod manager;
 mod retention;
 
-pub use errors::*;
 pub use header::*;
 pub use manager::*;
 pub use retention::*;
 
+#[cfg(feature = "write")]
+pub(crate) mod aleo;
 #[cfg(feature = "write")]
 mod checkpoint;
 #[cfg(feature = "write")]
 mod content;
 #[cfg(feature = "write")]
 mod ledger;
-#[cfg(feature = "write")]
-pub(crate) mod snarkos;
 #[cfg(feature = "write")]
 pub use checkpoint::*;
 #[cfg(feature = "write")]

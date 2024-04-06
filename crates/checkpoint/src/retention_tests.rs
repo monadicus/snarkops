@@ -1,7 +1,6 @@
 use super::retention::*;
 use chrono::{DateTime, TimeDelta};
-use snarkvm::console::program::Itertools;
-use std::collections::HashSet;
+use std::collections::{BinaryHeap, HashSet};
 use std::{num::NonZeroU8, str::FromStr};
 
 macro_rules! day {
@@ -55,10 +54,7 @@ fn walk_policy(
         }
     }
 
-    println!(
-        "FINISH: {:?}",
-        times.iter().sorted().rev().collect::<Vec<_>>()
-    );
+    println!("FINISH: {:?}", times.iter().collect::<BinaryHeap<_>>());
     (num_added, times.len())
 }
 
