@@ -8,6 +8,7 @@ anyhow.workspace = true
 axum = { workspace = true, features = ["ws"] }
 bimap.workspace = true
 bincode.workspace = true
+checkpoint.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
 duration-str = { version = "0.7", default-features = false }

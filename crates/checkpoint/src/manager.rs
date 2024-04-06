@@ -1,18 +1,15 @@
 use chrono::{DateTime, TimeDelta, Utc};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::{
-    collections::BTreeMap,
-    fs::{self, FileTimes},
-    path::PathBuf,
-};
+use std::{collections::BTreeMap, fs, path::PathBuf};
 use tracing::{error, trace};
 
-use crate::{
-    errors::{ManagerCullError, ManagerInsertError, ManagerLoadError, ManagerPollError},
-    path_from_height, CheckpointHeader, RetentionPolicy,
-};
+#[cfg(feature = "write")]
+use crate::errors::{ManagerCullError, ManagerInsertError, ManagerPollError};
+use crate::{errors::ManagerLoadError, path_from_height, CheckpointHeader, RetentionPolicy};
 
+#[derive(Debug, Clone)]
 pub struct CheckpointManager {
+    #[cfg(feature = "write")]
     storage_path: PathBuf,
     policy: RetentionPolicy,
     /// timestamp -> checkpoint header
@@ -64,29 +61,11 @@ impl CheckpointManager {
             .collect();
 
         Ok(Self {
+            #[cfg(feature = "write")]
             storage_path,
             checkpoints,
             policy,
         })
-    }
-
-    pub fn print(&self) {
-        let mut prev_time: Option<DateTime<Utc>> = None;
-        for (time, (header, _)) in &self.checkpoints {
-            println!(
-                "{time}: {} {}",
-                header.block_height,
-                if let Some(prev) = prev_time {
-                    format!(
-                        "{}hr",
-                        time.signed_duration_since(prev).num_seconds() / 3600
-                    )
-                } else {
-                    "".to_string()
-                }
-            );
-            prev_time = Some(*time);
-        }
     }
 
     /// Cull checkpoints that are incompatible with the current block database
@@ -168,7 +147,7 @@ impl CheckpointManager {
             .open(&path)
             .map_err(FileError)?;
         writer
-            .set_times(FileTimes::new().set_modified(checkpoint.header.time().into()))
+            .set_times(std::fs::FileTimes::new().set_modified(checkpoint.header.time().into()))
             .map_err(ModifyError)?;
         checkpoint.write_le(&mut writer).map_err(WriteError)?;
 
@@ -183,13 +162,11 @@ impl CheckpointManager {
         Ok(())
     }
 
-    #[cfg(feature = "write")]
     pub fn cull(&mut self) {
         self.cull_timestamp(Utc::now());
     }
 
     /// Remove the oldest checkpoints that are no longer needed
-    #[cfg(feature = "write")]
     pub fn cull_timestamp(&mut self, timestamp: DateTime<Utc>) {
         let times = self.checkpoints.keys().collect();
         let rejected = self.policy.reject_with_time(timestamp, times);
@@ -201,5 +178,29 @@ impl CheckpointManager {
                 }
             }
         }
+    }
+}
+
+impl std::fmt::Display for CheckpointManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut prev_time: Option<DateTime<Utc>> = None;
+        write!(f, "{} checkpoints:", self.checkpoints.len())?;
+        for (time, (header, _)) in &self.checkpoints {
+            write!(
+                f,
+                "\n  {time}: block {}, {}",
+                header.block_height,
+                if let Some(prev) = prev_time {
+                    format!(
+                        "{}hr later",
+                        time.signed_duration_since(prev).num_seconds() / 3600
+                    )
+                } else {
+                    "".to_string()
+                }
+            )?;
+            prev_time = Some(*time);
+        }
+        Ok(())
     }
 }

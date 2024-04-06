@@ -28,7 +28,8 @@ impl CheckpointCommand {
                 Truncate::rewind(genesis, ledger, checkpoint)
             }
             CheckpointCommand::View => {
-                CheckpointManager::load(ledger, RetentionPolicy::default())?.print();
+                let manager = CheckpointManager::load(ledger, RetentionPolicy::default())?;
+                println!("{manager}");
                 Ok(())
             }
             CheckpointCommand::Clean => {

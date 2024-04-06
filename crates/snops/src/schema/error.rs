@@ -29,6 +29,8 @@ pub enum StorageError {
     ReadBalances(PathBuf, #[source] std::io::Error),
     #[error("error parsing balances {0:#?}: {1}")]
     ParseBalances(PathBuf, #[source] serde_json::Error),
+    #[error("error loading checkpoints: {0}")]
+    CheckpointManager(#[from] checkpoint::errors::ManagerLoadError),
 }
 
 impl_into_status_code!(StorageError, |value| match value {

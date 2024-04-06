@@ -9,6 +9,7 @@ use std::{
     },
 };
 
+use checkpoint::CheckpointManager;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{
@@ -20,7 +21,7 @@ use snops_common::{
     state::KeyState,
 };
 use tokio::process::Command;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use super::{
     error::{SchemaError, StorageError},
@@ -111,6 +112,8 @@ pub struct LoadedStorage {
     pub committee: AleoAddrMap,
     /// other accounts files lookup
     pub accounts: HashMap<String, AleoAddrMap>,
+    /// storage of checkpoints
+    pub checkpoints: CheckpointManager,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -380,11 +383,17 @@ impl Document {
         let int_id = STORAGE_ID_INT.fetch_add(1, Ordering::Relaxed);
         storage_lock.insert(int_id, id.to_owned());
 
+        let checkpoints = CheckpointManager::load(base.join(LEDGER_BASE_DIR), Default::default())
+            .map_err(StorageError::CheckpointManager)?;
+
+        info!("checkpoint manager loaded {checkpoints}");
+
         let storage = Arc::new(LoadedStorage {
             id: id.to_owned(),
             path: base.clone(),
             committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
             accounts,
+            checkpoints,
         });
         let mut storage_lock = state.storage.write().await;
         storage_lock.insert(int_id, storage.clone());

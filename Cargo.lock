@@ -802,7 +802,6 @@ dependencies = [
  "snarkos-node",
  "snarkvm",
  "thiserror",
- "tikv-jemallocator",
  "tracing",
 ]
 
@@ -5403,6 +5402,7 @@ dependencies = [
  "axum",
  "bimap",
  "bincode",
+ "checkpoint",
  "chrono",
  "clap",
  "duration-str",
