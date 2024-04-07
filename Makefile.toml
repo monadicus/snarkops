@@ -208,11 +208,11 @@ args = [
 	"--best",
 	"--lzma",
 	"-o",
-	"./target/snops-compressed",
-	"./target/x86_64-unknown-linux-gnu/release/snops",
+	"./target/snops-cli-compressed",
+	"./target/x86_64-unknown-linux-gnu/release/snops-cli",
 ]
 
-[tasks.build-compressed]
+[tasks.build]
 description = "Build and compress all binaries"
 dependencies = [
 	"clean-compressed",
