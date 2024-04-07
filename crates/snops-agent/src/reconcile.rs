@@ -104,7 +104,10 @@ pub async fn load_ledger(
                 error!("failed to remove old ledger: {err}");
             }
         }
+    }
 
+    // A reset height will not require untarring the ledger
+    if new_env {
         // ensure the storage directory exists
         tokio::fs::create_dir_all(&ledger_dir)
             .await
