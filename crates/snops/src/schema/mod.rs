@@ -281,3 +281,27 @@ impl NodeTargets {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::env::Environment;
+
+    #[test]
+    fn deserialize_specs() {
+        for entry in std::fs::read_dir("../../specs")
+            .expect("failed to read specs dir")
+            .map(Result::unwrap)
+        {
+            let file_name = entry.file_name();
+            let name = file_name.to_str().expect("failed to read spec file name");
+            if !name.ends_with(".yaml") && !name.ends_with(".yml") {
+                continue;
+            }
+
+            let data = std::fs::read(entry.path()).expect("failed to read spec file");
+            if let Err(e) = Environment::deserialize_bytes(&data) {
+                panic!("failed to deserialize spec file {name}: {e}")
+            }
+        }
+    }
+}
