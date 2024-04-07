@@ -50,7 +50,7 @@ pub enum ItemDocument {
 
 /// One or more deserialized node targets. Composed of one or more
 /// [`NodeTarget`]s.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub enum NodeTargets {
     #[default]
     None,
@@ -68,6 +68,13 @@ impl<'de> Visitor<'de> for NodeTargetsVisitor {
     }
 
     fn visit_str<E: Error>(self, v: &str) -> Result<Self::Value, E> {
+        if v.contains(',') {
+            return Ok(NodeTargets::Many(
+                v.split(',')
+                    .map(|s| NodeTarget::from_str(s.trim()).map_err(E::custom))
+                    .collect::<Result<_, _>>()?,
+            ));
+        }
         Ok(NodeTargets::One(FromStr::from_str(v).map_err(E::custom)?))
     }
 
@@ -125,7 +132,7 @@ impl Serialize for NodeTargets {
 
 /// A **single** matched node target. Use [`NodeTargets`] when deserializing
 /// from documents.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct NodeTarget {
     pub ty: NodeTargetType,
     pub id: NodeTargetId,
@@ -199,7 +206,7 @@ impl Display for NodeTarget {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeTargetType {
     /// Matches all node types.
     All,
@@ -207,7 +214,7 @@ pub enum NodeTargetType {
     One(NodeType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NodeTargetId {
     /// `*`. Matches all IDs.
     All,
@@ -217,7 +224,19 @@ pub enum NodeTargetId {
     Literal(String),
 }
 
-#[derive(Debug, Clone)]
+impl Eq for NodeTargetId {}
+
+impl std::hash::Hash for NodeTargetId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            NodeTargetId::All => "*".hash(state),
+            NodeTargetId::WildcardPattern(pattern) => pattern.to_string().hash(state),
+            NodeTargetId::Literal(id) => id.hash(state),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum NodeTargetNamespace {
     /// `*`. Matches all namespaces.
     All,

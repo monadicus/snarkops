@@ -49,7 +49,7 @@ pub enum Action {
     /// Fire transactions from a source file at a target node
     Cannon(Vec<SpawnCannon>),
     /// Set the height of some nodes' ledgers
-    Height(IndexMap<NodeTarget, DocHeightRequest>),
+    Config(IndexMap<NodeTargets, Reconfig>),
 }
 
 struct ActionsVisitor;
@@ -80,7 +80,7 @@ impl<'de> Visitor<'de> for ActionsVisitor {
                     "online" => Action::Online(map.next_value()?),
                     "offline" => Action::Offline(map.next_value()?),
                     "cannon" => Action::Cannon(map.next_value()?),
-                    "height" => Action::Height(map.next_value()?),
+                    "config" => Action::Config(map.next_value()?),
 
                     _ => return Err(A::Error::custom(format!("unsupported action {key}"))),
                 },
@@ -94,50 +94,6 @@ impl<'de> Visitor<'de> for ActionsVisitor {
 impl<'de> Deserialize<'de> for Actions {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_map(ActionsVisitor)
-    }
-}
-
-/// A target for an event.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum NodeTarget {
-    Some(Vec<String>),
-    All,
-}
-
-struct NodeTargetVisitor;
-
-impl<'de> Visitor<'de> for NodeTargetVisitor {
-    type Value = NodeTarget;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a list of node IDs or the string \"all\"")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        match v {
-            "all" => Ok(NodeTarget::All),
-            _ => Err(E::custom("string must be \"all\"")),
-        }
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-    where
-        A: serde::de::SeqAccess<'de>,
-    {
-        let mut buf = Vec::new();
-        while let Some(id) = seq.next_element()? {
-            buf.push(id);
-        }
-        Ok(NodeTarget::Some(buf))
-    }
-}
-
-impl<'de> Deserialize<'de> for NodeTarget {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_any(NodeTargetVisitor)
     }
 }
 
@@ -187,4 +143,14 @@ pub struct SpawnCannon {
     pub query: Option<NodeKey>,
     /// overwrite the cannon sink target
     pub target: Option<NodeTargets>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Reconfig {
+    #[serde(default)]
+    pub height: Option<DocHeightRequest>,
+    #[serde(default)]
+    pub peers: Option<NodeTargets>,
+    #[serde(default)]
+    pub validators: Option<NodeTargets>,
 }

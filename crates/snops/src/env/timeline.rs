@@ -18,6 +18,7 @@ use crate::{
         source::{QueryTarget, TxSource},
         CannonInstance,
     },
+    env::PortType,
     schema::timeline::{Action, ActionInstance, EventDuration},
     state::{Agent, AgentClient, GlobalState},
 };
@@ -144,12 +145,16 @@ impl Environment {
 
                 macro_rules! set_node_field {
                     ($agent:ident , $($key:ident = $val:expr),* ) => {
+                        #[allow(unused_variables)]
                         match pending_reconciliations.entry($agent.id()) {
                             Entry::Occupied(mut ent) => {
                                 match ent.get_mut().2 {
                                     AgentState::Inventory => (),
-                                    AgentState::Node(_, ref mut state) => {
-                                        $(state.$key = $val;)*
+                                    AgentState::Node(_, ref mut n) => {
+                                        $({
+                                            let $key = &n.$key;
+                                            n.$key = $val;
+                                        })*
                                     }
                                 }
                             }
@@ -158,7 +163,10 @@ impl Environment {
                                     $agent.id(),
                                     $agent.client_owned().ok_or(ExecutionError::AgentOffline)?,
                                     $agent.state().clone().map_node(|mut n| {
-                                        $(n.$key = $val;)*
+                                        $({
+                                            let $key = &n.$key;
+                                            n.$key = $val;
+                                        })*
                                         n
                                     })
                                 ));
@@ -175,10 +183,10 @@ impl Environment {
                                 reconcile_async = true;
                             }
 
-                            let online = matches!(action, Action::Online(_));
+                            let o = matches!(action, Action::Online(_));
 
                             for agent in env.matching_agents(targets, &pool) {
-                                set_node_field!(agent, online = online);
+                                set_node_field!(agent, online = o);
                             }
                         }
 
@@ -239,7 +247,30 @@ impl Environment {
                                 env.cannons.write().await.insert(cannon_id, instance);
                             }
                         }
-                        Action::Height(_) => unimplemented!(),
+                        Action::Config(configs) => {
+                            for (targets, request) in configs.iter() {
+                                for agent in env.matching_agents(targets, &pool) {
+                                    // any height action will force the height to be incremented
+                                    if let Some(h) = request.height {
+                                        let h = h.into();
+                                        set_node_field!(agent, height = (height.0 + 1, h));
+                                    }
+
+                                    // update the peers and validators
+                                    if let Some(p) = &request.peers {
+                                        let p: Vec<_> =
+                                            env.matching_nodes(p, &pool, PortType::Node).collect();
+                                        set_node_field!(agent, peers = p.clone());
+                                    }
+
+                                    if let Some(p) = &request.validators {
+                                        let v: Vec<_> =
+                                            env.matching_nodes(p, &pool, PortType::Bft).collect();
+                                        set_node_field!(agent, validators = v.clone());
+                                    }
+                                }
+                            }
+                        }
                     };
                 }
 
