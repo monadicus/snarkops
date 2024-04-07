@@ -39,19 +39,6 @@ impl AgentState {
             Self::Node(id, state) => Self::Node(id, f(state)),
         }
     }
-
-    pub fn is_persist(&self) -> bool {
-        matches!(
-            self,
-            AgentState::Node(
-                _,
-                NodeState {
-                    height: (_, HeightRequest::Persist),
-                    ..
-                }
-            )
-        )
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,7 +218,6 @@ macro_rules! named_unit_variant {
 
 mod strings {
     named_unit_variant!(top);
-    named_unit_variant!(persist);
 }
 
 /// for some reason bincode does not allow deserialize_any so if i want to allow
@@ -251,11 +237,6 @@ pub enum DocHeightRequest {
     Absolute(u32),
     /// Use the next checkpoint that matches this checkpoint span
     Checkpoint(RetentionSpan),
-    /// Use the same ledger as configured when the same storage was used.
-    /// WARNING: this may create issues if the same storage id is reused between tests
-    /// with different nodes.
-    #[serde(with = "strings::persist")]
-    Persist,
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
@@ -272,13 +253,19 @@ pub enum HeightRequest {
     Absolute(u32),
     /// Use the next checkpoint that matches this checkpoint span
     Checkpoint(RetentionSpan),
-    /// Use the same ledger as configured when the same storage was used.
-    /// WARNING: this may create issues if the same storage id is reused between tests
-    /// with different nodes.
-    Persist,
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
+}
+
+impl HeightRequest {
+    pub fn is_top(&self) -> bool {
+        *self == Self::Top
+    }
+
+    pub fn reset(&self) -> bool {
+        *self == Self::Absolute(0)
+    }
 }
 
 impl From<DocHeightRequest> for HeightRequest {
@@ -287,7 +274,6 @@ impl From<DocHeightRequest> for HeightRequest {
             DocHeightRequest::Top => Self::Top,
             DocHeightRequest::Absolute(h) => Self::Absolute(h),
             DocHeightRequest::Checkpoint(c) => Self::Checkpoint(c),
-            DocHeightRequest::Persist => Self::Persist,
         }
     }
 }

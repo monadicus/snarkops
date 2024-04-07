@@ -8,6 +8,7 @@ description: |-
 
 retention-policy: default
 generate: {}
+persist: true
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
@@ -18,6 +19,6 @@ nodes:
     replicas: 4
     key: committee.$
     # key: local # uncomment when every agent has its own --private-key-file
-    height: persist
+    height: top
     validators: [validator/*]
     peers: []

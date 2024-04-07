@@ -17,4 +17,6 @@ pub struct StorageInfo {
     pub retention_policy: Option<RetentionPolicy>,
     /// The available checkpoints in this storage
     pub checkpoints: Vec<CheckpointMeta>,
+    /// Whether to persist the ledger
+    pub persist: bool,
 }

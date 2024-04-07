@@ -2,6 +2,7 @@ mod api;
 mod cli;
 mod metrics;
 mod net;
+mod reconcile;
 mod rpc;
 mod state;
 

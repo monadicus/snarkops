@@ -40,6 +40,9 @@ pub struct Document {
     /// Prefer using existing storage instead of generating new stuff.
     #[serde(default)]
     pub prefer_existing: bool,
+    /// Tell nodes not to re-download the storage data.
+    #[serde(default)]
+    pub persist: bool,
     #[serde(default)]
     pub generate: Option<StorageGeneration>,
     #[serde(default)]
@@ -117,6 +120,8 @@ pub struct LoadedStorage {
     pub accounts: HashMap<String, AleoAddrMap>,
     /// storage of checkpoints
     pub checkpoints: Option<CheckpointManager>,
+    /// whether agents using this storage should persist it
+    pub persist: bool,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -406,6 +411,7 @@ impl Document {
             committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
             accounts,
             checkpoints,
+            persist: self.persist,
         });
         let mut storage_lock = state.storage.write().await;
         storage_lock.insert(int_id, storage.clone());
@@ -559,6 +565,7 @@ impl LoadedStorage {
             id: self.id.clone(),
             retention_policy: self.checkpoints.as_ref().map(|c| c.policy().clone()),
             checkpoints,
+            persist: self.persist,
         }
     }
 }
