@@ -13,7 +13,13 @@ pub enum CheckpointCommand {
     /// Create a checkpoint for the given ledger
     Create,
     /// Apply a checkpoint to the given ledger
-    Apply { checkpoint: PathBuf },
+    Apply {
+        /// Checkpoint file to apply
+        checkpoint: PathBuf,
+        /// When present, clean up old checkpoints that are no longer applicable after applying the checkpoint
+        #[clap(long, short, default_value = "false")]
+        clean: bool,
+    },
     /// View the available checkpoints
     View,
     /// Cleanup old checkpoints
@@ -24,8 +30,13 @@ impl CheckpointCommand {
     pub fn parse(self, genesis: PathBuf, ledger: PathBuf) -> Result<()> {
         match self {
             CheckpointCommand::Create => open_and_checkpoint(genesis, ledger),
-            CheckpointCommand::Apply { checkpoint } => {
-                Truncate::rewind(genesis, ledger, checkpoint)
+            CheckpointCommand::Apply { checkpoint, clean } => {
+                Truncate::rewind(genesis, ledger.clone(), checkpoint)?;
+                if clean {
+                    let mut manager = CheckpointManager::load(ledger, RetentionPolicy::default())?;
+                    info!("removed {} old checkpoints", manager.cull_incompatible()?);
+                }
+                Ok(())
             }
             CheckpointCommand::View => {
                 let manager = CheckpointManager::load(ledger, RetentionPolicy::default())?;
