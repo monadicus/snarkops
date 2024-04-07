@@ -7,8 +7,7 @@ description: |-
   A local mainnet that persists ledger data between starts
 
 retention-policy: default
-generate:
-  path: .
+generate: {}
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1

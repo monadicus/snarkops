@@ -246,7 +246,10 @@ pub enum DocHeightRequest {
     /// Use the latest height for the ledger
     #[serde(with = "strings::top")]
     Top,
-    /// Set the height to the given block
+    /// Set the height to the given block (there must be a checkpoint at this height)
+    /// Setting to 0 will reset the height to the genesis block
+    Absolute(u32),
+    /// Use the next checkpoint that matches this checkpoint span
     Checkpoint(RetentionSpan),
     /// Use the same ledger as configured when the same storage was used.
     /// WARNING: this may create issues if the same storage id is reused between tests
@@ -264,7 +267,10 @@ pub enum HeightRequest {
     #[default]
     /// Use the latest height for the ledger
     Top,
-    /// Set the height to the given block
+    /// Set the height to the given block (there must be a checkpoint at this height)
+    /// Setting to 0 will reset the height to the genesis block
+    Absolute(u32),
+    /// Use the next checkpoint that matches this checkpoint span
     Checkpoint(RetentionSpan),
     /// Use the same ledger as configured when the same storage was used.
     /// WARNING: this may create issues if the same storage id is reused between tests
@@ -279,7 +285,8 @@ impl From<DocHeightRequest> for HeightRequest {
     fn from(req: DocHeightRequest) -> Self {
         match req {
             DocHeightRequest::Top => Self::Top,
-            DocHeightRequest::Checkpoint(h) => Self::Checkpoint(h),
+            DocHeightRequest::Absolute(h) => Self::Absolute(h),
+            DocHeightRequest::Checkpoint(c) => Self::Checkpoint(c),
             DocHeightRequest::Persist => Self::Persist,
         }
     }

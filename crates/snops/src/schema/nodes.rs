@@ -98,7 +98,6 @@ impl Node {
             ty,
             private_key: KeyState::None,
 
-            // TODO
             height: (0, self.height.into()),
 
             online: self.online,

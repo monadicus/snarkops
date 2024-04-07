@@ -8,7 +8,6 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
-    api::StorageInfoResponse,
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     rpc::agent::AgentMetric,
     state::{AgentId, EnvId},
@@ -44,13 +43,8 @@ async fn storage_info(Path(env_id): Path<EnvId>, state: State<AppState>) -> Resp
     let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let id = env.storage.id.clone();
 
-    Json(StorageInfoResponse {
-        id,
-        retention_policy: env.storage.checkpoints.as_ref().map(|c| c.policy().clone()),
-    })
-    .into_response()
+    Json(env.storage.info()).into_response()
 }
 
 async fn redirect_storage(

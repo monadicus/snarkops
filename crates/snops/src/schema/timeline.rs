@@ -5,7 +5,7 @@ use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer,
 };
-use snops_common::state::NodeKey;
+use snops_common::state::{DocHeightRequest, NodeKey};
 
 use super::NodeTargets;
 
@@ -49,7 +49,7 @@ pub enum Action {
     /// Fire transactions from a source file at a target node
     Cannon(Vec<SpawnCannon>),
     /// Set the height of some nodes' ledgers
-    Height(IndexMap<String, u64>),
+    Height(IndexMap<NodeTarget, DocHeightRequest>),
 }
 
 struct ActionsVisitor;
@@ -98,7 +98,7 @@ impl<'de> Deserialize<'de> for Actions {
 }
 
 /// A target for an event.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum NodeTarget {
     Some(Vec<String>),
     All,

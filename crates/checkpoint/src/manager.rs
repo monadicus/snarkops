@@ -180,8 +180,14 @@ impl CheckpointManager {
         }
     }
 
+    /// Get the retention policy used by this manager
     pub fn policy(&self) -> &RetentionPolicy {
         &self.policy
+    }
+
+    /// Iterate the checkpoints stored by this manager
+    pub fn checkpoints(&self) -> impl Iterator<Item = &(CheckpointHeader, PathBuf)> {
+        self.checkpoints.values()
     }
 }
 
