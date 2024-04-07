@@ -799,6 +799,7 @@ dependencies = [
  "chrono",
  "glob",
  "rayon",
+ "serde",
  "snarkos-node",
  "snarkvm",
  "thiserror",
@@ -5446,6 +5447,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "checkpoint",
  "clap",
  "external-ip",
  "futures",
@@ -5481,6 +5483,7 @@ dependencies = [
 name = "snops-common"
 version = "0.1.0"
 dependencies = [
+ "checkpoint",
  "clap",
  "futures",
  "http 1.1.0",

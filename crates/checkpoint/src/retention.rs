@@ -198,6 +198,35 @@ impl Default for RetentionPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetentionSpan {
+    /// U
+    Unlimited,
+    /// 1H
+    Hour(NonZeroU8),
+    /// 1D
+    Day(NonZeroU8),
+    /// 1W
+    Week(NonZeroU8),
+    /// 1M
+    Month(NonZeroU8),
+    /// 1Y
+    Year(NonZeroU8),
+}
+
+impl RetentionSpan {
+    pub fn as_duration(&self) -> Option<TimeDelta> {
+        match self {
+            RetentionSpan::Unlimited => None,
+            RetentionSpan::Hour(value) => TimeDelta::try_hours(value.get() as i64),
+            RetentionSpan::Day(value) => TimeDelta::try_days(value.get() as i64),
+            RetentionSpan::Week(value) => TimeDelta::try_weeks(value.get() as i64),
+            RetentionSpan::Month(value) => TimeDelta::try_days(value.get() as i64 * 30),
+            RetentionSpan::Year(value) => TimeDelta::try_days(value.get() as i64 * 365),
+        }
+    }
+}
+
 impl FromStr for RetentionPolicy {
     type Err = String;
 
@@ -245,35 +274,6 @@ impl std::fmt::Display for RetentionRule {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RetentionSpan {
-    /// U
-    Unlimited,
-    /// 1H
-    Hour(NonZeroU8),
-    /// 1D
-    Day(NonZeroU8),
-    /// 1W
-    Week(NonZeroU8),
-    /// 1M
-    Month(NonZeroU8),
-    /// 1Y
-    Year(NonZeroU8),
-}
-
-impl RetentionSpan {
-    pub fn as_duration(&self) -> Option<TimeDelta> {
-        match self {
-            RetentionSpan::Unlimited => None,
-            RetentionSpan::Hour(value) => TimeDelta::try_hours(value.get() as i64),
-            RetentionSpan::Day(value) => TimeDelta::try_days(value.get() as i64),
-            RetentionSpan::Week(value) => TimeDelta::try_weeks(value.get() as i64),
-            RetentionSpan::Month(value) => TimeDelta::try_days(value.get() as i64 * 30),
-            RetentionSpan::Year(value) => TimeDelta::try_days(value.get() as i64 * 365),
-        }
-    }
-}
-
 impl FromStr for RetentionSpan {
     type Err = String;
 
@@ -310,5 +310,46 @@ impl std::fmt::Display for RetentionSpan {
             RetentionSpan::Month(value) => write!(f, "{}M", value),
             RetentionSpan::Year(value) => write!(f, "{}Y", value),
         }
+    }
+}
+
+macro_rules! impl_serde {
+    ($($ty:ty),*) => {
+        $(
+            impl serde::Serialize for $ty {
+                fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                    self.to_string().serialize(serializer)
+                }
+            }
+
+            impl<'de> serde::Deserialize<'de> for $ty {
+                fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                    String::deserialize(deserializer)?
+                        .parse()
+                        .map_err(serde::de::Error::custom)
+                }
+            }
+        )*
+    };
+}
+
+#[cfg(feature = "serde")]
+impl_serde!(RetentionSpan, RetentionRule);
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for RetentionPolicy {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_string().serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for RetentionPolicy {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let string = String::deserialize(deserializer)?;
+        if string == "default" {
+            return Ok(RetentionPolicy::default());
+        }
+        string.parse().map_err(serde::de::Error::custom)
     }
 }

@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use checkpoint::CheckpointManager;
+use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{
@@ -31,6 +31,7 @@ use crate::{error::CommandError, state::GlobalState};
 
 /// A storage document. Explains how storage for a test should be set up.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "kebab-case")]
 pub struct Document {
     pub id: FilenameString,
     pub name: String,
@@ -40,6 +41,8 @@ pub struct Document {
     pub prefer_existing: bool,
     pub generate: Option<StorageGeneration>,
     pub connect: Option<url::Url>,
+    #[serde(default)]
+    pub retention_policy: Option<RetentionPolicy>,
 }
 
 /// Data generation instructions.
@@ -113,7 +116,7 @@ pub struct LoadedStorage {
     /// other accounts files lookup
     pub accounts: HashMap<String, AleoAddrMap>,
     /// storage of checkpoints
-    pub checkpoints: CheckpointManager,
+    pub checkpoints: Option<CheckpointManager>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -383,10 +386,19 @@ impl Document {
         let int_id = STORAGE_ID_INT.fetch_add(1, Ordering::Relaxed);
         storage_lock.insert(int_id, id.to_owned());
 
-        let checkpoints = CheckpointManager::load(base.join(LEDGER_BASE_DIR), Default::default())
-            .map_err(StorageError::CheckpointManager)?;
+        let checkpoints = self
+            .retention_policy
+            .map(|policy| {
+                CheckpointManager::load(base.join(LEDGER_BASE_DIR), policy)
+                    .map_err(StorageError::CheckpointManager)
+            })
+            .transpose()?;
 
-        info!("checkpoint manager loaded {checkpoints}");
+        if let Some(checkpoints) = &checkpoints {
+            info!("checkpoint manager loaded {checkpoints}");
+        } else {
+            info!("storage loaded without a checkpoint manager");
+        }
 
         let storage = Arc::new(LoadedStorage {
             id: id.to_owned(),

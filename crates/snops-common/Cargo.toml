@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+checkpoint = { workspace = true, features = ["serde"] }
 clap.workspace = true
 futures.workspace = true
 http.workspace = true

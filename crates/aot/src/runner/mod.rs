@@ -90,6 +90,9 @@ pub struct Runner {
     /// server
     #[clap(long = "rest-rps", default_value_t = 1000)]
     pub rest_rps: u32,
+
+    #[clap(long = "retention-policy")]
+    pub retention_policy: Option<RetentionPolicy>,
 }
 
 impl Runner {
@@ -105,7 +108,13 @@ impl Runner {
 
         let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
 
-        let mut manager = CheckpointManager::load(self.ledger.clone(), RetentionPolicy::default())?;
+        // conditionally create a checkpoint manager based on the presence
+        // of a retention policy
+        let mut manager = self
+            .retention_policy
+            .map(|p| CheckpointManager::load(self.ledger.clone(), p))
+            .transpose()?;
+
         let storage_mode = StorageMode::Custom(self.ledger.clone());
 
         // slight alterations to the normal `metrics::initialize_metrics` because of
@@ -169,31 +178,34 @@ impl Runner {
             }
         };
 
-        // cull incompatible checkpoints
-        manager.cull_incompatible()?;
+        // if we have a checkpoint manager, start the backup loop
+        if let Some(mut manager) = manager.take() {
+            // cull incompatible checkpoints
+            manager.cull_incompatible()?;
 
-        let committee = CommitteeDB::<Network>::open(storage_mode.clone())?;
+            let committee = CommitteeDB::<Network>::open(storage_mode.clone())?;
 
-        // check for height changes and poll the manager when a new block comes in
-        let mut last_height = committee.current_height()?;
-        tokio::spawn(async move {
-            loop {
-                let Ok(height) = committee.current_height() else {
-                    continue;
-                };
+            // check for height changes and poll the manager when a new block comes in
+            let mut last_height = committee.current_height()?;
+            tokio::spawn(async move {
+                loop {
+                    let Ok(height) = committee.current_height() else {
+                        continue;
+                    };
 
-                if last_height != height {
-                    last_height = height;
+                    if last_height != height {
+                        last_height = height;
 
-                    info!("creating checkpoint @ {height}...");
-                    if let Err(e) = manager.poll() {
-                        tracing::error!("backup loop error: {e:?}");
+                        info!("creating checkpoint @ {height}...");
+                        if let Err(e) = manager.poll() {
+                            tracing::error!("backup loop error: {e:?}");
+                        }
                     }
-                }
 
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }
-        });
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+            });
+        }
 
         // snarkos will close itself if this is not here...
         std::future::pending::<()>().await;

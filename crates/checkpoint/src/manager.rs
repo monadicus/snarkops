@@ -179,6 +179,10 @@ impl CheckpointManager {
             }
         }
     }
+
+    pub fn policy(&self) -> &RetentionPolicy {
+        &self.policy
+    }
 }
 
 impl std::fmt::Display for CheckpointManager {

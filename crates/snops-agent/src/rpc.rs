@@ -304,6 +304,11 @@ impl AgentService for AgentRpcServer {
                         }
                     }
 
+                    // conditionally add retention policy
+                    if let Some(policy) = &info.retention_policy {
+                        command.arg("--retention-policy").arg(policy.to_string());
+                    }
+
                     // Find agents that do not have cached addresses
                     let unresolved_addrs: HashSet<AgentId> = {
                         let resolved_addrs = state.resolved_addrs.read().await;

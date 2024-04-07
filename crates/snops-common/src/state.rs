@@ -5,6 +5,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use checkpoint::RetentionSpan;
 use clap::Parser;
 use lasso::Spur;
 use lazy_static::lazy_static;
@@ -246,7 +247,7 @@ pub enum DocHeightRequest {
     #[serde(with = "strings::top")]
     Top,
     /// Set the height to the given block
-    Absolute(u32),
+    Checkpoint(RetentionSpan),
     /// Use the same ledger as configured when the same storage was used.
     /// WARNING: this may create issues if the same storage id is reused between tests
     /// with different nodes.
@@ -264,7 +265,7 @@ pub enum HeightRequest {
     /// Use the latest height for the ledger
     Top,
     /// Set the height to the given block
-    Absolute(u32),
+    Checkpoint(RetentionSpan),
     /// Use the same ledger as configured when the same storage was used.
     /// WARNING: this may create issues if the same storage id is reused between tests
     /// with different nodes.
@@ -278,7 +279,7 @@ impl From<DocHeightRequest> for HeightRequest {
     fn from(req: DocHeightRequest) -> Self {
         match req {
             DocHeightRequest::Top => Self::Top,
-            DocHeightRequest::Absolute(h) => Self::Absolute(h),
+            DocHeightRequest::Checkpoint(h) => Self::Checkpoint(h),
             DocHeightRequest::Persist => Self::Persist,
         }
     }

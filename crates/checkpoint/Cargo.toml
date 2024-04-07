@@ -8,6 +8,7 @@ version = "0.1.0"
 [features]
 default = []
 write = ["snarkvm", "snarkos-node", "aleo-std", "anyhow"]
+serde = ["dep:serde"]
 
 [dependencies]
 aleo-std = { workspace = true, optional = true }
@@ -15,6 +16,7 @@ anyhow = { workspace = true, optional = true }
 chrono.workspace = true
 glob.workspace = true
 rayon.workspace = true
+serde = { workspace = true, optional = true }
 snarkvm = { workspace = true, optional = true }
 snarkos-node = { workspace = true, optional = true }
 thiserror.workspace = true

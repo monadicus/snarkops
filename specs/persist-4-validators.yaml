@@ -6,6 +6,7 @@ name: my-local-mainnet
 description: |-
   A local mainnet that persists ledger data between starts
 
+retention-policy: default
 generate:
   path: .
 
