@@ -264,6 +264,7 @@ impl AgentService for AgentRpcServer {
                     command
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
+                        .envs(&node.env)
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
@@ -285,11 +286,6 @@ impl AgentService for AgentRpcServer {
                         .arg(state.cli.ports.metrics.to_string())
                         .arg("--node")
                         .arg(state.cli.ports.node.to_string());
-
-                    // inject environment variables
-                    for (key, val) in &node.env {
-                        command.env(key, val);
-                    }
 
                     match node.private_key {
                         KeyState::None => {}
