@@ -17,6 +17,7 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use snops_common::{
+    api::{CheckpointMeta, StorageInfo},
     constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     state::KeyState,
 };
@@ -39,7 +40,9 @@ pub struct Document {
     /// Prefer using existing storage instead of generating new stuff.
     #[serde(default)]
     pub prefer_existing: bool,
+    #[serde(default)]
     pub generate: Option<StorageGeneration>,
+    #[serde(default)]
     pub connect: Option<url::Url>,
     #[serde(default)]
     pub retention_policy: Option<RetentionPolicy>,
@@ -48,9 +51,6 @@ pub struct Document {
 /// Data generation instructions.
 #[derive(Deserialize, Debug, Clone)]
 pub struct StorageGeneration {
-    // TODO: how is this different from `LedgerStorage`?
-    pub path: PathBuf,
-
     // TODO: individually validate arguments, or just pass them like this?
     #[serde(default)]
     pub genesis: GenesisGeneration,
@@ -534,6 +534,31 @@ impl LoadedStorage {
                         .cloned()
                 })
                 .into(),
+        }
+    }
+
+    pub fn info(&self) -> StorageInfo {
+        let checkpoints = self
+            .checkpoints
+            .as_ref()
+            .map(|c| {
+                c.checkpoints()
+                    .filter_map(|(c, path)| {
+                        path.file_name()
+                            .and_then(|s| s.to_str())
+                            .map(|filename| CheckpointMeta {
+                                filename: filename.to_string(),
+                                height: c.block_height,
+                                timestamp: c.timestamp,
+                            })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        StorageInfo {
+            id: self.id.clone(),
+            retention_policy: self.checkpoints.as_ref().map(|c| c.policy().clone()),
+            checkpoints,
         }
     }
 }
