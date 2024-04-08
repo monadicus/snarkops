@@ -1,10 +1,12 @@
-use crate::{ledger::util, DbLedger};
+use std::path::PathBuf;
+
 use anyhow::Result;
 use checkpoint::{path_from_height, Checkpoint, CheckpointManager, RetentionPolicy};
 use clap::Parser;
 use snarkvm::utilities::ToBytes;
-use std::path::PathBuf;
 use tracing::{info, trace};
+
+use crate::{ledger::util, DbLedger};
 
 use super::truncate::Truncate;
 

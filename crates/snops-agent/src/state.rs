@@ -60,8 +60,8 @@ impl GlobalState {
             return Ok(info);
         }
 
-        // if an else was used here, the lock would be held for the entire function so we return early
-        // to prevent a deadlock
+        // if an else was used here, the lock would be held for the entire function so
+        // we return early to prevent a deadlock
 
         let info = api::get_storage_info(format!(
             "http://{}/api/v1/env/{env_id}/storage",

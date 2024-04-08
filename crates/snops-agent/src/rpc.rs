@@ -12,7 +12,7 @@ use snops_common::{
         error::{AgentError, ReconcileError},
         MuxMessage,
     },
-    state::{AgentId, AgentPeer, AgentState, KeyState, NodeState, PortConfig},
+    state::{AgentId, AgentPeer, AgentState, KeyState, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::{
@@ -123,22 +123,9 @@ impl AgentService for AgentRpcServer {
             // download new storage if storage_id changed
             'storage: {
                 let (is_same_env, is_same_index) = match (&old_state, &target) {
-                    (
-                        AgentState::Node(
-                            old_env,
-                            NodeState {
-                                height: (old_index, _),
-                                ..
-                            },
-                        ),
-                        AgentState::Node(
-                            new_env,
-                            NodeState {
-                                height: (new_index, _),
-                                ..
-                            },
-                        ),
-                    ) => (old_env == new_env, old_index == new_index),
+                    (AgentState::Node(old_env, old_node), AgentState::Node(new_env, new_node)) => {
+                        (old_env == new_env, old_node.height.0 == new_node.height.0)
+                    }
                     _ => (false, false),
                 };
 
@@ -153,17 +140,11 @@ impl AgentService for AgentRpcServer {
 
                 // download and decompress the storage
                 // skip if we don't need storage
-                let AgentState::Node(
-                    env_id,
-                    NodeState {
-                        height: (_, height),
-                        ..
-                    },
-                ) = &target
-                else {
+                let AgentState::Node(env_id, node) = &target else {
                     info!("agent is not running a node; skipping storage download");
                     break 'storage;
                 };
+                let height = &node.height.1;
 
                 // get the storage info for this environment if we don't have it cached
                 let info = state

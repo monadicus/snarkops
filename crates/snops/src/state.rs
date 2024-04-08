@@ -267,7 +267,7 @@ impl Agent {
             self.id(),
             self.client_owned()?,
             match &self.state {
-                AgentState::Node(id, state) => AgentState::Node(*id, f(state.clone())),
+                AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone()))),
                 _ => return None,
             },
         ))

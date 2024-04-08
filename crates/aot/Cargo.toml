@@ -7,11 +7,12 @@ version = "0.1.0"
 
 [features]
 default = ["node"]
+flame = ["tracing-flame"]
 node = [
-  "snarkos-node",
-  "crossterm",
-  "snarkos-node/metrics",
-  "metrics-exporter-prometheus",
+	"snarkos-node",
+	"crossterm",
+	"snarkos-node/metrics",
+	"metrics-exporter-prometheus",
 ]
 
 [dependencies]
@@ -22,17 +23,17 @@ bincode.workspace = true
 checkpoint = { workspace = true, features = ["write"] }
 clap.workspace = true
 colored.workspace = true
-crossterm = { version = "0.27", optional = true }
+crossterm = { workspace = true, optional = true }
 indexmap.workspace = true
 indicatif.workspace = true
 lazy_static.workspace = true
-metrics-exporter-prometheus = { version = "0.13", optional = true }
+metrics-exporter-prometheus = { workspace = true, optional = true }
 nix.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
 rayon.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
-serde-clap-deserialize = "0.1.0"
+serde-clap-deserialize.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 snarkos-account.workspace = true
@@ -40,16 +41,11 @@ snarkos-node = { workspace = true, optional = true }
 snarkvm.workspace = true
 snops-common.workspace = true
 tokio.workspace = true
-tower-http.workspace = true
-tracing-flame = "0.2.0"
+tracing-flame = { workspace = true, optional = true }
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 tracing.workspace = true
-
-[dependencies.rocksdb]
-version = "0.21"
-default-features = false
-features = ["lz4"]
+rocksdb = { workspace = true, features = ["lz4"] }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 tikv-jemallocator = "0.5"
