@@ -180,7 +180,7 @@ async fn handle_socket(
                 tokio::spawn(async move {
                     // we do this in a separate task because we don't want to hold up pool insertion
                     if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
-                        warn!("failed to perform client handshake: {e}");
+                        error!("failed to perform client handshake: {e}");
                     }
                 });
 
@@ -209,7 +209,7 @@ async fn handle_socket(
         tokio::spawn(async move {
             // we do this in a separate task because we don't want to hold up pool insertion
             if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
-                warn!("failed to perform client handshake: {e}");
+                error!("failed to perform client handshake: {e}");
             }
         });
 
