@@ -3,14 +3,29 @@ use strum_macros::AsRefStr;
 use thiserror::Error;
 
 #[macro_export]
-macro_rules! impl_serialize_pretty_error {
+macro_rules! impl_into_type_str {
     ($name:path) => {
-        impl Serialize for $name {
-            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: Serializer,
-            {
-                PrettyError::from(self).serialize(serializer)
+        impl From<&$name> for String {
+            fn from(e: &$name) -> Self {
+                e.as_ref().to_string()
+            }
+        }
+    };
+
+    ($name:path, |_| $body:expr) => {
+        impl From<&$name> for String {
+            fn from(_: &$name) -> Self {
+                $body
+            }
+        }
+    };
+
+    ($name:path, |$from_var:ident| $body:expr) => {
+        impl From<&$name> for String {
+            fn from($from_var: &$name) -> Self {
+                use $name::*;
+
+                $body
             }
         }
     };
@@ -43,25 +58,6 @@ macro_rules! impl_into_status_code {
             }
         }
     };
-}
-
-#[derive(Debug, Serialize)]
-pub struct PrettyError {
-    #[serde(rename = "type")]
-    pub ty: String,
-    pub error: String,
-}
-
-impl<E> From<&E> for PrettyError
-where
-    E: std::error::Error + AsRef<str>,
-{
-    fn from(error: &E) -> Self {
-        Self {
-            ty: error.as_ref().to_string(),
-            error: error.to_string(),
-        }
-    }
 }
 
 #[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]

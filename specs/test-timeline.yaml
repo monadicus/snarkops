@@ -20,6 +20,8 @@ nodes:
 ---
 version: timeline.snarkos.testing.monadic.us/v1
 
+name: test-timeline
+
 timeline:
   - duration: 5s
   - offline: "*/*"

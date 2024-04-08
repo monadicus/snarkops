@@ -109,6 +109,14 @@ impl Environment {
             .collect()
     }
 
+    /// Deserialize (YAML) many documents into a `Vec` of documents.
+    pub fn deserialize_bytes(str: &[u8]) -> Result<Vec<ItemDocument>, DeserializeError> {
+        serde_yaml::Deserializer::from_slice(str)
+            .enumerate()
+            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
+            .collect()
+    }
+
     /// Prepare a test. This will set the current test on the GlobalState.
     ///
     /// **This will error if the current env is not unset before calling to
@@ -433,7 +441,7 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
             };
 
             // resolve the peers and validators
-            let mut node_state = node.into_state(key.ty);
+            let mut node_state = node.into_state(key.to_owned());
             node_state.private_key = node
                 .key
                 .as_ref()

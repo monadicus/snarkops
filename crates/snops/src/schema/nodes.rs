@@ -1,4 +1,9 @@
-use std::{collections::HashSet, fmt::Display, net::SocketAddr, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    net::SocketAddr,
+    str::FromStr,
+};
 
 use fixedbitset::FixedBitSet;
 use indexmap::IndexMap;
@@ -7,7 +12,7 @@ use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snops_common::{
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, DocHeightRequest, KeyState, NodeState, NodeType},
+    state::{AgentId, DocHeightRequest, NodeState},
     INTERN,
 };
 
@@ -90,21 +95,25 @@ pub struct Node {
     /// List of peers for the node to connect to
     #[serde(default)]
     pub peers: NodeTargets,
+
+    /// Environment variables to inject into the snarkOS process.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
 }
 
 impl Node {
-    pub fn into_state(&self, ty: NodeType) -> NodeState {
+    pub fn into_state(&self, node_key: NodeKey) -> NodeState {
         NodeState {
-            ty,
-            private_key: KeyState::None,
-
+            ty: node_key.ty,
+            node_key,
+            private_key: Default::default(),
             height: (0, self.height.into()),
-
             online: self.online,
+            env: self.env.clone(),
 
             // these are resolved later
-            validators: vec![],
-            peers: vec![],
+            validators: Default::default(),
+            peers: Default::default(),
         }
     }
 
@@ -141,28 +150,30 @@ pub enum KeySource {
     Named(String, Option<usize>),
 }
 
-struct KeySourceVisitor;
-
-impl<'de> Visitor<'de> for KeySourceVisitor {
-    type Value = KeySource;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a string that represents an aleo private key, or a file from storage")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        KeySource::from_str(v).map_err(E::custom)
-    }
-}
-
 impl<'de> Deserialize<'de> for KeySource {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
+        struct KeySourceVisitor;
+
+        impl<'de> Visitor<'de> for KeySourceVisitor {
+            type Value = KeySource;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str(
+                    "a string that represents an aleo private key, or a file from storage",
+                )
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                KeySource::from_str(v).map_err(E::custom)
+            }
+        }
+
         deserializer.deserialize_str(KeySourceVisitor)
     }
 }

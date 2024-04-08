@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::{Display, Write},
     net::SocketAddr,
     str::FromStr,
@@ -43,6 +44,7 @@ impl AgentState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
+    pub node_key: NodeKey,
     pub ty: NodeType,
     pub private_key: KeyState,
     /// Increment the usize whenever the request is updated.
@@ -51,6 +53,7 @@ pub struct NodeState {
     pub online: bool,
     pub peers: Vec<AgentPeer>,
     pub validators: Vec<AgentPeer>,
+    pub env: HashMap<String, String>,
 }
 
 /// A representation of which key to use for the agent.
@@ -221,8 +224,8 @@ mod strings {
 }
 
 /// for some reason bincode does not allow deserialize_any so if i want to allow
-/// end users to type "top", 42, or "persist" i need to do have to copies of this
-/// where one is not untagged.
+/// end users to type "top", 42, or "persist" i need to do have to copies of
+/// this where one is not untagged.
 ///
 /// bincode. please.
 #[derive(Debug, Copy, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
