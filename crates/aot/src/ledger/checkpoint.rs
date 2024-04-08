@@ -1,9 +1,11 @@
-use crate::{ledger::util, runner::checkpoint::Checkpoint, DbLedger, Network};
+use std::path::PathBuf;
+
 use aleo_std::StorageMode;
 use anyhow::Result;
 use snarkvm::utilities::ToBytes;
-use std::path::PathBuf;
 use tracing::{info, trace};
+
+use crate::{ledger::util, runner::checkpoint::Checkpoint, DbLedger, Network};
 
 pub fn open_and_checkpoint(genesis: PathBuf, ledger: PathBuf) -> Result<()> {
     let storage_mode = StorageMode::Custom(ledger.clone());

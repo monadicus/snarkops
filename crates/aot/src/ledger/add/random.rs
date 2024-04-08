@@ -62,6 +62,7 @@ impl Random {
                 &self.private_keys,
                 num_tx_per_block as u64,
                 self.max_tx_credits,
+                false,
             )
             .filter_map(Result::ok)
             .map(|tx| match tx {
