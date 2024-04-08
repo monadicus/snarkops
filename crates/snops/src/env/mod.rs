@@ -460,7 +460,7 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
                 .filter(not_me)
                 .collect();
 
-            let agent_state = AgentState::Node(env_id, node_state);
+            let agent_state = AgentState::Node(env_id, Box::new(node_state));
             pending_reconciliations.push((id, client, agent_state));
         }
     }
