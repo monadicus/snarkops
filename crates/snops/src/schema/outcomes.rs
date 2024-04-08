@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use promql_parser::{label::Matcher, parser::ast::Expr as PromExpr};
 use serde::{de::Visitor, Deserialize};
 
-// TODO: define built-in outcomes here or something
+use super::error::SchemaError;
 
 /// A document describing a test's expected outcomes.
 #[derive(Deserialize, Debug, Clone)]

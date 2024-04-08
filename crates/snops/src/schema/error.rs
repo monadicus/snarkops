@@ -77,6 +77,7 @@ impl_into_status_code!(SchemaError, |value| match value {
     KeySource(e) => e.into(),
     NodeTarget(e) => e.into(),
     Storage(e) => e.into(),
+    QueryParse(e) => StatusCode::BAD_REQUEST,
 });
 
 impl Serialize for SchemaError {
@@ -91,6 +92,7 @@ impl Serialize for SchemaError {
             Self::KeySource(e) => state.serialize_field("error", e),
             Self::NodeTarget(e) => state.serialize_field("error", &e.to_string()),
             Self::Storage(e) => state.serialize_field("error", e),
+            Self::QueryParse(e) => state.serialize_field("error", &e),
         }?;
 
         state.end()
