@@ -4773,7 +4773,6 @@ dependencies = [
  "nix",
  "rand",
  "rand_chacha",
- "rayon",
  "reqwest 0.12.3",
  "rocksdb",
  "serde",

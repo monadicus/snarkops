@@ -9,10 +9,10 @@ version = "0.1.0"
 default = ["node"]
 flame = ["tracing-flame"]
 node = [
-	"snarkos-node",
-	"crossterm",
-	"snarkos-node/metrics",
-	"metrics-exporter-prometheus",
+  "snarkos-node",
+  "crossterm",
+  "snarkos-node/metrics",
+  "metrics-exporter-prometheus",
 ]
 
 [dependencies]
@@ -31,7 +31,6 @@ metrics-exporter-prometheus = { workspace = true, optional = true }
 nix.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
-rayon.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
 serde-clap-deserialize.workspace = true
 serde.workspace = true
