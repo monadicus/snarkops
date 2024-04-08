@@ -81,8 +81,12 @@ impl CheckpointManager {
 
         for (time, (header, path)) in self.checkpoints.iter() {
             let height = header.block_height;
-            let block_hash = blocks.get_block_hash(height).map_err(ReadLedger)?;
-            if block_hash.map(|h| h.bytes()) != Some(header.block_hash) {
+            let Some(block_hash) = blocks.get_block_hash(height).map_err(ReadLedger)? else {
+                trace!("checkpoint {path:?} at height {height} is taller than the ledger");
+                rejected.push(*time);
+                continue;
+            };
+            if block_hash.bytes() != header.block_hash {
                 trace!("checkpoint {path:?} is incompatible with block at height {height}");
                 rejected.push(*time);
             }
@@ -98,6 +102,16 @@ impl CheckpointManager {
         }
 
         Ok(count)
+    }
+
+    /// Delete all checkpoints stored by this manager
+    pub fn wipe(&mut self) {
+        for (_header, path) in self.checkpoints.values() {
+            if let Err(err) = fs::remove_file(path) {
+                error!("error deleting checkpoint {path:?}: {err}");
+            }
+        }
+        self.checkpoints.clear();
     }
 
     /// Poll the ledger for a new checkpoint and write it to disk

@@ -202,6 +202,8 @@ impl Default for RetentionPolicy {
 pub enum RetentionSpan {
     /// U
     Unlimited,
+    /// 1m
+    Minute(NonZeroU8),
     /// 1H
     Hour(NonZeroU8),
     /// 1D
@@ -218,12 +220,26 @@ impl RetentionSpan {
     pub fn as_duration(&self) -> Option<TimeDelta> {
         match self {
             RetentionSpan::Unlimited => None,
+            RetentionSpan::Minute(value) => TimeDelta::try_minutes(value.get() as i64),
             RetentionSpan::Hour(value) => TimeDelta::try_hours(value.get() as i64),
             RetentionSpan::Day(value) => TimeDelta::try_days(value.get() as i64),
             RetentionSpan::Week(value) => TimeDelta::try_weeks(value.get() as i64),
             RetentionSpan::Month(value) => TimeDelta::try_days(value.get() as i64 * 30),
             RetentionSpan::Year(value) => TimeDelta::try_days(value.get() as i64 * 365),
         }
+    }
+
+    // get the timestamp for the start of the retention span
+    pub fn as_timestamp(&self) -> Option<i64> {
+        Utc::now().timestamp().checked_sub(match self {
+            RetentionSpan::Unlimited => return None,
+            RetentionSpan::Minute(value) => value.get() as i64 * 60,
+            RetentionSpan::Hour(value) => value.get() as i64 * 3600,
+            RetentionSpan::Day(value) => value.get() as i64 * 3600 * 24,
+            RetentionSpan::Week(value) => value.get() as i64 * 3600 * 24 * 7,
+            RetentionSpan::Month(value) => value.get() as i64 * 3600 * 24 * 30,
+            RetentionSpan::Year(value) => value.get() as i64 * 3600 * 24 * 365,
+        })
     }
 }
 
@@ -290,6 +306,7 @@ impl FromStr for RetentionSpan {
             .map_err(|e| format!("invalid value '{}': {e}", &s[..s.len() - 1]))?;
 
         match unit {
+            'm' => Ok(RetentionSpan::Minute(value)),
             'h' => Ok(RetentionSpan::Hour(value)),
             'D' => Ok(RetentionSpan::Day(value)),
             'W' => Ok(RetentionSpan::Week(value)),
@@ -304,6 +321,7 @@ impl std::fmt::Display for RetentionSpan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RetentionSpan::Unlimited => write!(f, "U"),
+            RetentionSpan::Minute(value) => write!(f, "{}m", value),
             RetentionSpan::Hour(value) => write!(f, "{}h", value),
             RetentionSpan::Day(value) => write!(f, "{}D", value),
             RetentionSpan::Week(value) => write!(f, "{}W", value),

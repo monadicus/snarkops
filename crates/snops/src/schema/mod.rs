@@ -20,6 +20,9 @@ pub mod outcomes;
 pub mod storage;
 pub mod timeline;
 
+#[cfg(test)]
+pub mod timeline_tests;
+
 // TODO: Considerations:
 // TODO: - Generate json schema with https://docs.rs/schemars/latest/schemars/
 // TODO: - Do these types need to implement `Serialize`?

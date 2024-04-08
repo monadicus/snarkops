@@ -169,12 +169,17 @@ impl AgentService for AgentRpcServer {
                 let info = state
                     .get_env_info(*env_id)
                     .await
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
+                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
 
                 trace!("checking storage files...");
 
-                reconcile::check_files(&state, *env_id, &info, height).await?;
-                reconcile::load_ledger(&state, &info, height, is_same_env).await?;
+                // only download storage if it's a new environment
+                // if a node starts at height: 0, the node will never
+                // download the ledger
+                if !is_same_env {
+                    reconcile::check_files(&state, *env_id, &info, height).await?;
+                }
+                reconcile::load_ledger(&state, &info, height, !is_same_env).await?;
                 // TODO: checkpoint/absolute height request handling
             }
 
@@ -189,10 +194,9 @@ impl AgentService for AgentRpcServer {
                     let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
 
                     // get the storage info for this environment if we don't have it cached
-                    let info = state
-                        .get_env_info(env_id)
-                        .await
-                        .map_err(|_| ReconcileError::StorageAcquireError)?;
+                    let info = state.get_env_info(env_id).await.map_err(|_| {
+                        ReconcileError::StorageAcquireError("storage info".to_owned())
+                    })?;
 
                     let storage_id = &info.id;
                     let storage_path = state.cli.path.join("storage").join(storage_id);
@@ -466,7 +470,10 @@ impl AgentService for AgentRpcServer {
             &self.state.cli.path.join(SNARKOS_FILE),
         ) // TODO: http(s)?
         .await
-        .expect("failed to acquire snarkOS binary");
+        .map_err(|e| {
+            error!("failed obtain runner binary: {e}");
+            AgentError::ProcessFailed
+        })?;
 
         let res = Command::new(dbg!(self.state.cli.path.join(SNARKOS_FILE)))
             .stdout(std::io::stdout())
@@ -477,18 +484,18 @@ impl AgentService for AgentRpcServer {
             .arg(auth)
             .spawn()
             .map_err(|e| {
-                warn!("failed to spawn auth exec process: {e}");
+                error!("failed to spawn auth exec process: {e}");
                 AgentError::FailedToSpawnProcess
             })?
             .wait()
             .await
             .map_err(|e| {
-                warn!("auth exec process failed: {e}");
+                error!("auth exec process failed: {e}");
                 AgentError::ProcessFailed
             })?;
 
         if !res.success() {
-            warn!("auth exec process exited with status: {res}");
+            error!("auth exec process exited with status: {res}");
             return Err(AgentError::ProcessFailed);
         }
         Ok(())

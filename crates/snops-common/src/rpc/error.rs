@@ -90,10 +90,20 @@ pub enum ResolveError {
 pub enum ReconcileError {
     #[error("aborted by a more recent reconcilation request")]
     Aborted,
-    #[error("failed to download the specified storage")]
-    StorageAcquireError,
+    #[error("failed setup storage: {0}")]
+    StorageSetupError(String),
+    #[error("failed to download {0} from the control plane")]
+    StorageAcquireError(String),
+    #[error("failed to find a checkpoint for the requested height/span")]
+    CheckpointAcquireError,
+    #[error("failed to apply checkpoint: {0}")]
+    CheckpointApplyError(String),
     #[error("failed to resolve addresses of stated peers")]
     ResolveAddrError(ResolveError),
+    #[error("a rention policy is required to rewind the ledger")]
+    MissingRetentionPolicy,
+    #[error("failed to load checkpoints for storage")]
+    CheckpointLoadError,
     #[error("agent did not provide a local private key")]
     NoLocalPrivateKey,
     #[error("unknown error")]

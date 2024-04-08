@@ -3,7 +3,7 @@ use std::{fmt, time::Duration};
 use indexmap::IndexMap;
 use serde::{
     de::{Error, Visitor},
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize,
 };
 use snops_common::state::{DocHeightRequest, NodeKey};
 
@@ -145,12 +145,12 @@ pub struct SpawnCannon {
     pub target: Option<NodeTargets>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Reconfig {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<DocHeightRequest>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peers: Option<NodeTargets>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validators: Option<NodeTargets>,
 }
