@@ -145,6 +145,9 @@ async fn main() {
         'connection: {
             let mut req = ws_uri.to_owned().into_client_request().unwrap();
 
+            // invalidate env info cache
+            state.env_to_storage.write().await.clear();
+
             // attach JWT if we have one
             {
                 let jwt = state.jwt.lock().expect("failed to acquire jwt");
