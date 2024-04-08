@@ -261,7 +261,7 @@ pub fn gen_n_tx<'a, C: ConsensusStorage<crate::Network>>(
     private_keys: &'a PrivateKeys,
     num_tx: u64,
     max_tx_credits: Option<u64>,
-    pivate_txs_disabled: bool,
+    private_txs_disabled: bool,
 ) -> impl Iterator<Item = Result<CannonTx>> + 'a {
     let tx_span = span!(Level::INFO, "tx generation");
     (0..num_tx)
@@ -283,7 +283,7 @@ pub fn gen_n_tx<'a, C: ConsensusStorage<crate::Network>>(
             let proof_span = span!(Level::INFO, "tx generation proof");
             let _enter = proof_span.enter();
 
-            if pivate_txs_disabled || rng.gen_range(0..10) > 3 {
+            if private_txs_disabled || rng.gen_range(0..10) > 3 {
                 // generate public transactions 70% of the time
                 make_transaction_proof::<_, _, AleoV0>(
                     ledger.vm(),
