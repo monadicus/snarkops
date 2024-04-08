@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snops_common::{impl_into_status_code, impl_serialize_pretty_error, rpc::error::PrettyError};
+use snops_common::{impl_into_status_code, impl_into_type_str};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 use url::Url;
@@ -11,23 +11,23 @@ use crate::error::CommandError;
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum StorageError {
-    #[error("command error id: `{0}`: {1}")]
+    #[error("storage id: `{1}`: {0}")]
     Command(CommandError, String),
-    #[error("error mkdirs for storage generation id: `{0}`: {1}")]
+    #[error("mkdirs for storage generation id: `{0}`: {1}")]
     GenerateStorage(String, #[source] std::io::Error),
-    #[error("error generating genesis id: `{0}`: {1}")]
+    #[error("generating genesis id: `{0}`: {1}")]
     FailedToGenGenesis(String, #[source] std::io::Error),
-    #[error("error fetching genesis block id: `{0}` url: `{1}`: {2}")]
+    #[error("fetching genesis block id: `{0}` url: `{1}`: {2}")]
     FailedToFetchGenesis(String, Url, #[source] reqwest::Error),
-    #[error("error writing genesis block id: `{0}`: {1}")]
+    #[error("writing genesis block id: `{0}`: {1}")]
     FailedToWriteGenesis(String, #[source] std::io::Error),
-    #[error("error taring ledger id: `{0}`: {1}")]
+    #[error("taring ledger id: `{0}`: {1}")]
     FailedToTarLedger(String, #[source] std::io::Error),
     #[error("the specified storage ID {0} doesn't exist, and no generation params were specified")]
     NoGenerationParams(String),
-    #[error("error reading balances {0:#?}: {1}")]
+    #[error("reading balances {0:#?}: {1}")]
     ReadBalances(PathBuf, #[source] std::io::Error),
-    #[error("error parsing balances {0:#?}: {1}")]
+    #[error("parsing balances {0:#?}: {1}")]
     ParseBalances(PathBuf, #[source] serde_json::Error),
 }
 
@@ -38,7 +38,10 @@ impl_into_status_code!(StorageError, |value| match value {
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
-impl_serialize_pretty_error!(StorageError);
+impl_into_type_str!(StorageError, |value| match value {
+    Command(e, _) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    _ => value.as_ref().to_string(),
+});
 
 #[derive(Debug, Error)]
 #[error("invalid node target string")]
@@ -59,15 +62,13 @@ impl_into_status_code!(KeySourceError, |value| match value {
     InvalidCommitteeIndex(_) => StatusCode::BAD_REQUEST,
 });
 
-impl_serialize_pretty_error!(KeySourceError);
-
 #[derive(Debug, Error, AsRefStr)]
 pub enum SchemaError {
     #[error("key source error: {0}")]
     KeySource(#[from] KeySourceError),
-    #[error("node target error: {0}")]
+    #[error(transparent)]
     NodeTarget(#[from] NodeTargetError),
-    #[error("storage error: {0}")]
+    #[error(transparent)]
     Storage(#[from] StorageError),
     #[error("query parse error: {0}")]
     QueryParse(String),
@@ -77,7 +78,14 @@ impl_into_status_code!(SchemaError, |value| match value {
     KeySource(e) => e.into(),
     NodeTarget(e) => e.into(),
     Storage(e) => e.into(),
-    QueryParse(e) => StatusCode::BAD_REQUEST,
+    QueryParse(_) => StatusCode::BAD_REQUEST,
+});
+
+impl_into_type_str!(SchemaError, |value| match value {
+    KeySource(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    Storage(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    QueryParse(e) => format!("{}.{}", value.as_ref(), e),
+    _ => value.as_ref().to_string(),
 });
 
 impl Serialize for SchemaError {
@@ -86,14 +94,8 @@ impl Serialize for SchemaError {
         S: Serializer,
     {
         let mut state = serializer.serialize_struct("Error", 2)?;
-        state.serialize_field("type", self.as_ref())?;
-
-        match self {
-            Self::KeySource(e) => state.serialize_field("error", e),
-            Self::NodeTarget(e) => state.serialize_field("error", &e.to_string()),
-            Self::Storage(e) => state.serialize_field("error", e),
-            Self::QueryParse(e) => state.serialize_field("error", &e),
-        }?;
+        state.serialize_field("type", &String::from(self))?;
+        state.serialize_field("error", &self.to_string())?;
 
         state.end()
     }

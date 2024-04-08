@@ -129,34 +129,34 @@ impl Default for LedgerGeneration {
 #[derive(Debug, Clone, Serialize)]
 pub struct FilenameString(String);
 
-struct FilenameStringVisitor;
-
-impl<'de> Visitor<'de> for FilenameStringVisitor {
-    type Value = FilenameString;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a string that can be used as a filename")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        if v.contains('/') {
-            Err(E::custom("filename string cannot have a path separator"))
-        } else if v == "." || v == ".." {
-            Err(E::custom("filename string cannot be relative"))
-        } else {
-            Ok(FilenameString(String::from(v)))
-        }
-    }
-}
-
 impl<'de> Deserialize<'de> for FilenameString {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
+        struct FilenameStringVisitor;
+
+        impl<'de> Visitor<'de> for FilenameStringVisitor {
+            type Value = FilenameString;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string that can be used as a filename")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v.contains('/') {
+                    Err(E::custom("filename string cannot have a path separator"))
+                } else if v == "." || v == ".." {
+                    Err(E::custom("filename string cannot be relative"))
+                } else {
+                    Ok(FilenameString(String::from(v)))
+                }
+            }
+        }
+
         deserializer.deserialize_str(FilenameStringVisitor)
     }
 }
@@ -197,6 +197,8 @@ impl Document {
         let mut base = state.cli.path.join("storage");
         base.push(&id);
 
+        // TODO: The dir can be made by a previous run and the aot stuff can fail
+        // i.e an empty/incomplete directory can exist and we should check those
         let exists = matches!(tokio::fs::try_exists(&base).await, Ok(true));
 
         // TODO: respect self.prefer_existing
@@ -400,6 +402,8 @@ fn pick_commitee_addr(entry: (String, u64)) -> String {
     entry.0
 }
 
+// TODO: function should also take storage id
+// in case of error, the storage id can be used to provide more context
 async fn read_to_addrs<T: DeserializeOwned>(
     f: impl Fn(T) -> String,
     file: PathBuf,

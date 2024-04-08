@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::{Display, Write},
     net::SocketAddr,
     str::FromStr,
@@ -55,6 +56,7 @@ impl AgentState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
+    pub node_key: NodeKey,
     pub ty: NodeType,
     pub private_key: KeyState,
     /// Increment the usize whenever the request is updated.
@@ -63,6 +65,7 @@ pub struct NodeState {
     pub online: bool,
     pub peers: Vec<AgentPeer>,
     pub validators: Vec<AgentPeer>,
+    pub env: HashMap<String, String>,
 }
 
 /// A representation of which key to use for the agent.
