@@ -1,6 +1,8 @@
-use crate::aleo::*;
-use anyhow::{bail, Result};
 use std::borrow::Cow;
+
+use anyhow::{bail, Result};
+
+use crate::aleo::*;
 
 pub struct Stores {
     pub blocks: BlockDB,
@@ -38,8 +40,8 @@ impl Stores {
         self.fast_committee_remove(height)
     }
 
-    // The following functions are effectively gutted versions of the snarkvm ledger removal functions
-    // that do not have any atomic locks
+    // The following functions are effectively gutted versions of the snarkvm ledger
+    // removal functions that do not have any atomic locks
 
     fn fast_block_remove(&self, block_height: u32) -> Result<()> {
         let db = &self.blocks;

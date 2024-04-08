@@ -6,6 +6,7 @@ use std::{
 
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
+use checkpoint::{CheckpointManager, RetentionPolicy};
 use clap::Args;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
@@ -19,7 +20,6 @@ use snops_common::state::NodeType;
 use tracing::info;
 
 use crate::{ledger::Addrs, Account, Network, PrivateKey};
-use checkpoint::{CheckpointManager, RetentionPolicy};
 
 mod metrics;
 

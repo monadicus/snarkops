@@ -1,8 +1,9 @@
-use chrono::{DateTime, TimeDelta, Utc};
 use std::{
     io::{self, Read, Write},
     path::PathBuf,
 };
+
+use chrono::{DateTime, TimeDelta, Utc};
 
 use crate::errors::CheckpointHeaderError::{self as Error, *};
 
@@ -16,7 +17,8 @@ pub struct CheckpointHeader {
     pub timestamp: i64,
     /// Block's hash
     pub block_hash: [u8; 32],
-    /// Genesis block's hash - used to ensure the checkpoint is applicable to this network
+    /// Genesis block's hash - used to ensure the checkpoint is applicable to
+    /// this network
     pub genesis_hash: [u8; 32],
     /// Size of the checkpoint
     pub content_len: u64,
@@ -34,8 +36,9 @@ impl CheckpointHeader {
 
     #[cfg(feature = "write")]
     pub fn read_ledger(path: PathBuf) -> Result<Self, Error> {
-        use crate::aleo::*;
         use Error::*;
+
+        use crate::aleo::*;
 
         let commitee = CommitteeDB::open(StorageMode::Custom(path.clone())).map_err(OpenLedger)?;
         let blocks = BlockDB::open(StorageMode::Custom(path)).map_err(OpenLedger)?;

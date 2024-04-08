@@ -105,12 +105,13 @@ impl Checkpoint {
         let height = stores.committee.current_height().map_err(ReadLedger)?;
         let my_height = self.height();
 
-        // the act of creating this ledger service with a "max_gc_rounds" set to 0 should clear
-        // all BFT documents
+        // the act of creating this ledger service with a "max_gc_rounds" set to 0
+        // should clear all BFT documents
         let ledger_service = Arc::new(CoreLedgerService::new(ledger.clone(), Default::default()));
         Storage::new(ledger_service, Arc::new(BFTMemoryService::new()), 0);
 
-        // TODO: parallel and test out of order removal by moving the guts of these functions out of the "atomic writes"
+        // TODO: parallel and test out of order removal by moving the guts of these
+        // functions out of the "atomic writes"
         ((my_height + 1)..=height)
             .into_par_iter()
             .try_for_each(|h| stores.remove(h))
@@ -141,14 +142,16 @@ impl Checkpoint {
         }
 
         // set the current round to the last round in the new top block
-        // using the committee store to determine what the first round of the new top block is
+        // using the committee store to determine what the first round of the new top
+        // block is
         if let Some(c) = stores
             .committee
             .get_committee(my_height)
             .map_err(RemoveDocument)?
         {
             let mut round = c.starting_round();
-            // loop until the the next round is different (it will be None, but this is cleaner)
+            // loop until the the next round is different (it will be None, but this is
+            // cleaner)
             while stores
                 .committee
                 .get_height_for_round(round + 1)

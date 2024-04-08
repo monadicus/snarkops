@@ -1,8 +1,9 @@
+use snops_common::state::DocHeightRequest;
+
 use crate::schema::{
     timeline::{Reconfig, TimelineEvent},
     ItemDocument,
 };
-use snops_common::state::DocHeightRequest;
 
 #[test]
 fn test_timeline_item_doc_serde() {

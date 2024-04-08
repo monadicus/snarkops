@@ -2,6 +2,7 @@ use std::{os::fd::AsRawFd, path::PathBuf};
 
 use aleo_std::StorageMode;
 use anyhow::{bail, ensure, Result};
+use checkpoint::{Checkpoint, CheckpointManager, RetentionPolicy};
 use clap::{Args, Parser};
 use nix::{
     sys::wait::waitpid,
@@ -14,7 +15,6 @@ use snarkvm::{
 use tracing::info;
 
 use crate::{ledger::util, DbLedger};
-use checkpoint::{Checkpoint, CheckpointManager, RetentionPolicy};
 
 #[derive(Debug, Args)]
 pub struct Replay {

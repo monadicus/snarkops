@@ -1,7 +1,9 @@
-use super::retention::*;
-use chrono::{DateTime, TimeDelta};
 use std::collections::{BinaryHeap, HashSet};
 use std::{num::NonZeroU8, str::FromStr};
+
+use chrono::{DateTime, TimeDelta};
+
+use super::retention::*;
 
 macro_rules! day {
     ($e:expr) => {
@@ -111,10 +113,11 @@ macro_rules! policy_test {
     };
 }
 
-// format: policy, test_duration, add_interval, gc_interval, # added, # rejected, # kept
+// format: policy, test_duration, add_interval, gc_interval, # added, #
+// rejected, # kept
 
-// these look like they should have 4 entries, but there are actually 4 hours between
-// all of the tests...
+// these look like they should have 4 entries, but there are actually 4 hours
+// between all of the tests...
 // 24, 23, 22, 21, 20
 policy_test!(one_day_4h1h, "4h:1h", day!(1), min!(1), hr!(1), + 24, = 6);
 // 24, 22, 20,

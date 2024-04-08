@@ -5,9 +5,8 @@ use clap::{Args, Subcommand};
 use rand::{seq::SliceRandom, CryptoRng, Rng};
 use tracing::warn;
 
-use crate::{authorized::Execute, Address, PrivateKey};
-
 use self::checkpoint::CheckpointCommand;
+use crate::{authorized::Execute, Address, PrivateKey};
 
 pub mod add;
 pub mod checkpoint;

@@ -1,6 +1,7 @@
+use std::{collections::BTreeMap, fs, path::PathBuf};
+
 use chrono::{DateTime, TimeDelta, Utc};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::{collections::BTreeMap, fs, path::PathBuf};
 use tracing::{error, trace};
 
 #[cfg(feature = "write")]
@@ -22,7 +23,8 @@ fn datetime_from_int(timestamp: i64) -> DateTime<Utc> {
 }
 
 impl CheckpointManager {
-    /// Given a storage path, load headers from the available checkpoints into memory
+    /// Given a storage path, load headers from the available checkpoints into
+    /// memory
     pub fn load(storage_path: PathBuf, policy: RetentionPolicy) -> Result<Self, ManagerLoadError> {
         use ManagerLoadError::*;
 
@@ -71,8 +73,9 @@ impl CheckpointManager {
     /// Cull checkpoints that are incompatible with the current block database
     #[cfg(feature = "write")]
     pub fn cull_incompatible(&mut self) -> Result<usize, ManagerCullError> {
-        use crate::aleo::*;
         use ManagerCullError::*;
+
+        use crate::aleo::*;
 
         let blocks = BlockDB::open(StorageMode::Custom(self.storage_path.clone()))
             .map_err(StorageOpenError)?;
@@ -131,7 +134,8 @@ impl CheckpointManager {
         Ok(true)
     }
 
-    /// Check if the manager is ready to create a new checkpoint given the current timestamp
+    /// Check if the manager is ready to create a new checkpoint given the
+    /// current timestamp
     pub fn is_ready(&self, timestamp: &DateTime<Utc>) -> bool {
         let Some((last_time, _)) = self.checkpoints.last_key_value() else {
             // if this is the first checkpoint, it is ready
@@ -147,8 +151,9 @@ impl CheckpointManager {
         &mut self,
         checkpoint: crate::Checkpoint,
     ) -> Result<(), ManagerInsertError> {
-        use crate::aleo::ToBytes;
         use ManagerInsertError::*;
+
+        use crate::aleo::ToBytes;
 
         let Some(path) = path_from_height(&self.storage_path, checkpoint.height()) else {
             return Err(InvalidStoragePath(self.storage_path.clone()));

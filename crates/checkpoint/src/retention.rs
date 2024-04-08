@@ -51,11 +51,13 @@ impl RetentionPolicy {
         delta >= keep
     }
 
-    /// Receives a list of checkpoint times, and returns a list of times to reject
+    /// Receives a list of checkpoint times, and returns a list of times to
+    /// reject
     pub fn reject(&self, times: Vec<&DateTime<Utc>>) -> Vec<DateTime<Utc>> {
         self.reject_with_time(Utc::now(), times)
     }
-    /// Receives a list of checkpoint times, and returns a list of times to reject given a time
+    /// Receives a list of checkpoint times, and returns a list of times to
+    /// reject given a time
     pub fn reject_with_time(
         &self,
         now: DateTime<Utc>,
@@ -72,12 +74,11 @@ impl RetentionPolicy {
         // ALGORITHM
         // 1. walk backwards through rules and times
         // 2. keep track of the last kept time for each rule
-        // 3. if the last kept time is outside the duration of the current rule
-        //    reject the last kept time and promote the next time to the last kept time
-        // 4. if the current rule does not encompass both times
-        //    move to the next rule
-        // 5. if difference between last kept time and current time is
-        //    smaller than the keep time, reject it
+        // 3. if the last kept time is outside the duration of the current rule reject
+        //    the last kept time and promote the next time to the last kept time
+        // 4. if the current rule does not encompass both times move to the next rule
+        // 5. if difference between last kept time and current time is smaller than the
+        //    keep time, reject it
         // 6. if the time was not rejected, it becomes the new last kept time
 
         // TODO: this is bugged atm - it's keeping the last checkpoint
@@ -101,7 +102,8 @@ impl RetentionPolicy {
             let delta = now.signed_duration_since(time);
             let last_delta = now.signed_duration_since(last_kept);
 
-            // step 3 - if the last time is outside the duration of the current rule, reject it
+            // step 3 - if the last time is outside the duration of the current rule, reject
+            // it
             match curr_rule.duration.as_delta() {
                 Some(duration) if last_delta > duration => {
                     /* println!(
@@ -123,15 +125,17 @@ impl RetentionPolicy {
                 // if both rules have the same duration, continue to the next rule
                 // this is another case of configuration mishaps
                 //
-                // additionallly, if the second to last rule is unlimited, continue to the next rule
-                // you should not be writing policies with multiple unlimited rules
+                // additionallly, if the second to last rule is unlimited, continue to the next
+                // rule you should not be writing policies with multiple
+                // unlimited rules
                 if &curr_rule.duration == duration || duration == &RetentionSpan::Unlimited {
                     curr_rule = rules.next().unwrap();
                     continue;
                 }
 
                 if let Some(next_duration) = duration.as_delta() {
-                    // step 4 - if the current rule does not encompass both times, move to the next rule
+                    // step 4 - if the current rule does not encompass both times, move to the next
+                    // rule
 
                     // continue because both times are within the current rule
                     if delta >= next_duration && last_delta >= next_duration {
@@ -184,7 +188,8 @@ impl RetentionPolicy {
 }
 
 impl Default for RetentionPolicy {
-    /// The default policy is intended to align with the test cases provided by Aleo.
+    /// The default policy is intended to align with the test cases provided by
+    /// Aleo.
     fn default() -> Self {
         Self {
             rules: [

@@ -235,8 +235,8 @@ pub enum DocHeightRequest {
     /// Use the latest height for the ledger
     #[serde(with = "strings::top")]
     Top,
-    /// Set the height to the given block (there must be a checkpoint at this height)
-    /// Setting to 0 will reset the height to the genesis block
+    /// Set the height to the given block (there must be a checkpoint at this
+    /// height) Setting to 0 will reset the height to the genesis block
     Absolute(u32),
     /// Use the next checkpoint that matches this checkpoint span
     Checkpoint(RetentionSpan),
@@ -251,8 +251,8 @@ pub enum HeightRequest {
     #[default]
     /// Use the latest height for the ledger
     Top,
-    /// Set the height to the given block (there must be a checkpoint at this height)
-    /// Setting to 0 will reset the height to the genesis block
+    /// Set the height to the given block (there must be a checkpoint at this
+    /// height) Setting to 0 will reset the height to the genesis block
     Absolute(u32),
     /// Use the next checkpoint that matches this checkpoint span
     Checkpoint(RetentionSpan),

@@ -1,3 +1,7 @@
+use std::path::PathBuf;
+
+use anyhow::Result;
+
 use crate::{
     aleo::{
         FinalizeDB, FinalizeStorage, FromBytes, Identifier, MapRead, Plaintext, ProgramID,
@@ -5,14 +9,13 @@ use crate::{
     },
     errors::CheckpointContentError as Error,
 };
-use anyhow::Result;
-use std::path::PathBuf;
 
 /// Committee store round key (this will probably never change)
 pub const ROUND_KEY: u8 = 0;
 
 /// Storage of key-value pairs for each program ID and identifier
-/// Note, the structure is this way as ToBytes derives 2 sized tuples, but not 3 sized tuples
+/// Note, the structure is this way as ToBytes derives 2 sized tuples, but not 3
+/// sized tuples
 pub struct CheckpointContent {
     #[allow(clippy::type_complexity)]
     pub key_values: Vec<((ProgramID, Identifier), Vec<(Plaintext, Value)>)>,

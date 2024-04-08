@@ -6,9 +6,8 @@ use clap::Parser;
 use snarkvm::utilities::ToBytes;
 use tracing::{info, trace};
 
-use crate::{ledger::util, DbLedger};
-
 use super::truncate::Truncate;
+use crate::{ledger::util, DbLedger};
 
 #[derive(Debug, Parser)]
 pub enum CheckpointCommand {
@@ -18,7 +17,8 @@ pub enum CheckpointCommand {
     Apply {
         /// Checkpoint file to apply
         checkpoint: PathBuf,
-        /// When present, clean up old checkpoints that are no longer applicable after applying the checkpoint
+        /// When present, clean up old checkpoints that are no longer applicable
+        /// after applying the checkpoint
         #[clap(long, short, default_value = "false")]
         clean: bool,
     },
