@@ -4,9 +4,11 @@ use std::{
 };
 
 use futures_util::future::join_all;
+use prometheus_http_query::response::Data;
+use promql_parser::label::{MatchOp, Matcher};
 use snops_common::state::{AgentId, AgentState};
 use tokio::{select, sync::RwLock, task::JoinHandle};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use super::{
     error::{BatchReconcileError, ExecutionError},
@@ -18,7 +20,10 @@ use crate::{
         source::{QueryTarget, TxSource},
         CannonInstance,
     },
-    schema::timeline::{Action, ActionInstance, EventDuration},
+    schema::{
+        outcomes::PromQuery,
+        timeline::{Action, ActionInstance, EventDuration},
+    },
     state::{Agent, AgentClient, GlobalState},
 };
 
@@ -291,6 +296,56 @@ impl Environment {
             info!("------------------------------------------");
             info!("playback of environment timeline completed");
             info!("------------------------------------------");
+
+            // perform outcome validation
+            if let Some(prometheus) = &*state.prometheus {
+                for (outcome_name, outcome) in env.outcomes.iter() {
+                    let Some(mut query) = outcome
+                        .query
+                        .as_ref()
+                        .or_else(|| PromQuery::builtin(outcome_name))
+                        .cloned()
+                    else {
+                        warn!("unrecognized metric name (no built-in query found)");
+                        continue;
+                    };
+
+                    // inject env ID matchers into the PromQL query
+                    query.add_matchers(&[Matcher {
+                        op: MatchOp::Equal,
+                        name: String::from("env_id"),
+                        value: env_id.to_string(),
+                    }]);
+
+                    // TODO: store pass/fails in environment
+
+                    let query_response = prometheus.query(query.into_inner()).get().await;
+                    match query_response {
+                        Ok(result) => {
+                            let value = match result.data() {
+                                Data::Scalar(sample) => sample.value(),
+                                Data::Vector(vector) => match vector.last() {
+                                    Some(item) => item.sample().value(),
+                                    None => {
+                                        warn!("empty vector response from prometheus");
+                                        continue;
+                                    }
+                                },
+                                _ => {
+                                    warn!("unsupported prometheus query response");
+                                    continue;
+                                }
+                            };
+                            let message = outcome.validation.show_validation(value);
+                            info!("OUTCOME {outcome_name}: {message}");
+                        }
+
+                        Err(e) => {
+                            error!("failed to validate outcome {outcome_name}: {e}");
+                        }
+                    }
+                }
+            }
 
             Ok(())
         }));

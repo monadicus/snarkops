@@ -35,6 +35,7 @@ use crate::{
     error::DeserializeError,
     schema::{
         nodes::{ExternalNode, Node},
+        outcomes::OutcomeMetrics,
         storage::{LoadedStorage, DEFAULT_AOT_BIN},
         timeline::TimelineEvent,
         ItemDocument, NodeTargets,
@@ -46,6 +47,9 @@ use crate::{
 pub struct Environment {
     pub id: usize,
     pub storage: Arc<LoadedStorage>,
+
+    pub outcomes: OutcomeMetrics,
+    // TODO: pub outcome_results: RwLock<OutcomeResults>,
     pub node_map: BiMap<NodeKey, EnvPeer>,
     pub initial_nodes: IndexMap<NodeKey, EnvNode>,
     pub aot_bin: PathBuf,
@@ -128,6 +132,7 @@ impl Environment {
         static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         let mut state_lock = state.envs.write().await;
+        state.prom_httpsd.lock().await.set_dirty();
 
         let mut storage = None;
         let mut node_map = BiHashMap::default();
@@ -135,6 +140,7 @@ impl Environment {
         let mut cannon_configs = HashMap::new();
         let mut tx_pipe = TxPipes::default();
         let mut timeline = vec![];
+        let mut outcomes: Option<OutcomeMetrics> = None;
 
         for document in documents {
             match document {
@@ -160,7 +166,9 @@ impl Environment {
                                 1 => doc_node_key.to_owned(),
                                 _ => {
                                     let mut node_key = doc_node_key.to_owned();
-                                    node_key.id.push('-');
+                                    if !node_key.id.is_empty() {
+                                        node_key.id.push('-');
+                                    }
                                     node_key.id.push_str(&i.to_string());
                                     node_key
                                 }
@@ -246,11 +254,17 @@ impl Environment {
                     timeline.extend(sub_timeline.timeline.into_iter());
                 }
 
+                ItemDocument::Outcomes(sub_outcomes) => match outcomes {
+                    Some(ref mut outcomes) => outcomes.extend(sub_outcomes.metrics.into_iter()),
+                    None => outcomes = Some(sub_outcomes.metrics),
+                },
+
                 _ => warn!("ignored unimplemented document type"),
             }
         }
 
         let storage = storage.ok_or(PrepareError::MissingStorage)?;
+        let outcomes = outcomes.unwrap_or_default();
 
         // review cannon configurations to ensure all playback sources and sinks
         // have a real file backing them
@@ -274,6 +288,8 @@ impl Environment {
         let env = Environment {
             id: env_id,
             storage,
+            outcomes,
+            // TODO: outcome_results: Default::default(),
             node_map,
             initial_nodes,
             tx_pipe,
@@ -304,6 +320,12 @@ impl Environment {
             .await
             .remove(id)
             .ok_or(CleanupError::EnvNotFound(*id))?;
+        state.prom_httpsd.lock().await.set_dirty();
+
+        // stop the timeline if it's running
+        if let Some(handle) = &*env.timeline_handle.lock().await {
+            handle.abort();
+        }
 
         // reconcile all online agents
         let (ids, handles): (Vec<_>, Vec<_>) = {
