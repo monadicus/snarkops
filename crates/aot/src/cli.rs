@@ -11,8 +11,6 @@ use anyhow::Result;
 use clap::Parser;
 use crossterm::tty::IsTty;
 use tracing_appender::non_blocking::WorkerGuard;
-#[cfg(feature = "flame")]
-use tracing_flame::FlushGuard;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]

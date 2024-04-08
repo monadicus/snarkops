@@ -163,6 +163,7 @@ impl CheckpointManager {
         let mut writer = fs::File::options()
             .write(true)
             .create(true)
+            .truncate(true)
             .open(&path)
             .map_err(FileError)?;
         writer
