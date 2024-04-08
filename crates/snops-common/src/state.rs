@@ -26,7 +26,7 @@ pub enum AgentState {
     // A node in the inventory can function as a transaction cannon
     Inventory,
     /// Test id mapping to node state
-    Node(EnvId, NodeState),
+    Node(EnvId, Box<NodeState>),
 }
 
 impl AgentState {
@@ -36,15 +36,18 @@ impl AgentState {
     {
         match self {
             Self::Inventory => Self::Inventory,
-            Self::Node(id, state) => Self::Node(id, f(state)),
+            Self::Node(id, state) => Self::Node(id, Box::new(f(*state))),
         }
     }
 
     pub fn is_persist(&self) -> bool {
+        // bc box NodeState is unstable https://github.com/rust-lang/rust/issues/29641
         matches!(
             self,
             AgentState::Node(
                 _,
+                node_state_box // Use a placeholder for the Box<NodeState>
+            ) if matches!(&**node_state_box, // Dereference the Box to match its content
                 NodeState {
                     height: (_, HeightRequest::Persist),
                     ..
