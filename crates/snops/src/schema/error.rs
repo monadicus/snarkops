@@ -72,17 +72,21 @@ pub enum SchemaError {
     NodeTarget(#[from] NodeTargetError),
     #[error(transparent)]
     Storage(#[from] StorageError),
+    #[error("query parse error: {0}")]
+    QueryParse(String),
 }
 
 impl_into_status_code!(SchemaError, |value| match value {
     KeySource(e) => e.into(),
     NodeTarget(e) => e.into(),
     Storage(e) => e.into(),
+    QueryParse(_) => StatusCode::BAD_REQUEST,
 });
 
 impl_into_type_str!(SchemaError, |value| match value {
     KeySource(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
     Storage(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    QueryParse(e) => format!("{}.{}", value.as_ref(), e),
     _ => value.as_ref().to_string(),
 });
 

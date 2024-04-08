@@ -16,7 +16,10 @@ use futures_util::stream::StreamExt;
 use serde::Deserialize;
 use snops_common::{
     prelude::*,
-    rpc::{agent::AgentServiceClient, control::ControlService},
+    rpc::{
+        agent::{AgentServiceClient, Handshake},
+        control::ControlService,
+    },
 };
 use surrealdb::Surreal;
 use tarpc::server::Channel;
@@ -32,19 +35,25 @@ use crate::{
     cli::Cli,
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{Agent, AgentFlags, AppState, GlobalState},
+    state::{util::OpaqueDebug, Agent, AgentFlags, AppState, GlobalState},
 };
 
 mod api;
 mod content;
 pub mod error;
 pub mod jwt;
+pub mod prometheus;
 mod rpc;
 
 pub async fn start(cli: Cli) -> Result<(), StartError> {
     let mut path = cli.path.clone();
     path.push("data.db");
     let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
+
+    let prometheus = cli
+        .prometheus
+        .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
+
     let state = GlobalState {
         cli,
         db,
@@ -52,27 +61,19 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
         storage_ids: Default::default(),
         storage: Default::default(),
         envs: Default::default(),
+        prom_httpsd: Default::default(),
+        prometheus: OpaqueDebug(prometheus),
     };
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
+        .nest("/prometheus", prometheus::routes())
         // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
         .with_state(Arc::new(state))
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
-    // .layer(
-    // TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::new().
-    // include_headers(true)),
-    //.on_request(|request: &Request<Body>, _span: &Span| {
-    //    tracing::info!("req {} - {}", request.method(), request.uri());
-    //})
-    //.on_response(|response: &Response, _latency: Duration, span: &Span| {
-    //    span.record("status_code", &tracing::field::display(response.status()));
-    //    tracing::info!("res {}", response.status())
-    //}),
-    // );
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:1234")
         .await
@@ -151,6 +152,7 @@ async fn handle_socket(
     let id: AgentId = 'insertion: {
         let client = client.clone();
         let mut pool = state.pool.write().await;
+        let mut handshake = Handshake::default();
 
         // attempt to reconnect if claims were passed
         'reconnect: {
@@ -172,6 +174,16 @@ async fn handle_socket(
 
                 // TODO: probably want to reconcile with old state?
 
+                // handshake with client
+                // unwrap safety: this agent was just `mark_connected` with a valid client
+                let client = agent.rpc().cloned().unwrap();
+                tokio::spawn(async move {
+                    // we do this in a separate task because we don't want to hold up pool insertion
+                    if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
+                        error!("failed to perform client handshake: {e}");
+                    }
+                });
+
                 break 'insertion id;
             }
         }
@@ -189,12 +201,15 @@ async fn handle_socket(
         // create a new agent
         let agent = Agent::new(client.to_owned(), id, query.flags);
 
-        // sign the jwt and send it to the agent
+        // sign the jwt
         let signed_jwt = agent.sign_jwt();
+        handshake.jwt = Some(signed_jwt);
+
+        // handshake with the client
         tokio::spawn(async move {
             // we do this in a separate task because we don't want to hold up pool insertion
-            if let Err(e) = client.keep_jwt(tarpc::context::current(), signed_jwt).await {
-                warn!("failed to inform client of JWT: {e}");
+            if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
+                error!("failed to perform client handshake: {e}");
             }
         });
 

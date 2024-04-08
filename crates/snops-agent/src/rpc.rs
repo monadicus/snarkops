@@ -7,7 +7,7 @@ use snops_common::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
     rpc::{
-        agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse},
+        agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake},
         control::{ControlServiceRequest, ControlServiceResponse},
         error::{AgentError, ReconcileError},
         MuxMessage,
@@ -44,20 +44,19 @@ pub struct AgentRpcServer {
 }
 
 impl AgentService for AgentRpcServer {
-    async fn keep_jwt(self, _: context::Context, token: String) {
-        debug!("control plane delegated new JWT");
+    async fn handshake(self, _: context::Context, handshake: Handshake) {
+        if let Some(token) = handshake.jwt {
+            // cache the JWT in the state JWT mutex
+            self.state
+                .jwt
+                .lock()
+                .expect("failed to acquire JWT lock")
+                .replace(token.to_owned());
 
-        // cache the JWT in the state JWT mutex
-        self.state
-            .jwt
-            .lock()
-            .expect("failed to acquire JWT lock")
-            .replace(token.to_owned());
-
-        // TODO: write the JWT to a file somewhere else
-        tokio::fs::write(self.state.cli.path.join(JWT_FILE), token)
-            .await
-            .expect("failed to write jwt file");
+            tokio::fs::write(self.state.cli.path.join(JWT_FILE), token)
+                .await
+                .expect("failed to write jwt file");
+        }
     }
 
     async fn reconcile(

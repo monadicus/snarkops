@@ -23,7 +23,7 @@ async fn main() {
     };
 
     let env_filter = env_filter
-        .with_env_var("SNOT_LOG")
+        .with_env_var("SNOPS_LOG")
         .from_env_lossy()
         .add_directive("hyper_util=off".parse().unwrap())
         .add_directive("hyper=off".parse().unwrap())
