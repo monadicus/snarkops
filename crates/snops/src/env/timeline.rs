@@ -303,7 +303,7 @@ impl Environment {
                     let Some(mut query) = outcome
                         .query
                         .as_ref()
-                        .or_else(|| PromQuery::builtin(&outcome_name))
+                        .or_else(|| PromQuery::builtin(outcome_name))
                         .cloned()
                     else {
                         warn!("unrecognized metric name (no built-in query found)");

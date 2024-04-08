@@ -103,7 +103,11 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
                             .collect(),
                         });
                     }
-                    _ => (),
+
+                    _ => {
+                        // future-proofing; this comment also disables the
+                        // clippy lint
+                    }
                 }
             }
 
