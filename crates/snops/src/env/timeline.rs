@@ -341,7 +341,7 @@ impl Environment {
                         }
 
                         Err(e) => {
-                            warn!("failed to validate outcome {outcome_name}: {e}");
+                            error!("failed to validate outcome {outcome_name}: {e}");
                         }
                     }
                 }

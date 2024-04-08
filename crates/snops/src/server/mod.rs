@@ -175,6 +175,7 @@ async fn handle_socket(
                 // TODO: probably want to reconcile with old state?
 
                 // handshake with client
+                // unwrap safety: this agent was just `mark_connected` with a valid client
                 let client = agent.rpc().cloned().unwrap();
                 tokio::spawn(async move {
                     // we do this in a separate task because we don't want to hold up pool insertion

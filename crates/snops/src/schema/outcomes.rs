@@ -111,8 +111,10 @@ pub struct PromQuery(PromExpr);
 
 impl PromQuery {
     /// Parse a PromQL query into a `PromQuery`.
-    pub fn new(query: &str) -> Result<Self, String> {
-        promql_parser::parser::parse(query).map(Self)
+    pub fn new(query: &str) -> Result<Self, SchemaError> {
+        promql_parser::parser::parse(query)
+            .map(Self)
+            .map_err(SchemaError::QueryParse)
     }
 
     pub fn builtin(name: &str) -> Option<&Self> {

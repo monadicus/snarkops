@@ -69,6 +69,8 @@ pub enum SchemaError {
     NodeTarget(#[from] NodeTargetError),
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
+    #[error("query parse error: {0}")]
+    QueryParse(String),
 }
 
 impl_into_status_code!(SchemaError, |value| match value {
