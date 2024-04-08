@@ -94,8 +94,8 @@ impl RetentionPolicy {
             .peekable();
 
         // step 2 - keep track of the last kept time
-        let mut last_kept = times.next().unwrap();
-        let mut curr_rule = rules.next().unwrap();
+        let mut last_kept = times.next().unwrap(); // is_empty checked at the beginning of the fn
+        let mut curr_rule = rules.next().unwrap(); // is_empty checked at the beginning of the fn
 
         'outer: while let Some(time) = times.peek().cloned() {
             let delta = now.signed_duration_since(time);
