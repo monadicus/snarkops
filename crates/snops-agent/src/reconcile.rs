@@ -338,5 +338,5 @@ fn find_checkpoint_by_span<'a>(
 
     sorted
         .into_iter()
-        .find_map(|(t, c)| if dbg!(t <= timestamp) { Some(c) } else { None })
+        .find_map(|(t, c)| if t <= timestamp { Some(c) } else { None })
 }

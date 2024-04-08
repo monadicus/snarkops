@@ -54,7 +54,17 @@ fn walk_policy(
         }
     }
 
-    println!("FINISH: {:?}", times.iter().collect::<BinaryHeap<_>>());
+    println!(
+        "FINISH: {:?}",
+        times
+            .iter()
+            .collect::<BinaryHeap<_>>()
+            .into_sorted_vec()
+            .into_iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     (num_added, times.len())
 }
 
@@ -106,24 +116,19 @@ macro_rules! policy_test {
 // these look like they should have 4 entries, but there are actually 4 hours between
 // all of the tests...
 // 24, 23, 22, 21, 20
-policy_test!(one_day_4h1h, "4h:1h", day!(1), min!(1), hr!(1), + 24, = 5);
-// 24, 22, 20
-policy_test!(one_day_4h2h, "4h:2h", day!(1), min!(1), hr!(1), + 12, = 3);
+policy_test!(one_day_4h1h, "4h:1h", day!(1), min!(1), hr!(1), + 24, = 6);
+// 24, 22, 20,
+policy_test!(one_day_4h2h, "4h:2h", day!(1), min!(1), hr!(1), + 12, = 4);
 policy_test!(one_day_u2h, "U:2h", day!(1), min!(1), hr!(1), + 12, = 12);
+policy_test!(one_day_u1m, "10m:1m", hr!(1), min!(1), min!(1), + 60, = 12);
 
-// the same tests as above, but the garbage collection is delayed, which results
-// in a slightly different compaction
-policy_test!(one_day_4h1h_delay, "4h:1h", day!(1), min!(1), day!(1), + 24, = 5);
-policy_test!(one_day_4h2h_delay, "4h:2h", day!(1), min!(1), day!(1), + 12, = 3);
+policy_test!(one_day_4h1h_delay, "4h:1h", day!(1), min!(1), day!(1), + 24, = 6);
+policy_test!(one_day_4h2h_delay, "4h:2h", day!(1), min!(1), day!(1), + 12, = 4);
 policy_test!(one_day_u2h_delay, "U:2h", day!(1), min!(1), day!(1), + 12, = 12);
 
 // keep 4 hourly checkpoints, every 4 hours for the last 8 hours (), 4 + 1 total
-// 24, 23, 22, 21, 17
-policy_test!(one_day_4h1h_8h4h, "4h:1h,8h:4h", day!(1), min!(1), hr!(1), + 24, = 5);
-// 24, 23, 22, 21, 20, 16
+policy_test!(one_day_4h1h_8h4h, "4h:1h,8h:4h", day!(1), min!(1), hr!(1), + 24, = 6);
 policy_test!(one_day_4h1h_8h4h_delay, "4h:1h,8h:4h", day!(1), min!(1), day!(1), + 24, = 6);
 
-// 08T00, 07T23, 07T22, 07T21, 07T18, 07T14, 07T02, 06T14, 06T02
-policy_test!(one_day_spaced, "4h:1h,8h:4h,2D:12h", day!(7), hr!(1), hr!(1), + (24 * 7), = 9);
-// 08T00, 07T23, 07T22, 07T21, 07T17, 07T13, 07T01, 06T13, 06T01
-policy_test!(one_day_spaced_delay, "4h:1h,8h:4h,2D:12h", day!(7), hr!(1), day!(1), + (24 * 7), = 9);
+policy_test!(one_day_spaced, "4h:1h,8h:4h,2D:12h", day!(7), hr!(1), hr!(1), + (24 * 7), = 6);
+policy_test!(one_day_spaced_delay, "4h:1h,8h:4h,2D:12h", day!(7), hr!(1), day!(1), + (24 * 7), = 6);

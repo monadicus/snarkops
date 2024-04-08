@@ -39,7 +39,7 @@ impl RetentionPolicy {
         };
 
         // if the first rule is unlimited, the policy is always ready
-        let Some(keep) = rule.keep.as_duration() else {
+        let Some(keep) = rule.keep.as_delta() else {
             return true;
         };
 
@@ -80,12 +80,17 @@ impl RetentionPolicy {
         //    smaller than the keep time, reject it
         // 6. if the time was not rejected, it becomes the new last kept time
 
+        // TODO: this is bugged atm - it's keeping the last checkpoint
+
         // step 1 - walk backwards through rules and times
         let mut rules = self.rules.iter().rev().peekable();
+
         let mut times = times
             .into_iter()
             .collect::<BinaryHeap<_>>()
+            .into_sorted_vec()
             .into_iter()
+            .rev()
             .peekable();
 
         // step 2 - keep track of the last kept time
@@ -97,12 +102,12 @@ impl RetentionPolicy {
             let last_delta = now.signed_duration_since(last_kept);
 
             // step 3 - if the last time is outside the duration of the current rule, reject it
-            match curr_rule.duration.as_duration() {
+            match curr_rule.duration.as_delta() {
                 Some(duration) if last_delta > duration => {
                     /* println!(
                         "STEP 3 {curr_rule}: {last_kept} is older than ({}) > {}",
-                        last_delta.num_seconds() / 3600,
-                        duration.num_seconds() / 3600
+                        last_delta.num_seconds() / 60,
+                        duration.num_seconds() / 60
                     ); */
                     rejected.push(*last_kept);
                     // promote the next time to the last kept time
@@ -125,7 +130,7 @@ impl RetentionPolicy {
                     continue;
                 }
 
-                if let Some(next_duration) = duration.as_duration() {
+                if let Some(next_duration) = duration.as_delta() {
                     // step 4 - if the current rule does not encompass both times, move to the next rule
 
                     // continue because both times are within the current rule
@@ -145,7 +150,7 @@ impl RetentionPolicy {
             }
 
             // keep the current time if the current rule is unlimited
-            let Some(keep) = curr_rule.keep.as_duration() else {
+            let Some(keep) = curr_rule.keep.as_delta() else {
                 last_kept = time;
                 times.next();
                 continue;
@@ -153,11 +158,11 @@ impl RetentionPolicy {
 
             // step 5 - if the difference between the last kept time and the
             // current time is smaller than the keep time, reject it
-            if time.signed_duration_since(last_kept) < keep {
-                /* println!(
+            if last_kept.signed_duration_since(time) < keep {
+                /*  println!(
                     "STEP 5 {curr_rule}: {last_kept} - {time} ({}) < {}",
-                    time.signed_duration_since(last_kept).num_seconds() / 3600,
-                    keep.num_seconds() / 3600
+                    last_kept.signed_duration_since(time).num_seconds() / 60,
+                    keep.num_seconds() / 60
                 ); */
                 rejected.push(*time);
                 times.next();
@@ -165,10 +170,10 @@ impl RetentionPolicy {
             }
 
             // step 6 - if the time was not rejected, it becomes the new last kept time
-            /*  println!(
+            /* println!(
                 "OK {curr_rule}: {last_kept} - {time} ({}) >= {}",
-                (time - last_kept).num_seconds() / 3600,
-                keep.num_seconds() / 3600
+                last_kept.signed_duration_since(time).num_seconds() / 60,
+                keep.num_seconds() / 60
             ); */
             last_kept = time;
             times.next();
@@ -217,7 +222,7 @@ pub enum RetentionSpan {
 }
 
 impl RetentionSpan {
-    pub fn as_duration(&self) -> Option<TimeDelta> {
+    pub fn as_delta(&self) -> Option<TimeDelta> {
         match self {
             RetentionSpan::Unlimited => None,
             RetentionSpan::Minute(value) => TimeDelta::try_minutes(value.get() as i64),
@@ -331,6 +336,7 @@ impl std::fmt::Display for RetentionSpan {
     }
 }
 
+#[cfg(feature = "serde")]
 macro_rules! impl_serde {
     ($($ty:ty),*) => {
         $(
