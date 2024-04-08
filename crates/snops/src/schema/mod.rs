@@ -58,42 +58,42 @@ pub enum NodeTargets {
     Many(Vec<NodeTarget>),
 }
 
-struct NodeTargetsVisitor;
-
-impl<'de> Visitor<'de> for NodeTargetsVisitor {
-    type Value = NodeTargets;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("one or more node targets")
-    }
-
-    fn visit_str<E: Error>(self, v: &str) -> Result<Self::Value, E> {
-        Ok(NodeTargets::One(FromStr::from_str(v).map_err(E::custom)?))
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-    where
-        A: serde::de::SeqAccess<'de>,
-    {
-        let mut buf = vec![];
-
-        while let Some(elem) = seq.next_element()? {
-            buf.push(NodeTarget::from_str(elem).map_err(A::Error::custom)?);
-        }
-
-        Ok(if buf.is_empty() {
-            NodeTargets::None
-        } else {
-            NodeTargets::Many(buf)
-        })
-    }
-}
-
 impl<'de> Deserialize<'de> for NodeTargets {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
+        struct NodeTargetsVisitor;
+
+        impl<'de> Visitor<'de> for NodeTargetsVisitor {
+            type Value = NodeTargets;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("one or more node targets")
+            }
+
+            fn visit_str<E: Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(NodeTargets::One(FromStr::from_str(v).map_err(E::custom)?))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut buf = vec![];
+
+                while let Some(elem) = seq.next_element()? {
+                    buf.push(NodeTarget::from_str(elem).map_err(A::Error::custom)?);
+                }
+
+                Ok(if buf.is_empty() {
+                    NodeTargets::None
+                } else {
+                    NodeTargets::Many(buf)
+                })
+            }
+        }
+
         deserializer.deserialize_any(NodeTargetsVisitor)
     }
 }
@@ -278,6 +278,30 @@ impl NodeTargets {
             NodeTargets::None => false,
             NodeTargets::One(target) => target.matches(key),
             NodeTargets::Many(targets) => targets.iter().any(|target| target.matches(key)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::env::Environment;
+
+    #[test]
+    fn deserialize_specs() {
+        for entry in std::fs::read_dir("../../specs")
+            .expect("failed to read specs dir")
+            .map(Result::unwrap)
+        {
+            let file_name = entry.file_name();
+            let name = file_name.to_str().expect("failed to read spec file name");
+            if !name.ends_with(".yaml") && !name.ends_with(".yml") {
+                continue;
+            }
+
+            let data = std::fs::read(entry.path()).expect("failed to read spec file");
+            if let Err(e) = Environment::deserialize_bytes(&data) {
+                panic!("failed to deserialize spec file {name}: {e}")
+            }
         }
     }
 }

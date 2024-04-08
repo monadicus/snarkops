@@ -262,10 +262,9 @@ impl AgentService for AgentRpcServer {
                     };
 
                     command
-                        // .kill_on_drop(true)
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
-                        // .stdin(Stdio::null())
+                        .envs(&node.env)
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
