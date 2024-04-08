@@ -316,6 +316,7 @@ fn find_checkpoint_by_height<'a>(
 
     sorted
         .into_iter()
+        .rev()
         .find_map(|(h, c)| if h <= height { Some(c) } else { None })
 }
 
@@ -338,5 +339,6 @@ fn find_checkpoint_by_span<'a>(
 
     sorted
         .into_iter()
+        .rev()
         .find_map(|(t, c)| if t <= timestamp { Some(c) } else { None })
 }
