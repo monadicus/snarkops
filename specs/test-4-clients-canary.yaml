@@ -4,11 +4,9 @@ version: storage.snarkos.testing.monadic.us/v1
 id: canary-clients
 name: canary-clients
 
-fetch: https://pub-d74d58a8616c4d54bc1a948b4d001970.r2.dev/block.genesis
+connect: https://pub-d74d58a8616c4d54bc1a948b4d001970.r2.dev/block.genesis
 
 generate:
-  path: ./tests/canary-clients
-  
   accounts:
     - file: "accounts.json"
       total: 5
@@ -34,4 +32,3 @@ nodes:
     height: 0
     validators: []
     peers: ["*/*@canarynet"]
-  

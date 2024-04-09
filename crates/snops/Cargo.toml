@@ -13,6 +13,7 @@ axum = { workspace = true, features = [
 ] }
 bimap.workspace = true
 bincode.workspace = true
+checkpoint.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
 duration-str.workspace = true

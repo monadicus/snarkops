@@ -6,22 +6,21 @@ use std::{
 
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
+use checkpoint::{CheckpointManager, RetentionPolicy};
 use clap::Args;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
 use snarkos_node::Node;
 use snarkvm::{
-    console::program::Network as NetworkTrait,
     ledger::store::{helpers::rocksdb::CommitteeDB, CommitteeStorage},
     prelude::Block,
-    utilities::{FromBytes, ToBytes},
+    utilities::FromBytes,
 };
 use snops_common::state::NodeType;
-use tracing::{info, trace};
+use tracing::info;
 
-use crate::{ledger::Addrs, runner::checkpoint::Checkpoint, Account, Network, PrivateKey};
+use crate::{ledger::Addrs, Account, Network, PrivateKey};
 
-pub mod checkpoint;
 mod metrics;
 
 #[derive(Debug, Args, Serialize, Deserialize)]
@@ -91,6 +90,9 @@ pub struct Runner {
     /// server
     #[clap(long = "rest-rps", default_value_t = 1000)]
     pub rest_rps: u32,
+
+    #[clap(long = "retention-policy")]
+    pub retention_policy: Option<RetentionPolicy>,
 }
 
 impl Runner {
@@ -105,7 +107,15 @@ impl Runner {
         let account = Account::try_from(self.key.try_get()?)?;
 
         let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
-        let storage_mode = StorageMode::Custom(self.ledger);
+
+        // conditionally create a checkpoint manager based on the presence
+        // of a retention policy
+        let mut manager = self
+            .retention_policy
+            .map(|p| CheckpointManager::load(self.ledger.clone(), p))
+            .transpose()?;
+
+        let storage_mode = StorageMode::Custom(self.ledger.clone());
 
         // slight alterations to the normal `metrics::initialize_metrics` because of
         // visibility issues
@@ -168,45 +178,38 @@ impl Runner {
             }
         };
 
-        let committee = CommitteeDB::<Network>::open(storage_mode.clone())?;
+        // if we have a checkpoint manager, start the backup loop
+        if let Some(mut manager) = manager.take() {
+            // cull incompatible checkpoints
+            manager.cull_incompatible()?;
 
-        let mut last_height = committee.current_height()?;
-        tokio::spawn(async move {
-            loop {
-                let Ok(height) = committee.current_height() else {
-                    continue;
-                };
+            let committee = CommitteeDB::<Network>::open(storage_mode.clone())?;
 
-                if last_height != height {
-                    last_height = height;
-                    if let Err(e) = backup_loop::<Network>(height, storage_mode.clone()).await {
-                        tracing::error!("backup loop error: {e:?}");
+            // check for height changes and poll the manager when a new block comes in
+            let mut last_height = committee.current_height()?;
+            tokio::spawn(async move {
+                loop {
+                    let Ok(height) = committee.current_height() else {
+                        continue;
+                    };
+
+                    if last_height != height {
+                        last_height = height;
+
+                        info!("creating checkpoint @ {height}...");
+                        if let Err(e) = manager.poll() {
+                            tracing::error!("backup loop error: {e:?}");
+                        }
                     }
-                }
 
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }
-        });
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+            });
+        }
 
         // snarkos will close itself if this is not here...
         std::future::pending::<()>().await;
 
         Ok(())
     }
-}
-
-async fn backup_loop<N: NetworkTrait>(height: u32, storage_mode: StorageMode) -> Result<()> {
-    info!("creating checkpoint @ {height}...");
-    let bytes = Checkpoint::<N>::new(height, storage_mode.clone())?.to_bytes_le()?;
-
-    info!("created checkpoint; {} bytes", bytes.len());
-
-    if let StorageMode::Custom(path) = storage_mode {
-        // write the checkpoint file
-        let path = path.parent().unwrap().join(format!("{height}.checkpoint"));
-        std::fs::write(&path, bytes)?;
-        trace!("checkpoint written to {path:?}");
-    };
-
-    Ok(())
 }

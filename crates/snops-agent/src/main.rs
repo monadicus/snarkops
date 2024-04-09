@@ -2,6 +2,7 @@ mod api;
 mod cli;
 mod metrics;
 mod net;
+mod reconcile;
 mod rpc;
 mod state;
 
@@ -143,6 +144,9 @@ async fn main() {
     'process: loop {
         'connection: {
             let mut req = ws_uri.to_owned().into_client_request().unwrap();
+
+            // invalidate env info cache
+            state.env_to_storage.write().await.clear();
 
             // attach JWT if we have one
             {

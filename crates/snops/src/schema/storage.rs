@@ -9,6 +9,7 @@ use std::{
     },
 };
 
+use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{
@@ -16,11 +17,12 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use snops_common::{
+    api::{CheckpointMeta, StorageInfo},
     constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     state::KeyState,
 };
 use tokio::process::Command;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use super::{
     error::{SchemaError, StorageError},
@@ -30,6 +32,7 @@ use crate::{error::CommandError, state::GlobalState};
 
 /// A storage document. Explains how storage for a test should be set up.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "kebab-case")]
 pub struct Document {
     pub id: FilenameString,
     pub name: String,
@@ -37,16 +40,20 @@ pub struct Document {
     /// Prefer using existing storage instead of generating new stuff.
     #[serde(default)]
     pub prefer_existing: bool,
+    /// Tell nodes not to re-download the storage data.
+    #[serde(default)]
+    pub persist: bool,
+    #[serde(default)]
     pub generate: Option<StorageGeneration>,
+    #[serde(default)]
     pub connect: Option<url::Url>,
+    #[serde(default)]
+    pub retention_policy: Option<RetentionPolicy>,
 }
 
 /// Data generation instructions.
 #[derive(Deserialize, Debug, Clone)]
 pub struct StorageGeneration {
-    // TODO: how is this different from `LedgerStorage`?
-    pub path: PathBuf,
-
     // TODO: individually validate arguments, or just pass them like this?
     #[serde(default)]
     pub genesis: GenesisGeneration,
@@ -111,6 +118,10 @@ pub struct LoadedStorage {
     pub committee: AleoAddrMap,
     /// other accounts files lookup
     pub accounts: HashMap<String, AleoAddrMap>,
+    /// storage of checkpoints
+    pub checkpoints: Option<CheckpointManager>,
+    /// whether agents using this storage should persist it
+    pub persist: bool,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -382,11 +393,27 @@ impl Document {
         let int_id = STORAGE_ID_INT.fetch_add(1, Ordering::Relaxed);
         storage_lock.insert(int_id, id.to_owned());
 
+        let checkpoints = self
+            .retention_policy
+            .map(|policy| {
+                CheckpointManager::load(base.join(LEDGER_BASE_DIR), policy)
+                    .map_err(StorageError::CheckpointManager)
+            })
+            .transpose()?;
+
+        if let Some(checkpoints) = &checkpoints {
+            info!("checkpoint manager loaded {checkpoints}");
+        } else {
+            info!("storage loaded without a checkpoint manager");
+        }
+
         let storage = Arc::new(LoadedStorage {
             id: id.to_owned(),
             path: base.clone(),
             committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
             accounts,
+            checkpoints,
+            persist: self.persist,
         });
         let mut storage_lock = state.storage.write().await;
         storage_lock.insert(int_id, storage.clone());
@@ -517,6 +544,32 @@ impl LoadedStorage {
                         .cloned()
                 })
                 .into(),
+        }
+    }
+
+    pub fn info(&self) -> StorageInfo {
+        let checkpoints = self
+            .checkpoints
+            .as_ref()
+            .map(|c| {
+                c.checkpoints()
+                    .filter_map(|(c, path)| {
+                        path.file_name()
+                            .and_then(|s| s.to_str())
+                            .map(|filename| CheckpointMeta {
+                                filename: filename.to_string(),
+                                height: c.block_height,
+                                timestamp: c.timestamp,
+                            })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        StorageInfo {
+            id: self.id.clone(),
+            retention_policy: self.checkpoints.as_ref().map(|c| c.policy().clone()),
+            checkpoints,
+            persist: self.persist,
         }
     }
 }

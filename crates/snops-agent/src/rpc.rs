@@ -1,11 +1,10 @@
 use std::{
-    collections::HashSet, fs, net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration,
+    collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration,
 };
 
 use snops_common::{
     constant::{
-        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, LEDGER_STORAGE_FILE, SNARKOS_FILE,
-        SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
+        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
     rpc::{
         agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake},
@@ -23,7 +22,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn, Level};
 
-use crate::{api, metrics::MetricComputer, state::AppState};
+use crate::{api, metrics::MetricComputer, reconcile, state::AppState};
 
 /// The JWT file name.
 pub const JWT_FILE: &str = "jwt";
@@ -122,118 +121,46 @@ impl AgentService for AgentRpcServer {
 
             // download new storage if storage_id changed
             'storage: {
-                match (&old_state, &target) {
-                    (AgentState::Node(old, _), AgentState::Node(new, _)) if old == new => {
-                        // same environment id
-                        // TODO: check if we need to update the ledger height
-                        debug!("skipping agent storage download");
-                        break 'storage;
+                let (is_same_env, is_same_index) = match (&old_state, &target) {
+                    (AgentState::Node(old_env, old_node), AgentState::Node(new_env, new_node)) => {
+                        (old_env == new_env, old_node.height.0 == new_node.height.0)
                     }
+                    _ => (false, false),
+                };
 
-                    _ => (),
+                if is_same_env && is_same_index {
+                    debug!("skipping agent storage download");
+                    break 'storage;
                 }
 
-                // TODO: download storage to a cache directory
-
-                // clean up old storage
-                let base_path = &state.cli.path;
-                let directories = &[base_path.join(LEDGER_BASE_DIR)];
-
-                for dir in directories {
-                    let _ = tokio::fs::remove_dir_all(dir).await;
-                }
+                // TODO: download storage to a cache directory (~/config/.snops) to prevent
+                // multiple agents from having to redownload
+                // can be configurable to also work from a network drive
 
                 // download and decompress the storage
                 // skip if we don't need storage
-                let AgentState::Node(env_id, _) = &target else {
+                let AgentState::Node(env_id, node) = &target else {
                     info!("agent is not running a node; skipping storage download");
                     break 'storage;
                 };
+                let height = &node.height.1;
 
                 // get the storage info for this environment if we don't have it cached
                 let info = state
                     .get_env_info(*env_id)
                     .await
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
-
-                let storage_id = &info.id;
-                let storage_path = base_path.join("storage").join(storage_id);
-
-                // create the directory containing the storage files
-                tokio::fs::create_dir_all(&storage_path)
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
+                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
 
                 trace!("checking storage files...");
 
-                let genesis_url = format!(
-                    "http://{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
-                    &state.endpoint
-                );
-
-                let ledger_url = format!(
-                    "http://{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
-                    &state.endpoint
-                );
-
-                // download the snarkOS binary
-                api::check_binary(
-                    *env_id,
-                    &format!("http://{}", &state.endpoint),
-                    &base_path.join(SNARKOS_FILE),
-                ) // TODO: http(s)?
-                .await
-                .expect("failed to acquire snarkOS binary");
-
-                // download the genesis block
-                api::check_file(genesis_url, &storage_path.join(SNARKOS_GENESIS_FILE))
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
-
-                // download the ledger file
-                api::check_file(ledger_url, &storage_path.join(LEDGER_STORAGE_FILE))
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
-
-                // use a persisted directory for the untar when configured
-                let (untar_base, untar_dir) = if target.is_persist() {
-                    if fs::metadata(storage_path.join(LEDGER_PERSIST_DIR)).is_ok() {
-                        info!("persisted ledger already exists for {storage_id}");
-                        break 'storage;
-                    }
-
-                    info!("using persisted ledger for {storage_id}");
-
-                    (&storage_path, LEDGER_PERSIST_DIR)
-                } else {
-                    info!("using fresh ledger for {storage_id}");
-                    (base_path, LEDGER_BASE_DIR)
-                };
-
-                tokio::fs::create_dir_all(&untar_base.join(untar_dir))
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
-
-                trace!("untarring ledger...");
-
-                // use `tar` to decompress the storage to the untar dir
-                let status = Command::new("tar")
-                    .current_dir(untar_base)
-                    .arg("xzf")
-                    .arg(&storage_path.join(LEDGER_STORAGE_FILE))
-                    .arg("-C") // the untar_dir must exist. this will extract the contents of the tar to the
-                    // directory
-                    .arg(untar_dir)
-                    .kill_on_drop(true)
-                    .spawn()
-                    .map_err(|_| ReconcileError::StorageAcquireError)?
-                    .wait()
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError)?;
-
-                if !status.success() {
-                    return Err(ReconcileError::StorageAcquireError);
+                // only download storage if it's a new environment
+                // if a node starts at height: 0, the node will never
+                // download the ledger
+                if !is_same_env {
+                    reconcile::check_files(&state, *env_id, &info, height).await?;
                 }
+                reconcile::load_ledger(&state, &info, height, !is_same_env).await?;
+                // TODO: checkpoint/absolute height request handling
             }
 
             // reconcile towards new state
@@ -247,14 +174,13 @@ impl AgentService for AgentRpcServer {
                     let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
 
                     // get the storage info for this environment if we don't have it cached
-                    let info = state
-                        .get_env_info(env_id)
-                        .await
-                        .map_err(|_| ReconcileError::StorageAcquireError)?;
+                    let info = state.get_env_info(env_id).await.map_err(|_| {
+                        ReconcileError::StorageAcquireError("storage info".to_owned())
+                    })?;
 
                     let storage_id = &info.id;
                     let storage_path = state.cli.path.join("storage").join(storage_id);
-                    let ledger_path = if target.is_persist() {
+                    let ledger_path = if info.persist {
                         storage_path.join(LEDGER_PERSIST_DIR)
                     } else {
                         state.cli.path.join(LEDGER_BASE_DIR)
@@ -302,6 +228,11 @@ impl AgentService for AgentRpcServer {
                         }
                     }
 
+                    // conditionally add retention policy
+                    if let Some(policy) = &info.retention_policy {
+                        command.arg("--retention-policy").arg(policy.to_string());
+                    }
+
                     // Find agents that do not have cached addresses
                     let unresolved_addrs: HashSet<AgentId> = {
                         let resolved_addrs = state.resolved_addrs.read().await;
@@ -320,7 +251,14 @@ impl AgentService for AgentRpcServer {
 
                     // Fetch all unresolved addresses and update the cache
                     if !unresolved_addrs.is_empty() {
-                        tracing::debug!("need to resolve addrs: {unresolved_addrs:?}");
+                        tracing::debug!(
+                            "need to resolve addrs: {}",
+                            unresolved_addrs
+                                .iter()
+                                .map(|id| id.to_string())
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        );
                         let new_addrs = state
                             .client
                             .resolve_addrs(context::current(), unresolved_addrs)
@@ -330,7 +268,14 @@ impl AgentService for AgentRpcServer {
                                 ReconcileError::Unknown
                             })?
                             .map_err(ReconcileError::ResolveAddrError)?;
-                        tracing::debug!("resolved new addrs: {new_addrs:?}");
+                        tracing::debug!(
+                            "resolved new addrs: {}",
+                            new_addrs
+                                .iter()
+                                .map(|(id, addr)| format!("{}: {}", id, addr))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
                         state.resolved_addrs.write().await.extend(new_addrs);
                     }
 
@@ -505,7 +450,10 @@ impl AgentService for AgentRpcServer {
             &self.state.cli.path.join(SNARKOS_FILE),
         ) // TODO: http(s)?
         .await
-        .expect("failed to acquire snarkOS binary");
+        .map_err(|e| {
+            error!("failed obtain runner binary: {e}");
+            AgentError::ProcessFailed
+        })?;
 
         let res = Command::new(dbg!(self.state.cli.path.join(SNARKOS_FILE)))
             .stdout(std::io::stdout())
@@ -516,18 +464,18 @@ impl AgentService for AgentRpcServer {
             .arg(auth)
             .spawn()
             .map_err(|e| {
-                warn!("failed to spawn auth exec process: {e}");
+                error!("failed to spawn auth exec process: {e}");
                 AgentError::FailedToSpawnProcess
             })?
             .wait()
             .await
             .map_err(|e| {
-                warn!("auth exec process failed: {e}");
+                error!("auth exec process failed: {e}");
                 AgentError::ProcessFailed
             })?;
 
         if !res.success() {
-            warn!("auth exec process exited with status: {res}");
+            error!("auth exec process exited with status: {res}");
             return Err(AgentError::ProcessFailed);
         }
         Ok(())

@@ -6,6 +6,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use checkpoint::RetentionSpan;
 use clap::Parser;
 use lasso::Spur;
 use lazy_static::lazy_static;
@@ -38,22 +39,6 @@ impl AgentState {
             Self::Inventory => Self::Inventory,
             Self::Node(id, state) => Self::Node(id, Box::new(f(*state))),
         }
-    }
-
-    pub fn is_persist(&self) -> bool {
-        // bc box NodeState is unstable https://github.com/rust-lang/rust/issues/29641
-        matches!(
-            self,
-            AgentState::Node(
-                _,
-                node_state_box // Use a placeholder for the Box<NodeState>
-            ) if matches!(&**node_state_box, // Dereference the Box to match its content
-                NodeState {
-                    height: (_, HeightRequest::Persist),
-                    ..
-                }
-            )
-        )
     }
 }
 
@@ -236,7 +221,6 @@ macro_rules! named_unit_variant {
 
 mod strings {
     named_unit_variant!(top);
-    named_unit_variant!(persist);
 }
 
 /// for some reason bincode does not allow deserialize_any so if i want to allow
@@ -251,33 +235,40 @@ pub enum DocHeightRequest {
     /// Use the latest height for the ledger
     #[serde(with = "strings::top")]
     Top,
-    /// Set the height to the given block
+    /// Set the height to the given block (there must be a checkpoint at this
+    /// height) Setting to 0 will reset the height to the genesis block
     Absolute(u32),
-    /// Use the same ledger as configured when the same storage was used.
-    /// WARNING: this may create issues if the same storage id is reused between
-    /// tests with different nodes.
-    #[serde(with = "strings::persist")]
-    Persist,
+    /// Use the next checkpoint that matches this checkpoint span
+    Checkpoint(RetentionSpan),
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum HeightRequest {
     #[default]
     /// Use the latest height for the ledger
     Top,
-    /// Set the height to the given block
+    /// Set the height to the given block (there must be a checkpoint at this
+    /// height) Setting to 0 will reset the height to the genesis block
     Absolute(u32),
-    /// Use the same ledger as configured when the same storage was used.
-    /// WARNING: this may create issues if the same storage id is reused between
-    /// tests with different nodes.
-    Persist,
+    /// Use the next checkpoint that matches this checkpoint span
+    Checkpoint(RetentionSpan),
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
+}
+
+impl HeightRequest {
+    pub fn is_top(&self) -> bool {
+        *self == Self::Top
+    }
+
+    pub fn reset(&self) -> bool {
+        *self == Self::Absolute(0)
+    }
 }
 
 impl From<DocHeightRequest> for HeightRequest {
@@ -285,7 +276,7 @@ impl From<DocHeightRequest> for HeightRequest {
         match req {
             DocHeightRequest::Top => Self::Top,
             DocHeightRequest::Absolute(h) => Self::Absolute(h),
-            DocHeightRequest::Persist => Self::Persist,
+            DocHeightRequest::Checkpoint(c) => Self::Checkpoint(c),
         }
     }
 }

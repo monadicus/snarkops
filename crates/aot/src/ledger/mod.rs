@@ -5,6 +5,7 @@ use clap::{Args, Subcommand};
 use rand::{seq::SliceRandom, CryptoRng, Rng};
 use tracing::warn;
 
+use self::checkpoint::CheckpointCommand;
 use crate::{authorized::Execute, Address, PrivateKey};
 
 pub mod add;
@@ -98,11 +99,13 @@ pub enum Commands {
     #[clap(subcommand)]
     View(view::View),
     Distribute(distribute::Distribute),
+    #[clap(flatten)]
     Truncate(truncate::Truncate),
     Execute(Execute),
     Query(query::LedgerQuery),
     Hash,
-    Checkpoint,
+    #[clap(subcommand)]
+    Checkpoint(CheckpointCommand),
 }
 
 impl Ledger {
@@ -159,7 +162,7 @@ impl Ledger {
             }
 
             Commands::Hash => hash::hash_ledger(ledger),
-            Commands::Checkpoint => checkpoint::open_and_checkpoint(genesis, ledger),
+            Commands::Checkpoint(command) => command.parse(genesis, ledger),
         }
     }
 }

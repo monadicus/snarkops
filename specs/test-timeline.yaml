@@ -4,8 +4,7 @@ version: storage.snarkos.testing.monadic.us/v1
 id: base
 name: base-ledger
 
-generate:
-  path: ./tests/base
+generate: {}
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
@@ -25,6 +24,6 @@ name: test-timeline
 
 timeline:
   - duration: 5s
-  - offline: '*/*'
+  - offline: "*/*"
     duration: 5s
-  - online: '*/*'
+  - online: "*/*"

@@ -73,8 +73,9 @@ pub struct TxPipes {
     pub sinks: HashMap<String, Arc<TransactionSink>>,
 }
 
-#[derive(Debug, Clone)]
 /// The effective test state of a node.
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum EnvNode {
     Internal(Node),
     External(ExternalNode),
