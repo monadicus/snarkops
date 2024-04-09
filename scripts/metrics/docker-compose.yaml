@@ -15,6 +15,17 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  loki:
+    image: grafana/loki
+    container_name: snops-loki
+    user: root
+    expose: [3100]
+    ports: [3100:3100]
+    restart: unless-stopped
+    volumes:
+      - ./loki.yml:/mnt/config/loki-config.yaml
+      - ../../metrics-data/loki:/loki
+
   grafana:
     image: grafana/grafana-enterprise
     container_name: snops-grafana

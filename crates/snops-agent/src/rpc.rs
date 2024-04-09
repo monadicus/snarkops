@@ -190,6 +190,12 @@ impl AgentService for AgentRpcServer {
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .envs(&node.env)
+                        .env(
+                            "SNOPS_LOKI_LABELS",
+                            format!("env_id={},node_key={}", env_id, node.node_key),
+                        )
+                        .arg("--loki")
+                        .arg("http://127.0.0.1:3100/")
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")

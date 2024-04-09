@@ -10,6 +10,7 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 use crossterm::tty::IsTty;
+use reqwest::Url;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
@@ -27,6 +28,9 @@ pub struct Cli {
     pub log: Option<PathBuf>,
     #[arg(long, default_value_t = 4)]
     pub verbosity: u8,
+
+    #[arg(long)]
+    pub loki: Option<Url>,
 
     #[clap(subcommand)]
     pub command: Command,
@@ -125,6 +129,13 @@ impl Cli {
         let mut layers = vec![];
         let mut guards = vec![];
 
+        macro_rules! non_blocking_appender {
+            ($name:ident = ( $args:expr )) => {
+                let ($name, guard) = tracing_appender::non_blocking($args);
+                guards.push(guard);
+            };
+        }
+
         if cfg!(not(feature = "flame")) && self.enable_profiling {
             // TODO should be an error
             panic!("Flame feature is not enabled");
@@ -154,14 +165,13 @@ impl Cli {
             }
 
             let file_appender = tracing_appender::rolling::daily(logfile_dir, logfile);
-            let (non_blocking, file_guard) = tracing_appender::non_blocking(file_appender);
-            guards.push(file_guard);
+            non_blocking_appender!(log_writer = (file_appender));
 
             // Add layer redirecting logs to the file
             layers.push(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(false)
-                    .with_writer(non_blocking)
+                    .with_writer(log_writer)
                     .with_filter(filter2)
                     .boxed(),
             );
@@ -170,8 +180,7 @@ impl Cli {
         // Initialize tracing.
         // Add layer using LogWriter for stdout / terminal
         if matches!(self.command, Command::Run(_)) {
-            let (stdout, g) = tracing_appender::non_blocking(io::stdout());
-            guards.push(g);
+            non_blocking_appender!(stdout = (io::stdout()));
 
             layers.push(
                 tracing_subscriber::fmt::layer()
@@ -181,10 +190,30 @@ impl Cli {
                     .boxed(),
             );
         } else {
-            let (stderr, g) = tracing_appender::non_blocking(io::stderr());
-            guards.push(g);
+            non_blocking_appender!(stderr = (io::stderr()));
             layers.push(tracing_subscriber::fmt::layer().with_writer(stderr).boxed());
         };
+
+        if let Some(loki) = &self.loki {
+            let mut builder = tracing_loki::builder();
+
+            let env_var = std::env::var("SNOPS_LOKI_LABELS").ok();
+            let fields = match &env_var {
+                Some(var) => var
+                    .split(',')
+                    .map(|item| item.split_once('=').unwrap_or((item, "")))
+                    .collect(),
+                None => vec![],
+            };
+
+            for (key, value) in fields {
+                builder = builder.label(key, value).expect("bad loki label");
+            }
+
+            let (layer, task) = builder.build_url(loki.to_owned()).expect("bad loki url");
+            tokio::task::spawn(task);
+            layers.push(Box::new(layer));
+        }
 
         let subscriber = tracing_subscriber::registry::Registry::default().with(layers);
 
@@ -192,14 +221,15 @@ impl Cli {
         (guard, guards)
     }
 
-    pub fn run(self) -> Result<()> {
+    #[tokio::main]
+    pub async fn run(self) -> Result<()> {
         let _guards = self.init_logger();
 
         match self.command {
             Command::Genesis(command) => command.parse(),
             Command::Ledger(command) => command.parse(),
             #[cfg(feature = "node")]
-            Command::Run(command) => command.parse(),
+            Command::Run(command) => command.parse().await,
             Command::Execute(command) => command.parse(),
             Command::Authorize(command) => {
                 println!("{}", serde_json::to_string(&command.parse()?)?);

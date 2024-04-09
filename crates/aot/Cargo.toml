@@ -40,10 +40,11 @@ snarkos-node = { workspace = true, optional = true }
 snarkvm.workspace = true
 snops-common.workspace = true
 tokio.workspace = true
-tracing-flame = { workspace = true, optional = true }
-tracing-appender.workspace = true
-tracing-subscriber.workspace = true
 tracing.workspace = true
+tracing-appender.workspace = true
+tracing-flame = { workspace = true, optional = true }
+tracing-loki = "0.2.4"
+tracing-subscriber.workspace = true
 rocksdb = { workspace = true, features = ["lz4"] }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]

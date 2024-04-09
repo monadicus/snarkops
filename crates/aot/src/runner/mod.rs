@@ -96,7 +96,6 @@ pub struct Runner {
 }
 
 impl Runner {
-    #[tokio::main]
     pub async fn parse(self) -> Result<()> {
         let bind_addr = self.bind_addr;
         let node_ip = SocketAddr::new(bind_addr, self.node);
