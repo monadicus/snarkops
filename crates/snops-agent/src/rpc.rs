@@ -44,7 +44,11 @@ pub struct AgentRpcServer {
 }
 
 impl AgentService for AgentRpcServer {
-    async fn handshake(self, _: context::Context, handshake: Handshake) {
+    async fn handshake(
+        self,
+        context: context::Context,
+        handshake: Handshake,
+    ) -> Result<(), ReconcileError> {
         if let Some(token) = handshake.jwt {
             // cache the JWT in the state JWT mutex
             self.state
@@ -57,6 +61,14 @@ impl AgentService for AgentRpcServer {
                 .await
                 .expect("failed to write jwt file");
         }
+
+        // reconcile if state has changed
+        let needs_reconcile = &*self.state.agent_state.read().await != &handshake.state;
+        if needs_reconcile {
+            Self::reconcile(self, context, handshake.state).await?;
+        }
+
+        Ok(())
     }
 
     async fn reconcile(
@@ -140,7 +152,6 @@ impl AgentService for AgentRpcServer {
                 // download and decompress the storage
                 // skip if we don't need storage
                 let AgentState::Node(env_id, node) = &target else {
-                    info!("agent is not running a node; skipping storage download");
                     break 'storage;
                 };
                 let height = &node.height.1;

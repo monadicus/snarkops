@@ -8,13 +8,14 @@ use crate::state::{AgentState, PortConfig};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Handshake {
     pub jwt: Option<String>,
+    pub state: AgentState,
 }
 
 /// The RPC service that agents implement as a server.
 #[tarpc::service]
 pub trait AgentService {
     /// Handshake with some initial connection details.
-    async fn handshake(handshake: Handshake);
+    async fn handshake(handshake: Handshake) -> Result<(), ReconcileError>;
 
     /// Control plane asks the agent for its external network address, along
     /// with local addrs.
