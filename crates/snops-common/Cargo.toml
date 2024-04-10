@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+checkpoint = { workspace = true, features = ["serde"] }
 clap.workspace = true
 futures.workspace = true
 http.workspace = true
@@ -11,8 +12,7 @@ lasso.workspace = true
 lazy_static.workspace = true
 regex.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-strum_macros = "0.26"
+strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

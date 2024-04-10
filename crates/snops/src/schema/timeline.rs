@@ -3,9 +3,9 @@ use std::{fmt, time::Duration};
 use indexmap::IndexMap;
 use serde::{
     de::{Error, Visitor},
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize,
 };
-use snops_common::state::NodeKey;
+use snops_common::state::{DocHeightRequest, NodeKey};
 
 use super::NodeTargets;
 
@@ -49,95 +49,51 @@ pub enum Action {
     /// Fire transactions from a source file at a target node
     Cannon(Vec<SpawnCannon>),
     /// Set the height of some nodes' ledgers
-    Height(IndexMap<String, u64>),
-}
-
-struct ActionsVisitor;
-
-impl<'de> Visitor<'de> for ActionsVisitor {
-    type Value = Actions;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("possibly awaited action map")
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: serde::de::MapAccess<'de>,
-    {
-        let mut buf = vec![];
-
-        while let Some(key) = map.next_key::<&str>()? {
-            // determine if this action is being awaited
-            let (key, awaited) = match key {
-                key if key.ends_with(".await") => (key.split_at(key.len() - 6).0, true),
-                _ => (key, false),
-            };
-
-            buf.push(ActionInstance {
-                awaited,
-                action: match key {
-                    "online" => Action::Online(map.next_value()?),
-                    "offline" => Action::Offline(map.next_value()?),
-                    "cannon" => Action::Cannon(map.next_value()?),
-                    "height" => Action::Height(map.next_value()?),
-
-                    _ => return Err(A::Error::custom(format!("unsupported action {key}"))),
-                },
-            });
-        }
-
-        Ok(Actions(buf))
-    }
+    Config(IndexMap<NodeTargets, Reconfig>),
 }
 
 impl<'de> Deserialize<'de> for Actions {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ActionsVisitor;
+
+        impl<'de> Visitor<'de> for ActionsVisitor {
+            type Value = Actions;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("possibly awaited action map")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut buf = vec![];
+
+                while let Some(key) = map.next_key::<&str>()? {
+                    // determine if this action is being awaited
+                    let (key, awaited) = match key {
+                        key if key.ends_with(".await") => (key.split_at(key.len() - 6).0, true),
+                        _ => (key, false),
+                    };
+
+                    buf.push(ActionInstance {
+                        awaited,
+                        action: match key {
+                            "online" => Action::Online(map.next_value()?),
+                            "offline" => Action::Offline(map.next_value()?),
+                            "cannon" => Action::Cannon(map.next_value()?),
+                            "config" => Action::Config(map.next_value()?),
+
+                            _ => return Err(A::Error::custom(format!("unsupported action {key}"))),
+                        },
+                    });
+                }
+
+                Ok(Actions(buf))
+            }
+        }
+
         deserializer.deserialize_map(ActionsVisitor)
-    }
-}
-
-/// A target for an event.
-#[derive(Debug, Clone)]
-pub enum NodeTarget {
-    Some(Vec<String>),
-    All,
-}
-
-struct NodeTargetVisitor;
-
-impl<'de> Visitor<'de> for NodeTargetVisitor {
-    type Value = NodeTarget;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a list of node IDs or the string \"all\"")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        match v {
-            "all" => Ok(NodeTarget::All),
-            _ => Err(E::custom("string must be \"all\"")),
-        }
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-    where
-        A: serde::de::SeqAccess<'de>,
-    {
-        let mut buf = Vec::new();
-        while let Some(id) = seq.next_element()? {
-            buf.push(id);
-        }
-        Ok(NodeTarget::Some(buf))
-    }
-}
-
-impl<'de> Deserialize<'de> for NodeTarget {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_any(NodeTargetVisitor)
     }
 }
 
@@ -147,34 +103,35 @@ pub enum EventDuration {
     Blocks(u64),
 }
 
-struct EventDurationVisitor;
-
-impl<'de> Visitor<'de> for EventDurationVisitor {
-    type Value = EventDuration;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a string duration or an integer number of blocks to be produced")
-    }
-
-    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(EventDuration::Blocks(v))
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Ok(EventDuration::Time(
-            duration_str::parse(v).map_err(E::custom)?,
-        ))
-    }
-}
-
 impl<'de> Deserialize<'de> for EventDuration {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct EventDurationVisitor;
+
+        impl<'de> Visitor<'de> for EventDurationVisitor {
+            type Value = EventDuration;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter
+                    .write_str("a string duration or an integer number of blocks to be produced")
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(EventDuration::Blocks(v))
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(EventDuration::Time(
+                    duration_str::parse(v).map_err(E::custom)?,
+                ))
+            }
+        }
+
         deserializer.deserialize_any(EventDurationVisitor)
     }
 }
@@ -187,4 +144,14 @@ pub struct SpawnCannon {
     pub query: Option<NodeKey>,
     /// overwrite the cannon sink target
     pub target: Option<NodeTargets>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Reconfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<DocHeightRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peers: Option<NodeTargets>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validators: Option<NodeTargets>,
 }

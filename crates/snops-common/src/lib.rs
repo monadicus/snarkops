@@ -3,6 +3,7 @@ pub mod set;
 pub mod state;
 pub use lasso;
 pub mod api;
+pub mod constant;
 
 pub mod prelude {
     pub use crate::rpc::*;

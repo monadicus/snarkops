@@ -217,34 +217,25 @@ timeline:
     timeout: 10s
 
   # when these nodes come back online, their configurations will be different
-  - peers:
-      validator/1: []
-      validator/2: [client/1]
-  - validators:
-      client/*: [validator/1]
-    # modify the height of offline nodes
-    height:
-      validator/*: 0 # reset all validators ledger height
-      prover/2: 100 # set prover 2 to block 100
-      client/*: -5 # rollback the ledger 5 blocks
-      client/1: -1hr # rollback the ledger by an hour (based on block timestamp deltas)
 
   - config:
-    - nodes: [validator/1, validator/2]
+    validator/1,validator/2: # alternative syntax, not implemented: validator/1..2
       peers: []
       height: 0 # reset ledger completely
-    - nodes: [client/*]
+
+    client/*:
       validators: [validator/1, validator/2]
-      height: -5 # rollback the ledger 5 blocks
-    - nodes: [prover/2]
-      height: 100 # set prover 2 to block 100
-    - nodes: [client/1]
-      height: -1hr # rollback the ledger by an hour (based on block timestamp deltas)
+      height: -5 # rollback the ledger 5 blocks (not implemented, use time based checkpoints)
 
-    - nodes: client/*
+    prover/2:
+      height: 100 # set prover 2 to block 100
+
+    client/1:
+      height: 1hr # rollback the ledger by an hour (based on block timestamp deltas)
+
+    client/foo-*:
       peers: []
       height: 0 # reset ledger completely
-
 
 
   # wait for 5 blocks to be produced (technically impossible with all nodes offline. may want to add a check for this or end the test if nothing happens after a few seconds)

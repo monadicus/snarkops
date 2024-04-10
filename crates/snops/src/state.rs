@@ -8,6 +8,7 @@ use std::{
 use bimap::BiMap;
 use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
+use prometheus_http_query::Client as PrometheusClient;
 use serde::Deserialize;
 use snops_common::{
     lasso::Spur,
@@ -18,14 +19,18 @@ use snops_common::{
 };
 use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
+use self::util::OpaqueDebug;
 use crate::{
     cli::Cli,
     env::Environment,
     error::StateError,
     schema::storage::LoadedStorage,
-    server::jwt::{Claims, JWT_NONCE, JWT_SECRET},
+    server::{
+        jwt::{Claims, JWT_NONCE, JWT_SECRET},
+        prometheus::HttpsdResponse,
+    },
 };
 
 pub type AppState = Arc<GlobalState>;
@@ -41,10 +46,30 @@ pub struct GlobalState {
     pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
 
     pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
+
+    pub prom_httpsd: Mutex<HttpsdResponse>,
+    pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
 }
 
 /// This is the representation of a public addr or a list of internal addrs.
-pub type AgentAddrs = (Option<IpAddr>, Vec<IpAddr>);
+#[derive(Debug, Clone)]
+pub struct AgentAddrs {
+    pub external: Option<IpAddr>,
+    pub internal: Vec<IpAddr>,
+}
+
+impl AgentAddrs {
+    pub fn usable(&self) -> Option<IpAddr> {
+        self.external
+            .as_ref()
+            .or_else(|| self.internal.first())
+            .copied()
+    }
+
+    pub fn is_some(&self) -> bool {
+        self.external.is_some() || !self.internal.is_empty()
+    }
+}
 
 /// An active agent, known by the control plane.
 #[derive(Debug)]
@@ -97,11 +122,14 @@ impl Agent {
 
     /// Whether this agent is capable of being a node in the network.
     pub fn is_node_capable(&self) -> bool {
-        if !self.is_connected() || self.addrs.is_none() {
+        if !self.is_connected() {
             return false;
         };
-        let (external, internal) = self.addrs.as_ref().unwrap();
-        external.is_some() || !internal.is_empty()
+
+        self.addrs
+            .as_ref()
+            .map(AgentAddrs::is_some)
+            .unwrap_or_default()
     }
 
     /// Check if an agent has a set of labels
@@ -248,15 +276,25 @@ impl Agent {
         self.ports.as_ref().map(|p| p.rest).unwrap_or_default()
     }
 
+    /// Gets the metrics port of the agent. Assumes the agent is ready, returns
+    /// 0 if not.
+    pub fn metrics_port(&self) -> u16 {
+        self.ports.as_ref().map(|p| p.metrics).unwrap_or_default()
+    }
+
     /// True when the agent is configured to provide its own local private key
     pub fn has_local_pk(&self) -> bool {
         self.flags.local_pk
     }
 
+    pub fn addrs(&self) -> Option<&AgentAddrs> {
+        self.addrs.as_ref()
+    }
+
     /// Set the external and internal addresses of the agent. This does **not**
     /// trigger a reconcile
-    pub fn set_addrs(&mut self, external_addr: Option<IpAddr>, internal_addrs: Vec<IpAddr>) {
-        self.addrs = Some((external_addr, internal_addrs));
+    pub fn set_addrs(&mut self, external: Option<IpAddr>, internal: Vec<IpAddr>) {
+        self.addrs = Some(AgentAddrs { external, internal });
     }
 
     pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(AgentId, AgentClient, AgentState)>
@@ -267,7 +305,7 @@ impl Agent {
             self.id(),
             self.client_owned()?,
             match &self.state {
-                AgentState::Node(id, state) => AgentState::Node(*id, f(state.clone())),
+                AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone()))),
                 _ => return None,
             },
         ))
@@ -325,7 +363,9 @@ pub fn resolve_addrs(
         .get(&src)
         .ok_or_else(|| StateError::SourceAgentNotFound(src))?;
 
-    let all_internal = addr_map.values().all(|(ext, _)| ext.is_none());
+    let all_internal = addr_map
+        .values()
+        .all(|AgentAddrs { external, .. }| external.is_none());
 
     Ok(peers
         .iter()
@@ -341,10 +381,10 @@ pub fn resolve_addrs(
             // if there are no external addresses in the entire addr map,
             // use the first internal address
             if all_internal {
-                return addrs.1.first().copied().map(|addr| (*id, addr));
+                return addrs.internal.first().copied().map(|addr| (*id, addr));
             }
 
-            match (src_addrs.0, addrs.0, addrs.1.first()) {
+            match (src_addrs.external, addrs.external, addrs.internal.first()) {
                 // if peers have the same external address, use the first internal address
                 (Some(src_ext), Some(peer_ext), Some(peer_int)) if src_ext == peer_ext => {
                     Some((*id, *peer_int))
@@ -459,5 +499,33 @@ impl AgentFlags {
             }
         }
         mask
+    }
+}
+
+pub mod util {
+    use std::fmt::Debug;
+
+    /// A wrapper struct that has an "opaque" `Debug` implementation for types
+    /// that do not implement `Debug`.
+    pub struct OpaqueDebug<T>(pub T);
+
+    impl<T> Debug for OpaqueDebug<T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("(...)")
+        }
+    }
+
+    impl<T> std::ops::Deref for OpaqueDebug<T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl<T> std::ops::DerefMut for OpaqueDebug<T> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
+        }
     }
 }

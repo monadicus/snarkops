@@ -6,14 +6,20 @@ use std::{
 
 use aleo_std::StorageMode;
 use anyhow::{bail, Result};
+use checkpoint::{CheckpointManager, RetentionPolicy};
 use clap::Args;
 use serde::{Deserialize, Serialize};
 use serde_clap_deserialize::serde_clap_default;
 use snarkos_node::Node;
-use snarkvm::{prelude::Block, utilities::FromBytes};
+use snarkvm::{
+    ledger::store::{helpers::rocksdb::CommitteeDB, CommitteeStorage},
+    prelude::Block,
+    utilities::FromBytes,
+};
 use snops_common::state::NodeType;
+use tracing::info;
 
-use crate::{ledger::Addrs, Account, PrivateKey};
+use crate::{ledger::Addrs, Account, Network, PrivateKey};
 
 mod metrics;
 
@@ -84,6 +90,9 @@ pub struct Runner {
     /// server
     #[clap(long = "rest-rps", default_value_t = 1000)]
     pub rest_rps: u32,
+
+    #[clap(long = "retention-policy")]
+    pub retention_policy: Option<RetentionPolicy>,
 }
 
 impl Runner {
@@ -98,7 +107,15 @@ impl Runner {
         let account = Account::try_from(self.key.try_get()?)?;
 
         let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
-        let storage_mode = StorageMode::Custom(self.ledger);
+
+        // conditionally create a checkpoint manager based on the presence
+        // of a retention policy
+        let mut manager = self
+            .retention_policy
+            .map(|p| CheckpointManager::load(self.ledger.clone(), p))
+            .transpose()?;
+
+        let storage_mode = StorageMode::Custom(self.ledger.clone());
 
         // slight alterations to the normal `metrics::initialize_metrics` because of
         // visibility issues
@@ -136,14 +153,15 @@ impl Runner {
                     &self.validators,
                     genesis,
                     None,
-                    storage_mode,
+                    storage_mode.clone(),
                     false,
                     false,
                 )
-                .await?;
+                .await?
             }
             NodeType::Prover => {
-                Node::new_prover(node_ip, account, &self.peers, genesis, storage_mode).await?;
+                Node::new_prover(node_ip, account, &self.peers, genesis, storage_mode.clone())
+                    .await?
             }
             NodeType::Client => {
                 Node::new_client(
@@ -154,11 +172,40 @@ impl Runner {
                     &self.peers,
                     genesis,
                     None,
-                    storage_mode,
+                    storage_mode.clone(),
                 )
-                .await?;
+                .await?
             }
         };
+
+        // if we have a checkpoint manager, start the backup loop
+        if let Some(mut manager) = manager.take() {
+            // cull incompatible checkpoints
+            manager.cull_incompatible()?;
+
+            let committee = CommitteeDB::<Network>::open(storage_mode.clone())?;
+
+            // check for height changes and poll the manager when a new block comes in
+            let mut last_height = committee.current_height()?;
+            tokio::spawn(async move {
+                loop {
+                    let Ok(height) = committee.current_height() else {
+                        continue;
+                    };
+
+                    if last_height != height {
+                        last_height = height;
+
+                        info!("creating checkpoint @ {height}...");
+                        if let Err(e) = manager.poll() {
+                            tracing::error!("backup loop error: {e:?}");
+                        }
+                    }
+
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+            });
+        }
 
         // snarkos will close itself if this is not here...
         std::future::pending::<()>().await;

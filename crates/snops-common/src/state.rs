@@ -1,10 +1,12 @@
 use std::{
+    collections::HashMap,
     fmt::{Display, Write},
     net::SocketAddr,
     str::FromStr,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use checkpoint::RetentionSpan;
 use clap::Parser;
 use lasso::Spur;
 use lazy_static::lazy_static;
@@ -25,7 +27,7 @@ pub enum AgentState {
     // A node in the inventory can function as a transaction cannon
     Inventory,
     /// Test id mapping to node state
-    Node(EnvId, NodeState),
+    Node(EnvId, Box<NodeState>),
 }
 
 impl AgentState {
@@ -35,26 +37,14 @@ impl AgentState {
     {
         match self {
             Self::Inventory => Self::Inventory,
-            Self::Node(id, state) => Self::Node(id, f(state)),
+            Self::Node(id, state) => Self::Node(id, Box::new(f(*state))),
         }
-    }
-
-    pub fn is_persist(&self) -> bool {
-        matches!(
-            self,
-            AgentState::Node(
-                _,
-                NodeState {
-                    height: (_, HeightRequest::Persist),
-                    ..
-                }
-            )
-        )
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
+    pub node_key: NodeKey,
     pub ty: NodeType,
     pub private_key: KeyState,
     /// Increment the usize whenever the request is updated.
@@ -63,6 +53,7 @@ pub struct NodeState {
     pub online: bool,
     pub peers: Vec<AgentPeer>,
     pub validators: Vec<AgentPeer>,
+    pub env: HashMap<String, String>,
 }
 
 /// A representation of which key to use for the agent.
@@ -230,12 +221,11 @@ macro_rules! named_unit_variant {
 
 mod strings {
     named_unit_variant!(top);
-    named_unit_variant!(persist);
 }
 
 /// for some reason bincode does not allow deserialize_any so if i want to allow
-/// end users to type "top", 42, or "persist" i need to do have to copies of this
-/// where one is not untagged.
+/// end users to type "top", 42, or "persist" i need to do have to copies of
+/// this where one is not untagged.
 ///
 /// bincode. please.
 #[derive(Debug, Copy, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -245,33 +235,40 @@ pub enum DocHeightRequest {
     /// Use the latest height for the ledger
     #[serde(with = "strings::top")]
     Top,
-    /// Set the height to the given block
+    /// Set the height to the given block (there must be a checkpoint at this
+    /// height) Setting to 0 will reset the height to the genesis block
     Absolute(u32),
-    /// Use the same ledger as configured when the same storage was used.
-    /// WARNING: this may create issues if the same storage id is reused between tests
-    /// with different nodes.
-    #[serde(with = "strings::persist")]
-    Persist,
+    /// Use the next checkpoint that matches this checkpoint span
+    Checkpoint(RetentionSpan),
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum HeightRequest {
     #[default]
     /// Use the latest height for the ledger
     Top,
-    /// Set the height to the given block
+    /// Set the height to the given block (there must be a checkpoint at this
+    /// height) Setting to 0 will reset the height to the genesis block
     Absolute(u32),
-    /// Use the same ledger as configured when the same storage was used.
-    /// WARNING: this may create issues if the same storage id is reused between tests
-    /// with different nodes.
-    Persist,
+    /// Use the next checkpoint that matches this checkpoint span
+    Checkpoint(RetentionSpan),
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
+}
+
+impl HeightRequest {
+    pub fn is_top(&self) -> bool {
+        *self == Self::Top
+    }
+
+    pub fn reset(&self) -> bool {
+        *self == Self::Absolute(0)
+    }
 }
 
 impl From<DocHeightRequest> for HeightRequest {
@@ -279,7 +276,7 @@ impl From<DocHeightRequest> for HeightRequest {
         match req {
             DocHeightRequest::Top => Self::Top,
             DocHeightRequest::Absolute(h) => Self::Absolute(h),
-            DocHeightRequest::Persist => Self::Persist,
+            DocHeightRequest::Checkpoint(c) => Self::Checkpoint(c),
         }
     }
 }
@@ -367,7 +364,7 @@ impl FromStr for NodeType {
 
 lazy_static! {
     static ref NODE_KEY_REGEX: Regex = Regex::new(
-        r"^(?P<ty>client|validator|prover)\/(?P<id>[A-Za-z0-9\-]+)(?:@(?P<ns>[A-Za-z0-9\-]+))?$"
+        r"^(?P<ty>client|validator|prover)\/(?P<id>[A-Za-z0-9\-]*)(?:@(?P<ns>[A-Za-z0-9\-]+))?$"
     )
     .unwrap();
     static ref AGENT_ID_REGEX: Regex = Regex::new(r"^[A-Za-z0-9][A-Za-z0-9\-_.]{0,63}$").unwrap();

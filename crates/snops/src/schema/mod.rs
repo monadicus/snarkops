@@ -20,6 +20,9 @@ pub mod outcomes;
 pub mod storage;
 pub mod timeline;
 
+#[cfg(test)]
+pub mod timeline_tests;
+
 // TODO: Considerations:
 // TODO: - Generate json schema with https://docs.rs/schemars/latest/schemars/
 // TODO: - Do these types need to implement `Serialize`?
@@ -50,7 +53,7 @@ pub enum ItemDocument {
 
 /// One or more deserialized node targets. Composed of one or more
 /// [`NodeTarget`]s.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub enum NodeTargets {
     #[default]
     None,
@@ -58,42 +61,49 @@ pub enum NodeTargets {
     Many(Vec<NodeTarget>),
 }
 
-struct NodeTargetsVisitor;
-
-impl<'de> Visitor<'de> for NodeTargetsVisitor {
-    type Value = NodeTargets;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("one or more node targets")
-    }
-
-    fn visit_str<E: Error>(self, v: &str) -> Result<Self::Value, E> {
-        Ok(NodeTargets::One(FromStr::from_str(v).map_err(E::custom)?))
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-    where
-        A: serde::de::SeqAccess<'de>,
-    {
-        let mut buf = vec![];
-
-        while let Some(elem) = seq.next_element()? {
-            buf.push(NodeTarget::from_str(elem).map_err(A::Error::custom)?);
-        }
-
-        Ok(if buf.is_empty() {
-            NodeTargets::None
-        } else {
-            NodeTargets::Many(buf)
-        })
-    }
-}
-
 impl<'de> Deserialize<'de> for NodeTargets {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
+        struct NodeTargetsVisitor;
+
+        impl<'de> Visitor<'de> for NodeTargetsVisitor {
+            type Value = NodeTargets;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("one or more node targets")
+            }
+
+            fn visit_str<E: Error>(self, v: &str) -> Result<Self::Value, E> {
+                if v.contains(',') {
+                    return Ok(NodeTargets::Many(
+                        v.split(',')
+                            .map(|s| NodeTarget::from_str(s.trim()).map_err(E::custom))
+                            .collect::<Result<_, _>>()?,
+                    ));
+                }
+                Ok(NodeTargets::One(FromStr::from_str(v).map_err(E::custom)?))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut buf = vec![];
+
+                while let Some(elem) = seq.next_element()? {
+                    buf.push(NodeTarget::from_str(elem).map_err(A::Error::custom)?);
+                }
+
+                Ok(if buf.is_empty() {
+                    NodeTargets::None
+                } else {
+                    NodeTargets::Many(buf)
+                })
+            }
+        }
+
         deserializer.deserialize_any(NodeTargetsVisitor)
     }
 }
@@ -125,7 +135,7 @@ impl Serialize for NodeTargets {
 
 /// A **single** matched node target. Use [`NodeTargets`] when deserializing
 /// from documents.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct NodeTarget {
     pub ty: NodeTargetType,
     pub id: NodeTargetId,
@@ -199,7 +209,7 @@ impl Display for NodeTarget {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeTargetType {
     /// Matches all node types.
     All,
@@ -207,7 +217,7 @@ pub enum NodeTargetType {
     One(NodeType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NodeTargetId {
     /// `*`. Matches all IDs.
     All,
@@ -217,7 +227,19 @@ pub enum NodeTargetId {
     Literal(String),
 }
 
-#[derive(Debug, Clone)]
+impl Eq for NodeTargetId {}
+
+impl std::hash::Hash for NodeTargetId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            NodeTargetId::All => "*".hash(state),
+            NodeTargetId::WildcardPattern(pattern) => pattern.to_string().hash(state),
+            NodeTargetId::Literal(id) => id.hash(state),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum NodeTargetNamespace {
     /// `*`. Matches all namespaces.
     All,
@@ -278,6 +300,30 @@ impl NodeTargets {
             NodeTargets::None => false,
             NodeTargets::One(target) => target.matches(key),
             NodeTargets::Many(targets) => targets.iter().any(|target| target.matches(key)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::env::Environment;
+
+    #[test]
+    fn deserialize_specs() {
+        for entry in std::fs::read_dir("../../specs")
+            .expect("failed to read specs dir")
+            .map(Result::unwrap)
+        {
+            let file_name = entry.file_name();
+            let name = file_name.to_str().expect("failed to read spec file name");
+            if !name.ends_with(".yaml") && !name.ends_with(".yml") {
+                continue;
+            }
+
+            let data = std::fs::read(entry.path()).expect("failed to read spec file");
+            if let Err(e) = Environment::deserialize_bytes(&data) {
+                panic!("failed to deserialize spec file {name}: {e}")
+            }
         }
     }
 }

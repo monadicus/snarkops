@@ -1,0 +1,143 @@
+name: PR
+on:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # TODO move to a release ci
+  # build:
+  #   runs-on: ubuntu-latest
+
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         path: snarkos-test
+
+  #     - name: Checkout snarkOS
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: AleoNet/snarkOS
+  #         path: snarkos
+
+  #     - name: Checkout snarkVM
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: AleoNet/snarkVM
+  #         path: snarkvm
+
+  #     - name: Use mold linker
+  #       uses: rui314/setup-mold@v1
+
+  #     - name: Install nightly and cranelift
+  #       uses: dtolnay/rust-toolchain@nightly
+  #       with:
+  #         toolchain: nightly-2024-04-01
+  #         components: rustc-codegen-cranelift-preview
+
+  #     - uses: Swatinem/rust-cache@v2
+  #       with:
+  #         workspaces: snarkos-test
+  #         key: cache-v1
+
+  #     - name: Build
+  #       working-directory: ./snarkos-test
+  #       env:
+  #         RUSTFLAGS: -Zcodegen-backend=cranelift -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
+  #       run: cargo +nightly-2024-04-01 build --verbose
+
+  fmt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          path: snarkos-test
+
+      - name: 📥 Checkout snarkOS
+        uses: actions/checkout@v4
+        with:
+          repository: AleoNet/snarkOS
+          path: snarkos
+
+      - name: 📥 Checkout snarkVM
+        uses: actions/checkout@v4
+        with:
+          repository: AleoNet/snarkVM
+          path: snarkvm
+
+      - name: ☁️ Install Nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: 📋 Format Check
+        working-directory: ./snarkos-test
+        run: cargo +nightly fmt -- --check
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          path: snarkos-test
+
+      - name: 📥 Checkout snarkOS
+        uses: actions/checkout@v4
+        with:
+          repository: AleoNet/snarkOS
+          path: snarkos
+
+      - name: 📥 Checkout snarkVM
+        uses: actions/checkout@v4
+        with:
+          repository: AleoNet/snarkVM
+          path: snarkvm
+
+      - name: 🥬 Use Mold Linker
+        uses: rui314/setup-mold@v1
+
+      - name: ☁️ Install Nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2024-04-01
+          components: rustc-codegen-cranelift-preview clippy
+
+      - name: 🫙 Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: snarkos-test
+          key: cache-v1
+          cache-on-failure: true
+
+      - name: ☁️ Install Nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: ☁️ Install cargo-machete
+        run: cargo install cargo-machete
+
+      # - name: 📋 Clippy Check
+      #   working-directory: ./snarkos-test
+      #   env:
+      #     RUSTFLAGS: -Zcodegen-backend=cranelift
+      #   run: cargo +nightly-2024-04-01 clippy --all --all-targets -- -D warnings
+
+      - name: 📋 Check Unused Deps
+        if: always()
+        working-directory: ./snarkos-test
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        run: cargo machete
+
+      - name: 🧪 Test
+        if: always()
+        working-directory: ./snarkos-test
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast

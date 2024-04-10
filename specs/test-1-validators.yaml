@@ -6,8 +6,7 @@ version: storage.snarkos.testing.monadic.us/v1
 id: base
 name: base-ledger
 
-generate:
-  path: ./tests/base
+generate: {}
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1

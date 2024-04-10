@@ -24,14 +24,15 @@ impl Num {
             progress_bar.tick();
             eprintln!("Attempting to gen {remainder} transactions.");
 
-            count += util::gen_n_tx(ledger, &self.private_keys, remainder, None)
+            count += util::gen_n_tx(ledger, &self.private_keys, remainder, None, true)
                 .filter_map(Result::ok) // discard failed transactions
                 // print each transaction to stdout
                 .inspect(|proof| match proof {
                     util::CannonTx::Standalone(tx) => {
                         println!("{}", serde_json::to_string(&tx).expect("serialize proof"));
                     }
-                    util::CannonTx::Dependent(id, tx) => {
+                    util::CannonTx::Dependent(_, _) => {
+                        unreachable!("not enabled atm")
                         // println!(
                         //     "{id}\t{}",
                         //     serde_json::to_string(&tx).expect("serialize

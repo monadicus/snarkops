@@ -35,7 +35,8 @@ use crate::{
     error::DeserializeError,
     schema::{
         nodes::{ExternalNode, Node},
-        storage::LoadedStorage,
+        outcomes::OutcomeMetrics,
+        storage::{LoadedStorage, DEFAULT_AOT_BIN},
         timeline::TimelineEvent,
         ItemDocument, NodeTargets,
     },
@@ -46,6 +47,9 @@ use crate::{
 pub struct Environment {
     pub id: usize,
     pub storage: Arc<LoadedStorage>,
+
+    pub outcomes: OutcomeMetrics,
+    // TODO: pub outcome_results: RwLock<OutcomeResults>,
     pub node_map: BiMap<NodeKey, EnvPeer>,
     pub initial_nodes: IndexMap<NodeKey, EnvNode>,
     pub aot_bin: PathBuf,
@@ -69,8 +73,9 @@ pub struct TxPipes {
     pub sinks: HashMap<String, Arc<TransactionSink>>,
 }
 
-#[derive(Debug, Clone)]
 /// The effective test state of a node.
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum EnvNode {
     Internal(Node),
     External(ExternalNode),
@@ -109,6 +114,14 @@ impl Environment {
             .collect()
     }
 
+    /// Deserialize (YAML) many documents into a `Vec` of documents.
+    pub fn deserialize_bytes(str: &[u8]) -> Result<Vec<ItemDocument>, DeserializeError> {
+        serde_yaml::Deserializer::from_slice(str)
+            .enumerate()
+            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
+            .collect()
+    }
+
     /// Prepare a test. This will set the current test on the GlobalState.
     ///
     /// **This will error if the current env is not unset before calling to
@@ -120,6 +133,7 @@ impl Environment {
         static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         let mut state_lock = state.envs.write().await;
+        state.prom_httpsd.lock().await.set_dirty();
 
         let mut storage = None;
         let mut node_map = BiHashMap::default();
@@ -127,6 +141,7 @@ impl Environment {
         let mut cannon_configs = HashMap::new();
         let mut tx_pipe = TxPipes::default();
         let mut timeline = vec![];
+        let mut outcomes: Option<OutcomeMetrics> = None;
 
         for document in documents {
             match document {
@@ -152,7 +167,9 @@ impl Environment {
                                 1 => doc_node_key.to_owned(),
                                 _ => {
                                     let mut node_key = doc_node_key.to_owned();
-                                    node_key.id.push('-');
+                                    if !node_key.id.is_empty() {
+                                        node_key.id.push('-');
+                                    }
                                     node_key.id.push_str(&i.to_string());
                                     node_key
                                 }
@@ -238,11 +255,17 @@ impl Environment {
                     timeline.extend(sub_timeline.timeline.into_iter());
                 }
 
+                ItemDocument::Outcomes(sub_outcomes) => match outcomes {
+                    Some(ref mut outcomes) => outcomes.extend(sub_outcomes.metrics.into_iter()),
+                    None => outcomes = Some(sub_outcomes.metrics),
+                },
+
                 _ => warn!("ignored unimplemented document type"),
             }
         }
 
         let storage = storage.ok_or(PrepareError::MissingStorage)?;
+        let outcomes = outcomes.unwrap_or_default();
 
         // review cannon configurations to ensure all playback sources and sinks
         // have a real file backing them
@@ -266,21 +289,16 @@ impl Environment {
         let env = Environment {
             id: env_id,
             storage,
+            outcomes,
+            // TODO: outcome_results: Default::default(),
             node_map,
             initial_nodes,
             tx_pipe,
             cannon_configs,
             cannons_counter: Default::default(),
             cannons: Default::default(),
-            aot_bin: {
-                // TODO: specify the binary when uploading the test or something
-                std::env::var("AOT_BIN")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| {
-                        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                            .join("../../target/release/snarkos-aot")
-                    })
-            },
+            // TODO: specify the binary when uploading the test or something
+            aot_bin: DEFAULT_AOT_BIN.clone(),
             timeline,
             timeline_handle: Default::default(),
         };
@@ -302,7 +320,13 @@ impl Environment {
             .write()
             .await
             .remove(id)
-            .ok_or_else(|| CleanupError::EnvNotFound(*id))?;
+            .ok_or(CleanupError::EnvNotFound(*id))?;
+        state.prom_httpsd.lock().await.set_dirty();
+
+        // stop the timeline if it's running
+        if let Some(handle) = &*env.timeline_handle.lock().await {
+            handle.abort();
+        }
 
         // reconcile all online agents
         let (ids, handles): (Vec<_>, Vec<_>) = {
@@ -440,7 +464,7 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
             };
 
             // resolve the peers and validators
-            let mut node_state = node.into_state(key.ty);
+            let mut node_state = node.into_state(key.to_owned());
             node_state.private_key = node
                 .key
                 .as_ref()
@@ -459,7 +483,7 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
                 .filter(not_me)
                 .collect();
 
-            let agent_state = AgentState::Node(env_id, node_state);
+            let agent_state = AgentState::Node(env_id, Box::new(node_state));
             pending_reconciliations.push((id, client, agent_state));
         }
     }

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
@@ -8,21 +8,23 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
-    api::StorageInfoResponse,
+    constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     rpc::agent::AgentMetric,
     state::{AgentId, EnvId},
 };
+use tower::Service;
+use tower_http::services::ServeFile;
 
 use super::{error::ServerError, AppState};
-use crate::cannon::router::redirect_cannon_routes;
 use crate::env::Environment;
+use crate::{cannon::router::redirect_cannon_routes, schema::storage::DEFAULT_AOT_BIN};
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/prepare", post(post_env_prepare))
-        .route("/env/:env_id/storage", get(storage_id))
+        .route("/env/:env_id/storage", get(storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", post(post_env_timeline))
@@ -34,20 +36,21 @@ pub(super) fn routes() -> Router<AppState> {
 enum StorageType {
     Genesis,
     Ledger,
+    Binary,
 }
 
-async fn storage_id(Path(env_id): Path<EnvId>, state: State<AppState>) -> Response {
+async fn storage_info(Path(env_id): Path<EnvId>, state: State<AppState>) -> Response {
     let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let id = env.storage.id.clone();
 
-    Json(StorageInfoResponse { id }).into_response()
+    Json(env.storage.info()).into_response()
 }
 
 async fn redirect_storage(
     Path((env_id, ty)): Path<(EnvId, StorageType)>,
     state: State<AppState>,
+    req: Request,
 ) -> Response {
     let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
@@ -55,8 +58,15 @@ async fn redirect_storage(
     let real_id = &env.storage.id;
 
     let filename = match ty {
-        StorageType::Genesis => "genesis.block",
-        StorageType::Ledger => "ledger.tar.gz",
+        StorageType::Genesis => SNARKOS_GENESIS_FILE,
+        StorageType::Ledger => LEDGER_STORAGE_FILE,
+        StorageType::Binary => {
+            // TODO: replace with env specific aot binary
+            return ServeFile::new(DEFAULT_AOT_BIN.clone())
+                .call(req)
+                .await
+                .into_response();
+        }
     };
 
     Redirect::temporary(&format!("/content/storage/{real_id}/{filename}")).into_response()

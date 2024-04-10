@@ -32,10 +32,6 @@ pub struct ControlRpcServer {
 }
 
 impl ControlService for ControlRpcServer {
-    async fn placeholder(self, _: context::Context) -> String {
-        "Hello, world".into()
-    }
-
     async fn resolve_addrs(
         self,
         _: context::Context,
