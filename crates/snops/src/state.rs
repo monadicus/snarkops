@@ -17,7 +17,6 @@ use snops_common::{
     state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
     INTERN,
 };
-use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
 use tokio::sync::{Mutex, RwLock};
 
@@ -26,6 +25,7 @@ use crate::{
     cli::Cli,
     env::Environment,
     error::StateError,
+    models::Db,
     schema::storage::LoadedStorage,
     server::{
         jwt::{Claims, JWT_NONCE, JWT_SECRET},
@@ -39,7 +39,7 @@ pub type AppState = Arc<GlobalState>;
 #[derive(Debug)]
 pub struct GlobalState {
     pub cli: Cli,
-    pub db: Surreal<Db>,
+    pub db: Db,
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage_ids: RwLock<BiMap<usize, String>>,

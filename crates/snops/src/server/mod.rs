@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ::jwt::VerifyWithKey;
 use axum::{
     extract::{
@@ -21,7 +19,6 @@ use snops_common::{
         control::ControlService,
     },
 };
-use surrealdb::Surreal;
 use tarpc::server::Channel;
 use tokio::select;
 use tracing::{error, info, warn};
@@ -32,10 +29,9 @@ use self::{
     rpc::ControlRpcServer,
 };
 use crate::{
-    cli::Cli,
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{util::OpaqueDebug, Agent, AgentFlags, AppState, GlobalState},
+    state::{Agent, AgentFlags, AppState},
 };
 
 mod api;
@@ -45,33 +41,14 @@ pub mod jwt;
 pub mod prometheus;
 mod rpc;
 
-pub async fn start(cli: Cli) -> Result<(), StartError> {
-    let mut path = cli.path.clone();
-    path.push("data.db");
-    let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
-
-    let prometheus = cli
-        .prometheus
-        .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
-
-    let state = GlobalState {
-        cli,
-        db,
-        pool: Default::default(),
-        storage_ids: Default::default(),
-        storage: Default::default(),
-        envs: Default::default(),
-        prom_httpsd: Default::default(),
-        prometheus: OpaqueDebug(prometheus),
-    };
-
+pub async fn start(state: AppState) -> Result<(), StartError> {
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
         .nest("/prometheus", prometheus::routes())
         // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
-        .with_state(Arc::new(state))
+        .with_state(state)
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
 

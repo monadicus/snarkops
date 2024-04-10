@@ -10,6 +10,7 @@ axum = { workspace = true, features = [
 	"query",
 	"tokio",
 	"ws",
+	"macros",
 ] }
 bimap.workspace = true
 bincode.workspace = true
@@ -37,11 +38,17 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 sha2.workspace = true
 snops-common = { path = "../snops-common" }
+sqlx = { workspace = true, features = [
+	"json",
+	"macros",
+	"migrate",
+	"runtime-tokio-native-tls",
+	"sqlite",
+] }
 strum_macros.workspace = true
-surrealdb = { workspace = true, features = ["kv-rocksdb"] }
 tarpc.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["macros"] }
 tower.workspace = true
 tower-http.workspace = true
 tracing-appender.workspace = true

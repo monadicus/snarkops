@@ -1,7 +1,10 @@
-use std::io;
+use std::{io, sync::Arc};
 
 use clap::Parser;
 use cli::Cli;
+use server::error::StartError;
+use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
+use state::{util::OpaqueDebug, GlobalState};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::prelude::*;
 
@@ -10,12 +13,13 @@ pub mod cli;
 pub mod env;
 pub mod error;
 pub mod logging;
+pub mod models;
 pub mod schema;
 pub mod server;
 pub mod state;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), StartError> {
     let env_filter = if cfg!(debug_assertions) {
         tracing_subscriber::EnvFilter::builder().with_default_directive(LevelFilter::TRACE.into())
     } else {
@@ -28,8 +32,7 @@ async fn main() {
         .add_directive("hyper_util=off".parse().unwrap())
         .add_directive("hyper=off".parse().unwrap())
         .add_directive("reqwest=off".parse().unwrap())
-        .add_directive("surrealdb_core=off".parse().unwrap())
-        .add_directive("surrealdb=off".parse().unwrap())
+        .add_directive("sqlx=off".parse().unwrap())
         .add_directive("tungstenite=off".parse().unwrap())
         .add_directive("tokio_tungstenite=off".parse().unwrap())
         .add_directive("tarpc::client=ERROR".parse().unwrap())
@@ -55,5 +58,36 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    server::start(cli).await.expect("start server");
+    let mut path = cli.path.clone();
+    path.push("data.db");
+    let db_path = path.as_os_str().to_str().unwrap();
+
+    if !Sqlite::database_exists(db_path).await.unwrap_or(false) {
+        match Sqlite::create_database(db_path).await {
+            Ok(_) => println!("Create db success"),
+            Err(error) => todo!("error: {}", error),
+        }
+    }
+
+    let db = SqlitePool::connect(db_path)
+        .await
+        .map_err(StartError::DbConnect)?;
+
+    let prometheus = cli
+        .prometheus
+        .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
+
+    let state = GlobalState {
+        cli,
+        db,
+        pool: Default::default(),
+        storage_ids: Default::default(),
+        storage: Default::default(),
+        envs: Default::default(),
+        prom_httpsd: Default::default(),
+        prometheus: OpaqueDebug(prometheus),
+    };
+
+    server::start(Arc::new(state)).await.expect("start server");
+    Ok(())
 }
