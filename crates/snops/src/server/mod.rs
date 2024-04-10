@@ -13,6 +13,7 @@ use axum::{
     Router,
 };
 use futures_util::stream::StreamExt;
+use prometheus_http_query::Client as PrometheusClient;
 use serde::Deserialize;
 use snops_common::{
     prelude::*,
@@ -52,7 +53,8 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
 
     let prometheus = cli
         .prometheus
-        .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
+        .as_ref()
+        .and_then(|p| PrometheusClient::try_from(p.as_str()).ok());
 
     let state = GlobalState {
         cli,
@@ -152,7 +154,10 @@ async fn handle_socket(
     let id: AgentId = 'insertion: {
         let client = client.clone();
         let mut pool = state.pool.write().await;
-        let mut handshake = Handshake::default();
+        let mut handshake = Handshake {
+            loki: state.cli.loki.clone(),
+            ..Default::default()
+        };
 
         // attempt to reconnect if claims were passed
         'reconnect: {

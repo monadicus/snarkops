@@ -1,6 +1,7 @@
 use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use super::error::*;
 use crate::state::{AgentState, PortConfig};
@@ -8,6 +9,7 @@ use crate::state::{AgentState, PortConfig};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Handshake {
     pub jwt: Option<String>,
+    pub loki: Option<Url>,
 }
 
 /// The RPC service that agents implement as a server.

@@ -45,6 +45,7 @@ pub struct AgentRpcServer {
 
 impl AgentService for AgentRpcServer {
     async fn handshake(self, _: context::Context, handshake: Handshake) {
+        // store and cache JWT
         if let Some(token) = handshake.jwt {
             // cache the JWT in the state JWT mutex
             self.state
@@ -56,6 +57,15 @@ impl AgentService for AgentRpcServer {
             tokio::fs::write(self.state.cli.path.join(JWT_FILE), token)
                 .await
                 .expect("failed to write jwt file");
+        }
+
+        // store loki server URL
+        if let Some(loki) = handshake.loki {
+            self.state
+                .loki
+                .lock()
+                .expect("failed to acquire loki URL lock")
+                .replace(loki);
         }
     }
 
@@ -186,16 +196,21 @@ impl AgentService for AgentRpcServer {
                         state.cli.path.join(LEDGER_BASE_DIR)
                     };
 
+                    // add loki URL if one is set
+                    if let Some(loki) = &*state.loki.lock().unwrap() {
+                        command
+                            .env(
+                                "SNOPS_LOKI_LABELS",
+                                format!("env_id={},node_key={}", env_id, node.node_key),
+                            )
+                            .arg("--loki")
+                            .arg(loki.as_str());
+                    }
+
                     command
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .envs(&node.env)
-                        .env(
-                            "SNOPS_LOKI_LABELS",
-                            format!("env_id={},node_key={}", env_id, node.node_key),
-                        )
-                        .arg("--loki")
-                        .arg("http://127.0.0.1:3100/")
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")

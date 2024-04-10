@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use reqwest::Url;
 use snops_common::{
     api::StorageInfo,
     rpc::control::ControlServiceClient,
@@ -28,6 +29,7 @@ pub struct GlobalState {
     pub cli: Cli,
     pub endpoint: SocketAddr,
     pub jwt: Mutex<Option<String>>,
+    pub loki: Mutex<Option<Url>>,
     pub agent_state: RwLock<AgentState>,
     pub env_to_storage: RwLock<HashMap<usize, StorageInfo>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,

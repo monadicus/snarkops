@@ -112,6 +112,7 @@ async fn main() {
         cli: args,
         endpoint,
         jwt: Mutex::new(jwt),
+        loki: Default::default(),
         env_to_storage: Default::default(),
         agent_state: Default::default(),
         reconcilation_handle: Default::default(),

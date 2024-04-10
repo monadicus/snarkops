@@ -5984,6 +5984,7 @@ dependencies = [
  "tarpc",
  "thiserror",
  "tokio",
+ "url",
 ]
 
 [[package]]
