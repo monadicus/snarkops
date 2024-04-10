@@ -19,4 +19,6 @@ pub struct StorageInfo {
     pub checkpoints: Vec<CheckpointMeta>,
     /// Whether to persist the ledger
     pub persist: bool,
+    /// Version identifier for this ledger
+    pub version: u16,
 }
