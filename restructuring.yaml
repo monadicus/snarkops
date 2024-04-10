@@ -1,0 +1,103 @@
+#--- structure of components(sql)
+# rip surrealdb :c
+
+EnvironmentSql:
+  version: varchar(25)
+  id: varchar(25)
+  last_updated: timestamp
+  storage_id: varchar(25) # readonly  
+  Topology: # writeable
+    todo: 
+
+CannonInstances:
+  id: uuid
+  env_id: fk(EnvironmentSql.id)
+  source: TxSource JSON_Blob
+  sink: todo
+  # number of transactions this cannon has fired
+  count_fired: int
+  # number of transactions this cannon needs to fire (null for infinite?)
+  count_total(nullable): int
+  TxDrainTracker(nullable): fk(TxDrainTracker.env_id)
+
+# tracks how many transactions were fired from a specific file
+# for an environment to prevent duplicate transactions from being
+# fired
+TxDrainTracker:
+  env_id: fk(EnvironmentSql.id)
+  storage_id: fk(Storage.id)
+  file_name: varchar(255)
+  count: int
+
+TimelineInstances:
+  env_id: fk(EnvironmentSql.id)
+  timeline_id: fk(TimelineSql.id)
+  current step: int
+
+Storage:
+  # name of the directory containing the storage within
+  # the cli specified path.  in the instance of a high-availability environment
+  # the control planes will have to sync/transmit this data
+  dir_name: varchar(255)
+
+# INSECURE address storage - secure addrs are on the agents via --private-key-file
+StorageAddrs:
+  id: varchar(25) # name of this grouping (committee, accounts)
+  storage_id: fk(Storage.id)
+  addresses: Vec<varchar(255)>
+  keys: Vec<varchar(255)>
+
+TimelineSql:
+  id: varchar(25)
+  steps: 
+
+OutcomesSql:
+  id: varchar(25)
+  name: varchar(25)
+  description: varchar(255)
+  promql_ids: Vec<ids>
+  height_operations: Vec<ids>
+
+
+OutcomeHistory:
+  - env_id
+  - timeline_id
+  - timestamp
+  - outcomes_id
+
+#--- list of components
+
+Environment:
+  - metadata document (unique id + description)
+  - (R)Topology
+    - node keys
+    - node key -> agent mappings
+    - node key -> node state / external node addrs
+  - (R)Storage
+    - addresses and keys
+    - loaded checkpoints
+    - path
+    - persist enabled
+  - Timeline Instances:
+    - timeline id
+    - current step
+  - Cannon Instances:
+    - cannon source/sink (can be tailored based on timeline config)
+    - cannon tx drain read state (# of lines/txs)
+
+# timeline_exec(env, step)
+# A timeline of actions
+Timeline:
+  - move timelines out of join handle into something handled by an event loop
+      (allows for pausing, step-by-step)
+  - list of steps
+
+Cannons:
+  - cannon source/sink
+  - cannon tx drain read state (# of lines/txs)
+
+# A list of outcomes that should be met
+# outcomes are trigged by some timeline `check` action 
+Outcomes:
+  - map of outcome name to promql
+  - height operations
