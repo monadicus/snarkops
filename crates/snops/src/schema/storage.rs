@@ -457,6 +457,10 @@ async fn read_to_addrs<T: DeserializeOwned>(
     f: impl Fn(T) -> String,
     file: PathBuf,
 ) -> Result<AleoAddrMap, SchemaError> {
+    if !file.exists() {
+        return Ok(IndexMap::new());
+    }
+
     let data = tokio::fs::read_to_string(&file)
         .await
         .map_err(|e| StorageError::ReadBalances(file.clone(), e))?;
