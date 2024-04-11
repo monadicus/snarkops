@@ -15,6 +15,8 @@ pub enum StorageError {
     Command(CommandError, String),
     #[error("mkdirs for storage generation id: `{0}`: {1}")]
     GenerateStorage(String, #[source] std::io::Error),
+    #[error("remove storage {0:#?}: {1}")]
+    RemoveStorage(PathBuf, #[source] std::io::Error),
     #[error("generating genesis id: `{0}`: {1}")]
     FailedToGenGenesis(String, #[source] std::io::Error),
     #[error("fetching genesis block id: `{0}` url: `{1}`: {2}")]
@@ -27,6 +29,10 @@ pub enum StorageError {
     NoGenerationParams(String),
     #[error("reading balances {0:#?}: {1}")]
     ReadBalances(PathBuf, #[source] std::io::Error),
+    #[error("reading version {0:#?}: {1}")]
+    ReadVersion(PathBuf, #[source] std::io::Error),
+    #[error("writing version {0:#?}: {1}")]
+    WriteVersion(PathBuf, #[source] std::io::Error),
     #[error("parsing balances {0:#?}: {1}")]
     ParseBalances(PathBuf, #[source] serde_json::Error),
     #[error("error loading checkpoints: {0}")]

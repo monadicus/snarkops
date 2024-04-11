@@ -8,7 +8,7 @@ use snops_common::{
     api::{CheckpointMeta, StorageInfo},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, LEDGER_STORAGE_FILE, SNARKOS_FILE,
-        SNARKOS_GENESIS_FILE,
+        SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
     rpc::error::ReconcileError,
     state::{EnvId, HeightRequest},
@@ -44,13 +44,31 @@ pub async fn check_files(
     .await
     .expect("failed to acquire snarkOS binary");
 
+    let version_file = storage_path.join(VERSION_FILE);
+
+    // wipe old storage when the version changes
+    if get_version_from_path(&version_file).await? != Some(info.version) && storage_path.exists() {
+        let _ = tokio::fs::remove_dir_all(&storage_path).await;
+    }
+
+    std::fs::create_dir_all(&storage_path).map_err(|e| {
+        error!("failed to create storage directory: {e}");
+        ReconcileError::StorageSetupError("create storage directory".to_string())
+    })?;
+
+    let genesis_path = storage_path.join(SNARKOS_GENESIS_FILE);
     let genesis_url = format!(
         "http://{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
         &state.endpoint
     );
+    let ledger_path = storage_path.join(LEDGER_STORAGE_FILE);
+    let ledger_url = format!(
+        "http://{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
+        &state.endpoint
+    );
 
     // download the genesis block
-    api::check_file(genesis_url, &storage_path.join(SNARKOS_GENESIS_FILE))
+    api::check_file(genesis_url, &genesis_path)
         .await
         .map_err(|e| {
             error!("failed to download {SNARKOS_GENESIS_FILE} from the control plane: {e}");
@@ -63,17 +81,20 @@ pub async fn check_files(
         return Ok(());
     }
 
-    let ledger_url = format!(
-        "http://{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
-        &state.endpoint
-    );
-
     // download the ledger file
-    api::check_file(ledger_url, &storage_path.join(LEDGER_STORAGE_FILE))
+    api::check_file(ledger_url, &ledger_path)
         .await
         .map_err(|e| {
             error!("failed to download {SNARKOS_GENESIS_FILE} from the control plane: {e}");
             ReconcileError::StorageAcquireError(LEDGER_STORAGE_FILE.to_owned())
+        })?;
+
+    // write the regen version to a "version" file
+    tokio::fs::write(&version_file, info.version.to_string())
+        .await
+        .map_err(|e| {
+            error!("failed to write storage version: {e}");
+            ReconcileError::StorageSetupError("write storage version".to_string())
         })?;
 
     Ok(())
@@ -341,4 +362,17 @@ fn find_checkpoint_by_span<'a>(
         .into_iter()
         .rev()
         .find_map(|(t, c)| if t <= timestamp { Some(c) } else { None })
+}
+
+async fn get_version_from_path(path: &PathBuf) -> Result<Option<u16>, ReconcileError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let data = tokio::fs::read_to_string(path).await.map_err(|e| {
+        error!("failed to read storage version: {e}");
+        ReconcileError::StorageSetupError("failed to read storage version".to_string())
+    })?;
+
+    Ok(data.parse().ok())
 }

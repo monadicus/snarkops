@@ -18,7 +18,7 @@ use serde::{
 };
 use snops_common::{
     api::{CheckpointMeta, StorageInfo},
-    constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
+    constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE},
     state::KeyState,
 };
 use tokio::process::Command;
@@ -35,6 +35,9 @@ use crate::{error::CommandError, state::GlobalState};
 #[serde(rename_all = "kebab-case")]
 pub struct Document {
     pub id: FilenameString,
+    /// Regen version
+    #[serde(default)]
+    pub regen: u16,
     pub name: String,
     pub description: Option<String>,
     /// Prefer using existing storage instead of generating new stuff.
@@ -112,6 +115,9 @@ pub type AleoAddrMap = IndexMap<String, String>;
 pub struct LoadedStorage {
     /// Storage ID
     pub id: String,
+    /// Version counter for this storage - incrementing will invalidate old
+    /// saved ledgers
+    pub version: u16,
     /// Path to storage data
     pub path: PathBuf,
     /// committee lookup
@@ -207,10 +213,20 @@ impl Document {
 
         let mut base = state.cli.path.join("storage");
         base.push(&id);
+        let version_file = base.join(VERSION_FILE);
 
         // TODO: The dir can be made by a previous run and the aot stuff can fail
         // i.e an empty/incomplete directory can exist and we should check those
-        let exists = matches!(tokio::fs::try_exists(&base).await, Ok(true));
+        let mut exists = matches!(tokio::fs::try_exists(&base).await, Ok(true));
+
+        // wipe old storage when the version changes
+        if get_version_from_path(&version_file).await? != Some(self.regen) && exists {
+            info!("storage {id} version changed, removing old storage");
+            tokio::fs::remove_dir_all(&base)
+                .await
+                .map_err(|e| StorageError::RemoveStorage(version_file.clone(), e))?;
+            exists = false;
+        }
 
         // TODO: respect self.prefer_existing
 
@@ -384,6 +400,11 @@ impl Document {
             read_to_addrs(pick_additional_addr, base.join("accounts.json")).await?,
         );
 
+        // write the regen version to a "version" file
+        tokio::fs::write(&version_file, self.regen.to_string())
+            .await
+            .map_err(|e| StorageError::WriteVersion(version_file.clone(), e))?;
+
         // todo: maybe update the loaded storage in global state if the hash
         // of the storage document is different I guess...
         // that might interfere with running tests, so I don't know
@@ -408,6 +429,7 @@ impl Document {
         }
 
         let storage = Arc::new(LoadedStorage {
+            version: self.regen,
             id: id.to_owned(),
             path: base.clone(),
             committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
@@ -567,9 +589,22 @@ impl LoadedStorage {
             .unwrap_or_default();
         StorageInfo {
             id: self.id.clone(),
+            version: self.version,
             retention_policy: self.checkpoints.as_ref().map(|c| c.policy().clone()),
             checkpoints,
             persist: self.persist,
         }
     }
+}
+
+async fn get_version_from_path(path: &PathBuf) -> Result<Option<u16>, StorageError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let data = tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| StorageError::ReadVersion(path.clone(), e))?;
+
+    Ok(data.parse().ok())
 }

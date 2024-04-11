@@ -32,6 +32,14 @@ strip = false
 inherits = "release"
 opt-level = "z"
 
+[profile.release-big]
+inherits = "release"
+codegen-units = 16
+incremental = true
+lto = "thin"
+opt-level = 1
+panic = "unwind"
+
 [workspace.dependencies]
 aleo-std = "=0.1.24"
 axum = { version = "0.7", default-features = false }
