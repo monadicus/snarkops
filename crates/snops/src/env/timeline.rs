@@ -286,8 +286,21 @@ impl Environment {
                     // reconcile all nodes
                     let task_state = Arc::clone(&state);
                     let reconcile_handle = tokio::spawn(async move {
-                        reconcile_agents(pending_reconciliations.into_values(), &task_state.pool)
-                            .await?;
+                        if let Err(e) = reconcile_agents(
+                            pending_reconciliations.into_values(),
+                            &task_state.pool,
+                        )
+                        .await
+                        {
+                            error!("failed to reconcile agents in timeline: {e}");
+                            if let Err(_) =
+                                Environment::forcefully_inventory(env_id, &task_state).await
+                            {
+                                error!("failed to inventory agents");
+                            }
+
+                            return Err(e.into());
+                        };
                         Ok(())
                     });
 
