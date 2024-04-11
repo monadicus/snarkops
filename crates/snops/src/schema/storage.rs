@@ -220,7 +220,7 @@ impl Document {
         let mut exists = matches!(tokio::fs::try_exists(&base).await, Ok(true));
 
         // wipe old storage when the version changes
-        if dbg!(dbg!(get_version_from_path(&version_file).await?) != Some(self.regen)) && exists {
+        if get_version_from_path(&version_file).await? != Some(self.regen) && exists {
             info!("storage {id} version changed, removing old storage");
             tokio::fs::remove_dir_all(&base)
                 .await
