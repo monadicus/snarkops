@@ -561,9 +561,9 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
     }
 
     if let Err(e) = reconcile_agents(pending_reconciliations.into_iter(), &state.pool).await {
-        error!("an error occurred on initial reconciliation, inventorying all agents");
-        if let Err(_) = Environment::forcefully_inventory(env_id, state).await {
-            error!("an error occurred inventorying agents")
+        error!("an error occurred on initial reconciliation, inventorying all agents: {e}");
+        if let Err(e) = Environment::forcefully_inventory(env_id, state).await {
+            error!("an error occurred inventorying agents: {e}");
         }
 
         Err(ReconcileError::Batch(e).into())

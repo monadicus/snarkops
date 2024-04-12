@@ -293,10 +293,10 @@ impl Environment {
                         .await
                         {
                             error!("failed to reconcile agents in timeline: {e}");
-                            if let Err(_) =
+                            if let Err(e) =
                                 Environment::forcefully_inventory(env_id, &task_state).await
                             {
-                                error!("failed to inventory agents");
+                                error!("failed to inventory agents: {e}");
                             }
 
                             return Err(e.into());
