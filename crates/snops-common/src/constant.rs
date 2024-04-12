@@ -1,3 +1,8 @@
+/// The environment variable that agents use to authorize with the control
+/// plane.
+pub const ENV_AGENT_KEY: &str = "SNOPS_AGENT_KEY";
+/// The agent key header that is set to [`ENV_AGENT_KEY`].
+pub const HEADER_AGENT_KEY: &str = "X-Snops-Agent-Key";
 /// The snarkOS binary file name.
 pub const SNARKOS_FILE: &str = "snarkos-aot";
 /// The snarkOS log file name.

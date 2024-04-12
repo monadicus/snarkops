@@ -39,6 +39,7 @@ pub type AppState = Arc<GlobalState>;
 #[derive(Debug)]
 pub struct GlobalState {
     pub cli: Cli,
+    pub agent_key: Option<String>,
     pub db: Surreal<Db>,
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
