@@ -105,7 +105,7 @@ pub struct CannonInstance {
     auth_sender: UnboundedSender<Authorization>,
 
     fired_txs: Arc<AtomicUsize>,
-    tx_count: usize,
+    tx_count: Option<usize>,
 }
 
 #[tokio::main]
@@ -141,7 +141,7 @@ impl CannonInstance {
         env: Arc<Environment>,
         source: TxSource,
         sink: TxSink,
-        count: usize,
+        count: Option<usize>,
     ) -> Result<(Self, CannonReceivers), CannonError> {
         let (tx_sender, tx_receiver) = tokio::sync::mpsc::unbounded_channel();
         let query_port = source.get_query_port()?;
@@ -322,7 +322,7 @@ pub struct ExecutionContext {
     source: TxSource,
     sink: TxSink,
     fired_txs: Arc<AtomicUsize>,
-    tx_count: usize,
+    tx_count: Option<usize>,
     tx_sender: UnboundedSender<String>,
     auth_sender: UnboundedSender<Authorization>,
 }
@@ -454,11 +454,15 @@ impl ExecutionContext {
                     match res {
                         Ok(()) => {
                             let fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                            if fired_count >= *tx_count {
-                                trace!("cannon {env_id}.{cannon_id} finished firing txs");
-                                break;
+                            if let Some(tx_count) = tx_count {
+                                if fired_count >= *tx_count {
+                                    trace!("cannon {env_id}.{cannon_id} finished firing txs");
+                                    break;
+                                }
+                                trace!("cannon {env_id}.{cannon_id} fired {fired_count}/{tx_count} txs");
+                            } else {
+                                trace!("cannon {env_id}.{cannon_id} fired {fired_count} txs");
                             }
-                            trace!("cannon {env_id}.{cannon_id} fired {fired_count}/{tx_count} txs");
                         }
                         Err(e) => {
                             warn!("cannon {env_id}.{cannon_id} failed to fire transaction {e}");
