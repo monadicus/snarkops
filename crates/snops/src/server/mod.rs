@@ -167,20 +167,27 @@ async fn handle_socket(
                     break 'reconnect;
                 }
 
+                // attach the current known agent state to the handshake
+                handshake.state = agent.state().to_owned();
+
+                // mark the agent as connected
                 agent.mark_connected(client);
 
                 let id = agent.id();
                 info!("agent {id} reconnected");
 
-                // TODO: probably want to reconcile with old state?
-
                 // handshake with client
+                // note: this may cause a reconciliation, so this *may* be non-instant
                 // unwrap safety: this agent was just `mark_connected` with a valid client
                 let client = agent.rpc().cloned().unwrap();
                 tokio::spawn(async move {
                     // we do this in a separate task because we don't want to hold up pool insertion
-                    if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
-                        error!("failed to perform client handshake: {e}");
+                    match client.handshake(tarpc::context::current(), handshake).await {
+                        Ok(Ok(())) => (),
+                        Ok(Err(e)) => {
+                            error!("failed to perform client handshake reconciliation: {e}")
+                        }
+                        Err(e) => error!("failed to perform client handshake: {e}"),
                     }
                 });
 
@@ -208,8 +215,10 @@ async fn handle_socket(
         // handshake with the client
         tokio::spawn(async move {
             // we do this in a separate task because we don't want to hold up pool insertion
-            if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
-                error!("failed to perform client handshake: {e}");
+            match client.handshake(tarpc::context::current(), handshake).await {
+                Ok(Ok(())) => (),
+                Ok(Err(e)) => error!("failed to perform client handshake reconciliation: {e}"),
+                Err(e) => error!("failed to perform client handshake: {e}"),
             }
         });
 

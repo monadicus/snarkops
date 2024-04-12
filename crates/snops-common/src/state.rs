@@ -21,7 +21,7 @@ pub struct AgentId(Spur);
 pub type StorageId = usize;
 pub type EnvId = usize;
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentState {
     #[default]
     // A node in the inventory can function as a transaction cannon
@@ -42,7 +42,7 @@ impl AgentState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeState {
     pub node_key: NodeKey,
     pub ty: NodeType,
@@ -57,7 +57,7 @@ pub struct NodeState {
 }
 
 /// A representation of which key to use for the agent.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyState {
     /// No private key provided
     #[default]

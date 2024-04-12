@@ -380,6 +380,78 @@ impl Environment {
         Ok(())
     }
 
+    // TODO: this is almost exactly the same as `cleanup`, maybe we can merge it
+    // later
+    pub async fn forcefully_inventory(id: usize, state: &GlobalState) -> Result<(), EnvError> {
+        let mut envs_lock = state.envs.write().await;
+        let env = envs_lock
+            .get_mut(&id)
+            .ok_or(CleanupError::EnvNotFound(id))?;
+
+        // stop the timeline if it's running
+        if let Some(handle) = &*env.timeline_handle.lock().await {
+            handle.abort();
+        }
+
+        // reconcile all online agents
+        let (ids, handles): (Vec<_>, Vec<_>) = {
+            let mut agents = state.pool.write().await;
+
+            let mut ids = vec![];
+            let mut handles = vec![];
+            for peer in env.node_map.right_values() {
+                let Some(agent) = (match peer {
+                    EnvPeer::Internal(id) => agents.get_mut(id),
+                    _ => continue,
+                }) else {
+                    continue;
+                };
+
+                let Some(client) = agent.client_owned() else {
+                    // forcibly set the agent state if it is offline
+                    agent.set_state(AgentState::Inventory);
+                    continue;
+                };
+
+                ids.push(agent.id());
+                handles.push(tokio::spawn(async move {
+                    client.reconcile(AgentState::Inventory).await
+                }));
+            }
+
+            (ids, handles)
+        };
+
+        info!("inventorying {} agents...", ids.len());
+        let reconciliations = join_all(handles).await;
+        info!("reconcile done, updating agent states...");
+
+        let mut agents = state.pool.write().await;
+        let mut success = 0;
+        let num_reconciles = ids.len();
+        for (id, result) in ids.into_iter().zip(reconciliations) {
+            match result {
+                // oh god
+                Ok(Ok(Ok(state))) => {
+                    if let Some(agent) = agents.get_mut(&id) {
+                        agent.set_state(state);
+                        success += 1;
+                    } else {
+                        error!("agent {id} not found in pool after successful reconcile")
+                    }
+                }
+
+                // reconcile error
+                Ok(Ok(Err(e))) => error!("agent {id} experienced a reconcilation error: {e}"),
+                Ok(Err(e)) => error!("agent {id} experienced a rpc error: {e}"),
+                Err(e) => error!("agent {id} experienced a join error: {e}"),
+            }
+        }
+        info!("inventory result: {success}/{num_reconciles} agents inventoried");
+
+        Ok(())
+    }
+
     /// Lookup a env agent id by node key.
     pub fn get_agent_by_key(&self, key: &NodeKey) -> Option<AgentId> {
         self.node_map.get_by_left(key).and_then(|id| match id {
@@ -488,8 +560,14 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
         }
     }
 
-    reconcile_agents(pending_reconciliations.into_iter(), &state.pool)
-        .await
-        .map_err(ReconcileError::Batch)?;
-    Ok(())
+    if let Err(e) = reconcile_agents(pending_reconciliations.into_iter(), &state.pool).await {
+        error!("an error occurred on initial reconciliation, inventorying all agents: {e}");
+        if let Err(e) = Environment::forcefully_inventory(env_id, state).await {
+            error!("an error occurred inventorying agents: {e}");
+        }
+
+        Err(ReconcileError::Batch(e).into())
+    } else {
+        Ok(())
+    }
 }
