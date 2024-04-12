@@ -234,9 +234,9 @@ impl Document {
             exists = false;
         }
 
-        match self.generate.clone() {
+        match self.generate {
             // generate the block and ledger if we have generation params
-            Some(generation) => 'generate: {
+            Some(ref generation) => 'generate: {
                 // warn if an existing block/ledger already exists
                 if exists {
                     // TODO: is this the behavior we want?
@@ -295,7 +295,7 @@ impl Document {
                         };
 
                         // generate committee based on the generation params
-                        match generation.genesis.balances {
+                        match &generation.genesis.balances {
                             GenesisBalances::Generated {
                                 committee_size,
                                 bonded_balance,
@@ -557,7 +557,7 @@ async fn read_to_addrs<T: DeserializeOwned>(
     file: PathBuf,
 ) -> Result<AleoAddrMap, SchemaError> {
     if !file.exists() {
-        return Ok(IndexMap::new());
+        return Ok(Default::default());
     }
 
     let data = tokio::fs::read_to_string(&file)
