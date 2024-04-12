@@ -10,4 +10,10 @@ pub struct Document {
 
     pub source: TxSource,
     pub sink: TxSink,
+    #[serde(default)]
+    /// When true, create an instance of the cannon when the document is loaded
+    pub instance: bool,
+    /// Number of transactions to fire when for an instanced cannon is created
+    #[serde(default)]
+    pub count: Option<usize>,
 }

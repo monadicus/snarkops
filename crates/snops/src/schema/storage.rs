@@ -250,7 +250,7 @@ impl Document {
                 }
 
                 // generate the genesis block using the aot cli
-                let output = base.join(&SNARKOS_GENESIS_FILE);
+                let output = base.join(SNARKOS_GENESIS_FILE);
 
                 match self.connect {
                     Some(ref url) => {
@@ -515,7 +515,7 @@ impl Document {
 
             // derive the committee member 0's key
             if let (Some(key), true) = (private_key, !balances.is_empty()) {
-                balances[0] = key.clone();
+                balances[0].clone_from(key)
             }
 
             balances

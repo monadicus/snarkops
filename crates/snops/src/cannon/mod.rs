@@ -135,7 +135,7 @@ impl CannonInstance {
     /// with the given source and sink.
     ///
     /// Locks the global state's tests and storage for reading.
-    pub async fn new(
+    pub fn new(
         global_state: Arc<GlobalState>,
         id: usize,
         env: Arc<Environment>,
@@ -212,7 +212,7 @@ impl CannonInstance {
         })
     }
 
-    pub async fn spawn_local(&mut self, rx: CannonReceivers) -> Result<(), CannonError> {
+    pub fn spawn_local(&mut self, rx: CannonReceivers) -> Result<(), CannonError> {
         let ctx = self.ctx()?;
 
         let handle = tokio::task::spawn(async move { ctx.spawn(rx).await });

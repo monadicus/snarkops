@@ -168,7 +168,7 @@ async fn handle_socket(
                 }
 
                 // attach the current known agent state to the handshake
-                handshake.state = agent.state().to_owned();
+                agent.state().clone_into(&mut handshake.state);
 
                 // mark the agent as connected
                 agent.mark_connected(client);

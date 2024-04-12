@@ -226,7 +226,6 @@ impl Environment {
                                     sink,
                                     count,
                                 )
-                                .await
                                 .map_err(ExecutionError::Cannon)?;
 
                                 if *awaited {
@@ -242,10 +241,7 @@ impl Environment {
                                         res.map_err(ExecutionError::Cannon)
                                     }));
                                 } else {
-                                    instance
-                                        .spawn_local(rx)
-                                        .await
-                                        .map_err(ExecutionError::Cannon)?;
+                                    instance.spawn_local(rx).map_err(ExecutionError::Cannon)?;
                                 }
 
                                 // insert the cannon
