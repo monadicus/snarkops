@@ -193,9 +193,14 @@ impl From<FilenameString> for String {
 }
 
 lazy_static! {
+    // TODO: support multiple architectures
     pub static ref DEFAULT_AOT_BIN: PathBuf =
         std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/snarkos-aot"),
+        );
+    pub static ref DEFAULT_AGENT_BIN: PathBuf =
+        std::env::var("AGENT_BIN").map(PathBuf::from).unwrap_or(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/snops-agent"),
         );
 }
 
