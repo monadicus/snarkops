@@ -128,7 +128,7 @@ impl Environment {
     /// ensure tests are properly cleaned up.**
     pub async fn prepare(
         documents: Vec<ItemDocument>,
-        state: &GlobalState,
+        state: Arc<GlobalState>,
     ) -> Result<usize, EnvError> {
         static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -143,11 +143,13 @@ impl Environment {
         let mut timeline = vec![];
         let mut outcomes: Option<OutcomeMetrics> = None;
 
+        let mut immediate_cannons = vec![];
+
         for document in documents {
             match document {
                 ItemDocument::Storage(doc) => {
                     if storage.is_none() {
-                        storage = Some(doc.prepare(state).await?);
+                        storage = Some(doc.prepare(&state).await?);
                     } else {
                         Err(PrepareError::MultipleStorage)?;
                     }
@@ -155,6 +157,9 @@ impl Environment {
 
                 ItemDocument::Cannon(cannon) => {
                     cannon_configs.insert(cannon.name.to_owned(), (cannon.source, cannon.sink));
+                    if cannon.instance {
+                        immediate_cannons.push((cannon.name.clone(), cannon.count));
+                    }
                 }
 
                 ItemDocument::Nodes(nodes) => {
@@ -286,7 +291,7 @@ impl Environment {
         }
 
         let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let env = Environment {
+        let env = Arc::new(Environment {
             id: env_id,
             storage,
             outcomes,
@@ -301,13 +306,32 @@ impl Environment {
             aot_bin: DEFAULT_AOT_BIN.clone(),
             timeline,
             timeline_handle: Default::default(),
-        };
+        });
 
-        state_lock.insert(env_id, Arc::new(env));
+        state_lock.insert(env_id, Arc::clone(&env));
         drop(state_lock);
 
         // reconcile the nodes
-        initial_reconcile(env_id, state).await?;
+        initial_reconcile(env_id, &state).await?;
+
+        // instance cannons that are marked for immediate use
+        let mut cannons = env.cannons.write().await;
+        for (name, count) in immediate_cannons {
+            let Some((source, sink)) = env.cannon_configs.get(&name) else {
+                continue;
+            };
+            let id = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
+            let (mut instance, rx) = CannonInstance::new(
+                Arc::clone(&state),
+                id,
+                Arc::clone(&env),
+                source.clone(),
+                sink.clone(),
+                count,
+            )?;
+            instance.spawn_local(rx)?;
+            cannons.insert(id, instance);
+        }
 
         Ok(env_id)
     }

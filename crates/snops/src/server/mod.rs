@@ -168,7 +168,7 @@ async fn handle_socket(
                 }
 
                 // attach the current known agent state to the handshake
-                handshake.state = agent.state().to_owned();
+                agent.state().clone_into(&mut handshake.state);
 
                 // mark the agent as connected
                 agent.mark_connected(client);
@@ -231,7 +231,7 @@ async fn handle_socket(
     };
 
     // fetch the agent's network addresses on connect/reconnect
-    let state2 = state.clone();
+    let state2 = Arc::clone(&state);
     tokio::spawn(async move {
         if let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await {
             let mut state = state2.pool.write().await;

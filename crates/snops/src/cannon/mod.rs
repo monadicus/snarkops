@@ -105,7 +105,7 @@ pub struct CannonInstance {
     auth_sender: UnboundedSender<Authorization>,
 
     fired_txs: Arc<AtomicUsize>,
-    tx_count: usize,
+    tx_count: Option<usize>,
 }
 
 #[tokio::main]
@@ -135,13 +135,13 @@ impl CannonInstance {
     /// with the given source and sink.
     ///
     /// Locks the global state's tests and storage for reading.
-    pub async fn new(
+    pub fn new(
         global_state: Arc<GlobalState>,
         id: usize,
         env: Arc<Environment>,
         source: TxSource,
         sink: TxSink,
-        count: usize,
+        count: Option<usize>,
     ) -> Result<(Self, CannonReceivers), CannonError> {
         let (tx_sender, tx_receiver) = tokio::sync::mpsc::unbounded_channel();
         let query_port = source.get_query_port()?;
@@ -201,18 +201,18 @@ impl CannonInstance {
     pub fn ctx(&self) -> Result<ExecutionContext, CannonError> {
         Ok(ExecutionContext {
             id: self.id,
-            env: self.env.clone(),
+            env: Weak::clone(&self.env),
             source: self.source.clone(),
             sink: self.sink.clone(),
-            fired_txs: self.fired_txs.clone(),
-            state: self.global_state.clone(),
+            fired_txs: Arc::clone(&self.fired_txs),
+            state: Arc::clone(&self.global_state),
             tx_count: self.tx_count,
             tx_sender: self.tx_sender.clone(),
             auth_sender: self.auth_sender.clone(),
         })
     }
 
-    pub async fn spawn_local(&mut self, rx: CannonReceivers) -> Result<(), CannonError> {
+    pub fn spawn_local(&mut self, rx: CannonReceivers) -> Result<(), CannonError> {
         let ctx = self.ctx()?;
 
         let handle = tokio::task::spawn(async move { ctx.spawn(rx).await });
@@ -322,7 +322,7 @@ pub struct ExecutionContext {
     source: TxSource,
     sink: TxSink,
     fired_txs: Arc<AtomicUsize>,
-    tx_count: usize,
+    tx_count: Option<usize>,
     tx_sender: UnboundedSender<String>,
     auth_sender: UnboundedSender<Authorization>,
 }
@@ -454,11 +454,15 @@ impl ExecutionContext {
                     match res {
                         Ok(()) => {
                             let fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                            if fired_count >= *tx_count {
-                                trace!("cannon {env_id}.{cannon_id} finished firing txs");
-                                break;
+                            if let Some(tx_count) = tx_count {
+                                if fired_count >= *tx_count {
+                                    trace!("cannon {env_id}.{cannon_id} finished firing txs");
+                                    break;
+                                }
+                                trace!("cannon {env_id}.{cannon_id} fired {fired_count}/{tx_count} txs");
+                            } else {
+                                trace!("cannon {env_id}.{cannon_id} fired {fired_count} txs");
                             }
-                            trace!("cannon {env_id}.{cannon_id} fired {fired_count}/{tx_count} txs");
                         }
                         Err(e) => {
                             warn!("cannon {env_id}.{cannon_id} failed to fire transaction {e}");

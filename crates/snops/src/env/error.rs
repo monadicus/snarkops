@@ -99,11 +99,14 @@ pub enum PrepareError {
     NodeHas0Replicas,
     #[error(transparent)]
     Reconcile(#[from] ReconcileError),
+    #[error(transparent)]
+    Cannon(#[from] CannonError),
 }
 
 impl_into_status_code!(PrepareError, |value| match value {
     DuplicateNodeKey(_) | MultipleStorage | NodeHas0Replicas => StatusCode::BAD_REQUEST,
     MissingStorage => StatusCode::NOT_FOUND,
+    Cannon(e) => e.into(),
     Reconcile(e) => e.into(),
 });
 

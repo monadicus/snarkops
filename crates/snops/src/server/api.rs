@@ -98,7 +98,7 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<AgentId>) -> Respo
         .into_response()
 }
 
-async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
+async fn post_env_prepare(State(state): State<AppState>, body: String) -> Response {
     let documents = match Environment::deserialize(&body) {
         Ok(documents) => documents,
         Err(e) => return ServerError::from(e).into_response(),
@@ -109,7 +109,7 @@ async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
 
     // TODO: clean up existing test
 
-    match Environment::prepare(documents, &state).await {
+    match Environment::prepare(documents, state).await {
         Ok(env_id) => (StatusCode::OK, Json(json!({ "id": env_id }))).into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }

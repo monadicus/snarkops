@@ -63,7 +63,7 @@ impl AgentService for AgentRpcServer {
         }
 
         // reconcile if state has changed
-        let needs_reconcile = &*self.state.agent_state.read().await != &handshake.state;
+        let needs_reconcile = *self.state.agent_state.read().await != handshake.state;
         if needs_reconcile {
             Self::reconcile(self, context, handshake.state).await?;
         }

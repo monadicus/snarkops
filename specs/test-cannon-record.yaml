@@ -22,12 +22,7 @@ sink:
   tx-request-delay-ms: 1000
   file-name: txs.json
 
----
-version: timeline.snarkos.testing.monadic.us/v1
-
-name: tx-local
-
-timeline:
-  - cannon.await:
-      - name: committee-tx-public
-        count: 10
+# create the cannon immediately
+instance: true
+# fire 10 transactions
+count: 10
