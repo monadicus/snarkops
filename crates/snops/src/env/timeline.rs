@@ -219,9 +219,9 @@ impl Environment {
                                 let count = cannon.count;
 
                                 let (mut instance, rx) = CannonInstance::new(
-                                    state.clone(),
+                                    Arc::clone(&state),
                                     cannon_id,
-                                    env.clone(),
+                                    Arc::clone(&env),
                                     source,
                                     sink,
                                     count,
@@ -230,7 +230,7 @@ impl Environment {
 
                                 if *awaited {
                                     let ctx = instance.ctx().unwrap();
-                                    let env = env.clone();
+                                    let env = Arc::clone(&env);
 
                                     // debug!("instance started await mode");
                                     awaiting_handles.push(tokio::task::spawn(async move {

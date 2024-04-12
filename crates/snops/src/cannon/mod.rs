@@ -201,11 +201,11 @@ impl CannonInstance {
     pub fn ctx(&self) -> Result<ExecutionContext, CannonError> {
         Ok(ExecutionContext {
             id: self.id,
-            env: self.env.clone(),
+            env: Weak::clone(&self.env),
             source: self.source.clone(),
             sink: self.sink.clone(),
-            fired_txs: self.fired_txs.clone(),
-            state: self.global_state.clone(),
+            fired_txs: Arc::clone(&self.fired_txs),
+            state: Arc::clone(&self.global_state),
             tx_count: self.tx_count,
             tx_sender: self.tx_sender.clone(),
             auth_sender: self.auth_sender.clone(),

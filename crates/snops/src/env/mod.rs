@@ -291,7 +291,7 @@ impl Environment {
         }
 
         let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let env = Environment {
+        let env = Arc::new(Environment {
             id: env_id,
             storage,
             outcomes,
@@ -306,10 +306,9 @@ impl Environment {
             aot_bin: DEFAULT_AOT_BIN.clone(),
             timeline,
             timeline_handle: Default::default(),
-        };
+        });
 
-        let env = Arc::new(env);
-        state_lock.insert(env_id, env.clone());
+        state_lock.insert(env_id, Arc::clone(&env));
         drop(state_lock);
 
         // reconcile the nodes
@@ -323,9 +322,9 @@ impl Environment {
             };
             let id = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
             let (mut instance, rx) = CannonInstance::new(
-                state.clone(),
+                Arc::clone(&state),
                 id,
-                env.clone(),
+                Arc::clone(&env),
                 source.clone(),
                 sink.clone(),
                 count,
