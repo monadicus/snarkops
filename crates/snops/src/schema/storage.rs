@@ -40,9 +40,6 @@ pub struct Document {
     pub regen: u16,
     pub name: String,
     pub description: Option<String>,
-    /// Prefer using existing storage instead of generating new stuff.
-    #[serde(default)]
-    pub prefer_existing: bool,
     /// Tell nodes not to re-download the storage data.
     #[serde(default)]
     pub persist: bool,
@@ -55,13 +52,11 @@ pub struct Document {
 }
 
 /// Data generation instructions.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct StorageGeneration {
     // TODO: individually validate arguments, or just pass them like this?
     #[serde(default)]
     pub genesis: GenesisGeneration,
-    #[serde(default)]
-    pub ledger: LedgerGeneration,
 
     #[serde(default)]
     pub accounts: Vec<Accounts>,
@@ -70,14 +65,14 @@ pub struct StorageGeneration {
     pub transactions: Vec<Transaction>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct Accounts {
     pub file: PathBuf,
     pub total: u64,
 }
 
 // TODO: I don't know what this type should look like
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct Transaction {
     pub file: PathBuf,
     pub total: u64,
@@ -86,24 +81,43 @@ pub struct Transaction {
     pub destinations: Vec<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct GenesisGeneration {
-    pub output: PathBuf,
-    pub committee: usize,
-    pub committee_balances: usize,
-    pub additional_accounts: usize,
-    pub additional_balances: usize,
+    // TODO: bonded balances mode, seed, genesis_key
+    pub private_key: Option<String>,
+    pub seed: Option<u64>,
+    pub additional_accounts: Option<u16>,
+    pub additional_accounts_balance: Option<u64>,
+    #[serde(flatten)]
+    pub balances: GenesisBalances,
+}
+
+#[derive(Deserialize, Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum GenesisBalances {
+    #[serde(rename_all = "kebab-case")]
+    Defined {
+        bonded_balances: IndexMap<String, u64>,
+    },
+    #[serde(rename_all = "kebab-case")]
+    Generated {
+        committee_size: Option<u16>,
+        bonded_balance: Option<u64>,
+    },
 }
 
 impl Default for GenesisGeneration {
     fn default() -> Self {
         Self {
-            output: PathBuf::from(SNARKOS_GENESIS_FILE),
-            committee: 5,
-            committee_balances: 10_000_000_000_000,
-            additional_accounts: 5,
-            additional_balances: 100_000_000_000,
+            seed: None,
+            private_key: None,
+            additional_accounts: None,
+            additional_accounts_balance: None,
+            balances: GenesisBalances::Generated {
+                committee_size: None,
+                bonded_balance: None,
+            },
         }
     }
 }
@@ -128,19 +142,6 @@ pub struct LoadedStorage {
     pub checkpoints: Option<CheckpointManager>,
     /// whether agents using this storage should persist it
     pub persist: bool,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct LedgerGeneration {
-    pub output: PathBuf,
-}
-
-impl Default for LedgerGeneration {
-    fn default() -> Self {
-        Self {
-            output: PathBuf::from(LEDGER_BASE_DIR),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -192,9 +193,14 @@ impl From<FilenameString> for String {
 }
 
 lazy_static! {
+    // TODO: support multiple architectures
     pub static ref DEFAULT_AOT_BIN: PathBuf =
         std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/snarkos-aot"),
+        );
+    pub static ref DEFAULT_AGENT_BIN: PathBuf =
+        std::env::var("AGENT_BIN").map(PathBuf::from).unwrap_or(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/snops-agent"),
         );
 }
 
@@ -228,11 +234,9 @@ impl Document {
             exists = false;
         }
 
-        // TODO: respect self.prefer_existing
-
         match self.generate {
             // generate the block and ledger if we have generation params
-            Some(generation) => 'generate: {
+            Some(ref generation) => 'generate: {
                 // warn if an existing block/ledger already exists
                 if exists {
                     // TODO: is this the behavior we want?
@@ -246,7 +250,7 @@ impl Document {
                 }
 
                 // generate the genesis block using the aot cli
-                let output = base.join(&generation.genesis.output);
+                let output = base.join(&SNARKOS_GENESIS_FILE);
 
                 match self.connect {
                     Some(ref url) => {
@@ -270,22 +274,72 @@ impl Document {
                             .map_err(|e| StorageError::FailedToWriteGenesis(id.clone(), e))?;
                     }
                     None => {
-                        let res = Command::new(DEFAULT_AOT_BIN.clone())
+                        let mut command = Command::new(DEFAULT_AOT_BIN.clone());
+                        command
                             .stdout(Stdio::inherit())
                             .stderr(Stdio::inherit())
                             .arg("genesis")
                             .arg("--output")
                             .arg(&output)
-                            .arg("--committee-size")
-                            .arg(generation.genesis.committee.to_string())
-                            .arg("--committee-output")
-                            .arg(base.join("committee.json"))
-                            .arg("--additional-accounts")
-                            .arg(generation.genesis.additional_accounts.to_string())
-                            .arg("--additional-accounts-output")
-                            .arg(base.join("accounts.json"))
                             .arg("--ledger")
-                            .arg(base.join(LEDGER_BASE_DIR))
+                            .arg(base.join(LEDGER_BASE_DIR));
+
+                        // conditional seed flag
+                        if let Some(seed) = generation.genesis.seed {
+                            command.arg("--seed").arg(seed.to_string());
+                        }
+
+                        // conditional genesis key flag
+                        if let Some(private_key) = &generation.genesis.private_key {
+                            command.arg("--genesis-key").arg(private_key);
+                        };
+
+                        // generate committee based on the generation params
+                        match &generation.genesis.balances {
+                            GenesisBalances::Generated {
+                                committee_size,
+                                bonded_balance,
+                            } => {
+                                command
+                                    .arg("--committee-output")
+                                    .arg(base.join("committee.json"));
+
+                                if let Some(committee_size) = committee_size {
+                                    command
+                                        .arg("--committee-size")
+                                        .arg(committee_size.to_string());
+                                }
+                                if let Some(bonded_balance) = bonded_balance {
+                                    command
+                                        .arg("--bonded-balance")
+                                        .arg(bonded_balance.to_string());
+                                }
+                            }
+                            GenesisBalances::Defined { bonded_balances } => {
+                                command
+                                    .arg("--bonded-balances")
+                                    .arg(serde_json::to_string(&bonded_balances).unwrap());
+                            }
+                        }
+
+                        // conditionally add additional accounts
+                        if let Some(additional_accounts) = generation.genesis.additional_accounts {
+                            command
+                                .arg("--additional-accounts")
+                                .arg(additional_accounts.to_string())
+                                .arg("--additional-accounts-output")
+                                .arg(base.join("accounts.json"));
+                        }
+
+                        if let Some(balance) = generation.genesis.additional_accounts_balance {
+                            command
+                                .arg("--additional-accounts-balance")
+                                .arg(balance.to_string());
+                        }
+
+                        info!("{command:?}");
+
+                        let res = command
                             .spawn()
                             .map_err(|e| {
                                 StorageError::Command(
@@ -308,10 +362,12 @@ impl Document {
                     }
                 }
 
+                // ensure the genesis block was generated
                 tokio::fs::try_exists(&output)
                     .await
                     .map_err(|e| StorageError::FailedToGenGenesis(id.clone(), e))?;
 
+                // tar a ledger if it exists
                 let res = Command::new("tar")
                     .current_dir(&base)
                     .arg("czf")
@@ -400,6 +456,18 @@ impl Document {
             read_to_addrs(pick_additional_addr, base.join("accounts.json")).await?,
         );
 
+        if let Some(generation) = &self.generate {
+            for account in &generation.accounts {
+                let Some(stem) = account.file.file_stem() else {
+                    continue;
+                };
+                accounts.insert(
+                    stem.to_string_lossy().to_string(),
+                    read_to_addrs(pick_account_addr, account.file.clone()).await?,
+                );
+            }
+        }
+
         // write the regen version to a "version" file
         tokio::fs::write(&version_file, self.regen.to_string())
             .await
@@ -428,11 +496,39 @@ impl Document {
             info!("storage loaded without a checkpoint manager");
         }
 
+        // if the committee was specified in the generation params, use that
+        let committee = if let Some(StorageGeneration {
+            genesis:
+                GenesisGeneration {
+                    private_key,
+                    balances: GenesisBalances::Defined { bonded_balances },
+                    ..
+                },
+            ..
+        }) = self.generate.as_ref()
+        {
+            // TODO: should be possible to get committee from genesis blocks
+            let mut balances: IndexMap<_, _> = bonded_balances
+                .iter()
+                .map(|(addr, _)| (addr.clone(), String::new()))
+                .collect();
+
+            // derive the committee member 0's key
+            if let (Some(key), true) = (private_key, !balances.is_empty()) {
+                balances[0] = key.clone();
+            }
+
+            balances
+        } else {
+            // otherwise read the committee from the committee.json file
+            read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?
+        };
+
         let storage = Arc::new(LoadedStorage {
             version: self.regen,
             id: id.to_owned(),
             path: base.clone(),
-            committee: read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?,
+            committee,
             accounts,
             checkpoints,
             persist: self.persist,
@@ -450,6 +546,9 @@ fn pick_additional_addr(entry: (String, u64, Option<serde_json::Value>)) -> Stri
 fn pick_commitee_addr(entry: (String, u64)) -> String {
     entry.0
 }
+fn pick_account_addr(entry: String) -> String {
+    entry
+}
 
 // TODO: function should also take storage id
 // in case of error, the storage id can be used to provide more context
@@ -457,6 +556,10 @@ async fn read_to_addrs<T: DeserializeOwned>(
     f: impl Fn(T) -> String,
     file: PathBuf,
 ) -> Result<AleoAddrMap, SchemaError> {
+    if !file.exists() {
+        return Ok(Default::default());
+    }
+
     let data = tokio::fs::read_to_string(&file)
         .await
         .map_err(|e| StorageError::ReadBalances(file.clone(), e))?;

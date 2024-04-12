@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
     sync::{Arc, Mutex},
 };
 
@@ -26,7 +26,7 @@ pub struct GlobalState {
     pub external_addr: Option<IpAddr>,
     pub internal_addrs: Vec<IpAddr>,
     pub cli: Cli,
-    pub endpoint: SocketAddr,
+    pub endpoint: String,
     pub jwt: Mutex<Option<String>>,
     pub agent_state: RwLock<AgentState>,
     pub env_to_storage: RwLock<HashMap<usize, StorageInfo>>,
