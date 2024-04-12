@@ -1,0 +1,25 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: genesis-params-0
+name: example generated genesis block
+
+retention-policy: default
+generate:
+  genesis:
+    seed: 1
+    private-key: APrivateKey1zkp7QWqPSmrK4durW7Y6uwpbnubWtFGJeYoXtN4jaAPFJmv
+    additional-accounts: 6
+    additional-accounts-balance: 10000000000
+    bonded-balances:
+      # APrivateKey1zkp7QWqPSmrK4durW7Y6uwpbnubWtFGJeYoXtN4jaAPFJmv
+      aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8: 10000000000000
+      # APrivateKey1zkpGnbnQcbFpt5uwFinvErShe28jWYdYXyeEywRosLbkSZP
+      aleo1pc5zapsghnp3r6qme0dhcvjslzgef89kggsvap8f7vxs3m38lqpsjn6v47: 10000000000000
+      # APrivateKey1zkpJeComnGsa2NoYo7eXXUkZveoxy6mxnAS36Timz46cNmq
+      aleo1u8lu8a9vqrw0m3wxph5v8hqj3m9vrzwwmt3d3e483468r5gy8qpsvgwjdl: 10000000000000
+      # APrivateKey1zkp3gbZsmjfn3P2AVndY3AU9wu5kVkT5NetY6ztxCdEUgbP
+      aleo1yy7yx4kvqp4hmnexa2lyrg7fdptuazwuv35976gsuv073m9lg5zs6d8sek: 10000000000000
+
+persist: false
+regen: 1

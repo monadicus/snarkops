@@ -1,0 +1,19 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: genesis-params-1
+name: example generated genesis block
+
+retention-policy: default
+generate:
+  genesis:
+    seed: 1
+    # providing a genesis key will force the 0th genesis entry use this
+    # private-key: APrivateKey1zkp7QWqPSmrK4durW7Y6uwpbnubWtFGJeYoXtN4jaAPFJmv
+    additional-accounts: 6
+    additional-accounts-balance: 10000000000
+    committee-size: 5
+    bonded-balance: 10000000000000
+
+persist: false
+regen: 1
