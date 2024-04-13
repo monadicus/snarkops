@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     str::FromStr,
 };
 
@@ -34,7 +34,7 @@ pub struct Document {
     pub nodes: IndexMap<NodeKey, Node>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct ExternalNode {
     // NOTE: these fields must be validated at runtime, because validators require `bft` to be set,
     // and non-validators require `node` to be set
@@ -42,6 +42,70 @@ pub struct ExternalNode {
     pub bft: Option<SocketAddr>,
     pub node: Option<SocketAddr>,
     pub rest: Option<SocketAddr>,
+}
+
+/// Impl serde Deserialize ExternalNode but allow for { bft: addr, node: addr,
+/// rest: addr} or just `addr`
+impl<'de> Deserialize<'de> for ExternalNode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ExternalNodeVisitor;
+
+        impl<'de> Visitor<'de> for ExternalNodeVisitor {
+            type Value = ExternalNode;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a socket address or a map of socket addresses")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut bft = None;
+                let mut node = None;
+                let mut rest = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "bft" => {
+                            bft = Some(map.next_value()?);
+                        }
+                        "node" => {
+                            node = Some(map.next_value()?);
+                        }
+                        "rest" => {
+                            rest = Some(map.next_value()?);
+                        }
+                        _ => {
+                            return Err(serde::de::Error::unknown_field(
+                                &key,
+                                &["bft", "node", "rest"],
+                            ));
+                        }
+                    }
+                }
+
+                Ok(ExternalNode { bft, node, rest })
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let ip: IpAddr = v.parse().map_err(E::custom)?;
+                Ok(ExternalNode {
+                    bft: Some(SocketAddr::new(ip, 5000)),
+                    node: Some(SocketAddr::new(ip, 4130)),
+                    rest: Some(SocketAddr::new(ip, 3030)),
+                })
+            }
+        }
+
+        deserializer.deserialize_any(ExternalNodeVisitor)
+    }
 }
 
 // zander forgive me -isaac
