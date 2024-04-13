@@ -32,9 +32,10 @@ use self::{
 };
 use crate::{
     cli::Cli,
+    db::{self, document::DbDocument},
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{util::OpaqueDebug, Agent, AgentFlags, AppState, GlobalState},
+    state::{Agent, AgentFlags, AppState, GlobalState},
 };
 
 mod api;
@@ -45,19 +46,13 @@ pub mod prometheus;
 mod rpc;
 
 pub async fn start(cli: Cli) -> Result<(), StartError> {
+    let db = db::Database::open(&cli.path.join("store"))?;
+
     let prometheus = cli
         .prometheus
         .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
 
-    let state = Arc::new(GlobalState {
-        cli,
-        pool: Default::default(),
-        storage_ids: Default::default(),
-        storage: Default::default(),
-        envs: Default::default(),
-        prom_httpsd: Default::default(),
-        prometheus: OpaqueDebug(prometheus),
-    });
+    let state = Arc::new(GlobalState::load(cli, db, prometheus)?);
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
@@ -168,6 +163,9 @@ async fn handle_socket(
 
                 let id = agent.id();
                 info!("agent {id} reconnected");
+                if let Err(e) = agent.save(&state.db, id) {
+                    error!("failed to save agent {id} to the database: {e}");
+                }
 
                 // handshake with client
                 // note: this may cause a reconciliation, so this *may* be non-instant
@@ -216,6 +214,9 @@ async fn handle_socket(
         });
 
         // insert a new agent into the pool
+        if let Err(e) = agent.save(&state.db, id) {
+            error!("failed to save agent {id} to the database: {e}");
+        }
         pool.insert(id, agent);
 
         info!("agent {id} connected; pool is now {} nodes", pool.len());
@@ -237,6 +238,9 @@ async fn handle_socket(
                 );
                 agent.set_ports(ports);
                 agent.set_addrs(external, internal);
+                if let Err(e) = agent.save(&state2.db, id) {
+                    error!("failed to save agent {id} to the database: {e}");
+                }
             }
         }
     });

@@ -465,11 +465,23 @@ impl Display for AgentId {
     }
 }
 
+impl AsRef<str> for AgentId {
+    fn as_ref(&self) -> &str {
+        INTERN.resolve(&self.0)
+    }
+}
+
+impl AsRef<[u8]> for AgentId {
+    fn as_ref(&self) -> &[u8] {
+        INTERN.resolve(&self.0).as_bytes()
+    }
+}
+
 impl Serialize for AgentId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        serializer.serialize_str(self.as_ref())
     }
 }

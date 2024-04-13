@@ -7,16 +7,15 @@ use std::{
 
 use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
     rpc::agent::AgentServiceClient,
-    set::{MaskBit, MASK_PREFIX_LEN},
     state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
     INTERN,
 };
 
-use super::AgentClient;
+use super::{AgentClient, AgentFlags};
 use crate::server::jwt::{Claims, JWT_NONCE, JWT_SECRET};
 
 #[derive(Debug)]
@@ -32,15 +31,15 @@ pub struct Agent {
     state: AgentState,
 
     /// CLI provided information (mode, labels, local private key)
-    flags: AgentFlags,
+    pub(super) flags: AgentFlags,
 
     /// Count of how many executions this agent is currently working on
     compute_claim: Arc<Busy>,
-    /// Count of how many environments this agent is currently
+    /// Count of how many environments this agent is pending for
     env_claim: Arc<Busy>,
 
     /// The external address of the agent, along with its local addresses.
-    ports: Option<PortConfig>,
+    pub(super) ports: Option<PortConfig>,
     pub(super) addrs: Option<AgentAddrs>,
 }
 
@@ -59,6 +58,28 @@ impl Agent {
             state: Default::default(),
             ports: None,
             addrs: None,
+        }
+    }
+
+    pub(crate) fn restore(
+        claims: Claims,
+        state: AgentState,
+        flags: AgentFlags,
+        ports: Option<PortConfig>,
+        addrs: Option<AgentAddrs>,
+    ) -> Self {
+        Self {
+            id: claims.id,
+            flags,
+            compute_claim: Arc::new(Busy),
+            env_claim: Arc::new(Busy),
+            claims,
+            connection: AgentConnection::Offline {
+                since: Instant::now(),
+            },
+            state,
+            ports,
+            addrs,
         }
     }
 
@@ -266,7 +287,7 @@ pub enum AgentConnection {
 }
 
 /// This is the representation of a public addr or a list of internal addrs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentAddrs {
     pub external: Option<IpAddr>,
     pub internal: Vec<IpAddr>,
@@ -282,78 +303,5 @@ impl AgentAddrs {
 
     pub fn is_some(&self) -> bool {
         self.external.is_some() || !self.internal.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct AgentFlags {
-    #[serde(deserialize_with = "deser_mode")]
-    mode: AgentMode,
-    #[serde(deserialize_with = "deser_labels")]
-    labels: HashSet<Spur>,
-    #[serde(deserialize_with = "deser_pk", default)]
-    local_pk: bool,
-}
-
-fn deser_mode<'de, D>(deser: D) -> Result<AgentMode, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    // axum's querystring visitor marks all values as string
-    let byte: u8 = <&str>::deserialize(deser)?
-        .parse()
-        .map_err(|e| serde::de::Error::custom(format!("error parsing u8: {e}")))?;
-    Ok(AgentMode::from(byte))
-}
-
-pub fn deser_labels<'de, D>(deser: D) -> Result<HashSet<Spur>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(Option::<String>::deserialize(deser)?
-        .map(|s| {
-            s.split(',')
-                .filter(|s| !s.is_empty())
-                .map(|s| INTERN.get_or_intern(s))
-                .collect()
-        })
-        .unwrap_or_default())
-}
-
-pub fn deser_pk<'de, D>(deser: D) -> Result<bool, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    // axum's querystring visitor marks all values as string
-    Ok(Option::<&str>::deserialize(deser)?
-        .map(|s| s == "true")
-        .unwrap_or(false))
-}
-
-impl AgentFlags {
-    pub fn mask(&self, labels: &[Spur]) -> FixedBitSet {
-        let mut mask = FixedBitSet::with_capacity(labels.len() + MASK_PREFIX_LEN);
-        if self.mode.validator {
-            mask.insert(MaskBit::Validator as usize);
-        }
-        if self.mode.prover {
-            mask.insert(MaskBit::Prover as usize);
-        }
-        if self.mode.client {
-            mask.insert(MaskBit::Client as usize);
-        }
-        if self.mode.compute {
-            mask.insert(MaskBit::Compute as usize);
-        }
-        if self.local_pk {
-            mask.insert(MaskBit::LocalPrivateKey as usize);
-        }
-
-        for (i, label) in labels.iter().enumerate() {
-            if self.labels.contains(label) {
-                mask.insert(i + MASK_PREFIX_LEN);
-            }
-        }
-        mask
     }
 }

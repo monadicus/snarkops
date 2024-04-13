@@ -13,6 +13,7 @@ axum = { workspace = true, features = [
 ] }
 bimap.workspace = true
 bincode.workspace = true
+bytes.workspace = true
 checkpoint.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
@@ -36,6 +37,7 @@ serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 sha2.workspace = true
+sled.workspace = true
 snops-common = { path = "../snops-common" }
 strum_macros.workspace = true
 tarpc.workspace = true

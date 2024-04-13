@@ -22,6 +22,7 @@ use crate::{
 /// The global state for the control plane.
 #[derive(Debug)]
 pub struct GlobalState {
+    pub db: Database,
     pub cli: Cli,
     pub pool: RwLock<AgentPool>,
     /// A map from ephemeral integer storage ID to actual storage ID.
@@ -42,12 +43,13 @@ impl GlobalState {
     ) -> Result<Self, StartError> {
         Ok(Self {
             cli,
-            pool: Default::default(),
+            pool: RwLock::new(db.load()?),
             storage_ids: Default::default(),
             storage: Default::default(),
             envs: Default::default(),
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
+            db,
         })
     }
 
