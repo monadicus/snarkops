@@ -1,73 +1,27 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     net::IpAddr,
     sync::{Arc, Weak},
     time::Instant,
 };
 
-use bimap::BiMap;
 use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
-use prometheus_http_query::Client as PrometheusClient;
 use serde::Deserialize;
 use snops_common::{
     lasso::Spur,
-    rpc::{agent::AgentServiceClient, error::ReconcileError},
+    rpc::agent::AgentServiceClient,
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, AgentMode, AgentState, EnvId, NodeState, PortConfig},
+    state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
     INTERN,
 };
-use tarpc::{client::RpcError, context};
-use tokio::sync::{Mutex, RwLock};
 
-use self::util::OpaqueDebug;
-use crate::{
-    cli::Cli,
-    env::Environment,
-    error::StateError,
-    schema::storage::LoadedStorage,
-    server::{
-        jwt::{Claims, JWT_NONCE, JWT_SECRET},
-        prometheus::HttpsdResponse,
-    },
-};
+use super::AgentClient;
+use crate::server::jwt::{Claims, JWT_NONCE, JWT_SECRET};
 
-pub type AppState = Arc<GlobalState>;
-
-/// The global state for the control plane.
 #[derive(Debug)]
-pub struct GlobalState {
-    pub cli: Cli,
-    pub pool: RwLock<HashMap<AgentId, Agent>>,
-    /// A map from ephemeral integer storage ID to actual storage ID.
-    pub storage_ids: RwLock<BiMap<usize, String>>,
-    pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
-
-    pub envs: RwLock<HashMap<EnvId, Arc<Environment>>>,
-
-    pub prom_httpsd: Mutex<HttpsdResponse>,
-    pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
-}
-
-/// This is the representation of a public addr or a list of internal addrs.
-#[derive(Debug, Clone)]
-pub struct AgentAddrs {
-    pub external: Option<IpAddr>,
-    pub internal: Vec<IpAddr>,
-}
-
-impl AgentAddrs {
-    pub fn usable(&self) -> Option<IpAddr> {
-        self.external
-            .as_ref()
-            .or_else(|| self.internal.first())
-            .copied()
-    }
-
-    pub fn is_some(&self) -> bool {
-        self.external.is_some() || !self.internal.is_empty()
-    }
-}
+/// Apparently `const* ()` is not send, so this is a workaround
+pub struct Busy;
 
 /// An active agent, known by the control plane.
 #[derive(Debug)]
@@ -87,14 +41,8 @@ pub struct Agent {
 
     /// The external address of the agent, along with its local addresses.
     ports: Option<PortConfig>,
-    addrs: Option<AgentAddrs>,
+    pub(super) addrs: Option<AgentAddrs>,
 }
-
-#[derive(Debug)]
-/// Apparently `const* ()` is not send, so this is a workaround
-pub struct Busy;
-
-pub struct AgentClient(AgentServiceClient);
 
 impl Agent {
     pub fn new(rpc: AgentServiceClient, id: AgentId, flags: AgentFlags) -> Self {
@@ -311,120 +259,29 @@ impl Agent {
     }
 }
 
-impl AgentClient {
-    pub async fn reconcile(
-        &self,
-        to: AgentState,
-    ) -> Result<Result<AgentState, ReconcileError>, RpcError> {
-        self.0
-            .reconcile(context::current(), to.clone())
-            .await
-            .map(|res| res.map(|_| to))
-    }
-
-    pub async fn get_state_root(&self) -> Result<String, StateError> {
-        Ok(self.0.get_state_root(context::current()).await??)
-    }
-
-    pub async fn execute_authorization(
-        &self,
-        env_id: usize,
-        query: String,
-        auth: String,
-    ) -> Result<(), StateError> {
-        Ok(self
-            .0
-            .execute_authorization(context::current(), env_id, query, auth)
-            .await??)
-    }
-
-    pub async fn broadcast_tx(&self, tx: String) -> Result<(), StateError> {
-        Ok(self.0.broadcast_tx(context::current(), tx).await??)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum AgentConnection {
     Online(AgentServiceClient),
     Offline { since: Instant },
 }
 
-pub type AddrMap = HashMap<AgentId, AgentAddrs>;
-
-/// Given a map of addresses, resolve the addresses of a set of peers relative
-/// to a source agent.
-pub fn resolve_addrs(
-    addr_map: &AddrMap,
-    src: AgentId,
-    peers: &HashSet<AgentId>,
-) -> Result<HashMap<AgentId, IpAddr>, StateError> {
-    let src_addrs = addr_map
-        .get(&src)
-        .ok_or_else(|| StateError::SourceAgentNotFound(src))?;
-
-    let all_internal = addr_map
-        .values()
-        .all(|AgentAddrs { external, .. }| external.is_none());
-
-    Ok(peers
-        .iter()
-        .filter_map(|id| {
-            // ignore the source agent
-            if *id == src {
-                return None;
-            }
-
-            // if the agent has no addresses, skip it
-            let addrs = addr_map.get(id)?;
-
-            // if there are no external addresses in the entire addr map,
-            // use the first internal address
-            if all_internal {
-                return addrs.internal.first().copied().map(|addr| (*id, addr));
-            }
-
-            match (src_addrs.external, addrs.external, addrs.internal.first()) {
-                // if peers have the same external address, use the first internal address
-                (Some(src_ext), Some(peer_ext), Some(peer_int)) if src_ext == peer_ext => {
-                    Some((*id, *peer_int))
-                }
-                // otherwise use the external address
-                (_, Some(peer_ext), _) => Some((*id, peer_ext)),
-                _ => None,
-            }
-        })
-        .collect())
+/// This is the representation of a public addr or a list of internal addrs.
+#[derive(Debug, Clone)]
+pub struct AgentAddrs {
+    pub external: Option<IpAddr>,
+    pub internal: Vec<IpAddr>,
 }
-impl GlobalState {
-    /// Get a peer-to-addr mapping for a set of agents
-    /// Locks pools for reading
-    pub async fn get_addr_map(
-        &self,
-        filter: Option<&HashSet<AgentId>>,
-    ) -> Result<AddrMap, StateError> {
-        self.pool
-            .read()
-            .await
-            .iter()
-            .filter(|(id, _)| filter.is_none() || filter.is_some_and(|p| p.contains(id)))
-            .map(|(id, agent)| {
-                let addrs = agent
-                    .addrs
-                    .as_ref()
-                    .ok_or_else(|| StateError::NoAddress(*id))?;
-                Ok((*id, addrs.clone()))
-            })
-            .collect()
+
+impl AgentAddrs {
+    pub fn usable(&self) -> Option<IpAddr> {
+        self.external
+            .as_ref()
+            .or_else(|| self.internal.first())
+            .copied()
     }
 
-    /// Lookup an rpc client by agent id.
-    /// Locks pools for reading
-    pub async fn get_client(&self, id: AgentId) -> Option<AgentClient> {
-        self.pool
-            .read()
-            .await
-            .get(&id)
-            .and_then(|a| a.client_owned())
+    pub fn is_some(&self) -> bool {
+        self.external.is_some() || !self.internal.is_empty()
     }
 }
 
@@ -498,33 +355,5 @@ impl AgentFlags {
             }
         }
         mask
-    }
-}
-
-pub mod util {
-    use std::fmt::Debug;
-
-    /// A wrapper struct that has an "opaque" `Debug` implementation for types
-    /// that do not implement `Debug`.
-    pub struct OpaqueDebug<T>(pub T);
-
-    impl<T> Debug for OpaqueDebug<T> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str("(...)")
-        }
-    }
-
-    impl<T> std::ops::Deref for OpaqueDebug<T> {
-        type Target = T;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
-    }
-
-    impl<T> std::ops::DerefMut for OpaqueDebug<T> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            &mut self.0
-        }
     }
 }
