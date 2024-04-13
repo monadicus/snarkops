@@ -170,8 +170,8 @@ async fn handle_socket(
                 // attach the current known agent state to the handshake
                 agent.state().clone_into(&mut handshake.state);
 
-                // mark the agent as connected
-                agent.mark_connected(client);
+                // mark the agent as connected, update the flags as well
+                agent.mark_connected(client, query.flags);
 
                 let id = agent.id();
                 info!("agent {id} reconnected");

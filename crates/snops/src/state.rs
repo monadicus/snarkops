@@ -244,8 +244,9 @@ impl Agent {
         };
     }
 
-    pub fn mark_connected(&mut self, client: AgentServiceClient) {
+    pub fn mark_connected(&mut self, client: AgentServiceClient, flags: AgentFlags) {
         self.connection = AgentConnection::Online(client);
+        self.flags = flags;
     }
 
     /// Forcibly sets an agent's state. This does **not** reconcile the agent,
