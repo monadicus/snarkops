@@ -81,20 +81,20 @@ pub enum EnvNode {
     External(ExternalNode),
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 /// A way of looking up a peer in the test state.
 /// Could technically use AgentPeer like this but it would have needless port
 /// information
 pub enum EnvPeer {
     Internal(AgentId),
-    External,
+    External(NodeKey),
 }
 
 impl fmt::Display for EnvPeer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EnvPeer::Internal(id) => write!(f, "agent {id}"),
-            EnvPeer::External => write!(f, "external node"),
+            EnvPeer::External(k) => write!(f, "external node {k}"),
         }
     }
 }
@@ -247,13 +247,9 @@ impl Environment {
                             Entry::Vacant(ent) => ent.insert(EnvNode::External(node.to_owned())),
                         };
                     }
-                    node_map.extend(
-                        nodes
-                            .external
-                            .keys()
-                            .cloned()
-                            .map(|k| (k, EnvPeer::External)),
-                    )
+                    nodes.external.keys().for_each(|k| {
+                        node_map.insert(k.clone(), EnvPeer::External(k.clone()));
+                    })
                 }
 
                 ItemDocument::Timeline(sub_timeline) => {
@@ -480,7 +476,7 @@ impl Environment {
     pub fn get_agent_by_key(&self, key: &NodeKey) -> Option<AgentId> {
         self.node_map.get_by_left(key).and_then(|id| match id {
             EnvPeer::Internal(id) => Some(*id),
-            EnvPeer::External => None,
+            EnvPeer::External(_) => None,
         })
     }
 
@@ -507,10 +503,12 @@ impl Environment {
                     ))
                 }
 
-                EnvPeer::External => {
+                EnvPeer::External(_key) => {
                     let Some(EnvNode::External(external)) = self.initial_nodes.get(key) else {
+                        info!("ignoring node {key}");
                         return None;
                     };
+                    info!("using ext node {key}");
 
                     Some(AgentPeer::External(match port_type {
                         PortType::Bft => external.bft?,

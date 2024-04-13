@@ -57,7 +57,7 @@ impl<'de> Deserialize<'de> for ExternalNode {
             type Value = ExternalNode;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a socket address or a map of socket addresses")
+                formatter.write_str("an ip address or a map of socket addresses")
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
