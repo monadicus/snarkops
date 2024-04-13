@@ -14,10 +14,9 @@ use snops_common::{
     lasso::Spur,
     rpc::{agent::AgentServiceClient, error::ReconcileError},
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
+    state::{AgentId, AgentMode, AgentState, EnvId, NodeState, PortConfig},
     INTERN,
 };
-use surrealdb::{engine::local::Db, Surreal};
 use tarpc::{client::RpcError, context};
 use tokio::sync::{Mutex, RwLock};
 
@@ -39,13 +38,12 @@ pub type AppState = Arc<GlobalState>;
 #[derive(Debug)]
 pub struct GlobalState {
     pub cli: Cli,
-    pub db: Surreal<Db>,
     pub pool: RwLock<HashMap<AgentId, Agent>>,
     /// A map from ephemeral integer storage ID to actual storage ID.
     pub storage_ids: RwLock<BiMap<usize, String>>,
     pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
 
-    pub envs: RwLock<HashMap<usize, Arc<Environment>>>,
+    pub envs: RwLock<HashMap<EnvId, Arc<Environment>>>,
 
     pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,

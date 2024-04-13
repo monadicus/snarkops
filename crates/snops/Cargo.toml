@@ -38,7 +38,6 @@ serde_yaml.workspace = true
 sha2.workspace = true
 snops-common = { path = "../snops-common" }
 strum_macros.workspace = true
-surrealdb = { workspace = true, features = ["kv-rocksdb"] }
 tarpc.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

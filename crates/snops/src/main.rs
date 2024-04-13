@@ -28,8 +28,6 @@ async fn main() {
         .add_directive("hyper_util=off".parse().unwrap())
         .add_directive("hyper=off".parse().unwrap())
         .add_directive("reqwest=off".parse().unwrap())
-        .add_directive("surrealdb_core=off".parse().unwrap())
-        .add_directive("surrealdb=off".parse().unwrap())
         .add_directive("tungstenite=off".parse().unwrap())
         .add_directive("tokio_tungstenite=off".parse().unwrap())
         .add_directive("tarpc::client=ERROR".parse().unwrap())

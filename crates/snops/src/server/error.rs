@@ -64,8 +64,6 @@ impl IntoResponse for ServerError {
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum StartError {
-    #[error("failed to initialize the database: {0}")]
-    DbInit(#[from] surrealdb::Error),
     #[error("failed to serve: {0}")]
     Serve(#[source] std::io::Error),
     #[error("failed to bind to tcp: {0}")]
