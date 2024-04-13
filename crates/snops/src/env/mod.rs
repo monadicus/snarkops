@@ -274,7 +274,7 @@ impl Environment {
             if let TxSource::Playback { file_name } = source {
                 tx_pipe.drains.insert(
                     file_name.to_owned(),
-                    Arc::new(TransactionDrain::new(storage.clone(), file_name)?),
+                    Arc::new(TransactionDrain::new_unread(storage.clone(), file_name)?),
                 );
             }
 

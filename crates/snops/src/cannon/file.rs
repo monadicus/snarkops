@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader, BufWriter, Write},
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicU32, Arc, Mutex},
 };
 
 use tracing::debug;
@@ -13,24 +13,49 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct TransactionDrain(Mutex<Option<BufReader<File>>>);
+pub struct TransactionDrain {
+    /// Line reader
+    reader: Mutex<Option<BufReader<File>>>,
+    line: AtomicU32,
+}
 
 impl TransactionDrain {
     /// Create a new transaction drain
-    pub fn new(storage: Arc<LoadedStorage>, source: &str) -> Result<Self, CannonError> {
+    pub fn new_unread(storage: Arc<LoadedStorage>, source: &str) -> Result<Self, CannonError> {
+        Self::new(storage, source, 0)
+    }
+    /// Create a new transaction drain starting at a specific line
+    pub fn new(storage: Arc<LoadedStorage>, source: &str, line: u32) -> Result<Self, CannonError> {
         let source = storage.path.join(source);
         debug!("opening tx drain @ {source:?}");
 
         let f = File::open(&source)
             .map_err(|e| TransactionDrainError::FailedToOpenSource(source, e))?;
 
-        Ok(Self(Mutex::new(Some(BufReader::new(f)))))
+        let mut reader = BufReader::new(f);
+
+        // skip the first `line` lines
+        let mut buf = String::new();
+        for i in 0..line {
+            // if the file is empty, return an empty drain
+            if let Ok(0) = reader.read_line(&mut buf) {
+                return Ok(Self {
+                    reader: Mutex::new(None),
+                    line: AtomicU32::new(i),
+                });
+            }
+        }
+
+        Ok(Self {
+            reader: Mutex::new(Some(reader)),
+            line: AtomicU32::new(line),
+        })
     }
 
     /// Read the next line from the transaction drain
     pub fn next(&self) -> Result<Option<String>, CannonError> {
         let mut lock = self
-            .0
+            .reader
             .lock()
             .map_err(|_| TransactionDrainError::FailedToLock)?;
 
@@ -50,6 +75,7 @@ impl TransactionDrain {
             *lock = None;
             return Ok(None);
         }
+        self.line.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(Some(buf))
     }
 }
