@@ -6,8 +6,11 @@ use snops_common::{impl_into_status_code, impl_into_type_str, state::AgentId};
 use thiserror::Error;
 
 use crate::{
-    cannon::error::CannonError, db::error::DatabaseError, env::error::EnvError,
-    error::DeserializeError, schema::error::SchemaError,
+    cannon::error::CannonError,
+    db::error::DatabaseError,
+    env::error::EnvError,
+    error::DeserializeError,
+    schema::error::{SchemaError, StorageError},
 };
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]

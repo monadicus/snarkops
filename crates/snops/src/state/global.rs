@@ -1,20 +1,14 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
-use bimap::BiMap;
 use prometheus_http_query::Client as PrometheusClient;
-use snops_common::state::{AgentId, EnvId};
+use snops_common::state::AgentId;
 use tokio::sync::{Mutex, RwLock};
 
-use super::{AddrMap, AgentClient, AgentPool};
+use super::{persist::PersistedStorageMeta, AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
     cli::Cli,
     db::Database,
-    env::Environment,
     error::StateError,
-    schema::storage::LoadedStorage,
     server::{error::StartError, prometheus::HttpsdResponse},
     util::OpaqueDebug,
 };
@@ -25,27 +19,38 @@ pub struct GlobalState {
     pub db: Database,
     pub cli: Cli,
     pub pool: RwLock<AgentPool>,
-    /// A map from ephemeral integer storage ID to actual storage ID.
-    pub storage_ids: RwLock<BiMap<usize, String>>,
-    pub storage: RwLock<HashMap<usize, Arc<LoadedStorage>>>,
-
-    pub envs: RwLock<HashMap<EnvId, Arc<Environment>>>,
+    pub storage: RwLock<StorageMap>,
+    pub envs: RwLock<EnvMap>,
 
     pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
 }
 
 impl GlobalState {
-    pub fn load(
+    pub async fn load(
         cli: Cli,
         db: Database,
         prometheus: Option<PrometheusClient>,
     ) -> Result<Self, StartError> {
+        // Load storage meta from persistence, then read the storage data from FS
+        let storage_meta = db.load::<Vec<PersistedStorageMeta>>()?;
+        let mut storage = StorageMap::default();
+        for meta in storage_meta {
+            let id = meta.id.clone();
+            let loaded = match meta.load(&cli).await {
+                Ok(l) => l,
+                Err(e) => {
+                    tracing::error!("Error loading storage from persistence {id}: {e}");
+                    continue;
+                }
+            };
+            storage.insert(id, Arc::new(loaded));
+        }
+
         Ok(Self {
             cli,
             pool: RwLock::new(db.load()?),
-            storage_ids: Default::default(),
-            storage: Default::default(),
+            storage: RwLock::new(storage),
             envs: Default::default(),
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),

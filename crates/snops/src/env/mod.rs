@@ -274,14 +274,18 @@ impl Environment {
             if let TxSource::Playback { file_name } = source {
                 tx_pipe.drains.insert(
                     file_name.to_owned(),
-                    Arc::new(TransactionDrain::new_unread(storage.clone(), file_name)?),
+                    Arc::new(TransactionDrain::new_unread(
+                        &state,
+                        storage.clone(),
+                        file_name,
+                    )?),
                 );
             }
 
             if let TxSink::Record { file_name, .. } = sink {
                 tx_pipe.sinks.insert(
                     file_name.to_owned(),
-                    Arc::new(TransactionSink::new(storage.clone(), file_name)?),
+                    Arc::new(TransactionSink::new(&state, storage.clone(), file_name)?),
                 );
             }
         }

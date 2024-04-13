@@ -3,10 +3,7 @@ use std::{
     ops::Deref,
     path::PathBuf,
     process::{ExitStatus, Stdio},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 
 use checkpoint::{CheckpointManager, RetentionPolicy};
@@ -28,10 +25,16 @@ use super::{
     error::{SchemaError, StorageError},
     nodes::KeySource,
 };
-use crate::{error::CommandError, state::GlobalState};
+use crate::{
+    db::document::DbDocument,
+    error::CommandError,
+    state::{persist::PersistedStorageMeta, GlobalState},
+};
+
+pub const STORAGE_DIR: &str = "storage";
 
 /// A storage document. Explains how storage for a test should be set up.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct Document {
     pub id: FilenameString,
@@ -132,8 +135,6 @@ pub struct LoadedStorage {
     /// Version counter for this storage - incrementing will invalidate old
     /// saved ledgers
     pub version: u16,
-    /// Path to storage data
-    pub path: PathBuf,
     /// committee lookup
     pub committee: AleoAddrMap,
     /// other accounts files lookup
@@ -206,19 +207,21 @@ lazy_static! {
 
 impl Document {
     pub async fn prepare(self, state: &GlobalState) -> Result<Arc<LoadedStorage>, SchemaError> {
-        static STORAGE_ID_INT: AtomicUsize = AtomicUsize::new(0);
-
         let id = String::from(self.id.clone());
 
-        // ensure this ID isn't already prepared
-        if state.storage_ids.read().await.contains_right(&id) {
+        // todo: maybe update the loaded storage in global state if the hash
+        // of the storage document is different I guess...
+        // that might interfere with running tests, so I don't know
+
+        // add the prepared storage to the storage map
+
+        if state.storage.read().await.contains_key(&id) {
             // TODO: we probably don't want to warn here. instead, it would be nice to
             // hash/checksum the storage to compare it with the conflicting storage
             warn!("a storage with the id {id} has already been prepared");
         }
 
-        let mut base = state.cli.path.join("storage");
-        base.push(&id);
+        let base = state.cli.path.join(STORAGE_DIR).join(&id);
         let version_file = base.join(VERSION_FILE);
 
         // TODO: The dir can be made by a previous run and the aot stuff can fail
@@ -453,7 +456,7 @@ impl Document {
         let mut accounts = HashMap::new();
         accounts.insert(
             "accounts".to_owned(),
-            read_to_addrs(pick_additional_addr, base.join("accounts.json")).await?,
+            read_to_addrs(pick_additional_addr, &base.join("accounts.json")).await?,
         );
 
         if let Some(generation) = &self.generate {
@@ -463,7 +466,7 @@ impl Document {
                 };
                 accounts.insert(
                     stem.to_string_lossy().to_string(),
-                    read_to_addrs(pick_account_addr, account.file.clone()).await?,
+                    read_to_addrs(pick_account_addr, &account.file).await?,
                 );
             }
         }
@@ -472,15 +475,6 @@ impl Document {
         tokio::fs::write(&version_file, self.regen.to_string())
             .await
             .map_err(|e| StorageError::WriteVersion(version_file.clone(), e))?;
-
-        // todo: maybe update the loaded storage in global state if the hash
-        // of the storage document is different I guess...
-        // that might interfere with running tests, so I don't know
-
-        // add the prepared storage to the storage map
-        let mut storage_lock = state.storage_ids.write().await;
-        let int_id = STORAGE_ID_INT.fetch_add(1, Ordering::Relaxed);
-        storage_lock.insert(int_id, id.to_owned());
 
         let checkpoints = self
             .retention_policy
@@ -491,80 +485,89 @@ impl Document {
             .transpose()?;
 
         if let Some(checkpoints) = &checkpoints {
-            info!("checkpoint manager loaded {checkpoints}");
+            info!("storage {id} checkpoint manager loaded {checkpoints}");
         } else {
-            info!("storage loaded without a checkpoint manager");
+            info!("storage {id} loaded without a checkpoint manager");
         }
 
+        let committee_file = base.join("committee.json");
+
         // if the committee was specified in the generation params, use that
-        let committee = if let Some(StorageGeneration {
-            genesis:
-                GenesisGeneration {
-                    private_key,
-                    balances: GenesisBalances::Defined { bonded_balances },
-                    ..
-                },
-            ..
-        }) = self.generate.as_ref()
+        if let (
+            Some(StorageGeneration {
+                genesis:
+                    GenesisGeneration {
+                        private_key,
+                        balances: GenesisBalances::Defined { bonded_balances },
+                        ..
+                    },
+                ..
+            }),
+            false,
+        ) = (self.generate.as_ref(), committee_file.exists())
         {
             // TODO: should be possible to get committee from genesis blocks
             let mut balances: IndexMap<_, _> = bonded_balances
                 .iter()
-                .map(|(addr, _)| (addr.clone(), String::new()))
+                .map(|(addr, bal)| (addr.clone(), (String::new(), *bal)))
                 .collect();
 
             // derive the committee member 0's key
             if let (Some(key), true) = (private_key, !balances.is_empty()) {
-                balances[0].clone_from(key)
+                balances[0].0.clone_from(key)
             }
 
-            balances
-        } else {
-            // otherwise read the committee from the committee.json file
-            read_to_addrs(pick_commitee_addr, base.join("committee.json")).await?
+            // write balances to committee.json if if doesn't exist
+            tokio::fs::write(&committee_file, serde_json::to_string(&balances).unwrap())
+                .await
+                .map_err(|e| StorageError::WriteCommittee(committee_file.clone(), e))?;
         };
+        // otherwise read the committee from the committee.json file
+        let committee = read_to_addrs(pick_commitee_addr, &committee_file).await?;
 
         let storage = Arc::new(LoadedStorage {
             version: self.regen,
             id: id.to_owned(),
-            path: base.clone(),
             committee,
             accounts,
             checkpoints,
             persist: self.persist,
         });
         let mut storage_lock = state.storage.write().await;
-        storage_lock.insert(int_id, storage.clone());
+        if let Err(e) = PersistedStorageMeta::from(storage.deref()).save(&state.db, id.to_owned()) {
+            error!("failed to save storage meta: {e}");
+        }
+        storage_lock.insert(id.to_owned(), storage.clone());
 
         Ok(storage)
     }
 }
 
-fn pick_additional_addr(entry: (String, u64, Option<serde_json::Value>)) -> String {
+pub fn pick_additional_addr(entry: (String, u64, Option<serde_json::Value>)) -> String {
     entry.0
 }
-fn pick_commitee_addr(entry: (String, u64)) -> String {
+pub fn pick_commitee_addr(entry: (String, u64)) -> String {
     entry.0
 }
-fn pick_account_addr(entry: String) -> String {
+pub fn pick_account_addr(entry: String) -> String {
     entry
 }
 
 // TODO: function should also take storage id
 // in case of error, the storage id can be used to provide more context
-async fn read_to_addrs<T: DeserializeOwned>(
+pub async fn read_to_addrs<T: DeserializeOwned>(
     f: impl Fn(T) -> String,
-    file: PathBuf,
-) -> Result<AleoAddrMap, SchemaError> {
+    file: &PathBuf,
+) -> Result<AleoAddrMap, StorageError> {
     if !file.exists() {
         return Ok(Default::default());
     }
 
-    let data = tokio::fs::read_to_string(&file)
+    let data = tokio::fs::read_to_string(file)
         .await
         .map_err(|e| StorageError::ReadBalances(file.clone(), e))?;
     let parsed: IndexMap<String, T> =
-        serde_json::from_str(&data).map_err(|e| StorageError::ParseBalances(file, e))?;
+        serde_json::from_str(&data).map_err(|e| StorageError::ParseBalances(file.clone(), e))?;
 
     Ok(parsed.into_iter().map(|(k, v)| (k, f(v))).collect())
 }

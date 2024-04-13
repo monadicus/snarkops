@@ -36,6 +36,7 @@ use crate::{
     },
     env::{Environment, PortType},
     error::CommandError,
+    schema::storage::STORAGE_DIR,
     state::GlobalState,
 };
 
@@ -146,6 +147,11 @@ impl CannonInstance {
         let (tx_sender, tx_receiver) = tokio::sync::mpsc::unbounded_channel();
         let query_port = source.get_query_port()?;
         let fired_txs = Arc::new(AtomicUsize::new(0));
+        let storage_path = global_state
+            .cli
+            .path
+            .join(STORAGE_DIR)
+            .join(&env.storage.id);
 
         // spawn child process for ledger service if the source is local
         let child = if let Some(port) = query_port {
@@ -156,9 +162,9 @@ impl CannonInstance {
                 .stderr(Stdio::piped())
                 .arg("ledger")
                 .arg("-l")
-                .arg(env.storage.path.join(LEDGER_BASE_DIR))
+                .arg(storage_path.join(LEDGER_BASE_DIR))
                 .arg("-g")
-                .arg(env.storage.path.join(SNARKOS_GENESIS_FILE))
+                .arg(storage_path.join(SNARKOS_GENESIS_FILE))
                 .arg("query")
                 .arg("--port")
                 .arg(port.to_string())

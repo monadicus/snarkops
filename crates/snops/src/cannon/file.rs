@@ -9,7 +9,8 @@ use tracing::debug;
 use super::error::CannonError;
 use crate::{
     cannon::error::{TransactionDrainError, TransactionSinkError},
-    schema::storage::LoadedStorage,
+    schema::storage::{LoadedStorage, STORAGE_DIR},
+    state::GlobalState,
 };
 
 #[derive(Debug)]
@@ -21,12 +22,26 @@ pub struct TransactionDrain {
 
 impl TransactionDrain {
     /// Create a new transaction drain
-    pub fn new_unread(storage: Arc<LoadedStorage>, source: &str) -> Result<Self, CannonError> {
-        Self::new(storage, source, 0)
+    pub fn new_unread(
+        state: &GlobalState,
+        storage: Arc<LoadedStorage>,
+        source: &str,
+    ) -> Result<Self, CannonError> {
+        Self::new(state, storage, source, 0)
     }
     /// Create a new transaction drain starting at a specific line
-    pub fn new(storage: Arc<LoadedStorage>, source: &str, line: u32) -> Result<Self, CannonError> {
-        let source = storage.path.join(source);
+    pub fn new(
+        state: &GlobalState,
+        storage: Arc<LoadedStorage>,
+        source: &str,
+        line: u32,
+    ) -> Result<Self, CannonError> {
+        let source = state
+            .cli
+            .path
+            .join(STORAGE_DIR)
+            .join(&storage.id)
+            .join(source);
         debug!("opening tx drain @ {source:?}");
 
         let f = File::open(&source)
@@ -85,8 +100,17 @@ pub struct TransactionSink(Mutex<Option<BufWriter<File>>>);
 
 impl TransactionSink {
     /// Create a new transaction sink
-    pub fn new(storage: Arc<LoadedStorage>, target: &str) -> Result<Self, CannonError> {
-        let target = storage.path.join(target);
+    pub fn new(
+        state: &GlobalState,
+        storage: Arc<LoadedStorage>,
+        target: &str,
+    ) -> Result<Self, CannonError> {
+        let target = state
+            .cli
+            .path
+            .join(STORAGE_DIR)
+            .join(&storage.id)
+            .join(target);
         debug!("opening tx sink @ {target:?}");
 
         let f = File::options()

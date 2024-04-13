@@ -15,7 +15,7 @@ pub struct AgentFlags {
     pub(super) mode: AgentMode,
     #[serde(deserialize_with = "deser_labels", serialize_with = "ser_labels")]
     pub(super) labels: HashSet<Spur>,
-    #[serde(deserialize_with = "deser_pk", default)]
+    #[serde(deserialize_with = "deser_pk", default, serialize_with = "ser_pk")]
     pub(super) local_pk: bool,
 }
 

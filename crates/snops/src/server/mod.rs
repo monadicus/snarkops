@@ -52,7 +52,7 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
         .prometheus
         .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
 
-    let state = Arc::new(GlobalState::load(cli, db, prometheus)?);
+    let state = Arc::new(GlobalState::load(cli, db, prometheus).await?);
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))

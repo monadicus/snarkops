@@ -33,6 +33,8 @@ pub enum StorageError {
     ReadVersion(PathBuf, #[source] std::io::Error),
     #[error("writing version {0:#?}: {1}")]
     WriteVersion(PathBuf, #[source] std::io::Error),
+    #[error("writing commmittee {0:#?}: {1}")]
+    WriteCommittee(PathBuf, #[source] std::io::Error),
     #[error("parsing balances {0:#?}: {1}")]
     ParseBalances(PathBuf, #[source] serde_json::Error),
     #[error("error loading checkpoints: {0}")]

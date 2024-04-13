@@ -61,7 +61,7 @@ impl Agent {
         }
     }
 
-    pub(crate) fn restore(
+    pub(crate) fn from_components(
         claims: Claims,
         state: AgentState,
         flags: AgentFlags,
