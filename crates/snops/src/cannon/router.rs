@@ -8,6 +8,7 @@ use axum::{
 };
 use reqwest::StatusCode;
 use serde_json::json;
+use snops_common::state::EnvId;
 
 use super::Authorization;
 use crate::state::AppState;
@@ -20,7 +21,7 @@ pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
 }
 
 async fn state_root(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(EnvId, usize)>,
     state: State<AppState>,
 ) -> Response {
     let Some(env) = ({
@@ -76,7 +77,7 @@ async fn state_root(
 }
 
 async fn transaction(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(EnvId, usize)>,
     state: State<AppState>,
     body: String,
 ) -> Response {
@@ -111,7 +112,7 @@ async fn transaction(
 }
 
 async fn authorization(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(EnvId, usize)>,
     state: State<AppState>,
     Json(body): Json<Authorization>,
 ) -> Response {

@@ -7,7 +7,7 @@ use std::{
 use snops_common::{
     api::StorageInfo,
     rpc::control::ControlServiceClient,
-    state::{AgentId, AgentPeer, AgentState},
+    state::{AgentId, AgentPeer, AgentState, EnvId},
 };
 use tokio::{
     process::Child,
@@ -29,7 +29,7 @@ pub struct GlobalState {
     pub endpoint: String,
     pub jwt: Mutex<Option<String>>,
     pub agent_state: RwLock<AgentState>,
-    pub env_to_storage: RwLock<HashMap<usize, StorageInfo>>,
+    pub env_to_storage: RwLock<HashMap<EnvId, StorageInfo>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,
     pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
                                        * not sure yet */
@@ -55,7 +55,7 @@ impl GlobalState {
             .collect::<Vec<_>>()
     }
 
-    pub async fn get_env_info(&self, env_id: usize) -> anyhow::Result<StorageInfo> {
+    pub async fn get_env_info(&self, env_id: EnvId) -> anyhow::Result<StorageInfo> {
         if let Some(info) = self.env_to_storage.read().await.get(&env_id).cloned() {
             return Ok(info);
         }

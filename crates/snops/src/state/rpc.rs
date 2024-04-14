@@ -1,6 +1,6 @@
 use snops_common::{
     rpc::{agent::AgentServiceClient, error::ReconcileError},
-    state::AgentState,
+    state::{AgentState, EnvId},
 };
 use tarpc::{client::RpcError, context};
 
@@ -25,7 +25,7 @@ impl AgentClient {
 
     pub async fn execute_authorization(
         &self,
-        env_id: usize,
+        env_id: EnvId,
         query: String,
         auth: String,
     ) -> Result<(), StateError> {

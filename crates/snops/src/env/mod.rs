@@ -16,7 +16,7 @@ use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
-use snops_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
+use snops_common::state::{AgentId, AgentPeer, AgentState, EnvId, NodeKey};
 use tokio::{
     sync::{Mutex, RwLock},
     task::JoinHandle,
@@ -45,7 +45,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Environment {
-    pub id: usize,
+    pub id: EnvId,
     pub storage: Arc<LoadedStorage>,
 
     pub outcomes: OutcomeMetrics,
@@ -127,11 +127,10 @@ impl Environment {
     /// **This will error if the current env is not unset before calling to
     /// ensure tests are properly cleaned up.**
     pub async fn prepare(
+        env_id: EnvId,
         documents: Vec<ItemDocument>,
         state: Arc<GlobalState>,
-    ) -> Result<usize, EnvError> {
-        static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
+    ) -> Result<EnvId, EnvError> {
         let mut state_lock = state.envs.write().await;
         state.prom_httpsd.lock().await.set_dirty();
 
@@ -290,7 +289,6 @@ impl Environment {
             }
         }
 
-        let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
         let env = Arc::new(Environment {
             id: env_id,
             storage,
@@ -336,7 +334,7 @@ impl Environment {
         Ok(env_id)
     }
 
-    pub async fn cleanup(id: &usize, state: &GlobalState) -> Result<(), EnvError> {
+    pub async fn cleanup(id: &EnvId, state: &GlobalState) -> Result<(), EnvError> {
         // clear the env state
         info!("clearing env {id} state...");
         let env = state
@@ -406,7 +404,7 @@ impl Environment {
 
     // TODO: this is almost exactly the same as `cleanup`, maybe we can merge it
     // later
-    pub async fn forcefully_inventory(id: usize, state: &GlobalState) -> Result<(), EnvError> {
+    pub async fn forcefully_inventory(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
         let mut envs_lock = state.envs.write().await;
         let env = envs_lock
             .get_mut(&id)
@@ -537,7 +535,7 @@ impl Environment {
 }
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(), EnvError> {
+pub async fn initial_reconcile(env_id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
     let mut pending_reconciliations = vec![];
     {
         let envs_lock = state.envs.read().await;

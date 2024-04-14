@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snops_common::{impl_into_status_code, impl_into_type_str, state::NodeKey};
+use snops_common::{
+    impl_into_status_code, impl_into_type_str,
+    state::{EnvId, NodeKey},
+};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
@@ -134,7 +137,7 @@ pub enum ExecutionContextError {
     #[error("broadcast error for exec ctx `{0}`: {1}")]
     BroadcastRequest(usize, #[source] reqwest::Error),
     #[
-			error("env dropped{}{}`", 
+			error("env dropped{}{}`",
 			.0.map(|id| format!(" for cannon `{id}`")).unwrap_or_default(),
 			.1.map(|id| format!(" for exec ctx `{id}`")).unwrap_or_default()
 		)]
@@ -144,9 +147,9 @@ pub enum ExecutionContextError {
     #[error("no --host configured for demox based cannon")]
     NoDemoxHostConfigured,
     #[error("tx drain `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
-    TransactionDrainNotFound(usize, usize, String),
+    TransactionDrainNotFound(EnvId, usize, String),
     #[error("tx sink `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
-    TransactionSinkNotFound(usize, usize, String),
+    TransactionSinkNotFound(EnvId, usize, String),
 }
 
 impl_into_status_code!(ExecutionContextError, |value| match value {

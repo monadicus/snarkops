@@ -20,6 +20,7 @@ enum Commands {
     /// Prepare a (test) environment.
     #[command(arg_required_else_help = true)]
     Prepare {
+        id: String,
         /// The test spec file.
         #[clap(value_hint = ValueHint::AnyPath)]
         spec: PathBuf,
@@ -30,7 +31,7 @@ enum Commands {
     Start {
         /// Start a specific env.
         #[clap(value_hint = ValueHint::Other)]
-        id: usize,
+        id: String,
     },
 
     /// Stop an environment's timeline.
@@ -38,7 +39,7 @@ enum Commands {
     Stop {
         /// Stop a specific env.
         #[clap(value_hint = ValueHint::Other)]
-        id: usize,
+        id: String,
     },
 }
 
@@ -48,8 +49,8 @@ impl Env {
 
         use Commands::*;
         let response = match self.command {
-            Prepare { spec } => {
-                let ep = format!("{}/api/v1/env/prepare", self.url);
+            Prepare { id, spec } => {
+                let ep = format!("{}/api/v1/env/{id}/prepare", self.url);
                 let file: String = std::fs::read_to_string(spec)?;
 
                 client.post(ep).body(file).send()?
@@ -67,6 +68,10 @@ impl Env {
                 client.delete(ep).send()?
             }
         };
+
+        if !response.status().is_success() {
+            println!("error {}", response.status());
+        }
 
         let value = match response.content_length() {
             Some(0) | None => None,

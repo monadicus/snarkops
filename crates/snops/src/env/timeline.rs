@@ -6,7 +6,7 @@ use std::{
 use futures_util::future::join_all;
 use prometheus_http_query::response::Data;
 use promql_parser::label::{MatchOp, Matcher};
-use snops_common::state::{AgentId, AgentState};
+use snops_common::state::{AgentId, AgentState, EnvId};
 use tokio::{select, sync::RwLock, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
@@ -89,7 +89,7 @@ where
 }
 
 impl Environment {
-    pub async fn execute(state: Arc<GlobalState>, env_id: usize) -> Result<(), EnvError> {
+    pub async fn execute(state: Arc<GlobalState>, env_id: EnvId) -> Result<(), EnvError> {
         let env = Arc::clone(
             state
                 .envs

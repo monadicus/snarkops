@@ -187,7 +187,8 @@ async fn handle_socket(
         }
 
         // otherwise, we need to create an agent and give it a new JWT
-        let id = query.id.unwrap_or_default();
+        // TODO: remove unnamed agents
+        let id = query.id.unwrap_or_else(AgentId::rand);
 
         // check if an agent with this id is already online
         if pool.get(&id).map(Agent::is_connected).unwrap_or_default() {

@@ -2,21 +2,18 @@ use axum::{response::IntoResponse, Json};
 use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
-use snops_common::{impl_into_status_code, impl_into_type_str, state::AgentId};
+use snops_common::{impl_into_status_code, impl_into_type_str};
 use thiserror::Error;
 
 use crate::{
-    cannon::error::CannonError,
-    db::error::DatabaseError,
-    env::error::EnvError,
-    error::DeserializeError,
-    schema::error::{SchemaError, StorageError},
+    cannon::error::CannonError, db::error::DatabaseError, env::error::EnvError,
+    error::DeserializeError, schema::error::SchemaError,
 };
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum ServerError {
     #[error("agent `{0}` not found")]
-    AgentNotFound(AgentId),
+    AgentNotFound(String),
     #[error(transparent)]
     Cannon(#[from] CannonError),
     #[error(transparent)]

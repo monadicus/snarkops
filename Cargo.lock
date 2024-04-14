@@ -4687,6 +4687,7 @@ dependencies = [
  "http 1.1.0",
  "lasso",
  "lazy_static",
+ "rand",
  "regex",
  "serde",
  "strum_macros",
