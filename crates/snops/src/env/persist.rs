@@ -1,5 +1,5 @@
 use indexmap::IndexSet;
-use snops_common::state::{AgentId, CannonId, EnvId, NodeKey, StorageId};
+use snops_common::state::{AgentId, CannonId, EnvId, NodeKey, StorageId, TxPipeId};
 
 use super::{EnvNode, EnvPeer, Environment};
 use crate::{
@@ -15,9 +15,9 @@ pub struct PersistEnv {
     /// List of nodes and their states or external node info
     pub nodes: Vec<(NodeKey, PersistNode)>,
     /// List of drains and the number of consumed lines
-    pub tx_pipe_drains: Vec<String>,
+    pub tx_pipe_drains: Vec<TxPipeId>,
     /// List of sink names
-    pub tx_pipe_sinks: Vec<String>,
+    pub tx_pipe_sinks: Vec<TxPipeId>,
     /// Loaded cannon configs in this env
     pub cannon_configs: Vec<(CannonId, TxSource, TxSink)>,
 }
@@ -78,6 +78,13 @@ impl From<&Environment> for PersistEnv {
 pub enum PersistNode {
     Internal { node_index: u32, state: Box<Node> },
     External(ExternalNode),
+}
+
+/// Incremented when a transaction is drained
+pub struct PersistDrainCount {
+    pub env_id: EnvId,
+    pub drain_id: TxPipeId,
+    pub count: u64,
 }
 
 pub struct PersistCannon {

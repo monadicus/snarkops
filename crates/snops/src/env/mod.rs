@@ -14,7 +14,7 @@ use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
-use snops_common::state::{AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey};
+use snops_common::state::{AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TxPipeId};
 use tokio::{
     sync::{Mutex, RwLock},
     task::JoinHandle,
@@ -67,8 +67,8 @@ pub struct Environment {
 
 #[derive(Debug, Clone, Default)]
 pub struct TxPipes {
-    pub drains: HashMap<String, Arc<TransactionDrain>>,
-    pub sinks: HashMap<String, Arc<TransactionSink>>,
+    pub drains: HashMap<TxPipeId, Arc<TransactionDrain>>,
+    pub sinks: HashMap<TxPipeId, Arc<TransactionSink>>,
 }
 
 /// The effective test state of a node.
@@ -270,19 +270,19 @@ impl Environment {
         for (source, sink) in cannon_configs.values() {
             if let TxSource::Playback { file_name } = source {
                 tx_pipe.drains.insert(
-                    file_name.to_owned(),
+                    *file_name,
                     Arc::new(TransactionDrain::new_unread(
                         &state,
                         storage.clone(),
-                        file_name,
+                        *file_name,
                     )?),
                 );
             }
 
             if let TxSink::Record { file_name, .. } = sink {
                 tx_pipe.sinks.insert(
-                    file_name.to_owned(),
-                    Arc::new(TransactionSink::new(&state, storage.clone(), file_name)?),
+                    *file_name,
+                    Arc::new(TransactionSink::new(&state, storage.clone(), *file_name)?),
                 );
             }
         }

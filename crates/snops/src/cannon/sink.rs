@@ -1,6 +1,7 @@
 use std::{future, time::Duration};
 
 use serde::{Deserialize, Serialize};
+use snops_common::state::TxPipeId;
 use tokio::time::Instant;
 
 use crate::schema::NodeTargets;
@@ -16,7 +17,7 @@ pub enum TxSink {
     #[serde(rename_all = "kebab-case")]
     Record {
         /// filename for the recording txs list
-        file_name: String,
+        file_name: TxPipeId,
         #[serde(default = "one_thousand")]
         tx_request_delay_ms: u32,
     },

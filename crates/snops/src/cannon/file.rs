@@ -4,6 +4,7 @@ use std::{
     sync::{atomic::AtomicU32, Arc, Mutex},
 };
 
+use snops_common::state::TxPipeId;
 use tracing::debug;
 
 use super::error::CannonError;
@@ -25,7 +26,7 @@ impl TransactionDrain {
     pub fn new_unread(
         state: &GlobalState,
         storage: Arc<LoadedStorage>,
-        source: &str,
+        source: TxPipeId,
     ) -> Result<Self, CannonError> {
         Self::new(state, storage, source, 0)
     }
@@ -33,7 +34,7 @@ impl TransactionDrain {
     pub fn new(
         state: &GlobalState,
         storage: Arc<LoadedStorage>,
-        source: &str,
+        source: TxPipeId,
         line: u32,
     ) -> Result<Self, CannonError> {
         let source = state
@@ -41,7 +42,7 @@ impl TransactionDrain {
             .path
             .join(STORAGE_DIR)
             .join(storage.id.to_string())
-            .join(source);
+            .join(source.to_string());
         debug!("opening tx drain @ {source:?}");
 
         let f = File::open(&source)
@@ -103,14 +104,14 @@ impl TransactionSink {
     pub fn new(
         state: &GlobalState,
         storage: Arc<LoadedStorage>,
-        target: &str,
+        target: TxPipeId,
     ) -> Result<Self, CannonError> {
         let target = state
             .cli
             .path
             .join(STORAGE_DIR)
             .join(storage.id.to_string())
-            .join(target);
+            .join(target.to_string());
         debug!("opening tx sink @ {target:?}");
 
         let f = File::options()

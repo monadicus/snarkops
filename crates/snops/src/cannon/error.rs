@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     impl_into_status_code, impl_into_type_str,
-    state::{CannonId, EnvId, NodeKey},
+    state::{CannonId, EnvId, NodeKey, TxPipeId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -147,9 +147,9 @@ pub enum ExecutionContextError {
     #[error("no --host configured for demox based cannon")]
     NoDemoxHostConfigured,
     #[error("tx drain `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
-    TransactionDrainNotFound(EnvId, CannonId, String),
+    TransactionDrainNotFound(EnvId, CannonId, TxPipeId),
     #[error("tx sink `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
-    TransactionSinkNotFound(EnvId, CannonId, String),
+    TransactionSinkNotFound(EnvId, CannonId, TxPipeId),
 }
 
 impl_into_status_code!(ExecutionContextError, |value| match value {

@@ -359,9 +359,7 @@ impl ExecutionContext {
                 let pipe = env.tx_pipe.drains.get(name).cloned();
                 if pipe.is_none() {
                     return Err(ExecutionContextError::TransactionDrainNotFound(
-                        env_id,
-                        *cannon_id,
-                        name.clone(),
+                        env_id, *cannon_id, *name,
                     )
                     .into());
                 }
@@ -390,9 +388,7 @@ impl ExecutionContext {
                 let pipe = env.tx_pipe.sinks.get(file_name).cloned();
                 if pipe.is_none() {
                     return Err(ExecutionContextError::TransactionSinkNotFound(
-                        env_id,
-                        *cannon_id,
-                        file_name.clone(),
+                        env_id, *cannon_id, *file_name,
                     )
                     .into());
                 }

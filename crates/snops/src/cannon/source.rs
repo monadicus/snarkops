@@ -2,7 +2,11 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snops_common::{lasso::Spur, state::NodeKey, INTERN};
+use snops_common::{
+    lasso::Spur,
+    state::{NodeKey, TxPipeId},
+    INTERN,
+};
 
 use super::{
     authorized::Authorize,
@@ -152,7 +156,7 @@ pub enum TxSource {
     #[serde(rename_all = "kebab-case")]
     Playback {
         // filename from the storage for the tx list
-        file_name: String,
+        file_name: TxPipeId,
     },
     /// Generate transactions in real time
     #[serde(rename_all = "kebab-case")]
