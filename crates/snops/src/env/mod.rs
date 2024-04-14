@@ -4,11 +4,7 @@ pub mod set;
 pub mod timeline;
 
 use core::fmt;
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{atomic::AtomicUsize, Arc},
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
@@ -21,7 +17,7 @@ use tokio::{
 };
 use tracing::{error, info, warn};
 
-use self::{error::*, timeline::reconcile_agents};
+use self::{error::*, persist::PersistEnv, timeline::reconcile_agents};
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -29,6 +25,7 @@ use crate::{
         source::TxSource,
         CannonInstance,
     },
+    db::document::DbDocument,
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, BusyMode},
     error::DeserializeError,
     schema::{
@@ -56,8 +53,6 @@ pub struct Environment {
     pub tx_pipe: TxPipes,
     /// Map of cannon ids to their cannon configurations
     pub cannon_configs: HashMap<CannonId, (TxSource, TxSink)>,
-    /// To help generate the id of the new cannon.
-    pub cannons_counter: AtomicUsize,
     /// Map of cannon ids to their cannon instances
     pub cannons: Arc<RwLock<HashMap<CannonId, CannonInstance>>>,
 
@@ -272,8 +267,7 @@ impl Environment {
                 tx_pipe.drains.insert(
                     *file_name,
                     Arc::new(TransactionDrain::new_unread(
-                        &state,
-                        storage.clone(),
+                        storage.path(&state),
                         *file_name,
                     )?),
                 );
@@ -282,7 +276,7 @@ impl Environment {
             if let TxSink::Record { file_name, .. } = sink {
                 tx_pipe.sinks.insert(
                     *file_name,
-                    Arc::new(TransactionSink::new(&state, storage.clone(), *file_name)?),
+                    Arc::new(TransactionSink::new(storage.path(&state), *file_name)?),
                 );
             }
         }
@@ -296,7 +290,6 @@ impl Environment {
             initial_nodes,
             tx_pipe,
             cannon_configs,
-            cannons_counter: Default::default(),
             cannons: Default::default(),
             // TODO: specify the binary when uploading the test or something
             aot_bin: DEFAULT_AOT_BIN.clone(),
@@ -305,6 +298,9 @@ impl Environment {
         });
 
         state_lock.insert(env_id, Arc::clone(&env));
+        if let Err(e) = PersistEnv::from(env.as_ref()).save(&state.db, env_id) {
+            error!("failed to save env {env_id} to persistence: {e}");
+        }
         drop(state_lock);
 
         // reconcile the nodes
@@ -341,6 +337,10 @@ impl Environment {
             .await
             .remove(id)
             .ok_or(CleanupError::EnvNotFound(*id))?;
+        if let Err(e) = PersistEnv::delete(&state.db, *id) {
+            error!("failed to save delete {id} to persistence: {e}");
+        }
+
         state.prom_httpsd.lock().await.set_dirty();
 
         // stop the timeline if it's running

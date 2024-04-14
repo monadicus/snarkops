@@ -14,6 +14,8 @@ pub enum DatabaseError {
     SerializeError(String, String, bincode::Error),
     #[error("missing key {0} in {1}")]
     MissingKey(String, String),
-    #[error("unknown document version for: {0}")]
-    UnsupportedVersion(String, u8),
+    #[error("unknown document version {2} for: {1} in {0}")]
+    UnsupportedVersion(String, String, u8),
+    #[error("transaction error: {0}")]
+    TransactionError(#[from] sled::transaction::TransactionError),
 }

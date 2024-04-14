@@ -2,6 +2,7 @@ pub mod authorized;
 pub mod error;
 pub mod file;
 mod net;
+pub mod persist;
 pub mod router;
 pub mod sink;
 pub mod source;
@@ -485,10 +486,18 @@ impl ExecutionContext {
     ) -> Result<bool, CannonError> {
         match &self.source {
             TxSource::Playback { .. } => {
-                // if tx source is playback, read lines from the transaction file
-                let Some(transaction) = drain_pipe.unwrap().next()? else {
+                let Some(drain_pipe) = drain_pipe else {
                     return Ok(false);
                 };
+
+                let tx = drain_pipe.next()?;
+                drain_pipe.write_persistence(self);
+
+                // if tx source is playback, read lines from the transaction file
+                let Some(transaction) = tx else {
+                    return Ok(false);
+                };
+
                 self.tx_sender
                     .send(transaction)
                     .map_err(|e| CannonError::SendTxError(self.id, e))?;

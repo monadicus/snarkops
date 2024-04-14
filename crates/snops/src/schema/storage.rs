@@ -23,6 +23,7 @@ use super::{
     nodes::KeySource,
 };
 use crate::{
+    cli::Cli,
     db::document::DbDocument,
     error::CommandError,
     state::{persist::PersistStorage, GlobalState},
@@ -639,6 +640,14 @@ impl LoadedStorage {
             checkpoints,
             persist: self.persist,
         }
+    }
+
+    pub fn path(&self, state: &GlobalState) -> PathBuf {
+        self.path_cli(&state.cli)
+    }
+
+    pub fn path_cli(&self, cli: &Cli) -> PathBuf {
+        cli.path.join(STORAGE_DIR).join(self.id.to_string())
     }
 }
 

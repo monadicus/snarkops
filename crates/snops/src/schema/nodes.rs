@@ -34,7 +34,7 @@ pub struct Document {
     pub nodes: IndexMap<NodeKey, Node>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ExternalNode {
     // NOTE: these fields must be validated at runtime, because validators require `bft` to be set,
     // and non-validators require `node` to be set
@@ -114,20 +114,28 @@ fn please_be_online() -> bool {
 }
 
 /// Parse the labels as strings, but intern them on load
-fn get_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
+fn deser_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
 where
-    D: Deserializer<'de>,
+    D: serde::Deserializer<'de>,
 {
-    let labels = Vec::<String>::deserialize(deserializer)?;
+    let labels = Vec::<&str>::deserialize(deserializer)?;
     Ok(labels
         .into_iter()
         .map(|label| INTERN.get_or_intern(label))
         .collect())
 }
 
+fn ser_label<S>(labels: &HashSet<Spur>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let labels: Vec<&str> = labels.iter().map(|key| INTERN.resolve(key)).collect();
+    labels.serialize(serializer)
+}
+
 // TODO: could use some more clarification on some of these fields
 /// A node in the testing infrastructure.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Node {
     #[serde(default = "please_be_online")]
     pub online: bool,
@@ -145,7 +153,11 @@ pub struct Node {
     pub height: DocHeightRequest,
 
     /// When specified, agents must have these labels
-    #[serde(default, deserialize_with = "get_label")]
+    #[serde(
+        default,
+        deserialize_with = "deser_label",
+        serialize_with = "ser_label"
+    )]
     pub labels: HashSet<Spur>,
 
     /// When specified, an agent must have this id. Overrides the labels field.

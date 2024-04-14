@@ -8,6 +8,7 @@ use super::{persist::PersistStorage, AddrMap, AgentClient, AgentPool, EnvMap, St
 use crate::{
     cli::Cli,
     db::Database,
+    env::persist::PersistEnv,
     error::StateError,
     server::{error::StartError, prometheus::HttpsdResponse},
     util::OpaqueDebug,
@@ -47,11 +48,25 @@ impl GlobalState {
             storage.insert(id, Arc::new(loaded));
         }
 
+        let env_meta = db.load::<Vec<PersistEnv>>()?;
+        let mut envs = EnvMap::default();
+        for meta in env_meta {
+            let id = meta.id;
+            let loaded = match meta.load(&db, &storage, &cli).await {
+                Ok(l) => l,
+                Err(e) => {
+                    tracing::error!("Error loading storage from persistence {id}: {e}");
+                    continue;
+                }
+            };
+            envs.insert(id, Arc::new(loaded));
+        }
+
         Ok(Self {
             cli,
             pool: RwLock::new(db.load()?),
             storage: RwLock::new(storage),
-            envs: Default::default(),
+            envs: RwLock::new(envs),
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db,

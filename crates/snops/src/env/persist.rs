@@ -1,16 +1,33 @@
-use indexmap::IndexSet;
+use std::{collections::HashMap, sync::Arc};
+
+use bimap::BiMap;
+use bytes::{Buf, BufMut};
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use snops_common::state::{AgentId, CannonId, EnvId, NodeKey, StorageId, TxPipeId};
 
-use super::{EnvNode, EnvPeer, Environment};
+use super::{EnvError, EnvNode, EnvPeer, Environment, PrepareError, TxPipes};
 use crate::{
-    cannon::{sink::TxSink, source::TxSource},
-    schema::nodes::{ExternalNode, Node},
+    cannon::{
+        file::{TransactionDrain, TransactionSink},
+        sink::TxSink,
+        source::TxSource,
+    },
+    cli::Cli,
+    db::{
+        document::{concat_ids, load_interned_id, DbCollection, DbDocument},
+        error::DatabaseError,
+        Database,
+    },
+    schema::{
+        nodes::{ExternalNode, Node},
+        storage::DEFAULT_AOT_BIN,
+    },
+    state::StorageMap,
 };
 
 pub struct PersistEnv {
     pub id: EnvId,
-    /// A map of agents for looking them up later
-    pub agents: IndexSet<AgentId>,
     pub storage_id: StorageId,
     /// List of nodes and their states or external node info
     pub nodes: Vec<(NodeKey, PersistNode)>,
@@ -24,34 +41,22 @@ pub struct PersistEnv {
 
 impl From<&Environment> for PersistEnv {
     fn from(value: &Environment) -> Self {
-        let agents: IndexSet<_> = value
-            .node_map
-            .right_values()
-            .filter_map(|n| match n {
-                EnvPeer::Internal(a) => Some(*a),
-                EnvPeer::External(_) => None,
-            })
-            .collect();
-
         let nodes = value
             .initial_nodes
             .iter()
             .filter_map(|(k, v)| {
                 let agent_index = value.node_map.get_by_left(k).and_then(|v| {
                     if let EnvPeer::Internal(a) = v {
-                        agents.get_index_of(a).map(|i| i as u32)
+                        Some(a)
                     } else {
                         None
                     }
                 });
                 match v {
-                    EnvNode::Internal(n) => agent_index.map(|index| {
+                    EnvNode::Internal(n) => agent_index.map(|agent| {
                         (
                             k.clone(),
-                            PersistNode::Internal {
-                                state: Box::new(n.clone()),
-                                node_index: index,
-                            },
+                            PersistNode::Internal(*agent, Box::new(n.clone())),
                         )
                     }),
                     EnvNode::External(n) => Some((k.clone(), PersistNode::External(n.clone()))),
@@ -61,7 +66,6 @@ impl From<&Environment> for PersistEnv {
 
         PersistEnv {
             id: value.id,
-            agents,
             storage_id: value.storage.id,
             nodes,
             tx_pipe_drains: value.tx_pipe.drains.keys().cloned().collect(),
@@ -75,22 +79,238 @@ impl From<&Environment> for PersistEnv {
     }
 }
 
+impl PersistEnv {
+    pub async fn load(
+        self,
+        db: &Database,
+        storage: &StorageMap,
+        cli: &Cli,
+    ) -> Result<Environment, EnvError> {
+        let storage = storage
+            .get(&self.storage_id)
+            .ok_or(PrepareError::MissingStorage)?;
+
+        let mut node_map = BiMap::default();
+        let mut initial_nodes = IndexMap::default();
+        for (key, v) in self.nodes {
+            match v {
+                PersistNode::Internal(agent, n) => {
+                    node_map.insert(key.clone(), EnvPeer::Internal(agent));
+                    initial_nodes.insert(key, EnvNode::Internal(*n));
+                }
+                PersistNode::External(n) => {
+                    node_map.insert(key.clone(), EnvPeer::External(key.clone()));
+                    initial_nodes.insert(key, EnvNode::External(n));
+                }
+            }
+        }
+
+        let mut tx_pipe = TxPipes::default();
+        for drain_id in self.tx_pipe_drains {
+            let count = match PersistDrainCount::restore(db, (self.id, drain_id)) {
+                Ok(Some(count)) => count.count,
+                Ok(None) => 0,
+                Err(e) => {
+                    tracing::error!("Error loading drain count for {}/{drain_id}: {e}", self.id);
+                    0
+                }
+            };
+
+            tx_pipe.drains.insert(
+                drain_id,
+                Arc::new(TransactionDrain::new(
+                    storage.path_cli(cli),
+                    drain_id,
+                    count,
+                )?),
+            );
+        }
+        for sink_id in self.tx_pipe_sinks {
+            tx_pipe.sinks.insert(
+                sink_id,
+                Arc::new(TransactionSink::new(storage.path_cli(cli), sink_id)?),
+            );
+        }
+
+        let mut cannon_configs = HashMap::new();
+        for (k, source, sink) in self.cannon_configs {
+            cannon_configs.insert(k, (source, sink));
+        }
+
+        Ok(Environment {
+            id: self.id,
+            storage: storage.clone(),
+            node_map,
+            initial_nodes,
+            tx_pipe,
+            cannon_configs,
+            aot_bin: DEFAULT_AOT_BIN.clone(),
+            cannons: Default::default(), // TODO: load cannons first
+
+            // TODO: create persistence for these documents or move out of env
+            outcomes: Default::default(),
+            timeline: Default::default(),
+            timeline_handle: Default::default(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PersistNode {
-    Internal { node_index: u32, state: Box<Node> },
+    Internal(AgentId, Box<Node>),
     External(ExternalNode),
 }
 
-/// Incremented when a transaction is drained
 pub struct PersistDrainCount {
-    pub env_id: EnvId,
-    pub drain_id: TxPipeId,
-    pub count: u64,
+    pub count: u32,
 }
 
-pub struct PersistCannon {
-    pub id: CannonId,
-    pub env_id: EnvId,
-    pub source: TxSource,
-    pub sink: TxSink,
-    pub tx_count: u64,
+impl DbCollection for Vec<PersistEnv> {
+    fn restore(db: &Database) -> Result<Self, DatabaseError> {
+        let mut vec = Vec::new();
+        for row in db.envs.iter() {
+            let Some(id) = load_interned_id(row, "env") else {
+                continue;
+            };
+
+            match DbDocument::restore(db, id) {
+                Ok(Some(storage)) => {
+                    vec.push(storage);
+                }
+                // should be unreachable
+                Ok(None) => {
+                    tracing::error!("Env {} not found in database", id);
+                }
+                Err(e) => {
+                    tracing::error!("Error restoring env {}: {}", id, e);
+                }
+            }
+        }
+        Ok(vec)
+    }
+}
+
+const ENV_VERSION: u8 = 1;
+impl DbDocument for PersistEnv {
+    type Key = EnvId;
+
+    fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
+        let Some(raw) = db
+            .envs
+            .get(key)
+            .map_err(|e| DatabaseError::LookupError(key.to_string(), "env".to_owned(), e))?
+        else {
+            return Ok(None);
+        };
+
+        let mut buf = raw.as_ref();
+        let version = buf.get_u8();
+        if version != ENV_VERSION {
+            return Err(DatabaseError::UnsupportedVersion(
+                key.to_string(),
+                "env".to_owned(),
+                version,
+            ));
+        };
+
+        let (storage_id, nodes, tx_pipe_drains, tx_pipe_sinks, cannon_configs) =
+            bincode::deserialize(buf).map_err(|e| {
+                DatabaseError::DeserializeError(key.to_string(), "env".to_owned(), e)
+            })?;
+
+        Ok(Some(PersistEnv {
+            id: key,
+            storage_id,
+            nodes,
+            tx_pipe_drains,
+            tx_pipe_sinks,
+            cannon_configs,
+        }))
+    }
+
+    fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
+        let mut buf = vec![];
+        buf.put_u8(ENV_VERSION);
+        bincode::serialize_into(
+            &mut buf,
+            &(
+                &self.storage_id,
+                &self.nodes,
+                &self.tx_pipe_drains,
+                &self.tx_pipe_sinks,
+                &self.cannon_configs,
+            ),
+        )
+        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "env".to_owned(), e))?;
+        db.envs
+            .insert(key, buf)
+            .map_err(|e| DatabaseError::SaveError(key.to_string(), "env".to_owned(), e))?;
+        Ok(())
+    }
+
+    fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
+        let res = db.envs.remove(key).map(|v| v.is_some())?;
+
+        // remove drains associated with this env
+        for (drain_id, _) in db.tx_drain_counts.scan_prefix(key).flatten() {
+            if let Err(e) = db.tx_drain_counts.remove(drain_id) {
+                tracing::error!("Error deleting tx_pipe_drains for env {}: {e}", key);
+            }
+        }
+
+        Ok(res)
+    }
+}
+
+const DRAIN_COUNT_VERSION: u8 = 1;
+impl DbDocument for PersistDrainCount {
+    type Key = (EnvId, TxPipeId);
+
+    fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
+        let key_str = format!("{}.{}", key.0, key.1);
+        let key_bin = concat_ids([key.0, key.1]);
+
+        let Some(raw) = db.tx_drain_counts.get(key_bin).map_err(|e| {
+            DatabaseError::LookupError(key_str.clone(), "tx_pipe_drains".to_owned(), e)
+        })?
+        else {
+            return Ok(None);
+        };
+
+        let mut buf = raw.as_ref();
+        let version = buf.get_u8();
+        if version != DRAIN_COUNT_VERSION {
+            return Err(DatabaseError::UnsupportedVersion(
+                key_str,
+                "tx_pipe_drains".to_owned(),
+                version,
+            ));
+        };
+
+        let count = buf.get_u32();
+        Ok(Some(PersistDrainCount { count }))
+    }
+
+    fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
+        let key_str = format!("{}.{}", key.0, key.1);
+        let key_bin = concat_ids([key.0, key.1]);
+
+        let mut buf = vec![];
+        buf.put_u8(DRAIN_COUNT_VERSION);
+        buf.put_u32(self.count);
+        db.tx_drain_counts
+            .insert(key_bin, buf)
+            .map_err(|e| DatabaseError::SaveError(key_str, "tx_pipe_drains".to_owned(), e))?;
+        Ok(())
+    }
+
+    fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
+        let key_str = format!("{}.{}", key.0, key.1);
+        let key_bin = concat_ids([key.0, key.1]);
+
+        db.tx_drain_counts
+            .remove(key_bin)
+            .map_err(|e| DatabaseError::DeleteError(key_str, "tx_pipe_drains".to_owned(), e))
+            .map(|v| v.is_some())
+    }
 }

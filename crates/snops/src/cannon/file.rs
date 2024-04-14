@@ -1,21 +1,23 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader, BufWriter, Write},
-    sync::{atomic::AtomicU32, Arc, Mutex},
+    path::PathBuf,
+    sync::{atomic::AtomicU32, Mutex},
 };
 
 use snops_common::state::TxPipeId;
 use tracing::debug;
 
-use super::error::CannonError;
+use super::{error::CannonError, ExecutionContext};
 use crate::{
     cannon::error::{TransactionDrainError, TransactionSinkError},
-    schema::storage::{LoadedStorage, STORAGE_DIR},
-    state::GlobalState,
+    db::document::DbDocument,
+    env::persist::PersistDrainCount,
 };
 
 #[derive(Debug)]
 pub struct TransactionDrain {
+    id: TxPipeId,
     /// Line reader
     reader: Mutex<Option<BufReader<File>>>,
     pub(crate) line: AtomicU32,
@@ -23,26 +25,12 @@ pub struct TransactionDrain {
 
 impl TransactionDrain {
     /// Create a new transaction drain
-    pub fn new_unread(
-        state: &GlobalState,
-        storage: Arc<LoadedStorage>,
-        source: TxPipeId,
-    ) -> Result<Self, CannonError> {
-        Self::new(state, storage, source, 0)
+    pub fn new_unread(storage_path: PathBuf, source: TxPipeId) -> Result<Self, CannonError> {
+        Self::new(storage_path, source, 0)
     }
     /// Create a new transaction drain starting at a specific line
-    pub fn new(
-        state: &GlobalState,
-        storage: Arc<LoadedStorage>,
-        source: TxPipeId,
-        line: u32,
-    ) -> Result<Self, CannonError> {
-        let source = state
-            .cli
-            .path
-            .join(STORAGE_DIR)
-            .join(storage.id.to_string())
-            .join(source.to_string());
+    pub fn new(storage_path: PathBuf, id: TxPipeId, line: u32) -> Result<Self, CannonError> {
+        let source = storage_path.join(id.to_string());
         debug!("opening tx drain @ {source:?}");
 
         let f = File::open(&source)
@@ -56,6 +44,7 @@ impl TransactionDrain {
             // if the file is empty, return an empty drain
             if let Ok(0) = reader.read_line(&mut buf) {
                 return Ok(Self {
+                    id,
                     reader: Mutex::new(None),
                     line: AtomicU32::new(i),
                 });
@@ -63,6 +52,7 @@ impl TransactionDrain {
         }
 
         Ok(Self {
+            id,
             reader: Mutex::new(Some(reader)),
             line: AtomicU32::new(line),
         })
@@ -94,6 +84,24 @@ impl TransactionDrain {
         self.line.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(Some(buf))
     }
+
+    /// Save persistence for this drain
+    pub fn write_persistence(&self, ctx: &ExecutionContext) {
+        let Some(env) = ctx.env.upgrade() else {
+            return;
+        };
+
+        let key = (env.id, self.id);
+        let count = self.line.load(std::sync::atomic::Ordering::Relaxed);
+
+        if let Err(e) = (PersistDrainCount { count }).save(&ctx.state.db, key) {
+            tracing::error!(
+                "Error saving drain count for env {}, drain {}: {e}",
+                env.id,
+                self.id
+            );
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -101,17 +109,8 @@ pub struct TransactionSink(Mutex<Option<BufWriter<File>>>);
 
 impl TransactionSink {
     /// Create a new transaction sink
-    pub fn new(
-        state: &GlobalState,
-        storage: Arc<LoadedStorage>,
-        target: TxPipeId,
-    ) -> Result<Self, CannonError> {
-        let target = state
-            .cli
-            .path
-            .join(STORAGE_DIR)
-            .join(storage.id.to_string())
-            .join(target.to_string());
+    pub fn new(storage_dir: PathBuf, target: TxPipeId) -> Result<Self, CannonError> {
+        let target = storage_dir.join(target.to_string());
         debug!("opening tx sink @ {target:?}");
 
         let f = File::options()

@@ -1,3 +1,8 @@
+use std::str::FromStr;
+
+use sled::IVec;
+use snops_common::state::InternedId;
+
 use super::{error::DatabaseError, Database};
 
 pub trait DbDocument: Sized {
@@ -10,7 +15,7 @@ pub trait DbDocument: Sized {
     fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError>;
 
     /// Delete the state of the object to the database (idempotent)
-    fn delete(&self, db: &Database, key: Self::Key) -> Result<bool, DatabaseError>;
+    fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError>;
 
     // Find all keys that are dangling (referenced by another object that does
     // not exist)
@@ -21,4 +26,40 @@ pub trait DbDocument: Sized {
 pub trait DbCollection: Sized {
     /// Restore the state of a collection from the database at load time
     fn restore(db: &Database) -> Result<Self, DatabaseError>;
+}
+
+/// Load an interned id from a row in the database, returning None if there is
+/// some parsing error.
+pub fn load_interned_id(row: Result<(IVec, IVec), sled::Error>, kind: &str) -> Option<InternedId> {
+    match row {
+        Ok((key_bytes, _)) => {
+            let key_str = match std::str::from_utf8(&key_bytes) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("Error reading {kind} key from store: {e}");
+                    return None;
+                }
+            };
+
+            match InternedId::from_str(key_str) {
+                Ok(key_id) => Some(key_id),
+                Err(e) => {
+                    tracing::error!("Error parsing {kind} key from store: {e}");
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Error reading {kind} row from store: {e}");
+            None
+        }
+    }
+}
+
+pub fn concat_ids<const S: usize>(ids: [InternedId; S]) -> Vec<u8> {
+    let mut buf = Vec::new();
+    for id in ids {
+        buf.extend_from_slice(id.as_ref());
+    }
+    buf
 }
