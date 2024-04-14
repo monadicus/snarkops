@@ -11,7 +11,7 @@ use snops_common::{
         SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
     rpc::error::ReconcileError,
-    state::{EnvId, HeightRequest},
+    state::{EnvId, HeightRequest, StorageId},
 };
 use tokio::process::Command;
 use tracing::{debug, error, info, trace};
@@ -27,7 +27,7 @@ pub async fn check_files(
 ) -> Result<(), ReconcileError> {
     let base_path = &state.cli.path;
     let storage_id = &info.id;
-    let storage_path = base_path.join("storage").join(storage_id);
+    let storage_path = base_path.join("storage").join(storage_id.to_string());
 
     // create the directory containing the storage files
     tokio::fs::create_dir_all(&storage_path)
@@ -109,7 +109,7 @@ pub async fn load_ledger(
 ) -> Result<bool, ReconcileError> {
     let base_path = &state.cli.path;
     let storage_id = &info.id;
-    let storage_path = base_path.join("storage").join(storage_id);
+    let storage_path = base_path.join("storage").join(storage_id.to_string());
 
     // use a persisted directory for the untar when configured
     let (untar_base, untar_dir) = if info.persist {
@@ -238,7 +238,9 @@ pub async fn load_ledger(
     .ok_or(ReconcileError::CheckpointAcquireError)?;
 
     // download checkpoint if necessary, and get the path
-    let path = checkpoint.acquire(state, &storage_path, storage_id).await?;
+    let path = checkpoint
+        .acquire(state, &storage_path, *storage_id)
+        .await?;
 
     // apply the checkpoint to the ledger
     let res = Command::new(dbg!(state.cli.path.join(SNARKOS_FILE)))
@@ -283,7 +285,7 @@ impl<'a> CheckpointSource<'a> {
         self,
         state: &GlobalState,
         storage_path: &Path,
-        storage_id: &str,
+        storage_id: StorageId,
     ) -> Result<PathBuf, ReconcileError> {
         Ok(match self {
             CheckpointSource::Meta(meta) => {

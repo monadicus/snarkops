@@ -9,14 +9,11 @@ use std::{
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
-use serde::{
-    de::{DeserializeOwned, Visitor},
-    Deserialize, Deserializer, Serialize,
-};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use snops_common::{
     api::{CheckpointMeta, StorageInfo},
     constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE},
-    state::KeyState,
+    state::{KeyState, StorageId},
 };
 use tokio::process::Command;
 use tracing::{error, info, warn};
@@ -37,7 +34,7 @@ pub const STORAGE_DIR: &str = "storage";
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct Document {
-    pub id: FilenameString,
+    pub id: StorageId,
     /// Regen version
     #[serde(default)]
     pub regen: u16,
@@ -131,7 +128,7 @@ pub type AleoAddrMap = IndexMap<String, String>;
 #[derive(Debug, Clone)]
 pub struct LoadedStorage {
     /// Storage ID
-    pub id: String,
+    pub id: StorageId,
     /// Version counter for this storage - incrementing will invalidate old
     /// saved ledgers
     pub version: u16,
@@ -143,54 +140,6 @@ pub struct LoadedStorage {
     pub checkpoints: Option<CheckpointManager>,
     /// whether agents using this storage should persist it
     pub persist: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct FilenameString(String);
-
-impl<'de> Deserialize<'de> for FilenameString {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct FilenameStringVisitor;
-
-        impl<'de> Visitor<'de> for FilenameStringVisitor {
-            type Value = FilenameString;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a string that can be used as a filename")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                if v.contains('/') {
-                    Err(E::custom("filename string cannot have a path separator"))
-                } else if v == "." || v == ".." {
-                    Err(E::custom("filename string cannot be relative"))
-                } else {
-                    Ok(FilenameString(String::from(v)))
-                }
-            }
-        }
-
-        deserializer.deserialize_str(FilenameStringVisitor)
-    }
-}
-
-impl Deref for FilenameString {
-    type Target = String;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<FilenameString> for String {
-    fn from(value: FilenameString) -> Self {
-        value.0
-    }
 }
 
 lazy_static! {
@@ -207,7 +156,7 @@ lazy_static! {
 
 impl Document {
     pub async fn prepare(self, state: &GlobalState) -> Result<Arc<LoadedStorage>, SchemaError> {
-        let id = String::from(self.id.clone());
+        let id = self.id;
 
         // todo: maybe update the loaded storage in global state if the hash
         // of the storage document is different I guess...
@@ -221,7 +170,7 @@ impl Document {
             warn!("a storage with the id {id} has already been prepared");
         }
 
-        let base = state.cli.path.join(STORAGE_DIR).join(&id);
+        let base = state.cli.path.join(STORAGE_DIR).join(id.to_string());
         let version_file = base.join(VERSION_FILE);
 
         // TODO: The dir can be made by a previous run and the aot stuff can fail
@@ -249,7 +198,7 @@ impl Document {
                     tracing::debug!("generating storage for {id}");
                     tokio::fs::create_dir_all(&base)
                         .await
-                        .map_err(|e| StorageError::GenerateStorage(id.clone(), e))?;
+                        .map_err(|e| StorageError::GenerateStorage(id, e))?;
                 }
 
                 // generate the genesis block using the aot cli
@@ -257,8 +206,7 @@ impl Document {
 
                 match self.connect {
                     Some(ref url) => {
-                        let err =
-                            |e| StorageError::FailedToFetchGenesis(id.clone(), url.clone(), e);
+                        let err = |e| StorageError::FailedToFetchGenesis(id, url.clone(), e);
 
                         // I think its ok to reuse this error here
                         // because it just turns a failing response into an error
@@ -274,7 +222,7 @@ impl Document {
 
                         tokio::fs::write(&output, res)
                             .await
-                            .map_err(|e| StorageError::FailedToWriteGenesis(id.clone(), e))?;
+                            .map_err(|e| StorageError::FailedToWriteGenesis(id, e))?;
                     }
                     None => {
                         let mut command = Command::new(DEFAULT_AOT_BIN.clone());
@@ -347,7 +295,7 @@ impl Document {
                             .map_err(|e| {
                                 StorageError::Command(
                                     CommandError::action("spawning", "aot genesis", e),
-                                    id.clone(),
+                                    id,
                                 )
                             })?
                             .wait()
@@ -355,7 +303,7 @@ impl Document {
                             .map_err(|e| {
                                 StorageError::Command(
                                     CommandError::action("waiting", "aot genesis", e),
-                                    id.clone(),
+                                    id,
                                 )
                             })?;
 
@@ -368,7 +316,7 @@ impl Document {
                 // ensure the genesis block was generated
                 tokio::fs::try_exists(&output)
                     .await
-                    .map_err(|e| StorageError::FailedToGenGenesis(id.clone(), e))?;
+                    .map_err(|e| StorageError::FailedToGenGenesis(id, e))?;
 
                 // tar a ledger if it exists
                 let res = Command::new("tar")
@@ -379,18 +327,12 @@ impl Document {
                     .kill_on_drop(true)
                     .spawn()
                     .map_err(|e| {
-                        StorageError::Command(
-                            CommandError::action("spawning", "tar ledger", e),
-                            id.clone(),
-                        )
+                        StorageError::Command(CommandError::action("spawning", "tar ledger", e), id)
                     })?
                     .wait()
                     .await
                     .map_err(|e| {
-                        StorageError::Command(
-                            CommandError::action("waiting", "tar ledger", e),
-                            id.clone(),
-                        )
+                        StorageError::Command(CommandError::action("waiting", "tar ledger", e), id)
                     })?;
 
                 if !res.success() {
@@ -399,7 +341,7 @@ impl Document {
 
                 tokio::fs::try_exists(&base.join(LEDGER_STORAGE_FILE))
                     .await
-                    .map_err(|e| StorageError::FailedToTarLedger(id.clone(), e))?;
+                    .map_err(|e| StorageError::FailedToTarLedger(id, e))?;
 
                 // TODO: transactions
             }
@@ -408,7 +350,7 @@ impl Document {
             None => {
                 // assert that an existing block and ledger exists
                 if exists {
-                    Err(StorageError::NoGenerationParams(id.clone()))?;
+                    Err(StorageError::NoGenerationParams(id))?;
                 }
             }
         }
@@ -436,10 +378,7 @@ impl Document {
                 .kill_on_drop(true)
                 .spawn()
                 .map_err(|e| {
-                    StorageError::Command(
-                        CommandError::action("spawning", "tar ledger", e),
-                        id.clone(),
-                    )
+                    StorageError::Command(CommandError::action("spawning", "tar ledger", e), id)
                 })?;
 
             if !child
@@ -527,14 +466,14 @@ impl Document {
 
         let storage = Arc::new(LoadedStorage {
             version: self.regen,
-            id: id.to_owned(),
+            id,
             committee,
             accounts,
             checkpoints,
             persist: self.persist,
         });
         let mut storage_lock = state.storage.write().await;
-        if let Err(e) = PersistStorage::from(storage.deref()).save(&state.db, id.to_owned()) {
+        if let Err(e) = PersistStorage::from(storage.deref()).save(&state.db, id) {
             error!("failed to save storage meta: {e}");
         }
         storage_lock.insert(id.to_owned(), storage.clone());
@@ -694,7 +633,7 @@ impl LoadedStorage {
             })
             .unwrap_or_default();
         StorageInfo {
-            id: self.id.clone(),
+            id: self.id,
             version: self.version,
             retention_policy: self.checkpoints.as_ref().map(|c| c.policy().clone()),
             checkpoints,

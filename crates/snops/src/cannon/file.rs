@@ -17,7 +17,7 @@ use crate::{
 pub struct TransactionDrain {
     /// Line reader
     reader: Mutex<Option<BufReader<File>>>,
-    line: AtomicU32,
+    pub(crate) line: AtomicU32,
 }
 
 impl TransactionDrain {
@@ -40,7 +40,7 @@ impl TransactionDrain {
             .cli
             .path
             .join(STORAGE_DIR)
-            .join(&storage.id)
+            .join(storage.id.to_string())
             .join(source);
         debug!("opening tx drain @ {source:?}");
 
@@ -109,7 +109,7 @@ impl TransactionSink {
             .cli
             .path
             .join(STORAGE_DIR)
-            .join(&storage.id)
+            .join(storage.id.to_string())
             .join(target);
         debug!("opening tx sink @ {target:?}");
 

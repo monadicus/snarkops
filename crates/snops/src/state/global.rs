@@ -36,7 +36,7 @@ impl GlobalState {
         let storage_meta = db.load::<Vec<PersistStorage>>()?;
         let mut storage = StorageMap::default();
         for meta in storage_meta {
-            let id = meta.id.clone();
+            let id = meta.id;
             let loaded = match meta.load(&cli).await {
                 Ok(l) => l,
                 Err(e) => {

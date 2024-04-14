@@ -4,7 +4,7 @@ use bytes::{Buf, BufMut};
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     constant::LEDGER_BASE_DIR,
-    state::{AgentId, AgentState, PortConfig},
+    state::{AgentId, AgentState, PortConfig, StorageId},
 };
 use tracing::info;
 
@@ -150,7 +150,13 @@ impl DbCollection for Vec<PersistStorage> {
                         }
                     };
 
-                    key_str.to_string()
+                    match StorageId::from_str(key_str) {
+                        Ok(key_id) => key_id,
+                        Err(e) => {
+                            tracing::error!("Error parsing storage key: {}", e);
+                            continue;
+                        }
+                    }
                 }
                 Err(e) => {
                     tracing::error!("Error reading storage row: {}", e);
@@ -158,7 +164,7 @@ impl DbCollection for Vec<PersistStorage> {
                 }
             };
 
-            match DbDocument::restore(db, id.clone()) {
+            match DbDocument::restore(db, id) {
                 Ok(Some(storage)) => {
                     vec.push(storage);
                 }
@@ -178,7 +184,7 @@ impl DbCollection for Vec<PersistStorage> {
 
 /// Metadata for storage that can be used to restore a loaded storage
 pub struct PersistStorage {
-    pub id: String,
+    pub id: StorageId,
     pub version: u16,
     pub persist: bool,
     pub accounts: Vec<String>,
@@ -188,7 +194,7 @@ pub struct PersistStorage {
 impl From<&LoadedStorage> for PersistStorage {
     fn from(storage: &LoadedStorage) -> Self {
         Self {
-            id: storage.id.clone(),
+            id: storage.id,
             version: storage.version,
             persist: storage.persist,
             accounts: storage.accounts.keys().cloned().collect(),
@@ -200,7 +206,7 @@ impl From<&LoadedStorage> for PersistStorage {
 impl PersistStorage {
     pub async fn load(self, cli: &Cli) -> Result<LoadedStorage, StorageError> {
         let id = self.id;
-        let storage_path = cli.path.join(STORAGE_DIR).join(&id);
+        let storage_path = cli.path.join(STORAGE_DIR).join(id.to_string());
         let committee_file = storage_path.join("committee.json");
 
         let checkpoints = self
@@ -230,13 +236,13 @@ impl PersistStorage {
 }
 
 impl DbDocument for PersistStorage {
-    type Key = String;
+    type Key = StorageId;
 
     fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
         let Some(raw) = db
             .storage
-            .get(&key)
-            .map_err(|e| DatabaseError::LookupError(key.clone(), "storage".to_owned(), e))?
+            .get(key)
+            .map_err(|e| DatabaseError::LookupError(key.to_string(), "storage".to_owned(), e))?
         else {
             return Ok(None);
         };
@@ -252,7 +258,7 @@ impl DbDocument for PersistStorage {
 
         let (storage_version, accounts, persist, retention_policy) =
             bincode::deserialize_from(&mut buf).map_err(|e| {
-                DatabaseError::DeserializeError(key.clone(), "storage".to_owned(), e)
+                DatabaseError::DeserializeError(key.to_string(), "storage".to_owned(), e)
             })?;
 
         Ok(Some(PersistStorage {
@@ -276,18 +282,18 @@ impl DbDocument for PersistStorage {
                 &self.retention_policy,
             ),
         )
-        .map_err(|e| DatabaseError::SerializeError(key.clone(), "storage".to_owned(), e))?;
+        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "storage".to_owned(), e))?;
         db.storage
-            .insert(&key, buf)
-            .map_err(|e| DatabaseError::SaveError(key, "storage".to_owned(), e))?;
+            .insert(key, buf)
+            .map_err(|e| DatabaseError::SaveError(key.to_string(), "storage".to_owned(), e))?;
         Ok(())
     }
 
     fn delete(&self, db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
         Ok(db
             .storage
-            .remove(&key)
-            .map_err(|e| DatabaseError::DeleteError(key, "storage".to_owned(), e))?
+            .remove(key)
+            .map_err(|e| DatabaseError::DeleteError(key.to_string(), "storage".to_owned(), e))?
             .is_some())
     }
 }

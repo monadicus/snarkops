@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use snops_common::state::{AgentId, EnvId};
+use snops_common::state::{AgentId, EnvId, StorageId};
 
 mod agent;
 mod agent_flags;
@@ -19,7 +19,7 @@ pub type AppState = Arc<GlobalState>;
 /// Map of agent ids to agents
 pub type AgentPool = HashMap<AgentId, Agent>;
 /// Map of storage ids to storage info
-pub type StorageMap = HashMap<String, Arc<LoadedStorage>>;
+pub type StorageMap = HashMap<StorageId, Arc<LoadedStorage>>;
 /// Map of environment ids to environments
 pub type EnvMap = HashMap<EnvId, Arc<Environment>>;
 /// Map of agent ids to addresses for each agent.

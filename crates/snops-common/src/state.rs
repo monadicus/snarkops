@@ -21,8 +21,7 @@ pub struct InternedId(Spur);
 pub type AgentId = InternedId;
 pub type EnvId = InternedId;
 pub type CannonId = InternedId;
-
-pub type StorageId = usize;
+pub type StorageId = InternedId;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentState {

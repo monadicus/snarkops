@@ -1,6 +1,8 @@
 use checkpoint::RetentionPolicy;
 use serde::{Deserialize, Serialize};
 
+use crate::prelude::StorageId;
+
 /// Metadata about a checkpoint file
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CheckpointMeta {
@@ -12,7 +14,7 @@ pub struct CheckpointMeta {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StorageInfo {
     /// String id of this storage
-    pub id: String,
+    pub id: StorageId,
     /// The retention policy used for this storage
     pub retention_policy: Option<RetentionPolicy>,
     /// The available checkpoints in this storage

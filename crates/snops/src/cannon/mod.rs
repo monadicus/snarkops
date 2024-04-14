@@ -151,7 +151,7 @@ impl CannonInstance {
             .cli
             .path
             .join(STORAGE_DIR)
-            .join(&env.storage.id);
+            .join(env.storage.id.to_string());
 
         // spawn child process for ledger service if the source is local
         let child = if let Some(port) = query_port {

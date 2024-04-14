@@ -190,7 +190,7 @@ impl AgentService for AgentRpcServer {
                     })?;
 
                     let storage_id = &info.id;
-                    let storage_path = state.cli.path.join("storage").join(storage_id);
+                    let storage_path = state.cli.path.join("storage").join(storage_id.to_string());
                     let ledger_path = if info.persist {
                         storage_path.join(LEDGER_PERSIST_DIR)
                     } else {
