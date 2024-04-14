@@ -4,7 +4,7 @@ use prometheus_http_query::Client as PrometheusClient;
 use snops_common::state::AgentId;
 use tokio::sync::{Mutex, RwLock};
 
-use super::{persist::PersistedStorageMeta, AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
+use super::{persist::PersistStorage, AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
     cli::Cli,
     db::Database,
@@ -33,7 +33,7 @@ impl GlobalState {
         prometheus: Option<PrometheusClient>,
     ) -> Result<Self, StartError> {
         // Load storage meta from persistence, then read the storage data from FS
-        let storage_meta = db.load::<Vec<PersistedStorageMeta>>()?;
+        let storage_meta = db.load::<Vec<PersistStorage>>()?;
         let mut storage = StorageMap::default();
         for meta in storage_meta {
             let id = meta.id.clone();

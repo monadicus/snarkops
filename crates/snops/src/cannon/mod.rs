@@ -14,7 +14,7 @@ use std::{
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use snops_common::{
     constant::{LEDGER_BASE_DIR, SNARKOS_GENESIS_FILE},
-    state::AgentPeer,
+    state::{AgentPeer, CannonId},
 };
 use tokio::{
     process::Command,
@@ -75,7 +75,7 @@ pub type Authorization = serde_json::Value;
 /// using the `TxSource` and `TxSink` for configuration.
 #[derive(Debug)]
 pub struct CannonInstance {
-    id: usize,
+    id: CannonId,
     // a copy of the global state
     global_state: Arc<GlobalState>,
 
@@ -138,7 +138,7 @@ impl CannonInstance {
     /// Locks the global state's tests and storage for reading.
     pub fn new(
         global_state: Arc<GlobalState>,
-        id: usize,
+        id: CannonId,
         env: Arc<Environment>,
         source: TxSource,
         sink: TxSink,
@@ -322,7 +322,7 @@ impl Drop for CannonInstance {
 pub struct ExecutionContext {
     state: Arc<GlobalState>,
     /// The cannon's id
-    id: usize,
+    id: CannonId,
     /// The environment associated with this cannon
     env: Weak<Environment>,
     source: TxSource,

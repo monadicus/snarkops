@@ -1,4 +1,5 @@
 pub mod error;
+pub mod persist;
 pub mod set;
 pub mod timeline;
 
@@ -6,17 +7,14 @@ use core::fmt;
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::{atomic::AtomicUsize, Arc},
 };
 
 use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
-use snops_common::state::{AgentId, AgentPeer, AgentState, EnvId, NodeKey};
+use snops_common::state::{AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey};
 use tokio::{
     sync::{Mutex, RwLock},
     task::JoinHandle,
@@ -57,11 +55,11 @@ pub struct Environment {
     /// Map of transaction files to their respective counters
     pub tx_pipe: TxPipes,
     /// Map of cannon ids to their cannon configurations
-    pub cannon_configs: HashMap<String, (TxSource, TxSink)>,
+    pub cannon_configs: HashMap<CannonId, (TxSource, TxSink)>,
     /// To help generate the id of the new cannon.
     pub cannons_counter: AtomicUsize,
     /// Map of cannon ids to their cannon instances
-    pub cannons: Arc<RwLock<HashMap<usize, CannonInstance>>>,
+    pub cannons: Arc<RwLock<HashMap<CannonId, CannonInstance>>>,
 
     pub timeline: Vec<TimelineEvent>,
     pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
@@ -155,9 +153,9 @@ impl Environment {
                 }
 
                 ItemDocument::Cannon(cannon) => {
-                    cannon_configs.insert(cannon.name.to_owned(), (cannon.source, cannon.sink));
+                    cannon_configs.insert(cannon.name, (cannon.source, cannon.sink));
                     if cannon.instance {
-                        immediate_cannons.push((cannon.name.clone(), cannon.count));
+                        immediate_cannons.push((cannon.name, cannon.count));
                     }
                 }
 
@@ -318,17 +316,17 @@ impl Environment {
             let Some((source, sink)) = env.cannon_configs.get(&name) else {
                 continue;
             };
-            let id = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
+
             let (mut instance, rx) = CannonInstance::new(
                 Arc::clone(&state),
-                id,
+                name, // instanced cannons use the same name as the config
                 Arc::clone(&env),
                 source.clone(),
                 sink.clone(),
                 count,
             )?;
             instance.spawn_local(rx)?;
-            cannons.insert(id, instance);
+            cannons.insert(name, instance);
         }
 
         Ok(env_id)

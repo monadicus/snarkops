@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     impl_into_status_code, impl_into_type_str,
-    state::{AgentId, EnvId, NodeKey},
+    state::{AgentId, CannonId, EnvId, NodeKey},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -33,7 +33,7 @@ pub enum ExecutionError {
     #[error("env timeline is already being executed")]
     TimelineAlreadyStarted,
     #[error("unknown cannon: `{0}`")]
-    UnknownCannon(String),
+    UnknownCannon(CannonId),
 }
 
 impl_into_status_code!(ExecutionError, |value| match value {

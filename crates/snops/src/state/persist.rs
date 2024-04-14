@@ -136,7 +136,7 @@ impl DbDocument for Agent {
     }
 }
 
-impl DbCollection for Vec<PersistedStorageMeta> {
+impl DbCollection for Vec<PersistStorage> {
     fn restore(db: &Database) -> Result<Self, DatabaseError> {
         let mut vec = Vec::new();
         for row in db.storage.iter() {
@@ -176,7 +176,8 @@ impl DbCollection for Vec<PersistedStorageMeta> {
     }
 }
 
-pub struct PersistedStorageMeta {
+/// Metadata for storage that can be used to restore a loaded storage
+pub struct PersistStorage {
     pub id: String,
     pub version: u16,
     pub persist: bool,
@@ -184,7 +185,7 @@ pub struct PersistedStorageMeta {
     pub retention_policy: Option<RetentionPolicy>,
 }
 
-impl From<&LoadedStorage> for PersistedStorageMeta {
+impl From<&LoadedStorage> for PersistStorage {
     fn from(storage: &LoadedStorage) -> Self {
         Self {
             id: storage.id.clone(),
@@ -196,7 +197,7 @@ impl From<&LoadedStorage> for PersistedStorageMeta {
     }
 }
 
-impl PersistedStorageMeta {
+impl PersistStorage {
     pub async fn load(self, cli: &Cli) -> Result<LoadedStorage, StorageError> {
         let id = self.id;
         let storage_path = cli.path.join(STORAGE_DIR).join(&id);
@@ -228,7 +229,7 @@ impl PersistedStorageMeta {
     }
 }
 
-impl DbDocument for PersistedStorageMeta {
+impl DbDocument for PersistStorage {
     type Key = String;
 
     fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
@@ -254,7 +255,7 @@ impl DbDocument for PersistedStorageMeta {
                 DatabaseError::DeserializeError(key.clone(), "storage".to_owned(), e)
             })?;
 
-        Ok(Some(PersistedStorageMeta {
+        Ok(Some(PersistStorage {
             id: key,
             version: storage_version,
             accounts,

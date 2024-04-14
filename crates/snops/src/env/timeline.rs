@@ -1,12 +1,13 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
+    str::FromStr,
     sync::{atomic::Ordering, Arc},
 };
 
 use futures_util::future::join_all;
 use prometheus_http_query::response::Data;
 use promql_parser::label::{MatchOp, Matcher};
-use snops_common::state::{AgentId, AgentState, EnvId};
+use snops_common::state::{AgentId, AgentState, CannonId, EnvId};
 use tokio::{select, sync::RwLock, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
@@ -197,11 +198,21 @@ impl Environment {
 
                         Action::Cannon(cannons) => {
                             for cannon in cannons.iter() {
-                                let cannon_id = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
+                                let counter = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
+                                let cannon_id =
+                                    CannonId::from_str(&format!("{}-{counter}", cannon.name))
+                                        // there is a small chance that the cannon's name is at the
+                                        // length limit, so this will force the cannon to be renamed
+                                        // to 'cannon-N'
+                                        .unwrap_or_else(|_| {
+                                            CannonId::from_str(&format!("cannon-{counter}"))
+                                                .expect("cannon id failed to parse")
+                                        });
+
                                 let Some((mut source, mut sink)) =
                                     env.cannon_configs.get(&cannon.name).cloned()
                                 else {
-                                    return Err(ExecutionError::UnknownCannon(cannon.name.clone()));
+                                    return Err(ExecutionError::UnknownCannon(cannon.name));
                                 };
 
                                 // override the query and target if they are specified

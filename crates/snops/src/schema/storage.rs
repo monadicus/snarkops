@@ -28,7 +28,7 @@ use super::{
 use crate::{
     db::document::DbDocument,
     error::CommandError,
-    state::{persist::PersistedStorageMeta, GlobalState},
+    state::{persist::PersistStorage, GlobalState},
 };
 
 pub const STORAGE_DIR: &str = "storage";
@@ -534,7 +534,7 @@ impl Document {
             persist: self.persist,
         });
         let mut storage_lock = state.storage.write().await;
-        if let Err(e) = PersistedStorageMeta::from(storage.deref()).save(&state.db, id.to_owned()) {
+        if let Err(e) = PersistStorage::from(storage.deref()).save(&state.db, id.to_owned()) {
             error!("failed to save storage meta: {e}");
         }
         storage_lock.insert(id.to_owned(), storage.clone());

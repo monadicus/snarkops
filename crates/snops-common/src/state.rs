@@ -16,12 +16,13 @@ use serde::{de::Error, Deserialize, Serialize};
 use crate::{prelude::MaskBit, INTERN};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AgentId(Spur);
+pub struct InternedId(Spur);
+
+pub type AgentId = InternedId;
+pub type EnvId = InternedId;
+pub type CannonId = InternedId;
 
 pub type StorageId = usize;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EnvId(Spur);
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentState {
@@ -447,61 +448,54 @@ pub fn id_or_none<T: FromStr>(s: &str) -> Option<T> {
     T::from_str(s).ok()
 }
 
-macro_rules! impl_intern_id {
-    ($id:ident) => {
-        impl FromStr for $id {
-            type Err = String;
+impl FromStr for InternedId {
+    type Err = String;
 
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                if !AGENT_ID_REGEX.is_match(s) {
-                    return Err(format!(
-                        "invalid {} expected pattern [A-Za-z0-9][A-Za-z0-9\\-_.]{{,63}}",
-                        stringify!($id)
-                    ));
-                }
-
-                Ok($id(INTERN.get_or_intern(s)))
-            }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if !AGENT_ID_REGEX.is_match(s) {
+            return Err(format!(
+                "invalid {} expected pattern [A-Za-z0-9][A-Za-z0-9\\-_.]{{,63}}",
+                stringify!(InternedId)
+            ));
         }
 
-        impl<'de> Deserialize<'de> for $id {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                let s = <&str>::deserialize(deserializer)?;
-                Self::from_str(s).map_err(D::Error::custom)
-            }
-        }
-
-        impl Display for $id {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", INTERN.resolve(&self.0))
-            }
-        }
-
-        impl AsRef<str> for $id {
-            fn as_ref(&self) -> &str {
-                INTERN.resolve(&self.0)
-            }
-        }
-
-        impl AsRef<[u8]> for $id {
-            fn as_ref(&self) -> &[u8] {
-                INTERN.resolve(&self.0).as_bytes()
-            }
-        }
-
-        impl Serialize for $id {
-            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: serde::Serializer,
-            {
-                serializer.serialize_str(self.as_ref())
-            }
-        }
-    };
+        Ok(InternedId(INTERN.get_or_intern(s)))
+    }
 }
 
-impl_intern_id!(AgentId);
-impl_intern_id!(EnvId);
+impl<'de> Deserialize<'de> for InternedId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = <&str>::deserialize(deserializer)?;
+        Self::from_str(s).map_err(D::Error::custom)
+    }
+}
+
+impl Display for InternedId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", INTERN.resolve(&self.0))
+    }
+}
+
+impl AsRef<str> for InternedId {
+    fn as_ref(&self) -> &str {
+        INTERN.resolve(&self.0)
+    }
+}
+
+impl AsRef<[u8]> for InternedId {
+    fn as_ref(&self) -> &[u8] {
+        INTERN.resolve(&self.0).as_bytes()
+    }
+}
+
+impl Serialize for InternedId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_ref())
+    }
+}
