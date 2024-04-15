@@ -46,7 +46,8 @@ impl From<&LoadedStorage> for PersistStorage {
 impl PersistStorage {
     pub async fn load(self, cli: &Cli) -> Result<LoadedStorage, StorageError> {
         let id = self.id;
-        let storage_path = cli.path.join(STORAGE_DIR).join(id.to_string());
+        let mut storage_path = cli.path.join(STORAGE_DIR);
+        storage_path.push(id.to_string());
         let committee_file = storage_path.join("committee.json");
 
         let checkpoints = self

@@ -24,7 +24,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/:env_id/prepare", post(post_env_prepare))
-        .route("/env/:env_id/storage", get(storage_info))
+        .route("/env/:env_id/storage", get(get_storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", post(post_env_timeline))
@@ -39,7 +39,7 @@ enum StorageType {
     Binary,
 }
 
-async fn storage_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
+async fn get_storage_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
     let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };

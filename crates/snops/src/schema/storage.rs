@@ -744,7 +744,9 @@ impl LoadedStorage {
     }
 
     pub fn path_cli(&self, cli: &Cli) -> PathBuf {
-        cli.path.join(STORAGE_DIR).join(self.id.to_string())
+        let mut path = cli.path.join(STORAGE_DIR);
+        path.push(self.id.to_string());
+        path
     }
 }
 

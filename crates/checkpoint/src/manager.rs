@@ -128,6 +128,7 @@ impl CheckpointManager {
             return Ok(false);
         }
 
+        trace!("creating checkpoint @ {}...", header.block_height);
         let checkpoint = crate::Checkpoint::new_from_header(self.storage_path.clone(), header)?;
         self.write_and_insert(checkpoint)?;
         self.cull_timestamp(time);

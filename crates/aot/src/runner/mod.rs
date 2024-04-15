@@ -198,7 +198,6 @@ impl Runner {
                     if last_height != height {
                         last_height = height;
 
-                        info!("creating checkpoint @ {height}...");
                         if let Err(e) = manager.poll() {
                             tracing::error!("backup loop error: {e:?}");
                         }
