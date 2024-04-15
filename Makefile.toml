@@ -32,7 +32,7 @@ install_crate = { crate_name = "clippy", rustup_component_name = "clippy", binar
 dependencies = ["install-cranelift"]
 env = { RUSTFLAGS = "-Zcodegen-backend=cranelift" }
 command = "cargo"
-args = ["clippy", "--", "-D", "warnings"]
+args = ["clippy", "--all-features", "--", "-D", "warnings", "--no-deps"]
 
 [tasks.check-unused-deps]
 description = "Check for unused dependencies"
