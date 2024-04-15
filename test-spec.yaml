@@ -11,8 +11,12 @@ fetch: https://example.com/genesis.block
 # instructions for generating this test
 generate:
   accounts:
-    - file: accounts.json
-      total: 5
+    # generate 5 accounts with a random seed
+    foo: 5
+    # generate 5 accounts with a given seed
+    bar:
+      count: 5
+      seed: 12345
 
   # genesis generation
   genesis:

@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod authorized;
 pub mod cli;
 pub mod credits;
