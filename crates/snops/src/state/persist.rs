@@ -143,16 +143,17 @@ impl DbDocument for Agent {
     fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
         let mut buf = vec![];
         buf.put_u8(AGENT_VERSION);
-        buf.extend_from_slice(
-            &bincode::serialize(&(
+        bincode::serialize_into(
+            &mut buf,
+            &(
                 self.state(),
                 self.claims().nonce,
                 &self.flags,
                 &self.ports,
                 &self.addrs,
-            ))
-            .map_err(|e| DatabaseError::SerializeError(key.to_string(), "agents".to_owned(), e))?,
-        );
+            ),
+        )
+        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "agents".to_owned(), e))?;
 
         db.agents
             .insert(key, buf)
@@ -235,15 +236,16 @@ impl DbDocument for PersistStorage {
     fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
         let mut buf = vec![];
         buf.put_u8(STORAGE_VERSION);
-        buf.extend_from_slice(
-            &bincode::serialize(&(
+        bincode::serialize_into(
+            &mut buf,
+            &(
                 self.version,
                 &self.accounts,
                 self.persist,
                 &self.retention_policy,
-            ))
-            .map_err(|e| DatabaseError::SerializeError(key.to_string(), "storage".to_owned(), e))?,
-        );
+            ),
+        )
+        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "storage".to_owned(), e))?;
         db.storage
             .insert(key, buf)
             .map_err(|e| DatabaseError::SaveError(key.to_string(), "storage".to_owned(), e))?;

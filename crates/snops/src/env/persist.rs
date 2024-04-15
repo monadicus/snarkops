@@ -289,16 +289,17 @@ impl DbDocument for PersistEnv {
         let mut buf = vec![];
         buf.put_u8(ENV_VERSION);
 
-        buf.extend_from_slice(
-            &bincode::serialize(&(
+        bincode::serialize_into(
+            &mut buf,
+            &(
                 &self.storage_id,
                 &self.nodes,
                 &self.tx_pipe_drains,
                 &self.tx_pipe_sinks,
                 &self.cannon_configs,
-            ))
-            .map_err(|e| DatabaseError::SerializeError(key.to_string(), "env".to_owned(), e))?,
-        );
+            ),
+        )
+        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "env".to_owned(), e))?;
 
         db.envs
             .insert(key, buf)
