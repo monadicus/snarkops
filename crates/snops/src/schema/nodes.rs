@@ -13,7 +13,7 @@ use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snops_common::{
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, DocHeightRequest, NodeState},
+    state::{AgentId, DocHeightRequest, InternedId, NodeState},
     INTERN,
 };
 
@@ -333,7 +333,7 @@ pub enum KeySource {
     /// committee.0 or committee.$ (for replicas)
     Committee(Option<usize>),
     /// accounts.0 or accounts.$ (for replicas)
-    Named(String, Option<usize>),
+    Named(InternedId, Option<usize>),
 }
 
 impl<'de> Deserialize<'de> for KeySource {
@@ -370,6 +370,10 @@ impl Serialize for KeySource {
     }
 }
 
+lazy_static! {
+    pub static ref ACCOUNTS_KEY_ID: InternedId = InternedId::from_str("accounts").unwrap();
+}
+
 impl FromStr for KeySource {
     type Err = SchemaError;
 
@@ -401,12 +405,14 @@ impl FromStr for KeySource {
         // named key (using regex with capture groups)
         lazy_static! {
             static ref NAMED_KEYSOURCE_REGEX: regex::Regex =
-                regex::Regex::new(r"^(?P<name>\w+)\.(?P<idx>\d+|\$)$").unwrap();
+                regex::Regex::new(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9\-_.]{0,63})\.(?P<idx>\d+|\$)$")
+                    .unwrap();
         }
         let groups = NAMED_KEYSOURCE_REGEX
             .captures(s)
             .ok_or(KeySourceError::InvalidKeySource)?;
-        let name = groups.name("name").unwrap().as_str().to_string();
+        let name = InternedId::from_str(groups.name("name").unwrap().as_str())
+            .map_err(|_| KeySourceError::InvalidKeySource)?;
         let idx = match groups.name("idx").unwrap().as_str() {
             "$" => None,
             idx => Some(idx.parse().map_err(KeySourceError::InvalidCommitteeIndex)?),
@@ -440,7 +446,7 @@ impl KeySource {
     pub fn with_index(&self, idx: usize) -> Self {
         match self {
             KeySource::Committee(_) => KeySource::Committee(Some(idx)),
-            KeySource::Named(name, _) => KeySource::Named(name.clone(), Some(idx)),
+            KeySource::Named(name, _) => KeySource::Named(*name, Some(idx)),
             _ => self.clone(),
         }
     }
@@ -467,11 +473,11 @@ mod tests {
 
         assert_eq!(
             serde_yaml::from_str::<KeySource>("accounts.0").expect("foo"),
-            KeySource::Named("accounts".to_string(), Some(0))
+            KeySource::Named(*ACCOUNTS_KEY_ID, Some(0))
         );
         assert_eq!(
             serde_yaml::from_str::<KeySource>("accounts.$").expect("foo"),
-            KeySource::Named("accounts".to_string(), None)
+            KeySource::Named(*ACCOUNTS_KEY_ID, None)
         );
 
         assert_eq!(

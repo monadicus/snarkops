@@ -2,7 +2,7 @@ use bytes::{Buf, BufMut};
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     constant::LEDGER_BASE_DIR,
-    state::{AgentId, AgentState, PortConfig, StorageId},
+    state::{AgentId, AgentState, InternedId, PortConfig, StorageId},
 };
 use tracing::info;
 
@@ -27,7 +27,7 @@ pub struct PersistStorage {
     pub id: StorageId,
     pub version: u16,
     pub persist: bool,
-    pub accounts: Vec<String>,
+    pub accounts: Vec<InternedId>,
     pub retention_policy: Option<RetentionPolicy>,
 }
 

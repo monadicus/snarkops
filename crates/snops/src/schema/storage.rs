@@ -9,18 +9,21 @@ use std::{
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{
+    de::{DeserializeOwned, Visitor},
+    Deserialize, Deserializer, Serialize,
+};
 use snops_common::{
     api::{CheckpointMeta, StorageInfo},
     constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE},
-    state::{KeyState, StorageId},
+    state::{InternedId, KeyState, StorageId},
 };
 use tokio::process::Command;
 use tracing::{error, info, warn};
 
 use super::{
     error::{SchemaError, StorageError},
-    nodes::KeySource,
+    nodes::{KeySource, ACCOUNTS_KEY_ID},
 };
 use crate::{
     cli::Cli,
@@ -60,7 +63,7 @@ pub struct StorageGeneration {
     pub genesis: GenesisGeneration,
 
     #[serde(default)]
-    pub accounts: IndexMap<String, Accounts>,
+    pub accounts: IndexMap<InternedId, Accounts>,
 
     #[serde(default)]
     pub transactions: Vec<Transaction>,
@@ -197,7 +200,7 @@ pub struct LoadedStorage {
     /// committee lookup
     pub committee: AleoAddrMap,
     /// other accounts files lookup
-    pub accounts: HashMap<String, AleoAddrMap>,
+    pub accounts: HashMap<InternedId, AleoAddrMap>,
     /// storage of checkpoints
     pub checkpoints: Option<CheckpointManager>,
     /// whether agents using this storage should persist it
@@ -456,7 +459,7 @@ impl Document {
 
         let mut accounts = HashMap::new();
         accounts.insert(
-            "accounts".to_owned(),
+            *ACCOUNTS_KEY_ID,
             read_to_addrs(pick_additional_addr, &base.join("accounts.json")).await?,
         );
 
@@ -484,7 +487,7 @@ impl Document {
                         .map_err(|e| {
                             StorageError::Command(
                                 CommandError::action("spawning", "aot accounts", e),
-                                id.clone(),
+                                id,
                             )
                         })?
                         .wait()
@@ -492,7 +495,7 @@ impl Document {
                         .map_err(|e| {
                             StorageError::Command(
                                 CommandError::action("waiting", "aot accounts", e),
-                                id.clone(),
+                                id,
                             )
                         })?;
 
@@ -501,7 +504,7 @@ impl Document {
                     }
                 }
 
-                accounts.insert(name.clone(), read_to_addrs(pick_account_addr, path).await?);
+                accounts.insert(*name, read_to_addrs(pick_account_addr, &path).await?);
             }
         }
 
