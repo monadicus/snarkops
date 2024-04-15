@@ -15,7 +15,10 @@ use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
-use crate::{authorized::Execute, credits::Authorize, genesis::Genesis, ledger::Ledger};
+use crate::{
+    accounts::GenAccounts, authorized::Execute, credits::Authorize, genesis::Genesis,
+    ledger::Ledger,
+};
 
 #[derive(Debug, Parser)]
 #[clap(name = "snarkOS AoT", author = "MONADIC.US")]
@@ -35,6 +38,7 @@ pub struct Cli {
 #[derive(Debug, Parser)]
 pub enum Command {
     Genesis(Genesis),
+    Accounts(GenAccounts),
     Ledger(Ledger),
     #[cfg(feature = "node")]
     Run(Runner),
@@ -196,6 +200,7 @@ impl Cli {
         let _guards = self.init_logger();
 
         match self.command {
+            Command::Accounts(command) => command.parse(),
             Command::Genesis(command) => command.parse(),
             Command::Ledger(command) => command.parse(),
             #[cfg(feature = "node")]

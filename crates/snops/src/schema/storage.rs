@@ -60,16 +60,77 @@ pub struct StorageGeneration {
     pub genesis: GenesisGeneration,
 
     #[serde(default)]
-    pub accounts: Vec<Accounts>,
+    pub accounts: IndexMap<String, Accounts>,
 
     #[serde(default)]
     pub transactions: Vec<Transaction>,
 }
 
-#[derive(Deserialize, Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Accounts {
-    pub file: PathBuf,
-    pub total: u64,
+    pub count: u16,
+    #[serde(default)]
+    pub seed: Option<u64>,
+}
+
+impl<'de> Deserialize<'de> for Accounts {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct AccountsVisitor;
+
+        impl<'de> Visitor<'de> for AccountsVisitor {
+            type Value = Accounts;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a number or an object with a count and seed")
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Accounts {
+                    count: v.min(u16::MAX as u64) as u16,
+                    seed: None,
+                })
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut count = None;
+                let mut seed = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        "count" => {
+                            if count.is_some() {
+                                return Err(serde::de::Error::duplicate_field("count"));
+                            }
+                            count = Some(map.next_value()?);
+                        }
+                        "seed" => {
+                            if seed.is_some() {
+                                return Err(serde::de::Error::duplicate_field("seed"));
+                            }
+                            seed = Some(map.next_value()?);
+                        }
+                        _ => return Err(serde::de::Error::unknown_field(key, &["count", "seed"])),
+                    }
+                }
+
+                Ok(Accounts {
+                    count: count.ok_or_else(|| serde::de::Error::missing_field("count"))?,
+                    seed,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(AccountsVisitor)
+    }
 }
 
 // TODO: I don't know what this type should look like
@@ -400,14 +461,47 @@ impl Document {
         );
 
         if let Some(generation) = &self.generate {
-            for account in &generation.accounts {
-                let Some(stem) = account.file.file_stem() else {
-                    continue;
-                };
-                accounts.insert(
-                    stem.to_string_lossy().to_string(),
-                    read_to_addrs(pick_account_addr, &account.file).await?,
-                );
+            for (name, account) in &generation.accounts {
+                let path = base.join(&format!("{}.json", name));
+
+                if !path.exists() {
+                    info!("generating accounts for {name}");
+
+                    let mut command = Command::new(DEFAULT_AOT_BIN.clone());
+                    command
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .arg("accounts")
+                        .arg(account.count.to_string())
+                        .arg("--output")
+                        .arg(&path);
+                    if let Some(seed) = account.seed {
+                        command.arg("--seed").arg(seed.to_string());
+                    }
+
+                    let res = command
+                        .spawn()
+                        .map_err(|e| {
+                            StorageError::Command(
+                                CommandError::action("spawning", "aot accounts", e),
+                                id.clone(),
+                            )
+                        })?
+                        .wait()
+                        .await
+                        .map_err(|e| {
+                            StorageError::Command(
+                                CommandError::action("waiting", "aot accounts", e),
+                                id.clone(),
+                            )
+                        })?;
+
+                    if !res.success() {
+                        warn!("failed to run account generation command for {name}...");
+                    }
+                }
+
+                accounts.insert(name.clone(), read_to_addrs(pick_account_addr, path).await?);
             }
         }
 
