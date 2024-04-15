@@ -1,29 +1,23 @@
 pub mod error;
+pub mod persist;
 pub mod set;
 pub mod timeline;
 
 use core::fmt;
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::Deserialize;
-use snops_common::state::{AgentId, AgentPeer, AgentState, NodeKey};
+use snops_common::state::{AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TxPipeId};
 use tokio::{
     sync::{Mutex, RwLock},
     task::JoinHandle,
 };
 use tracing::{error, info, warn};
 
-use self::{error::*, timeline::reconcile_agents};
+use self::{error::*, persist::PersistEnv, timeline::reconcile_agents};
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -31,6 +25,7 @@ use crate::{
         source::TxSource,
         CannonInstance,
     },
+    db::document::DbDocument,
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, BusyMode},
     error::DeserializeError,
     schema::{
@@ -45,7 +40,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Environment {
-    pub id: usize,
+    pub id: EnvId,
     pub storage: Arc<LoadedStorage>,
 
     pub outcomes: OutcomeMetrics,
@@ -57,11 +52,9 @@ pub struct Environment {
     /// Map of transaction files to their respective counters
     pub tx_pipe: TxPipes,
     /// Map of cannon ids to their cannon configurations
-    pub cannon_configs: HashMap<String, (TxSource, TxSink)>,
-    /// To help generate the id of the new cannon.
-    pub cannons_counter: AtomicUsize,
+    pub cannon_configs: HashMap<CannonId, (TxSource, TxSink)>,
     /// Map of cannon ids to their cannon instances
-    pub cannons: Arc<RwLock<HashMap<usize, CannonInstance>>>,
+    pub cannons: Arc<RwLock<HashMap<CannonId, CannonInstance>>>,
 
     pub timeline: Vec<TimelineEvent>,
     pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
@@ -69,8 +62,8 @@ pub struct Environment {
 
 #[derive(Debug, Clone, Default)]
 pub struct TxPipes {
-    pub drains: HashMap<String, Arc<TransactionDrain>>,
-    pub sinks: HashMap<String, Arc<TransactionSink>>,
+    pub drains: HashMap<TxPipeId, Arc<TransactionDrain>>,
+    pub sinks: HashMap<TxPipeId, Arc<TransactionSink>>,
 }
 
 /// The effective test state of a node.
@@ -127,11 +120,10 @@ impl Environment {
     /// **This will error if the current env is not unset before calling to
     /// ensure tests are properly cleaned up.**
     pub async fn prepare(
+        env_id: EnvId,
         documents: Vec<ItemDocument>,
         state: Arc<GlobalState>,
-    ) -> Result<usize, EnvError> {
-        static ENVS_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
+    ) -> Result<EnvId, EnvError> {
         let mut state_lock = state.envs.write().await;
         state.prom_httpsd.lock().await.set_dirty();
 
@@ -156,9 +148,9 @@ impl Environment {
                 }
 
                 ItemDocument::Cannon(cannon) => {
-                    cannon_configs.insert(cannon.name.to_owned(), (cannon.source, cannon.sink));
+                    cannon_configs.insert(cannon.name, (cannon.source, cannon.sink));
                     if cannon.instance {
-                        immediate_cannons.push((cannon.name.clone(), cannon.count));
+                        immediate_cannons.push((cannon.name, cannon.count));
                     }
                 }
 
@@ -273,20 +265,22 @@ impl Environment {
         for (source, sink) in cannon_configs.values() {
             if let TxSource::Playback { file_name } = source {
                 tx_pipe.drains.insert(
-                    file_name.to_owned(),
-                    Arc::new(TransactionDrain::new(storage.clone(), file_name)?),
+                    *file_name,
+                    Arc::new(TransactionDrain::new_unread(
+                        storage.path(&state),
+                        *file_name,
+                    )?),
                 );
             }
 
             if let TxSink::Record { file_name, .. } = sink {
                 tx_pipe.sinks.insert(
-                    file_name.to_owned(),
-                    Arc::new(TransactionSink::new(storage.clone(), file_name)?),
+                    *file_name,
+                    Arc::new(TransactionSink::new(storage.path(&state), *file_name)?),
                 );
             }
         }
 
-        let env_id = ENVS_COUNTER.fetch_add(1, Ordering::Relaxed);
         let env = Arc::new(Environment {
             id: env_id,
             storage,
@@ -296,7 +290,6 @@ impl Environment {
             initial_nodes,
             tx_pipe,
             cannon_configs,
-            cannons_counter: Default::default(),
             cannons: Default::default(),
             // TODO: specify the binary when uploading the test or something
             aot_bin: DEFAULT_AOT_BIN.clone(),
@@ -305,6 +298,9 @@ impl Environment {
         });
 
         state_lock.insert(env_id, Arc::clone(&env));
+        if let Err(e) = PersistEnv::from(env.as_ref()).save(&state.db, env_id) {
+            error!("failed to save env {env_id} to persistence: {e}");
+        }
         drop(state_lock);
 
         // reconcile the nodes
@@ -316,23 +312,23 @@ impl Environment {
             let Some((source, sink)) = env.cannon_configs.get(&name) else {
                 continue;
             };
-            let id = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
+
             let (mut instance, rx) = CannonInstance::new(
                 Arc::clone(&state),
-                id,
+                name, // instanced cannons use the same name as the config
                 Arc::clone(&env),
                 source.clone(),
                 sink.clone(),
                 count,
             )?;
             instance.spawn_local(rx)?;
-            cannons.insert(id, instance);
+            cannons.insert(name, instance);
         }
 
         Ok(env_id)
     }
 
-    pub async fn cleanup(id: &usize, state: &GlobalState) -> Result<(), EnvError> {
+    pub async fn cleanup(id: &EnvId, state: &GlobalState) -> Result<(), EnvError> {
         // clear the env state
         info!("clearing env {id} state...");
         let env = state
@@ -341,6 +337,10 @@ impl Environment {
             .await
             .remove(id)
             .ok_or(CleanupError::EnvNotFound(*id))?;
+        if let Err(e) = PersistEnv::delete(&state.db, *id) {
+            error!("failed to save delete {id} to persistence: {e}");
+        }
+
         state.prom_httpsd.lock().await.set_dirty();
 
         // stop the timeline if it's running
@@ -380,9 +380,12 @@ impl Environment {
         for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
-                Ok(Ok(Ok(state))) => {
+                Ok(Ok(Ok(agent_state))) => {
                     if let Some(agent) = agents.get_mut(&id) {
-                        agent.set_state(state);
+                        agent.set_state(agent_state);
+                        if let Err(e) = agent.save(&state.db, id) {
+                            error!("failed to save agent {id} to the database: {e}");
+                        }
                         success += 1;
                     } else {
                         error!("agent {id} not found in pool after successful reconcile")
@@ -402,7 +405,7 @@ impl Environment {
 
     // TODO: this is almost exactly the same as `cleanup`, maybe we can merge it
     // later
-    pub async fn forcefully_inventory(id: usize, state: &GlobalState) -> Result<(), EnvError> {
+    pub async fn forcefully_inventory(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
         let mut envs_lock = state.envs.write().await;
         let env = envs_lock
             .get_mut(&id)
@@ -430,6 +433,9 @@ impl Environment {
                 let Some(client) = agent.client_owned() else {
                     // forcibly set the agent state if it is offline
                     agent.set_state(AgentState::Inventory);
+                    if let Err(e) = agent.save(&state.db, id) {
+                        error!("failed to save agent {id} to the database: {e}");
+                    }
                     continue;
                 };
 
@@ -452,9 +458,12 @@ impl Environment {
         for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
-                Ok(Ok(Ok(state))) => {
+                Ok(Ok(Ok(agent_state))) => {
                     if let Some(agent) = agents.get_mut(&id) {
-                        agent.set_state(state);
+                        agent.set_state(agent_state);
+                        if let Err(e) = agent.save(&state.db, id) {
+                            error!("failed to save agent {id} to the database: {e}");
+                        }
                         success += 1;
                     } else {
                         error!("agent {id} not found in pool after successful reconcile")
@@ -508,7 +517,6 @@ impl Environment {
                         info!("ignoring node {key}");
                         return None;
                     };
-                    info!("using ext node {key}");
 
                     Some(AgentPeer::External(match port_type {
                         PortType::Bft => external.bft?,
@@ -533,7 +541,7 @@ impl Environment {
 }
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(), EnvError> {
+pub async fn initial_reconcile(env_id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
     let mut pending_reconciliations = vec![];
     {
         let envs_lock = state.envs.read().await;
@@ -582,7 +590,8 @@ pub async fn initial_reconcile(env_id: usize, state: &GlobalState) -> Result<(),
         }
     }
 
-    if let Err(e) = reconcile_agents(pending_reconciliations.into_iter(), &state.pool).await {
+    if let Err(e) = reconcile_agents(state, pending_reconciliations.into_iter(), &state.pool).await
+    {
         error!("an error occurred on initial reconciliation, inventorying all agents: {e}");
         if let Err(e) = Environment::forcefully_inventory(env_id, state).await {
             error!("an error occurred inventorying agents: {e}");

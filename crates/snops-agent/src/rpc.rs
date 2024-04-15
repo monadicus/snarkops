@@ -12,7 +12,7 @@ use snops_common::{
         error::{AgentError, ReconcileError},
         MuxMessage,
     },
-    state::{AgentId, AgentPeer, AgentState, KeyState, PortConfig},
+    state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::{
@@ -190,7 +190,7 @@ impl AgentService for AgentRpcServer {
                     })?;
 
                     let storage_id = &info.id;
-                    let storage_path = state.cli.path.join("storage").join(storage_id);
+                    let storage_path = state.cli.path.join("storage").join(storage_id.to_string());
                     let ledger_path = if info.persist {
                         storage_path.join(LEDGER_PERSIST_DIR)
                     } else {
@@ -445,7 +445,7 @@ impl AgentService for AgentRpcServer {
     async fn execute_authorization(
         self,
         _: context::Context,
-        env_id: usize,
+        env_id: EnvId,
         query: String,
         auth: String,
     ) -> Result<(), AgentError> {

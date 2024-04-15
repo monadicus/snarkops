@@ -16,28 +16,28 @@ use futures_util::stream::StreamExt;
 use http::StatusCode;
 use serde::Deserialize;
 use snops_common::{
-    constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
+    constant::HEADER_AGENT_KEY,
     prelude::*,
     rpc::{
         agent::{AgentServiceClient, Handshake},
         control::ControlService,
     },
 };
-use surrealdb::Surreal;
 use tarpc::server::Channel;
 use tokio::select;
 use tracing::{error, info, warn};
 
 use self::{
     error::StartError,
-    jwt::{Claims, JWT_NONCE, JWT_SECRET},
+    jwt::{Claims, JWT_SECRET},
     rpc::ControlRpcServer,
 };
 use crate::{
     cli::Cli,
+    db::{self, document::DbDocument},
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{util::OpaqueDebug, Agent, AgentFlags, AppState, GlobalState},
+    state::{Agent, AgentFlags, AppState, GlobalState},
 };
 
 mod api;
@@ -48,33 +48,20 @@ pub mod prometheus;
 mod rpc;
 
 pub async fn start(cli: Cli) -> Result<(), StartError> {
-    let mut path = cli.path.clone();
-    path.push("data.db");
-    let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
+    let db = db::Database::open(&cli.path.join("store"))?;
 
     let prometheus = cli
         .prometheus
         .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
 
-    let state = GlobalState {
-        cli,
-        agent_key: std::env::var(ENV_AGENT_KEY).ok(),
-        db,
-        pool: Default::default(),
-        storage_ids: Default::default(),
-        storage: Default::default(),
-        envs: Default::default(),
-        prom_httpsd: Default::default(),
-        prometheus: OpaqueDebug(prometheus),
-    };
+    let state = Arc::new(GlobalState::load(cli, db, prometheus).await?);
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
         .nest("/prometheus", prometheus::routes())
-        // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
-        .with_state(Arc::new(state))
+        .with_state(state)
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
 
@@ -147,13 +134,7 @@ async fn handle_socket(
                 }
             }
 
-            // ensure the nonce is correct
-            if claims.nonce == *JWT_NONCE {
-                true
-            } else {
-                warn!("connecting agent specified invalid JWT nonce");
-                false
-            }
+            true
         });
 
     // TODO: the client should provide us with some information about itself (num
@@ -185,6 +166,12 @@ async fn handle_socket(
                     break 'reconnect;
                 }
 
+                // compare the stored nonce with the JWT's nonce
+                if agent.claims().nonce != claims.nonce {
+                    warn!("connecting agent is trying to identify with an invalid nonce");
+                    break 'reconnect;
+                }
+
                 // attach the current known agent state to the handshake
                 agent.state().clone_into(&mut handshake.state);
 
@@ -193,6 +180,9 @@ async fn handle_socket(
 
                 let id = agent.id();
                 info!("agent {id} reconnected");
+                if let Err(e) = agent.save(&state.db, id) {
+                    error!("failed to save agent {id} to the database: {e}");
+                }
 
                 // handshake with client
                 // note: this may cause a reconciliation, so this *may* be non-instant
@@ -214,7 +204,8 @@ async fn handle_socket(
         }
 
         // otherwise, we need to create an agent and give it a new JWT
-        let id = query.id.unwrap_or_default();
+        // TODO: remove unnamed agents
+        let id = query.id.unwrap_or_else(AgentId::rand);
 
         // check if an agent with this id is already online
         if pool.get(&id).map(Agent::is_connected).unwrap_or_default() {
@@ -241,6 +232,9 @@ async fn handle_socket(
         });
 
         // insert a new agent into the pool
+        if let Err(e) = agent.save(&state.db, id) {
+            error!("failed to save agent {id} to the database: {e}");
+        }
         pool.insert(id, agent);
 
         info!("agent {id} connected; pool is now {} nodes", pool.len());
@@ -262,6 +256,9 @@ async fn handle_socket(
                 );
                 agent.set_ports(ports);
                 agent.set_addrs(external, internal);
+                if let Err(e) = agent.save(&state2.db, id) {
+                    error!("failed to save agent {id} to the database: {e}");
+                }
             }
         }
     });

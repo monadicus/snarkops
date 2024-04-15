@@ -1,12 +1,14 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
-    sync::{atomic::Ordering, Arc},
+    str::FromStr,
+    sync::Arc,
 };
 
 use futures_util::future::join_all;
 use prometheus_http_query::response::Data;
 use promql_parser::label::{MatchOp, Matcher};
-use snops_common::state::{AgentId, AgentState};
+use rand::RngCore;
+use snops_common::state::{AgentId, AgentState, CannonId, EnvId};
 use tokio::{select, sync::RwLock, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
@@ -20,6 +22,7 @@ use crate::{
         source::{QueryTarget, TxSource},
         CannonInstance,
     },
+    db::document::DbDocument,
     env::PortType,
     schema::{
         outcomes::PromQuery,
@@ -33,6 +36,7 @@ pub type PendingAgentReconcile = (AgentId, AgentClient, AgentState);
 
 /// Reconcile a bunch of agents at once.
 pub async fn reconcile_agents<I>(
+    state: &GlobalState,
     iter: I,
     pool_mtx: &RwLock<HashMap<AgentId, Agent>>,
 ) -> Result<(), BatchReconcileError>
@@ -60,8 +64,12 @@ where
         };
 
         match result {
-            Ok(Ok(Ok(state))) => {
-                agent.set_state(state);
+            Ok(Ok(Ok(agent_state))) => {
+                agent.set_state(agent_state);
+                if let Err(e) = agent.save(&state.db, agent_id) {
+                    error!("failed to save agent {agent_id} to the database: {e}");
+                }
+
                 success += 1;
             }
             Ok(Ok(Err(e))) => error!(
@@ -89,7 +97,7 @@ where
 }
 
 impl Environment {
-    pub async fn execute(state: Arc<GlobalState>, env_id: usize) -> Result<(), EnvError> {
+    pub async fn execute(state: Arc<GlobalState>, env_id: EnvId) -> Result<(), EnvError> {
         let env = Arc::clone(
             state
                 .envs
@@ -197,11 +205,21 @@ impl Environment {
 
                         Action::Cannon(cannons) => {
                             for cannon in cannons.iter() {
-                                let cannon_id = env.cannons_counter.fetch_add(1, Ordering::Relaxed);
+                                let counter = rand::thread_rng().next_u32();
+                                let cannon_id =
+                                    CannonId::from_str(&format!("{}-{counter}", cannon.name))
+                                        // there is a small chance that the cannon's name is at the
+                                        // length limit, so this will force the cannon to be renamed
+                                        // to 'cannon-N'
+                                        .unwrap_or_else(|_| {
+                                            CannonId::from_str(&format!("cannon-{counter}"))
+                                                .expect("cannon id failed to parse")
+                                        });
+
                                 let Some((mut source, mut sink)) =
                                     env.cannon_configs.get(&cannon.name).cloned()
                                 else {
-                                    return Err(ExecutionError::UnknownCannon(cannon.name.clone()));
+                                    return Err(ExecutionError::UnknownCannon(cannon.name));
                                 };
 
                                 // override the query and target if they are specified
@@ -283,6 +301,7 @@ impl Environment {
                     let task_state = Arc::clone(&state);
                     let reconcile_handle = tokio::spawn(async move {
                         if let Err(e) = reconcile_agents(
+                            &task_state,
                             pending_reconciliations.into_values(),
                             &task_state.pool,
                         )

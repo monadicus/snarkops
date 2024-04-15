@@ -2,18 +2,18 @@ use axum::{response::IntoResponse, Json};
 use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
-use snops_common::{impl_into_status_code, impl_into_type_str, state::AgentId};
+use snops_common::{impl_into_status_code, impl_into_type_str};
 use thiserror::Error;
 
 use crate::{
-    cannon::error::CannonError, env::error::EnvError, error::DeserializeError,
-    schema::error::SchemaError,
+    cannon::error::CannonError, db::error::DatabaseError, env::error::EnvError,
+    error::DeserializeError, schema::error::SchemaError,
 };
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum ServerError {
     #[error("agent `{0}` not found")]
-    AgentNotFound(AgentId),
+    AgentNotFound(String),
     #[error(transparent)]
     Cannon(#[from] CannonError),
     #[error(transparent)]
@@ -64,8 +64,8 @@ impl IntoResponse for ServerError {
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum StartError {
-    #[error("failed to initialize the database: {0}")]
-    DbInit(#[from] surrealdb::Error),
+    #[error("failed to open database: {0}")]
+    Database(#[from] DatabaseError),
     #[error("failed to serve: {0}")]
     Serve(#[source] std::io::Error),
     #[error("failed to bind to tcp: {0}")]

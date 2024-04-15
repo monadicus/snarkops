@@ -8,6 +8,7 @@ use axum::{
 };
 use reqwest::StatusCode;
 use serde_json::json;
+use snops_common::state::id_or_none;
 
 use super::Authorization;
 use crate::state::AppState;
@@ -20,9 +21,17 @@ pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
 }
 
 async fn state_root(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(String, String)>,
     state: State<AppState>,
 ) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "unknown cannon or environment" })),
+        )
+            .into_response();
+    };
+
     let Some(env) = ({
         let env = state.envs.read().await;
         env.get(&env_id).cloned()
@@ -76,10 +85,18 @@ async fn state_root(
 }
 
 async fn transaction(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(String, String)>,
     state: State<AppState>,
     body: String,
 ) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "unknown cannon or environment" })),
+        )
+            .into_response();
+    };
+
     let Some(env) = ({
         let env = state.envs.read().await;
         env.get(&env_id).cloned()
@@ -111,10 +128,18 @@ async fn transaction(
 }
 
 async fn authorization(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(String, String)>,
     state: State<AppState>,
     Json(body): Json<Authorization>,
 ) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "unknown cannon or environment" })),
+        )
+            .into_response();
+    };
+
     let Some(env) = ({
         let env = state.envs.read().await;
         env.get(&env_id).cloned()

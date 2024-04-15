@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snops_common::{impl_into_status_code, impl_into_type_str};
+use snops_common::{impl_into_status_code, impl_into_type_str, state::StorageId};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 use url::Url;
@@ -12,27 +12,31 @@ use crate::error::CommandError;
 #[derive(Debug, Error, AsRefStr)]
 pub enum StorageError {
     #[error("storage id: `{1}`: {0}")]
-    Command(CommandError, String),
+    Command(CommandError, StorageId),
+    #[error("invalid storage id {0}")]
+    InvalidStorageId(String),
     #[error("mkdirs for storage generation id: `{0}`: {1}")]
-    GenerateStorage(String, #[source] std::io::Error),
+    GenerateStorage(StorageId, #[source] std::io::Error),
     #[error("remove storage {0:#?}: {1}")]
     RemoveStorage(PathBuf, #[source] std::io::Error),
     #[error("generating genesis id: `{0}`: {1}")]
-    FailedToGenGenesis(String, #[source] std::io::Error),
+    FailedToGenGenesis(StorageId, #[source] std::io::Error),
     #[error("fetching genesis block id: `{0}` url: `{1}`: {2}")]
-    FailedToFetchGenesis(String, Url, #[source] reqwest::Error),
+    FailedToFetchGenesis(StorageId, Url, #[source] reqwest::Error),
     #[error("writing genesis block id: `{0}`: {1}")]
-    FailedToWriteGenesis(String, #[source] std::io::Error),
+    FailedToWriteGenesis(StorageId, #[source] std::io::Error),
     #[error("taring ledger id: `{0}`: {1}")]
-    FailedToTarLedger(String, #[source] std::io::Error),
+    FailedToTarLedger(StorageId, #[source] std::io::Error),
     #[error("the specified storage ID {0} doesn't exist, and no generation params were specified")]
-    NoGenerationParams(String),
+    NoGenerationParams(StorageId),
     #[error("reading balances {0:#?}: {1}")]
     ReadBalances(PathBuf, #[source] std::io::Error),
     #[error("reading version {0:#?}: {1}")]
     ReadVersion(PathBuf, #[source] std::io::Error),
     #[error("writing version {0:#?}: {1}")]
     WriteVersion(PathBuf, #[source] std::io::Error),
+    #[error("writing commmittee {0:#?}: {1}")]
+    WriteCommittee(PathBuf, #[source] std::io::Error),
     #[error("parsing balances {0:#?}: {1}")]
     ParseBalances(PathBuf, #[source] serde_json::Error),
     #[error("error loading checkpoints: {0}")]
