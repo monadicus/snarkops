@@ -23,12 +23,14 @@ pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
+        .route("/env/list", get(get_env_list))
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/storage", get(get_storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", post(post_env_timeline))
         .route("/env/:id", delete(delete_env_timeline))
+        .route("/env/:id", get(get_env_topology))
 }
 
 #[derive(Deserialize)]
@@ -102,6 +104,26 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Respon
         .unwrap()
         .to_string()
         .into_response()
+}
+
+async fn get_env_list(State(state): State<AppState>) -> Response {
+    let envs = state.envs.read().await;
+    Json(envs.keys().cloned().collect::<Vec<_>>()).into_response()
+}
+
+async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
+    let Some(env_id) = id_or_none(dbg!(&env_id)) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    Json(json!({
+            "node_map": env.node_map,
+            "initial_nodes": env.initial_nodes,
+    }))
+    .into_response()
 }
 
 async fn post_env_prepare(

@@ -36,7 +36,7 @@ pub struct Document {
     pub nodes: IndexMap<NodeKey, Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExternalNode {
     // NOTE: these fields must be validated at runtime, because validators require `bft` to be set,
     // and non-validators require `node` to be set
