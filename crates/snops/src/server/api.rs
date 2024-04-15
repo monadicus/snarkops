@@ -10,7 +10,7 @@ use serde_json::json;
 use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     rpc::agent::AgentMetric,
-    state::{AgentId, EnvId},
+    state::{id_or_none, EnvId},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
@@ -23,8 +23,8 @@ pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
-        .route("/env/prepare", post(post_env_prepare))
-        .route("/env/:env_id/storage", get(storage_info))
+        .route("/env/:env_id/prepare", post(post_env_prepare))
+        .route("/env/:env_id/storage", get(get_storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", post(post_env_timeline))
@@ -39,7 +39,10 @@ enum StorageType {
     Binary,
 }
 
-async fn storage_info(Path(env_id): Path<EnvId>, state: State<AppState>) -> Response {
+async fn get_storage_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
+    let Some(env_id) = id_or_none(&env_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -48,10 +51,13 @@ async fn storage_info(Path(env_id): Path<EnvId>, state: State<AppState>) -> Resp
 }
 
 async fn redirect_storage(
-    Path((env_id, ty)): Path<(EnvId, StorageType)>,
+    Path((env_id, ty)): Path<(String, StorageType)>,
     state: State<AppState>,
     req: Request,
 ) -> Response {
+    let Some(env_id) = id_or_none(&env_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -81,10 +87,10 @@ fn status_ok() -> Response {
     (StatusCode::OK, Json(json!({"status": "ok"}))).into_response()
 }
 
-async fn get_agent_tps(state: State<AppState>, Path(id): Path<AgentId>) -> Response {
+async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Response {
     let pool = state.pool.read().await;
-    let Some(agent) = pool.get(&id) else {
-        return ServerError::AgentNotFound(id).into_response();
+    let Some(agent) = id_or_none(&id).and_then(|id| pool.get(&id)) else {
+        return ServerError::AgentNotFound(id.clone()).into_response();
     };
 
     // TODO: get rid of these unwraps
@@ -98,7 +104,13 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<AgentId>) -> Respo
         .into_response()
 }
 
-async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
+async fn post_env_prepare(
+    // This env_id is allowed to be in the Path because it would be allocated
+    // anyway
+    Path(env_id): Path<EnvId>,
+    State(state): State<AppState>,
+    body: String,
+) -> Response {
     let documents = match Environment::deserialize(&body) {
         Ok(documents) => documents,
         Err(e) => return ServerError::from(e).into_response(),
@@ -109,13 +121,17 @@ async fn post_env_prepare(state: State<AppState>, body: String) -> Response {
 
     // TODO: clean up existing test
 
-    match Environment::prepare(documents, &state).await {
+    match Environment::prepare(env_id, documents, state).await {
         Ok(env_id) => (StatusCode::OK, Json(json!({ "id": env_id }))).into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }
 
-async fn post_env_timeline(Path(env_id): Path<EnvId>, State(state): State<AppState>) -> Response {
+async fn post_env_timeline(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
+    let Some(env_id) = id_or_none(&env_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
     match Environment::execute(state, env_id).await {
         Ok(()) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
@@ -123,9 +139,13 @@ async fn post_env_timeline(Path(env_id): Path<EnvId>, State(state): State<AppSta
 }
 
 async fn delete_env_timeline(
-    Path(env_id): Path<EnvId>,
+    Path(env_id): Path<String>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
+    let Some(env_id) = id_or_none(&env_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
     match Environment::cleanup(&env_id, &state).await {
         Ok(_) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),

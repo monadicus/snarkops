@@ -1,10 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     str::FromStr,
 };
 
+use bytes::{Buf, BufMut};
 use fixedbitset::FixedBitSet;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
@@ -12,7 +13,7 @@ use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snops_common::{
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, DocHeightRequest, NodeState},
+    state::{AgentId, DocHeightRequest, InternedId, NodeState},
     INTERN,
 };
 
@@ -20,6 +21,7 @@ use super::{
     error::{KeySourceError, SchemaError},
     NodeKey, NodeTargets,
 };
+use crate::db::document::BEncDec;
 
 /// A document describing the node infrastructure for a test.
 #[derive(Deserialize, Debug, Clone)]
@@ -34,7 +36,7 @@ pub struct Document {
     pub nodes: IndexMap<NodeKey, Node>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalNode {
     // NOTE: these fields must be validated at runtime, because validators require `bft` to be set,
     // and non-validators require `node` to be set
@@ -44,15 +46,90 @@ pub struct ExternalNode {
     pub rest: Option<SocketAddr>,
 }
 
+impl BEncDec for ExternalNode {
+    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
+        bincode::serialize(&(self.bft.as_ref(), self.node.as_ref(), self.rest.as_ref()))
+    }
+
+    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
+        let (bft, node, rest) = bincode::deserialize(bytes)?;
+        Ok(ExternalNode { bft, node, rest })
+    }
+}
+
+/// Impl serde Deserialize ExternalNode but allow for { bft: addr, node: addr,
+/// rest: addr} or just `addr`
+impl<'de> Deserialize<'de> for ExternalNode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ExternalNodeVisitor;
+
+        impl<'de> Visitor<'de> for ExternalNodeVisitor {
+            type Value = ExternalNode;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an ip address or a map of socket addresses")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut bft = None;
+                let mut node = None;
+                let mut rest = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "bft" => {
+                            bft = Some(map.next_value()?);
+                        }
+                        "node" => {
+                            node = Some(map.next_value()?);
+                        }
+                        "rest" => {
+                            rest = Some(map.next_value()?);
+                        }
+                        _ => {
+                            return Err(serde::de::Error::unknown_field(
+                                &key,
+                                &["bft", "node", "rest"],
+                            ));
+                        }
+                    }
+                }
+
+                Ok(ExternalNode { bft, node, rest })
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let ip: IpAddr = v.parse().map_err(E::custom)?;
+                Ok(ExternalNode {
+                    bft: Some(SocketAddr::new(ip, 5000)),
+                    node: Some(SocketAddr::new(ip, 4130)),
+                    rest: Some(SocketAddr::new(ip, 3030)),
+                })
+            }
+        }
+
+        deserializer.deserialize_any(ExternalNodeVisitor)
+    }
+}
+
 // zander forgive me -isaac
 fn please_be_online() -> bool {
     true
 }
 
 /// Parse the labels as strings, but intern them on load
-fn get_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
+fn deser_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
 where
-    D: Deserializer<'de>,
+    D: serde::Deserializer<'de>,
 {
     let labels = Vec::<String>::deserialize(deserializer)?;
     Ok(labels
@@ -61,9 +138,17 @@ where
         .collect())
 }
 
+fn ser_label<S>(labels: &HashSet<Spur>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let labels: Vec<&str> = labels.iter().map(|key| INTERN.resolve(key)).collect();
+    labels.serialize(serializer)
+}
+
 // TODO: could use some more clarification on some of these fields
 /// A node in the testing infrastructure.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Node {
     #[serde(default = "please_be_online")]
     pub online: bool,
@@ -81,7 +166,11 @@ pub struct Node {
     pub height: DocHeightRequest,
 
     /// When specified, agents must have these labels
-    #[serde(default, deserialize_with = "get_label")]
+    #[serde(
+        default,
+        deserialize_with = "deser_label",
+        serialize_with = "ser_label"
+    )]
     pub labels: HashSet<Spur>,
 
     /// When specified, an agent must have this id. Overrides the labels field.
@@ -138,6 +227,103 @@ impl Node {
     }
 }
 
+impl BEncDec for DocHeightRequest {
+    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        match self {
+            DocHeightRequest::Top => {
+                buf.put_u8(0);
+            }
+            DocHeightRequest::Absolute(h) => {
+                buf.put_u8(1);
+                buf.put_u32(*h);
+            }
+            DocHeightRequest::Checkpoint(span) => {
+                buf.put_u8(2);
+                let span_str = span.to_string();
+                let span_bytes = span_str.as_bytes();
+                buf.put_u8(span_bytes.len() as u8);
+                buf.extend_from_slice(span_bytes);
+            }
+        }
+        Ok(buf)
+    }
+
+    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
+        let mut bytes = bytes;
+        let ty = bytes.get_u8();
+        match ty {
+            0 => Ok(DocHeightRequest::Top),
+            1 => Ok(DocHeightRequest::Absolute(bytes.get_u32())),
+            2 => {
+                let len = bytes.get_u8() as usize;
+                let span_str = std::str::from_utf8(&bytes[..len]).map_err(|_| {
+                    bincode::ErrorKind::Custom("invalid retention span utf8 str".to_owned())
+                })?;
+                let span = checkpoint::RetentionSpan::from_str(span_str)
+                    .map_err(|_| bincode::ErrorKind::Custom("invalid retention span".to_owned()))?;
+                Ok(DocHeightRequest::Checkpoint(span))
+            }
+            _ => Err(bincode::ErrorKind::Custom("invalid height request type".to_owned()).into()),
+        }
+    }
+}
+
+impl BEncDec for Node {
+    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        buf.push(1); // version
+        let body = bincode::serialize(&(
+            self.online,
+            &self.replicas,
+            &self.key,
+            self.labels
+                .iter()
+                .map(|label| INTERN.resolve(label))
+                .collect::<Vec<_>>(),
+            &self.agent,
+            &self.env,
+        ))?;
+        buf.put_u32(body.len() as u32);
+        buf.extend_from_slice(&body);
+        self.height.write_bytes(&mut buf)?;
+        self.peers.write_bytes(&mut buf)?;
+        self.validators.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn from_bytes(mut bytes: &[u8]) -> bincode::Result<Self> {
+        let version = bytes.get_u8();
+        if version != 1 {
+            return Err(bincode::ErrorKind::Custom("unsupported version".to_owned()).into());
+        }
+
+        let len = bytes.get_u32() as usize;
+        let (online, replicas, key, labels, agent, env): (_, _, _, Vec<String>, _, _) =
+            bincode::deserialize(&bytes[..len])?;
+        bytes.advance(len);
+
+        let height = DocHeightRequest::read_bytes(&mut bytes)?;
+        let peers = NodeTargets::read_bytes(&mut bytes)?;
+        let validators = NodeTargets::read_bytes(&mut bytes)?;
+
+        Ok(Node {
+            online,
+            replicas,
+            key,
+            height,
+            labels: labels
+                .into_iter()
+                .map(|label| INTERN.get_or_intern(label))
+                .collect(),
+            agent,
+            env,
+            peers,
+            validators,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeySource {
     /// Private key owned by the agent
@@ -147,7 +333,7 @@ pub enum KeySource {
     /// committee.0 or committee.$ (for replicas)
     Committee(Option<usize>),
     /// accounts.0 or accounts.$ (for replicas)
-    Named(String, Option<usize>),
+    Named(InternedId, Option<usize>),
 }
 
 impl<'de> Deserialize<'de> for KeySource {
@@ -184,6 +370,10 @@ impl Serialize for KeySource {
     }
 }
 
+lazy_static! {
+    pub static ref ACCOUNTS_KEY_ID: InternedId = InternedId::from_str("accounts").unwrap();
+}
+
 impl FromStr for KeySource {
     type Err = SchemaError;
 
@@ -215,12 +405,14 @@ impl FromStr for KeySource {
         // named key (using regex with capture groups)
         lazy_static! {
             static ref NAMED_KEYSOURCE_REGEX: regex::Regex =
-                regex::Regex::new(r"^(?P<name>\w+)\.(?P<idx>\d+|\$)$").unwrap();
+                regex::Regex::new(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9\-_.]{0,63})\.(?P<idx>\d+|\$)$")
+                    .unwrap();
         }
         let groups = NAMED_KEYSOURCE_REGEX
             .captures(s)
             .ok_or(KeySourceError::InvalidKeySource)?;
-        let name = groups.name("name").unwrap().as_str().to_string();
+        let name = InternedId::from_str(groups.name("name").unwrap().as_str())
+            .map_err(|_| KeySourceError::InvalidKeySource)?;
         let idx = match groups.name("idx").unwrap().as_str() {
             "$" => None,
             idx => Some(idx.parse().map_err(KeySourceError::InvalidCommitteeIndex)?),
@@ -254,7 +446,7 @@ impl KeySource {
     pub fn with_index(&self, idx: usize) -> Self {
         match self {
             KeySource::Committee(_) => KeySource::Committee(Some(idx)),
-            KeySource::Named(name, _) => KeySource::Named(name.clone(), Some(idx)),
+            KeySource::Named(name, _) => KeySource::Named(*name, Some(idx)),
             _ => self.clone(),
         }
     }
@@ -281,11 +473,11 @@ mod tests {
 
         assert_eq!(
             serde_yaml::from_str::<KeySource>("accounts.0").expect("foo"),
-            KeySource::Named("accounts".to_string(), Some(0))
+            KeySource::Named(*ACCOUNTS_KEY_ID, Some(0))
         );
         assert_eq!(
             serde_yaml::from_str::<KeySource>("accounts.$").expect("foo"),
-            KeySource::Named("accounts".to_string(), None)
+            KeySource::Named(*ACCOUNTS_KEY_ID, None)
         );
 
         assert_eq!(

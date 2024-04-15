@@ -17,7 +17,6 @@ use snarkvm::{
     utilities::FromBytes,
 };
 use snops_common::state::NodeType;
-use tracing::info;
 
 use crate::{ledger::Addrs, Account, Network, PrivateKey};
 
@@ -120,10 +119,12 @@ impl Runner {
         // visibility issues
         {
             // Build the Prometheus exporter.
-            metrics_exporter_prometheus::PrometheusBuilder::new()
+            if let Err(e) = metrics_exporter_prometheus::PrometheusBuilder::new()
                 .with_http_listener(metrics_ip)
                 .install()
-                .expect("can't build the prometheus exporter");
+            {
+                tracing::error!("can't build the prometheus exporter: {e}");
+            }
 
             // Register the snarkVM metrics.
             snarkvm::metrics::register_metrics();
@@ -195,7 +196,6 @@ impl Runner {
                     if last_height != height {
                         last_height = height;
 
-                        info!("creating checkpoint @ {height}...");
                         if let Err(e) = manager.poll() {
                             tracing::error!("backup loop error: {e:?}");
                         }

@@ -5,7 +5,7 @@ use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-use snops_common::state::{DocHeightRequest, NodeKey};
+use snops_common::state::{CannonId, DocHeightRequest, NodeKey};
 
 use super::NodeTargets;
 
@@ -138,11 +138,14 @@ impl<'de> Deserialize<'de> for EventDuration {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct SpawnCannon {
-    pub name: String,
-    pub count: usize,
+    pub name: CannonId,
+    #[serde(default)]
+    pub count: Option<usize>,
     /// overwrite the query's source node
+    #[serde(default)]
     pub query: Option<NodeKey>,
     /// overwrite the cannon sink target
+    #[serde(default)]
     pub target: Option<NodeTargets>,
 }
 

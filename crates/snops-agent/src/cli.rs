@@ -1,6 +1,6 @@
 use std::{
     env, fs,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr},
     path::PathBuf,
 };
 
@@ -10,7 +10,7 @@ use snops_common::state::{AgentId, AgentMode, PortConfig};
 use tracing::{info, warn};
 
 pub const ENV_ENDPOINT: &str = "SNOPS_ENDPOINT";
-pub const ENV_ENDPOINT_DEFAULT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1234);
+pub const ENV_ENDPOINT_DEFAULT: &str = "127.0.0.1:1234";
 
 // TODO: allow agents to define preferred internal/external addrs
 
@@ -18,7 +18,7 @@ pub const ENV_ENDPOINT_DEFAULT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr
 pub struct Cli {
     #[arg(long)]
     /// Control plane endpoint address
-    pub endpoint: Option<SocketAddr>,
+    pub endpoint: Option<String>,
 
     #[arg(long)]
     pub id: Option<AgentId>,
@@ -53,16 +53,14 @@ pub struct Cli {
 }
 
 impl Cli {
-    pub fn endpoint_and_uri(&self) -> (SocketAddr, Uri) {
+    pub fn endpoint_and_uri(&self) -> (String, Uri) {
         // get the endpoint
         let endpoint = self
             .endpoint
-            .or_else(|| {
-                env::var(ENV_ENDPOINT)
-                    .ok()
-                    .and_then(|s| s.as_str().parse().ok())
-            })
-            .unwrap_or(ENV_ENDPOINT_DEFAULT);
+            .as_ref()
+            .cloned()
+            .or_else(|| env::var(ENV_ENDPOINT).ok())
+            .unwrap_or(ENV_ENDPOINT_DEFAULT.to_owned());
 
         let mut query = format!("/agent?mode={}", u8::from(self.modes));
 
@@ -93,6 +91,6 @@ impl Cli {
             .build()
             .unwrap();
 
-        (endpoint, ws_uri)
+        (endpoint.to_string(), ws_uri)
     }
 }

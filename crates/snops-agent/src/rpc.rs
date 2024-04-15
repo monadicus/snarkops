@@ -12,7 +12,7 @@ use snops_common::{
         error::{AgentError, ReconcileError},
         MuxMessage,
     },
-    state::{AgentId, AgentPeer, AgentState, KeyState, PortConfig},
+    state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::{
@@ -44,8 +44,11 @@ pub struct AgentRpcServer {
 }
 
 impl AgentService for AgentRpcServer {
-    async fn handshake(self, _: context::Context, handshake: Handshake) {
-        // store and cache JWT
+    async fn handshake(
+        self,
+        context: context::Context,
+        handshake: Handshake,
+    ) -> Result<(), ReconcileError> {
         if let Some(token) = handshake.jwt {
             // cache the JWT in the state JWT mutex
             self.state
@@ -67,6 +70,14 @@ impl AgentService for AgentRpcServer {
                 .expect("failed to acquire loki URL lock")
                 .replace(loki);
         }
+
+        // reconcile if state has changed
+        let needs_reconcile = *self.state.agent_state.read().await != handshake.state;
+        if needs_reconcile {
+            Self::reconcile(self, context, handshake.state).await?;
+        }
+
+        Ok(())
     }
 
     async fn reconcile(
@@ -150,7 +161,6 @@ impl AgentService for AgentRpcServer {
                 // download and decompress the storage
                 // skip if we don't need storage
                 let AgentState::Node(env_id, node) = &target else {
-                    info!("agent is not running a node; skipping storage download");
                     break 'storage;
                 };
                 let height = &node.height.1;
@@ -189,7 +199,7 @@ impl AgentService for AgentRpcServer {
                     })?;
 
                     let storage_id = &info.id;
-                    let storage_path = state.cli.path.join("storage").join(storage_id);
+                    let storage_path = state.cli.path.join("storage").join(storage_id.to_string());
                     let ledger_path = if info.persist {
                         storage_path.join(LEDGER_PERSIST_DIR)
                     } else {
@@ -455,7 +465,7 @@ impl AgentService for AgentRpcServer {
     async fn execute_authorization(
         self,
         _: context::Context,
-        env_id: usize,
+        env_id: EnvId,
         query: String,
         auth: String,
     ) -> Result<(), AgentError> {

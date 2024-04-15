@@ -9,6 +9,7 @@ description: |-
 retention-policy: default
 generate: {}
 persist: true
+regen: 1
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1

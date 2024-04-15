@@ -61,13 +61,17 @@ jobs:
       - name: 📥 Checkout snarkOS
         uses: actions/checkout@v4
         with:
-          repository: AleoNet/snarkOS
+          repository: AleoHQ/snarkOS
+          fetch-depth: 0
+          ref: ec943b39968215e17f43b5f53fd73acba66e3a5f # latest canarynet
           path: snarkos
 
       - name: 📥 Checkout snarkVM
         uses: actions/checkout@v4
         with:
-          repository: AleoNet/snarkVM
+          repository: AleoHQ/snarkVM
+          fetch-depth: 0
+          ref: ed20562d6f97ef593f051ce3cc848644e785f817 # latest canarynet
           path: snarkvm
 
       - name: ☁️ Install Nightly
@@ -91,13 +95,17 @@ jobs:
       - name: 📥 Checkout snarkOS
         uses: actions/checkout@v4
         with:
-          repository: AleoNet/snarkOS
+          repository: AleoHQ/snarkOS
+          fetch-depth: 0
+          ref: ec943b39968215e17f43b5f53fd73acba66e3a5f # latest canarynet
           path: snarkos
 
       - name: 📥 Checkout snarkVM
         uses: actions/checkout@v4
         with:
-          repository: AleoNet/snarkVM
+          repository: AleoHQ/snarkVM
+          fetch-depth: 0
+          ref: ed20562d6f97ef593f051ce3cc848644e785f817 # latest canarynet
           path: snarkvm
 
       - name: 🥬 Use Mold Linker

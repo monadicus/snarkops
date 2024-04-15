@@ -46,8 +46,7 @@ pub struct Genesis {
     pub genesis_key: Option<PrivateKey>,
 
     /// Where to write the genesis block to.
-    #[clap(name = "output", short, long)]
-    #[serde_clap_default(PathBuf::from("genesis.block"))]
+    #[clap(name = "output", short, long, default_value = "genesis.block")]
     pub output: PathBuf,
 
     /// The committee size. Not used if --bonded-balances is set.

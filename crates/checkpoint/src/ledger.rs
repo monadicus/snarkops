@@ -135,7 +135,7 @@ impl Stores {
 
         // Remove the block solution IDs.
         for solution_id in solutions.solution_ids() {
-            db.puzzle_commitments_map().remove(solution_id)?;
+            db.solution_ids_map().remove(solution_id)?;
         }
 
         // Remove the aborted solution IDs.
