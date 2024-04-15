@@ -17,7 +17,6 @@ use snarkvm::{
     utilities::FromBytes,
 };
 use snops_common::state::NodeType;
-use tracing::info;
 
 use crate::{ledger::Addrs, Account, Network, PrivateKey};
 
