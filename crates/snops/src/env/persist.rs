@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use bimap::BiMap;
 use bytes::{Buf, BufMut};
@@ -15,10 +15,11 @@ use crate::{
     },
     cli::Cli,
     db::{
-        document::{concat_ids, load_interned_id, DbCollection, DbDocument},
+        document::{concat_ids, load_interned_id, BEncDec, DbCollection, DbDocument},
         error::DatabaseError,
         Database,
     },
+    impl_bencdec_serde,
     schema::{
         nodes::{ExternalNode, Node},
         storage::DEFAULT_AOT_BIN,
@@ -155,10 +156,66 @@ impl PersistEnv {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PersistNode {
     Internal(AgentId, Box<Node>),
     External(ExternalNode),
+}
+
+impl_bencdec_serde!(PersistNode);
+
+// ExternalNode's deserializer is tailored specifically to YAML and uses
+// deserialize_any, which is not supported by bincode.
+impl BEncDec for PersistNode {
+    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        match self {
+            PersistNode::Internal(id, state) => {
+                buf.put_u8(0);
+
+                let id_bytes: &[u8] = id.as_ref();
+                buf.put_u8(id_bytes.len() as u8);
+                buf.extend_from_slice(id_bytes);
+
+                state.write_bytes(&mut buf)?;
+            }
+            PersistNode::External(n) => {
+                buf.put_u8(1);
+                n.write_bytes(&mut buf)?;
+            }
+        }
+        Ok(buf)
+    }
+
+    fn from_bytes(mut bytes: &[u8]) -> bincode::Result<Self> {
+        if bytes.is_empty() {
+            return Err(bincode::ErrorKind::Custom("end of input".to_owned()).into());
+        }
+
+        match bytes.get_u8() {
+            0 => {
+                let id_len = bytes.get_u8() as usize;
+                if bytes.len() < id_len {
+                    return Err(
+                        bincode::ErrorKind::Custom("invalid agent id length".to_owned()).into(),
+                    );
+                }
+                let id =
+                    AgentId::from_str(std::str::from_utf8(&bytes[..id_len]).map_err(|_| {
+                        bincode::ErrorKind::Custom("agent id not utf-8 string".to_owned())
+                    })?)
+                    .map_err(|_| bincode::ErrorKind::Custom("invalid agent id".to_owned()))?;
+                bytes.advance(id_len);
+                let state = Node::read_bytes(&mut bytes)?;
+                Ok(PersistNode::Internal(id, Box::new(state)))
+            }
+            1 => {
+                let n = ExternalNode::read_bytes(&mut bytes)?;
+                Ok(PersistNode::External(n))
+            }
+            _ => Err(bincode::ErrorKind::Custom("invalid node kind".to_owned()).into()),
+        }
+    }
 }
 
 pub struct PersistDrainCount {
@@ -231,17 +288,18 @@ impl DbDocument for PersistEnv {
     fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
         let mut buf = vec![];
         buf.put_u8(ENV_VERSION);
-        bincode::serialize_into(
-            &mut buf,
-            &(
+
+        buf.extend_from_slice(
+            &bincode::serialize(&(
                 &self.storage_id,
                 &self.nodes,
                 &self.tx_pipe_drains,
                 &self.tx_pipe_sinks,
                 &self.cannon_configs,
-            ),
-        )
-        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "env".to_owned(), e))?;
+            ))
+            .map_err(|e| DatabaseError::SerializeError(key.to_string(), "env".to_owned(), e))?,
+        );
+
         db.envs
             .insert(key, buf)
             .map_err(|e| DatabaseError::SaveError(key.to_string(), "env".to_owned(), e))?;

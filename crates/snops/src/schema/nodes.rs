@@ -5,6 +5,7 @@ use std::{
     str::FromStr,
 };
 
+use bytes::{Buf, BufMut};
 use fixedbitset::FixedBitSet;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
@@ -20,6 +21,7 @@ use super::{
     error::{KeySourceError, SchemaError},
     NodeKey, NodeTargets,
 };
+use crate::db::document::BEncDec;
 
 /// A document describing the node infrastructure for a test.
 #[derive(Deserialize, Debug, Clone)]
@@ -34,7 +36,7 @@ pub struct Document {
     pub nodes: IndexMap<NodeKey, Node>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalNode {
     // NOTE: these fields must be validated at runtime, because validators require `bft` to be set,
     // and non-validators require `node` to be set
@@ -42,6 +44,17 @@ pub struct ExternalNode {
     pub bft: Option<SocketAddr>,
     pub node: Option<SocketAddr>,
     pub rest: Option<SocketAddr>,
+}
+
+impl BEncDec for ExternalNode {
+    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
+        bincode::serialize(&(self.bft.as_ref(), self.node.as_ref(), self.rest.as_ref()))
+    }
+
+    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
+        let (bft, node, rest) = bincode::deserialize(bytes)?;
+        Ok(ExternalNode { bft, node, rest })
+    }
 }
 
 /// Impl serde Deserialize ExternalNode but allow for { bft: addr, node: addr,
@@ -118,7 +131,7 @@ fn deser_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let labels = Vec::<&str>::deserialize(deserializer)?;
+    let labels = Vec::<String>::deserialize(deserializer)?;
     Ok(labels
         .into_iter()
         .map(|label| INTERN.get_or_intern(label))
@@ -135,7 +148,7 @@ where
 
 // TODO: could use some more clarification on some of these fields
 /// A node in the testing infrastructure.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Node {
     #[serde(default = "please_be_online")]
     pub online: bool,
@@ -211,6 +224,103 @@ impl Node {
             }
         }
         mask
+    }
+}
+
+impl BEncDec for DocHeightRequest {
+    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        match self {
+            DocHeightRequest::Top => {
+                buf.put_u8(0);
+            }
+            DocHeightRequest::Absolute(h) => {
+                buf.put_u8(1);
+                buf.put_u32(*h);
+            }
+            DocHeightRequest::Checkpoint(span) => {
+                buf.put_u8(2);
+                let span_str = span.to_string();
+                let span_bytes = span_str.as_bytes();
+                buf.put_u8(span_bytes.len() as u8);
+                buf.extend_from_slice(span_bytes);
+            }
+        }
+        Ok(buf)
+    }
+
+    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
+        let mut bytes = bytes;
+        let ty = bytes.get_u8();
+        match ty {
+            0 => Ok(DocHeightRequest::Top),
+            1 => Ok(DocHeightRequest::Absolute(bytes.get_u32())),
+            2 => {
+                let len = bytes.get_u8() as usize;
+                let span_str = std::str::from_utf8(&bytes[..len]).map_err(|_| {
+                    bincode::ErrorKind::Custom("invalid retention span utf8 str".to_owned())
+                })?;
+                let span = checkpoint::RetentionSpan::from_str(span_str)
+                    .map_err(|_| bincode::ErrorKind::Custom("invalid retention span".to_owned()))?;
+                Ok(DocHeightRequest::Checkpoint(span))
+            }
+            _ => Err(bincode::ErrorKind::Custom("invalid height request type".to_owned()).into()),
+        }
+    }
+}
+
+impl BEncDec for Node {
+    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        buf.push(1); // version
+        let body = bincode::serialize(&(
+            self.online,
+            &self.replicas,
+            &self.key,
+            self.labels
+                .iter()
+                .map(|label| INTERN.resolve(label))
+                .collect::<Vec<_>>(),
+            &self.agent,
+            &self.env,
+        ))?;
+        buf.put_u32(body.len() as u32);
+        buf.extend_from_slice(&body);
+        self.height.write_bytes(&mut buf)?;
+        self.peers.write_bytes(&mut buf)?;
+        self.validators.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn from_bytes(mut bytes: &[u8]) -> bincode::Result<Self> {
+        let version = bytes.get_u8();
+        if version != 1 {
+            return Err(bincode::ErrorKind::Custom("unsupported version".to_owned()).into());
+        }
+
+        let len = bytes.get_u32() as usize;
+        let (online, replicas, key, labels, agent, env): (_, _, _, Vec<String>, _, _) =
+            bincode::deserialize(&bytes[..len])?;
+        bytes.advance(len);
+
+        let height = DocHeightRequest::read_bytes(&mut bytes)?;
+        let peers = NodeTargets::read_bytes(&mut bytes)?;
+        let validators = NodeTargets::read_bytes(&mut bytes)?;
+
+        Ok(Node {
+            online,
+            replicas,
+            key,
+            height,
+            labels: labels
+                .into_iter()
+                .map(|label| INTERN.get_or_intern(label))
+                .collect(),
+            agent,
+            env,
+            peers,
+            validators,
+        })
     }
 }
 

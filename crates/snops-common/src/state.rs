@@ -119,7 +119,7 @@ impl Display for PortConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, Parser)]
+#[derive(Default, Clone, Copy, Debug, Serialize, Deserialize, Parser, PartialEq, Eq)]
 pub struct AgentMode {
     /// Enable running a validator node
     #[arg(long)]
@@ -406,8 +406,8 @@ impl<'de> Deserialize<'de> for NodeKey {
     where
         D: serde::Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Self::from_str(s).map_err(D::Error::custom)
+        let s = String::deserialize(deserializer)?;
+        Self::from_str(&s).map_err(D::Error::custom)
     }
 }
 
@@ -468,8 +468,8 @@ impl<'de> Deserialize<'de> for InternedId {
     where
         D: serde::Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Self::from_str(s).map_err(D::Error::custom)
+        let s = String::deserialize(deserializer)?;
+        Self::from_str(&s).map_err(D::Error::custom)
     }
 }
 

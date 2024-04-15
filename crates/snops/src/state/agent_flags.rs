@@ -9,7 +9,7 @@ use snops_common::{
     INTERN,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentFlags {
     #[serde(deserialize_with = "deser_mode", serialize_with = "ser_mode")]
     pub(super) mode: AgentMode,
@@ -24,7 +24,7 @@ where
     D: serde::Deserializer<'de>,
 {
     // axum's querystring visitor marks all values as string
-    let byte: u8 = <&str>::deserialize(deser)?
+    let byte: u8 = String::deserialize(deser)?
         .parse()
         .map_err(|e| serde::de::Error::custom(format!("error parsing u8: {e}")))?;
     Ok(AgentMode::from(byte))
@@ -34,7 +34,7 @@ fn ser_mode<S>(mode: &AgentMode, ser: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    ser.serialize_u8(u8::from(*mode))
+    ser.serialize_str(&u8::from(*mode).to_string())
 }
 
 fn deser_labels<'de, D>(deser: D) -> Result<HashSet<Spur>, D::Error>
@@ -72,7 +72,7 @@ where
     D: serde::Deserializer<'de>,
 {
     // axum's querystring visitor marks all values as string
-    Ok(Option::<&str>::deserialize(deser)?
+    Ok(Option::<String>::deserialize(deser)?
         .map(|s| s == "true")
         .unwrap_or(false))
 }

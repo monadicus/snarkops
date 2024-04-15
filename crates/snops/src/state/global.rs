@@ -3,6 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use prometheus_http_query::Client as PrometheusClient;
 use snops_common::state::AgentId;
 use tokio::sync::{Mutex, RwLock};
+use tracing::info;
 
 use super::{persist::PersistStorage, AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
@@ -59,6 +60,7 @@ impl GlobalState {
                     continue;
                 }
             };
+            info!("loaded env {id} from persistence");
             envs.insert(id, Arc::new(loaded));
         }
 

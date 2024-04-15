@@ -27,7 +27,7 @@ use tracing::{error, info, warn};
 
 use self::{
     error::StartError,
-    jwt::{Claims, JWT_NONCE, JWT_SECRET},
+    jwt::{Claims, JWT_SECRET},
     rpc::ControlRpcServer,
 };
 use crate::{
@@ -117,13 +117,7 @@ async fn handle_socket(
                 }
             }
 
-            // ensure the nonce is correct
-            if claims.nonce == *JWT_NONCE {
-                true
-            } else {
-                warn!("connecting agent specified invalid JWT nonce");
-                false
-            }
+            true
         });
 
     // TODO: the client should provide us with some information about itself (num
@@ -152,6 +146,12 @@ async fn handle_socket(
 
                 if agent.is_connected() {
                     warn!("connecting agent is trying to identify as an already-connected agent");
+                    break 'reconnect;
+                }
+
+                // compare the stored nonce with the JWT's nonce
+                if agent.claims().nonce != claims.nonce {
+                    warn!("connecting agent is trying to identify with an invalid nonce");
                     break 'reconnect;
                 }
 

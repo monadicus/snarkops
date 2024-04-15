@@ -380,9 +380,12 @@ impl Environment {
         for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
-                Ok(Ok(Ok(state))) => {
+                Ok(Ok(Ok(agent_state))) => {
                     if let Some(agent) = agents.get_mut(&id) {
-                        agent.set_state(state);
+                        agent.set_state(agent_state);
+                        if let Err(e) = agent.save(&state.db, id) {
+                            error!("failed to save agent {id} to the database: {e}");
+                        }
                         success += 1;
                     } else {
                         error!("agent {id} not found in pool after successful reconcile")
@@ -430,6 +433,9 @@ impl Environment {
                 let Some(client) = agent.client_owned() else {
                     // forcibly set the agent state if it is offline
                     agent.set_state(AgentState::Inventory);
+                    if let Err(e) = agent.save(&state.db, id) {
+                        error!("failed to save agent {id} to the database: {e}");
+                    }
                     continue;
                 };
 
@@ -452,9 +458,12 @@ impl Environment {
         for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
-                Ok(Ok(Ok(state))) => {
+                Ok(Ok(Ok(agent_state))) => {
                     if let Some(agent) = agents.get_mut(&id) {
-                        agent.set_state(state);
+                        agent.set_state(agent_state);
+                        if let Err(e) = agent.save(&state.db, id) {
+                            error!("failed to save agent {id} to the database: {e}");
+                        }
                         success += 1;
                     } else {
                         error!("agent {id} not found in pool after successful reconcile")
@@ -508,7 +517,6 @@ impl Environment {
                         info!("ignoring node {key}");
                         return None;
                     };
-                    info!("using ext node {key}");
 
                     Some(AgentPeer::External(match port_type {
                         PortType::Bft => external.bft?,
@@ -582,7 +590,8 @@ pub async fn initial_reconcile(env_id: EnvId, state: &GlobalState) -> Result<(),
         }
     }
 
-    if let Err(e) = reconcile_agents(pending_reconciliations.into_iter(), &state.pool).await {
+    if let Err(e) = reconcile_agents(state, pending_reconciliations.into_iter(), &state.pool).await
+    {
         error!("an error occurred on initial reconciliation, inventorying all agents: {e}");
         if let Err(e) = Environment::forcefully_inventory(env_id, state).await {
             error!("an error occurred inventorying agents: {e}");

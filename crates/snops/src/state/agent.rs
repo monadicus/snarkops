@@ -7,6 +7,8 @@ use std::{
 
 use fixedbitset::FixedBitSet;
 use jwt::SignWithKey;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
@@ -16,7 +18,7 @@ use snops_common::{
 };
 
 use super::{AgentClient, AgentFlags};
-use crate::server::jwt::{Claims, JWT_NONCE, JWT_SECRET};
+use crate::server::jwt::{Claims, JWT_SECRET};
 
 #[derive(Debug)]
 /// Apparently `const* ()` is not send, so this is a workaround
@@ -52,7 +54,7 @@ impl Agent {
             env_claim: Arc::new(Busy),
             claims: Claims {
                 id,
-                nonce: *JWT_NONCE,
+                nonce: ChaChaRng::from_entropy().gen(),
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),

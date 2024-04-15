@@ -22,6 +22,7 @@ use crate::{
         source::{QueryTarget, TxSource},
         CannonInstance,
     },
+    db::document::DbDocument,
     env::PortType,
     schema::{
         outcomes::PromQuery,
@@ -35,6 +36,7 @@ pub type PendingAgentReconcile = (AgentId, AgentClient, AgentState);
 
 /// Reconcile a bunch of agents at once.
 pub async fn reconcile_agents<I>(
+    state: &GlobalState,
     iter: I,
     pool_mtx: &RwLock<HashMap<AgentId, Agent>>,
 ) -> Result<(), BatchReconcileError>
@@ -62,8 +64,12 @@ where
         };
 
         match result {
-            Ok(Ok(Ok(state))) => {
-                agent.set_state(state);
+            Ok(Ok(Ok(agent_state))) => {
+                agent.set_state(agent_state);
+                if let Err(e) = agent.save(&state.db, agent_id) {
+                    error!("failed to save agent {agent_id} to the database: {e}");
+                }
+
                 success += 1;
             }
             Ok(Ok(Err(e))) => error!(
@@ -295,6 +301,7 @@ impl Environment {
                     let task_state = Arc::clone(&state);
                     let reconcile_handle = tokio::spawn(async move {
                         if let Err(e) = reconcile_agents(
+                            &task_state,
                             pending_reconciliations.into_values(),
                             &task_state.pool,
                         )

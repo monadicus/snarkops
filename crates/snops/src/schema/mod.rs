@@ -11,6 +11,7 @@ use snops_common::state::{NodeKey, NodeType};
 use wildmatch::WildMatch;
 
 use self::error::{NodeTargetError, SchemaError};
+use crate::db::document::BEncDec;
 
 pub mod cannon;
 pub mod error;
@@ -59,6 +60,26 @@ pub enum NodeTargets {
     None,
     One(NodeTarget),
     Many(Vec<NodeTarget>),
+}
+
+impl BEncDec for NodeTargets {
+    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
+        bincode::serialize(&match self {
+            NodeTargets::None => vec![],
+            NodeTargets::One(target) => vec![target.clone()],
+            NodeTargets::Many(targets) => targets.clone(),
+        })
+    }
+
+    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
+        let targets = bincode::deserialize::<Vec<NodeTarget>>(bytes)?;
+        Ok(match targets.len() {
+            0 => NodeTargets::None,
+            // unwrap safety: length is guaranteed to be 1
+            1 => NodeTargets::One(targets.into_iter().next().unwrap()),
+            _ => NodeTargets::Many(targets),
+        })
+    }
 }
 
 impl<'de> Deserialize<'de> for NodeTargets {
@@ -209,7 +230,26 @@ impl Display for NodeTarget {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+impl Serialize for NodeTarget {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for NodeTarget {
+    fn deserialize<D>(deserializer: D) -> Result<NodeTarget, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        NodeTarget::from_str(&s).map_err(D::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NodeTargetType {
     /// Matches all node types.
     All,
@@ -239,7 +279,7 @@ impl std::hash::Hash for NodeTargetId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, Serialize, Deserialize)]
 pub enum NodeTargetNamespace {
     /// `*`. Matches all namespaces.
     All,
