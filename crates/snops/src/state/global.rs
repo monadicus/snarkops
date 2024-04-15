@@ -1,7 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use prometheus_http_query::Client as PrometheusClient;
-use snops_common::state::AgentId;
+use snops_common::{constant::ENV_AGENT_KEY, state::AgentId};
 use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
@@ -20,6 +20,7 @@ use crate::{
 pub struct GlobalState {
     pub db: Database,
     pub cli: Cli,
+    pub agent_key: Option<String>,
     pub pool: RwLock<AgentPool>,
     pub storage: RwLock<StorageMap>,
     pub envs: RwLock<EnvMap>,
@@ -66,6 +67,7 @@ impl GlobalState {
 
         Ok(Self {
             cli,
+            agent_key: std::env::var(ENV_AGENT_KEY).ok(),
             pool: RwLock::new(db.load()?),
             storage: RwLock::new(storage),
             envs: RwLock::new(envs),
