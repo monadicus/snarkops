@@ -17,6 +17,17 @@ pub struct Env {
 /// Env commands
 #[derive(Debug, Parser)]
 enum Commands {
+    /// List all environments.
+    List,
+
+    /// Show a specific environment.
+    #[command(arg_required_else_help = true)]
+    Show {
+        /// Show a specific env.
+        #[clap(value_hint = ValueHint::Other)]
+        id: String,
+    },
+
     /// Prepare a (test) environment.
     #[command(arg_required_else_help = true)]
     Prepare {
@@ -49,6 +60,16 @@ impl Env {
 
         use Commands::*;
         let response = match self.command {
+            List => {
+                let ep = format!("{}/api/v1/env/list", self.url);
+
+                client.get(ep).send()?
+            }
+            Show { id } => {
+                let ep = format!("{}/api/v1/env/{id}", self.url);
+
+                client.get(ep).send()?
+            }
             Prepare { id, spec } => {
                 let ep = format!("{}/api/v1/env/{id}/prepare", self.url);
                 let file: String = std::fs::read_to_string(spec)?;
