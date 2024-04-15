@@ -11,7 +11,7 @@ if [ -z "$INDEX" ]; then
   exit 1
 fi
 
-ENDPOINT="localhost:1234"
+ENDPOINT="127.0.0.1:1234"
 DATA_PATH="$(pwd)/snops-data/$INDEX"
 AGENT_BIN="$DATA_PATH/agent"
 

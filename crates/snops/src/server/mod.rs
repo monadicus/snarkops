@@ -8,13 +8,15 @@ use axum::{
     },
     http::HeaderMap,
     middleware,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 use futures_util::stream::StreamExt;
+use http::StatusCode;
 use serde::Deserialize;
 use snops_common::{
+    constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
     prelude::*,
     rpc::{
         agent::{AgentServiceClient, Handshake},
@@ -56,6 +58,7 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
 
     let state = GlobalState {
         cli,
+        agent_key: std::env::var(ENV_AGENT_KEY).ok(),
         db,
         pool: Default::default(),
         storage_ids: Default::default(),
@@ -97,8 +100,23 @@ async fn agent_ws_handler(
     headers: HeaderMap,
     State(state): State<AppState>,
     Query(query): Query<AgentWsQuery>,
-) -> impl IntoResponse {
+) -> Response {
+    match (&state.agent_key, headers.get(HEADER_AGENT_KEY)) {
+        // assert key equals passed header
+        (Some(key), Some(header)) if key == header.to_str().unwrap_or_default() => (),
+
+        // forbid if key is incorrect
+        (Some(_), _) => {
+            warn!("an agent has attempted to connect with a mismatching agent key");
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+
+        // allow if no key is present
+        _ => (),
+    }
+
     ws.on_upgrade(|socket| handle_socket(socket, headers, state, query))
+        .into_response()
 }
 
 async fn handle_socket(
