@@ -24,13 +24,13 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/list", get(get_env_list))
+        .route("/env/:env_id/topology", get(get_env_topology))
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/storage", get(get_storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", post(post_env_timeline))
         .route("/env/:id", delete(delete_env_timeline))
-        .route("/env/:id", get(get_env_topology))
 }
 
 #[derive(Deserialize)]
@@ -119,11 +119,7 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    Json(json!({
-            "node_map": env.node_map,
-            "initial_nodes": env.initial_nodes,
-    }))
-    .into_response()
+    Json(&env.node_map).into_response()
 }
 
 async fn post_env_prepare(
