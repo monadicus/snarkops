@@ -150,7 +150,7 @@ impl PersistEnv {
 
             // TODO: create persistence for these documents or move out of env
             outcomes: Default::default(),
-            timeline: Default::default(),
+            timelines: Default::default(),
             timeline_handle: Default::default(),
         })
     }

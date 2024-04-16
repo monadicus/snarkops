@@ -29,8 +29,8 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/env/:env_id/storage", get(get_storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
-        .route("/env/:id", post(post_env_timeline))
-        .route("/env/:id", delete(delete_env_timeline))
+        .route("/env/:id/:timeline_id", post(post_env_timeline))
+        .route("/env/:id/:timeline_id", delete(delete_env_timeline))
 }
 
 #[derive(Deserialize)]
@@ -145,12 +145,20 @@ async fn post_env_prepare(
     }
 }
 
-async fn post_env_timeline(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
+async fn post_env_timeline(
+    Path(env_id): Path<String>,
+    Path(timeline_id): Path<String>,
+    State(state): State<AppState>,
+) -> Response {
     let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    match Environment::execute(state, env_id).await {
+    let Some(timeline_id) = id_or_none(&timeline_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    match Environment::execute(state, env_id, timeline_id).await {
         Ok(()) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }
@@ -158,13 +166,18 @@ async fn post_env_timeline(Path(env_id): Path<String>, State(state): State<AppSt
 
 async fn delete_env_timeline(
     Path(env_id): Path<String>,
+    Path(timeline_id): Path<String>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    match Environment::cleanup(&env_id, &state).await {
+    let Some(timeline_id) = id_or_none(&timeline_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    match Environment::cleanup(&env_id, &timeline_id, &state).await {
         Ok(_) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }

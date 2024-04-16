@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     impl_into_status_code, impl_into_type_str,
-    state::{AgentId, CannonId, EnvId, NodeKey},
+    state::{AgentId, CannonId, EnvId, NodeKey, TimelineId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -30,6 +30,8 @@ pub enum ExecutionError {
     Join(#[from] JoinError),
     #[error(transparent)]
     Reconcile(#[from] BatchReconcileError),
+    #[error("env `{0}` timeline `{1}` not found")]
+    TimelineNotFound(EnvId, TimelineId),
     #[error("env timeline is already being executed")]
     TimelineAlreadyStarted,
     #[error("unknown cannon: `{0}`")]

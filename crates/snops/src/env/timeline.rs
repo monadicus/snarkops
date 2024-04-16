@@ -8,7 +8,7 @@ use futures_util::future::join_all;
 use prometheus_http_query::response::Data;
 use promql_parser::label::{MatchOp, Matcher};
 use rand::RngCore;
-use snops_common::state::{AgentId, AgentState, CannonId, EnvId};
+use snops_common::state::{AgentId, AgentState, CannonId, EnvId, TimelineId};
 use tokio::{select, sync::RwLock, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
@@ -97,7 +97,11 @@ where
 }
 
 impl Environment {
-    pub async fn execute(state: Arc<GlobalState>, env_id: EnvId) -> Result<(), EnvError> {
+    pub async fn execute(
+        state: Arc<GlobalState>,
+        env_id: EnvId,
+        timeline_id: TimelineId,
+    ) -> Result<(), EnvError> {
         let env = Arc::clone(
             state
                 .envs
@@ -107,11 +111,19 @@ impl Environment {
                 .ok_or_else(|| ExecutionError::EnvNotFound(env_id))?,
         );
 
+        let timeline = env
+            .timelines
+            .get(&timeline_id)
+            .ok_or_else(|| ExecutionError::TimelineNotFound(env_id, timeline_id))?
+            .clone();
+
         info!(
-            "starting timeline playback for env {env_id} with {} events",
-            env.timeline.len()
+            "starting timeline {timeline_id} playback for env {env_id} with {} events",
+            timeline.len()
         );
 
+        // TODO do we need to move these locks now to a new struct inside the timelines
+        // hashmap?
         let handle_lock_env = Arc::clone(&env);
         let mut handle_lock = handle_lock_env.timeline_handle.lock().await;
 
@@ -125,7 +137,7 @@ impl Environment {
         }
 
         *handle_lock = Some(tokio::spawn(async move {
-            for event in env.timeline.iter() {
+            for event in timeline.iter() {
                 debug!("next event in timeline {event:?}");
                 let pool = state.pool.read().await;
 

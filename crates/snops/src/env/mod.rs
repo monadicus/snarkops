@@ -10,7 +10,9 @@ use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::{Deserialize, Serialize};
-use snops_common::state::{AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TxPipeId};
+use snops_common::state::{
+    AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TimelineId, TxPipeId,
+};
 use tokio::{
     sync::{Mutex, RwLock},
     task::JoinHandle,
@@ -56,7 +58,7 @@ pub struct Environment {
     /// Map of cannon ids to their cannon instances
     pub cannons: Arc<RwLock<HashMap<CannonId, CannonInstance>>>,
 
-    pub timeline: Vec<TimelineEvent>,
+    pub timelines: HashMap<TimelineId, Vec<TimelineEvent>>,
     pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
 }
 
@@ -132,7 +134,7 @@ impl Environment {
         let mut initial_nodes = IndexMap::default();
         let mut cannon_configs = HashMap::new();
         let mut tx_pipe = TxPipes::default();
-        let mut timeline = vec![];
+        let mut timelines = HashMap::new();
         let mut outcomes: Option<OutcomeMetrics> = None;
 
         let mut immediate_cannons = vec![];
@@ -245,7 +247,7 @@ impl Environment {
                 }
 
                 ItemDocument::Timeline(sub_timeline) => {
-                    timeline.extend(sub_timeline.timeline.into_iter());
+                    timelines.insert(sub_timeline.name, sub_timeline.timeline);
                 }
 
                 ItemDocument::Outcomes(sub_outcomes) => match outcomes {
@@ -293,7 +295,7 @@ impl Environment {
             cannons: Default::default(),
             // TODO: specify the binary when uploading the test or something
             aot_bin: DEFAULT_AOT_BIN.clone(),
-            timeline,
+            timelines,
             timeline_handle: Default::default(),
         });
 
@@ -328,9 +330,15 @@ impl Environment {
         Ok(env_id)
     }
 
-    pub async fn cleanup(id: &EnvId, state: &GlobalState) -> Result<(), EnvError> {
+    pub async fn cleanup(
+        id: &EnvId,
+        timeline_id: &TimelineId,
+        state: &GlobalState,
+    ) -> Result<(), EnvError> {
         // clear the env state
-        info!("clearing env {id} state...");
+        info!("clearing env {id} timeline {timeline_id} state...");
+
+        // TODO do more with timeline_id here
         let env = state
             .envs
             .write()

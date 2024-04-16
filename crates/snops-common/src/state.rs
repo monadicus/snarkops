@@ -22,6 +22,7 @@ pub type AgentId = InternedId;
 pub type EnvId = InternedId;
 pub type CannonId = InternedId;
 pub type StorageId = InternedId;
+pub type TimelineId = InternedId;
 pub type TxPipeId = InternedId;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
