@@ -14,6 +14,8 @@ use crate::{
 pub enum ServerError {
     #[error("agent `{0}` not found")]
     AgentNotFound(String),
+    #[error("Content resource `{0}` not found")]
+    ContentNotFound(String),
     #[error(transparent)]
     Cannon(#[from] CannonError),
     #[error(transparent)]
@@ -25,7 +27,7 @@ pub enum ServerError {
 }
 
 impl_into_status_code!(ServerError, |value| match value {
-    AgentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
+    AgentNotFound(_) | ContentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
     Cannon(e) => e.into(),
     Deserialize(e) => e.into(),
     Env(e) => e.into(),
