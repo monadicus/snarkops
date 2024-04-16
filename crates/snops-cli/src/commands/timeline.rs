@@ -11,7 +11,7 @@ pub struct Timeline {
     command: Commands,
 }
 
-/// Env commands
+/// Timeline commands
 #[derive(Debug, Parser)]
 enum Commands {
     /// Attach to an environment.
@@ -39,6 +39,12 @@ enum Commands {
     },
     /// List all timelines.
     List,
+    /// Pause the timeline for an environment.
+    Pause {
+        /// The id of the env.
+        #[clap(value_hint = ValueHint::Other)]
+        env_id: String,
+    },
     /// Prepare a timeline.
     #[command(arg_required_else_help = true)]
     Prepare {
@@ -67,7 +73,7 @@ enum Commands {
         #[clap(long, short, default_value_t = 1)]
         num: u64,
     },
-    /// Stop/Pause the timeline for an environment.
+    /// Stop the timeline for an environment.
     #[command(arg_required_else_help = true)]
     Stop {
         /// The id of the env.
@@ -99,6 +105,11 @@ impl Timeline {
                 let ep = format!("{url}/api/v1/timeline/list");
 
                 client.get(ep).send()?
+            }
+            Pause { env_id } => {
+                let ep = format!("{url}/api/v1/env/{env_id}/pause");
+
+                client.post(ep).send()?
             }
             Prepare { id, spec } => {
                 let ep = format!("{url}/api/v1/timeline/{id}/prepare");
