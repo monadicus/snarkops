@@ -14,6 +14,7 @@ use snops_common::{
 };
 use tower::Service;
 use tower_http::services::ServeFile;
+use tracing::info;
 
 use super::{error::ServerError, AppState};
 use crate::env::Environment;
@@ -24,15 +25,16 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/list", get(get_env_list))
-        .route("/env/:env_id/timelines", get(get_env_timelines))
         .route("/env/:env_id/topology", get(get_env_topology))
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/storage", get(get_storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
-        .route("/env/:id/:timeline_id", post(post_env_timeline))
-        .route("/env/:id/:timeline_id", delete(delete_env_timeline))
+        .route("/env/:env_id/timelines/:t_id/steps", get(get_timeline))
+        .route("/env/:id/timelines/:t_id", post(post_timeline))
+        .route("/env/:id/timelines/:t_id", delete(delete_timeline))
+        .route("/env/:env_id/timelines", get(get_timelines))
 }
 
 #[derive(Deserialize)]
@@ -113,8 +115,35 @@ async fn get_env_list(State(state): State<AppState>) -> Response {
     Json(envs.keys().cloned().collect::<Vec<_>>()).into_response()
 }
 
-async fn get_env_timelines(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let Some(env_id) = id_or_none(dbg!(&env_id)) else {
+async fn get_timeline(
+    Path((env_id, t_id)): Path<(String, String)>,
+    State(state): State<AppState>,
+) -> Response {
+    info!("get_env_timeline: env_id: {}, t_id: {}", env_id, t_id);
+    let Some(env_id) = id_or_none(&env_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let Some(t_id) = id_or_none(&t_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let Some(timeline) = &env.timelines.get(&t_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    Json(json!({
+        "steps": timeline.len(),
+    }))
+    .into_response()
+}
+
+async fn get_timelines(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
+    let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
@@ -158,39 +187,37 @@ async fn post_env_prepare(
     }
 }
 
-async fn post_env_timeline(
-    Path(env_id): Path<String>,
-    Path(timeline_id): Path<String>,
+async fn post_timeline(
+    Path((env_id, t_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Response {
     let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let Some(timeline_id) = id_or_none(&timeline_id) else {
+    let Some(t_id) = id_or_none(&t_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    match Environment::execute(state, env_id, timeline_id).await {
+    match Environment::execute(state, env_id, t_id).await {
         Ok(()) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }
 
-async fn delete_env_timeline(
-    Path(env_id): Path<String>,
-    Path(timeline_id): Path<String>,
+async fn delete_timeline(
+    Path((env_id, t_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let Some(timeline_id) = id_or_none(&timeline_id) else {
+    let Some(t_id) = id_or_none(&t_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    match Environment::cleanup_timeline(&env_id, &timeline_id, &state).await {
+    match Environment::cleanup_timeline(&env_id, &t_id, &state).await {
         Ok(_) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }

@@ -24,6 +24,18 @@ enum Commands {
     /// List all environments.
     List,
 
+    /// List all steps for a specific timeline.
+    #[command(arg_required_else_help = true)]
+    Timeline {
+        /// Show a specific env.
+        #[clap(value_hint = ValueHint::Other)]
+        env_id: String,
+
+        /// Show a specific timeline steps.
+        #[clap(value_hint = ValueHint::Other)]
+        timeline_id: String,
+    },
+
     /// List all timelines for a specific environment.
     #[command(arg_required_else_help = true)]
     Timelines {
@@ -86,6 +98,14 @@ impl Env {
 
                 client.get(ep).send()?
             }
+            Timeline {
+                env_id,
+                timeline_id,
+            } => {
+                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{timeline_id}/steps");
+
+                client.get(dbg!(ep)).send()?
+            }
             Timelines { id } => {
                 let ep = format!("{url}/api/v1/env/{id}/timelines");
 
@@ -106,7 +126,7 @@ impl Env {
                 env_id,
                 timeline_id,
             } => {
-                let ep = format!("{url}/api/v1/env/{env_id}/{timeline_id}");
+                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{timeline_id}");
 
                 client.post(ep).send()?
             }
@@ -114,7 +134,7 @@ impl Env {
                 env_id,
                 timeline_id,
             } => {
-                let ep = format!("{url}/api/v1/env/{env_id}/{timeline_id}");
+                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{timeline_id}");
 
                 client.delete(ep).send()?
             }

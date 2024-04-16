@@ -126,7 +126,6 @@ impl Environment {
         documents: Vec<ItemDocument>,
         state: Arc<GlobalState>,
     ) -> Result<EnvId, EnvError> {
-        let mut state_lock = state.envs.write().await;
         state.prom_httpsd.lock().await.set_dirty();
 
         let mut storage = None;
@@ -299,11 +298,10 @@ impl Environment {
             timeline_handle: Default::default(),
         });
 
-        state_lock.insert(env_id, Arc::clone(&env));
+        state.envs.write().await.insert(env_id, Arc::clone(&env));
         if let Err(e) = PersistEnv::from(env.as_ref()).save(&state.db, env_id) {
             error!("failed to save env {env_id} to persistence: {e}");
         }
-        drop(state_lock);
 
         // reconcile the nodes
         initial_reconcile(env_id, &state).await?;
