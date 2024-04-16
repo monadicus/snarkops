@@ -330,13 +330,30 @@ impl Environment {
         Ok(env_id)
     }
 
-    pub async fn cleanup(
+    pub async fn cleanup_timeline(
         id: &EnvId,
         timeline_id: &TimelineId,
         state: &GlobalState,
     ) -> Result<(), EnvError> {
         // clear the env state
         info!("clearing env {id} timeline {timeline_id} state...");
+
+        let mut lock = state.envs.write().await;
+        let env = Arc::get_mut(lock.get_mut(id).ok_or(CleanupError::EnvNotFound(*id))?).unwrap();
+
+        env.timelines
+            .remove(timeline_id)
+            .ok_or(CleanupError::TimelineNotFound(*id, *timeline_id))?;
+
+        // we could just call cleanup for now lol
+        unimplemented!(
+            "we need to reconcile the agents associated with the timeline after removing"
+        );
+    }
+
+    pub async fn cleanup(id: &EnvId, state: &GlobalState) -> Result<(), EnvError> {
+        // clear the env state
+        info!("clearing env {id} state...");
 
         // TODO do more with timeline_id here
         let env = state

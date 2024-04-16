@@ -14,8 +14,23 @@ pub struct Env {
 /// Env commands
 #[derive(Debug, Parser)]
 enum Commands {
+    /// Clean a specific environment.
+    #[command(arg_required_else_help = true)]
+    Clean {
+        /// Show a specific env.
+        #[clap(value_hint = ValueHint::Other)]
+        id: String,
+    },
     /// List all environments.
     List,
+
+    /// List all timelines for a specific environment.
+    #[command(arg_required_else_help = true)]
+    Timelines {
+        /// Show a specific env.
+        #[clap(value_hint = ValueHint::Other)]
+        id: String,
+    },
 
     /// Show the current topology of a specific environment.
     #[command(arg_required_else_help = true)]
@@ -39,7 +54,10 @@ enum Commands {
     Start {
         /// Start a specific env.
         #[clap(value_hint = ValueHint::Other)]
-        id: String,
+        env_id: String,
+        /// Start a specific timeline.
+        #[clap(value_hint = ValueHint::Other)]
+        timeline_id: String,
     },
 
     /// Stop an environment's timeline.
@@ -47,7 +65,10 @@ enum Commands {
     Stop {
         /// Stop a specific env.
         #[clap(value_hint = ValueHint::Other)]
-        id: String,
+        env_id: String,
+        /// Stop a specific timeline.
+        #[clap(value_hint = ValueHint::Other)]
+        timeline_id: String,
     },
 }
 
@@ -55,8 +76,18 @@ impl Env {
     pub fn run(self, url: &str, client: Client) -> Result<Response> {
         use Commands::*;
         Ok(match self.command {
+            Clean { id } => {
+                let ep = format!("{url}/api/v1/env/{id}");
+
+                client.delete(ep).send()?
+            }
             List => {
                 let ep = format!("{url}/api/v1/env/list");
+
+                client.get(ep).send()?
+            }
+            Timelines { id } => {
+                let ep = format!("{url}/api/v1/env/{id}/timelines");
 
                 client.get(ep).send()?
             }
@@ -71,13 +102,19 @@ impl Env {
 
                 client.post(ep).body(file).send()?
             }
-            Start { id } => {
-                let ep = format!("{url}/api/v1/env/{id}");
+            Start {
+                env_id,
+                timeline_id,
+            } => {
+                let ep = format!("{url}/api/v1/env/{env_id}/{timeline_id}");
 
                 client.post(ep).send()?
             }
-            Stop { id } => {
-                let ep = format!("{url}/api/v1/env/{id}");
+            Stop {
+                env_id,
+                timeline_id,
+            } => {
+                let ep = format!("{url}/api/v1/env/{env_id}/{timeline_id}");
 
                 client.delete(ep).send()?
             }

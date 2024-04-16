@@ -138,6 +138,8 @@ impl Serialize for PrepareError {
 pub enum CleanupError {
     #[error("env `{0}` not found")]
     EnvNotFound(EnvId),
+    #[error("env `{0}` timeline `{1}` not found")]
+    TimelineNotFound(EnvId, TimelineId),
 }
 
 impl_into_status_code!(CleanupError, |_| StatusCode::NOT_FOUND);

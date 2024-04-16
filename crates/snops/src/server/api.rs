@@ -24,11 +24,13 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents", get(get_agents))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/list", get(get_env_list))
+        .route("/env/:env_id/timelines", get(get_env_timelines))
         .route("/env/:env_id/topology", get(get_env_topology))
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/storage", get(get_storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
+        .route("/env/:id", delete(delete_env))
         .route("/env/:id/:timeline_id", post(post_env_timeline))
         .route("/env/:id/:timeline_id", delete(delete_env_timeline))
 }
@@ -111,6 +113,17 @@ async fn get_env_list(State(state): State<AppState>) -> Response {
     Json(envs.keys().cloned().collect::<Vec<_>>()).into_response()
 }
 
+async fn get_env_timelines(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
+    let Some(env_id) = id_or_none(dbg!(&env_id)) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(env) = state.envs.read().await.get(&env_id).cloned() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    Json(&env.timelines.keys().collect::<Vec<_>>()).into_response()
+}
+
 async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
     let Some(env_id) = id_or_none(dbg!(&env_id)) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -177,7 +190,21 @@ async fn delete_env_timeline(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    match Environment::cleanup(&env_id, &timeline_id, &state).await {
+    match Environment::cleanup_timeline(&env_id, &timeline_id, &state).await {
+        Ok(_) => status_ok(),
+        Err(e) => ServerError::from(e).into_response(),
+    }
+}
+
+async fn delete_env(
+    Path(env_id): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let Some(env_id) = id_or_none(&env_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    match Environment::cleanup(&env_id, &state).await {
         Ok(_) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }
