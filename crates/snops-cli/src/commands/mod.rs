@@ -5,8 +5,6 @@ use serde_json::Value;
 use crate::cli::Cli;
 
 mod env;
-mod outcomes;
-mod timeline;
 
 #[derive(Debug, Parser)]
 pub enum Commands {
@@ -17,8 +15,6 @@ pub enum Commands {
         shell: clap_complete::Shell,
     },
     Env(env::Env),
-    Outcomes(outcomes::Outcomes),
-    Timeline(timeline::Timeline),
 }
 
 impl Commands {
@@ -34,8 +30,6 @@ impl Commands {
                 return Ok(());
             }
             Commands::Env(test) => test.run(url, client),
-            Commands::Outcomes(outcomes) => outcomes.run(url, client),
-            Commands::Timeline(timeline) => timeline.run(url, client),
         }?;
 
         if !response.status().is_success() {
