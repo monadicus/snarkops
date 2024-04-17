@@ -1,7 +1,8 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 
 use bimap::BiMap;
 use bytes::{Buf, BufMut};
+use dashmap::DashMap;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use snops_common::state::{AgentId, CannonId, EnvId, NodeKey, StorageId, TxPipeId};
@@ -74,7 +75,7 @@ impl From<&Environment> for PersistEnv {
             cannon_configs: value
                 .cannon_configs
                 .iter()
-                .map(|(k, (source, sink))| (*k, source.clone(), sink.clone()))
+                .map(|v| (*v.key(), v.0.clone(), v.1.clone()))
                 .collect(),
         }
     }
@@ -133,7 +134,7 @@ impl PersistEnv {
             );
         }
 
-        let mut cannon_configs = HashMap::new();
+        let cannon_configs = DashMap::new();
         for (k, source, sink) in self.cannon_configs {
             cannon_configs.insert(k, (source, sink));
         }

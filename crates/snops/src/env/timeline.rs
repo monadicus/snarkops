@@ -9,7 +9,7 @@ use prometheus_http_query::response::Data;
 use promql_parser::label::{MatchOp, Matcher};
 use rand::RngCore;
 use snops_common::state::{AgentId, AgentState, CannonId, EnvId, TimelineId};
-use tokio::{select, sync::RwLock, task::JoinHandle};
+use tokio::{select, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
 use super::{
@@ -28,18 +28,14 @@ use crate::{
         outcomes::PromQuery,
         timeline::{Action, ActionInstance, EventDuration},
     },
-    state::{Agent, AgentClient, GlobalState},
+    state::{AgentClient, GlobalState},
 };
 
 /// The tuple to pass into `reconcile_agents`.
 pub type PendingAgentReconcile = (AgentId, AgentClient, AgentState);
 
 /// Reconcile a bunch of agents at once.
-pub async fn reconcile_agents<I>(
-    state: &GlobalState,
-    iter: I,
-    pool_mtx: &RwLock<HashMap<AgentId, Agent>>,
-) -> Result<(), BatchReconcileError>
+pub async fn reconcile_agents<I>(state: &GlobalState, iter: I) -> Result<(), BatchReconcileError>
 where
     I: Iterator<Item = PendingAgentReconcile>,
 {
@@ -56,10 +52,9 @@ where
     let reconciliations = join_all(handles).await;
     info!("reconciliation complete, updating agent states...");
 
-    let mut pool_lock = pool_mtx.write().await;
     let mut success = 0;
     for (agent_id, result) in agent_ids.into_iter().zip(reconciliations) {
-        let Some(agent) = pool_lock.get_mut(&agent_id) else {
+        let Some(mut agent) = state.pool.get_mut(&agent_id) else {
             continue;
         };
 
@@ -102,14 +97,9 @@ impl Environment {
         env_id: EnvId,
         timeline_id: TimelineId,
     ) -> Result<(), EnvError> {
-        let env = Arc::clone(
-            state
-                .envs
-                .read()
-                .await
-                .get(&env_id)
-                .ok_or_else(|| ExecutionError::EnvNotFound(env_id))?,
-        );
+        let env = state
+            .get_env(env_id)
+            .ok_or_else(|| ExecutionError::EnvNotFound(env_id))?;
 
         let timeline = env
             .timelines
@@ -139,8 +129,6 @@ impl Environment {
         *handle_lock = Some(tokio::spawn(async move {
             for event in timeline.iter() {
                 debug!("next event in timeline {event:?}");
-                let pool = state.pool.read().await;
-
                 // task handles that must be awaited for this timeline event
                 let mut awaiting_handles: Vec<tokio::task::JoinHandle<Result<(), ExecutionError>>> =
                     vec![];
@@ -210,7 +198,7 @@ impl Environment {
 
                             let o = matches!(action, Action::Online(_));
 
-                            for agent in env.matching_agents(targets, &pool) {
+                            for agent in env.matching_agents(targets, &state.pool) {
                                 set_node_field!(agent, online = o);
                             }
                         }
@@ -229,7 +217,7 @@ impl Environment {
                                         });
 
                                 let Some((mut source, mut sink)) =
-                                    env.cannon_configs.get(&cannon.name).cloned()
+                                    env.cannon_configs.get(&cannon.name).map(|c| c.clone())
                                 else {
                                     return Err(ExecutionError::UnknownCannon(cannon.name));
                                 };
@@ -251,7 +239,7 @@ impl Environment {
                                 let (mut instance, rx) = CannonInstance::new(
                                     Arc::clone(&state),
                                     cannon_id,
-                                    Arc::clone(&env),
+                                    (env.id, env.storage.id, &env.aot_bin),
                                     source,
                                     sink,
                                     count,
@@ -267,7 +255,7 @@ impl Environment {
                                         let res = ctx.spawn(rx).await;
 
                                         // remove the cannon after the task is complete
-                                        env.cannons.write().await.remove(&cannon_id);
+                                        env.cannons.remove(&cannon_id);
                                         res.map_err(ExecutionError::Cannon)
                                     }));
                                 } else {
@@ -275,12 +263,12 @@ impl Environment {
                                 }
 
                                 // insert the cannon
-                                env.cannons.write().await.insert(cannon_id, instance);
+                                env.cannons.insert(cannon_id, Arc::new(instance));
                             }
                         }
                         Action::Config(configs) => {
                             for (targets, request) in configs.iter() {
-                                for agent in env.matching_agents(targets, &pool) {
+                                for agent in env.matching_agents(targets, &state.pool) {
                                     // any height action will force the height to be incremented
                                     if let Some(h) = request.height {
                                         let h = h.into();
@@ -289,14 +277,16 @@ impl Environment {
 
                                     // update the peers and validators
                                     if let Some(p) = &request.peers {
-                                        let p: Vec<_> =
-                                            env.matching_nodes(p, &pool, PortType::Node).collect();
+                                        let p: Vec<_> = env
+                                            .matching_nodes(p, &state.pool, PortType::Node)
+                                            .collect();
                                         set_node_field!(agent, peers = p.clone());
                                     }
 
                                     if let Some(p) = &request.validators {
-                                        let v: Vec<_> =
-                                            env.matching_nodes(p, &pool, PortType::Bft).collect();
+                                        let v: Vec<_> = env
+                                            .matching_nodes(p, &state.pool, PortType::Bft)
+                                            .collect();
                                         set_node_field!(agent, validators = v.clone());
                                     }
                                 }
@@ -305,19 +295,14 @@ impl Environment {
                     };
                 }
 
-                drop(pool);
-
                 // if there are any pending reconciliations,
                 if !pending_reconciliations.is_empty() {
                     // reconcile all nodes
                     let task_state = Arc::clone(&state);
                     let reconcile_handle = tokio::spawn(async move {
-                        if let Err(e) = reconcile_agents(
-                            &task_state,
-                            pending_reconciliations.into_values(),
-                            &task_state.pool,
-                        )
-                        .await
+                        if let Err(e) =
+                            reconcile_agents(&task_state, pending_reconciliations.into_values())
+                                .await
                         {
                             error!("failed to reconcile agents in timeline: {e}");
                             if let Err(e) =

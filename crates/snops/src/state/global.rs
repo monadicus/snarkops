@@ -1,15 +1,18 @@
 use std::{collections::HashSet, sync::Arc};
 
 use prometheus_http_query::Client as PrometheusClient;
-use snops_common::{constant::ENV_AGENT_KEY, state::AgentId};
-use tokio::sync::{Mutex, RwLock};
+use snops_common::{
+    constant::ENV_AGENT_KEY,
+    state::{AgentId, EnvId},
+};
+use tokio::sync::Mutex;
 use tracing::info;
 
 use super::{persist::PersistStorage, AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
     cli::Cli,
     db::Database,
-    env::persist::PersistEnv,
+    env::{persist::PersistEnv, Environment},
     error::StateError,
     server::{error::StartError, prometheus::HttpsdResponse},
     util::OpaqueDebug,
@@ -21,9 +24,9 @@ pub struct GlobalState {
     pub db: Database,
     pub cli: Cli,
     pub agent_key: Option<String>,
-    pub pool: RwLock<AgentPool>,
-    pub storage: RwLock<StorageMap>,
-    pub envs: RwLock<EnvMap>,
+    pub pool: AgentPool,
+    pub storage: StorageMap,
+    pub envs: EnvMap,
 
     pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
@@ -37,7 +40,7 @@ impl GlobalState {
     ) -> Result<Self, StartError> {
         // Load storage meta from persistence, then read the storage data from FS
         let storage_meta = db.load::<Vec<PersistStorage>>()?;
-        let mut storage = StorageMap::default();
+        let storage = StorageMap::default();
         for meta in storage_meta {
             let id = meta.id;
             let loaded = match meta.load(&cli).await {
@@ -51,7 +54,7 @@ impl GlobalState {
         }
 
         let env_meta = db.load::<Vec<PersistEnv>>()?;
-        let mut envs = EnvMap::default();
+        let envs = EnvMap::default();
         for meta in env_meta {
             let id = meta.id;
             let loaded = match meta.load(&db, &storage, &cli).await {
@@ -68,9 +71,9 @@ impl GlobalState {
         Ok(Self {
             cli,
             agent_key: std::env::var(ENV_AGENT_KEY).ok(),
-            pool: RwLock::new(db.load()?),
-            storage: RwLock::new(storage),
-            envs: RwLock::new(envs),
+            pool: db.load()?,
+            storage,
+            envs,
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db,
@@ -84,27 +87,25 @@ impl GlobalState {
         filter: Option<&HashSet<AgentId>>,
     ) -> Result<AddrMap, StateError> {
         self.pool
-            .read()
-            .await
             .iter()
-            .filter(|(id, _)| filter.is_none() || filter.is_some_and(|p| p.contains(id)))
-            .map(|(id, agent)| {
+            .filter(|agent| filter.is_none() || filter.is_some_and(|p| p.contains(&agent.id())))
+            .map(|agent| {
                 let addrs = agent
                     .addrs
                     .as_ref()
-                    .ok_or_else(|| StateError::NoAddress(*id))?;
-                Ok((*id, addrs.clone()))
+                    .ok_or_else(|| StateError::NoAddress(agent.id()))?;
+                Ok((agent.id(), addrs.clone()))
             })
             .collect()
     }
 
     /// Lookup an rpc client by agent id.
     /// Locks pools for reading
-    pub async fn get_client(&self, id: AgentId) -> Option<AgentClient> {
-        self.pool
-            .read()
-            .await
-            .get(&id)
-            .and_then(|a| a.client_owned())
+    pub fn get_client(&self, id: AgentId) -> Option<AgentClient> {
+        self.pool.get(&id).and_then(|a| a.client_owned())
+    }
+
+    pub fn get_env(&self, id: EnvId) -> Option<Arc<Environment>> {
+        Some(Arc::clone(self.envs.get(&id)?.value()))
     }
 }

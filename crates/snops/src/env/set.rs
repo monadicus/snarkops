@@ -13,7 +13,7 @@ use snops_common::{
 };
 
 use super::{DelegationError, EnvNode};
-use crate::state::{Agent, AgentClient, Busy};
+use crate::state::{Agent, AgentClient, Busy, GlobalState};
 
 pub struct AgentMapping {
     id: AgentId,
@@ -92,13 +92,15 @@ impl AgentMapping {
 /// Convert an iterator of agents into a vec of agent mappings
 /// This is necessary the so the pool of agents can be dropped for longer
 /// running tasks
-pub fn get_agent_mappings<'a, I: Iterator<Item = &'a Agent>>(
+pub fn get_agent_mappings(
     mode: BusyMode,
-    agents: I,
+    state: &GlobalState,
     labels: &[Spur],
 ) -> Vec<AgentMapping> {
-    agents
-        .filter_map(|agent| AgentMapping::new(mode, agent, labels))
+    state
+        .pool
+        .iter()
+        .filter_map(|agent| AgentMapping::new(mode, &agent, labels))
         .collect()
 }
 
@@ -139,11 +141,11 @@ fn _find_compute_agent_by_mask<'a, I: Iterator<Item = &'a Agent>>(
 
 /// Find an agent that can compute and has the given labels by checking each
 /// label individually
-pub fn find_compute_agent<'a, I: Iterator<Item = &'a Agent>>(
-    mut agents: I,
+pub fn find_compute_agent(
+    state: &GlobalState,
     labels: &[Spur],
 ) -> Option<(AgentClient, Arc<Busy>)> {
-    agents.find_map(|a| {
+    state.pool.iter().find_map(|a| {
         if !a.can_compute() || a.is_compute_claimed() || !labels.iter().all(|l| a.has_label(*l)) {
             return None;
         }

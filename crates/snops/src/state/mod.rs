@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use dashmap::DashMap;
 use snops_common::state::{AgentId, EnvId, StorageId};
 
 mod agent;
@@ -20,10 +21,10 @@ use crate::{env::Environment, schema::storage::LoadedStorage};
 
 pub type AppState = Arc<GlobalState>;
 /// Map of agent ids to agents
-pub type AgentPool = HashMap<AgentId, Agent>;
+pub type AgentPool = DashMap<AgentId, Agent>;
 /// Map of storage ids to storage info
-pub type StorageMap = HashMap<StorageId, Arc<LoadedStorage>>;
+pub type StorageMap = DashMap<StorageId, Arc<LoadedStorage>>;
 /// Map of environment ids to environments
-pub type EnvMap = HashMap<EnvId, Arc<Environment>>;
+pub type EnvMap = DashMap<EnvId, Arc<Environment>>;
 /// Map of agent ids to addresses for each agent.
 pub type AddrMap = HashMap<AgentId, AgentAddrs>;

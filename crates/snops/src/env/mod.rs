@@ -7,16 +7,14 @@ use core::fmt;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use bimap::{BiHashMap, BiMap};
+use dashmap::DashMap;
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
 use serde::{Deserialize, Serialize};
 use snops_common::state::{
     AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TimelineId, TxPipeId,
 };
-use tokio::{
-    sync::{Mutex, RwLock},
-    task::JoinHandle,
-};
+use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{error, info, warn};
 
 use self::{error::*, persist::PersistEnv, timeline::reconcile_agents};
@@ -54,11 +52,11 @@ pub struct Environment {
     /// Map of transaction files to their respective counters
     pub tx_pipe: TxPipes,
     /// Map of cannon ids to their cannon configurations
-    pub cannon_configs: HashMap<CannonId, (TxSource, TxSink)>,
+    pub cannon_configs: DashMap<CannonId, (TxSource, TxSink)>,
     /// Map of cannon ids to their cannon instances
-    pub cannons: Arc<RwLock<HashMap<CannonId, CannonInstance>>>,
+    pub cannons: DashMap<CannonId, Arc<CannonInstance>>,
 
-    pub timelines: HashMap<TimelineId, Vec<TimelineEvent>>,
+    pub timelines: DashMap<TimelineId, Vec<TimelineEvent>>,
     pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
 }
 
@@ -131,9 +129,9 @@ impl Environment {
         let mut storage = None;
         let mut node_map = BiHashMap::default();
         let mut initial_nodes = IndexMap::default();
-        let mut cannon_configs = HashMap::new();
+        let cannon_configs = DashMap::new();
         let mut tx_pipe = TxPipes::default();
-        let mut timelines = HashMap::new();
+        let timelines = DashMap::new();
         let mut outcomes: Option<OutcomeMetrics> = None;
 
         let mut immediate_cannons = vec![];
@@ -201,11 +199,7 @@ impl Environment {
                     // this also contains a "busy" that atomically prevents multiple
                     // environment prepares from delegating the same agents as well
                     // as preventing two nodes from claiming the same agent
-                    let agents = get_agent_mappings(
-                        BusyMode::Env,
-                        state.pool.read().await.values(),
-                        &labels,
-                    );
+                    let agents = get_agent_mappings(BusyMode::Env, &state, &labels);
 
                     // ensure the "busy" is in scope until the initial reconcile completes and
                     // locks the agents into a non-inventory state
@@ -259,11 +253,13 @@ impl Environment {
         }
 
         let storage = storage.ok_or(PrepareError::MissingStorage)?;
+        let storage_id = storage.id;
         let outcomes = outcomes.unwrap_or_default();
 
         // review cannon configurations to ensure all playback sources and sinks
         // have a real file backing them
-        for (source, sink) in cannon_configs.values() {
+        for conf in cannon_configs.iter() {
+            let (source, sink) = conf.value();
             if let TxSource::Playback { file_name } = source {
                 tx_pipe.drains.insert(
                     *file_name,
@@ -298,50 +294,53 @@ impl Environment {
             timeline_handle: Default::default(),
         });
 
-        state.envs.write().await.insert(env_id, Arc::clone(&env));
         if let Err(e) = PersistEnv::from(env.as_ref()).save(&state.db, env_id) {
             error!("failed to save env {env_id} to persistence: {e}");
         }
+
+        state.envs.insert(env_id, Arc::clone(&env));
 
         // reconcile the nodes
         initial_reconcile(env_id, &state).await?;
 
         // instance cannons that are marked for immediate use
-        let mut cannons = env.cannons.write().await;
         for (name, count) in immediate_cannons {
-            let Some((source, sink)) = env.cannon_configs.get(&name) else {
+            let Some(config) = env.cannon_configs.get(&name) else {
                 continue;
             };
+            let (source, sink) = config.value();
 
             let (mut instance, rx) = CannonInstance::new(
                 Arc::clone(&state),
                 name, // instanced cannons use the same name as the config
-                Arc::clone(&env),
+                (env_id, storage_id, &DEFAULT_AOT_BIN),
                 source.clone(),
                 sink.clone(),
                 count,
             )?;
             instance.spawn_local(rx)?;
-            cannons.insert(name, instance);
+            env.cannons.insert(name, Arc::new(instance));
         }
 
         Ok(env_id)
     }
 
     pub async fn cleanup_timeline(
-        id: &EnvId,
-        timeline_id: &TimelineId,
+        id: EnvId,
+        timeline_id: TimelineId,
         state: &GlobalState,
     ) -> Result<(), EnvError> {
         // clear the env state
         info!("clearing env {id} timeline {timeline_id} state...");
 
-        let mut lock = state.envs.write().await;
-        let env = Arc::get_mut(lock.get_mut(id).ok_or(CleanupError::EnvNotFound(*id))?).unwrap();
+        let env = state
+            .get_env(id)
+            .ok_or(CleanupError::EnvNotFound(id))?
+            .clone();
 
         env.timelines
-            .remove(timeline_id)
-            .ok_or(CleanupError::TimelineNotFound(*id, *timeline_id))?;
+            .remove(&timeline_id)
+            .ok_or(CleanupError::TimelineNotFound(id, timeline_id))?;
 
         // we could just call cleanup for now lol
         unimplemented!(
@@ -354,10 +353,8 @@ impl Environment {
         info!("clearing env {id} state...");
 
         // TODO do more with timeline_id here
-        let env = state
+        let (_, env) = state
             .envs
-            .write()
-            .await
             .remove(id)
             .ok_or(CleanupError::EnvNotFound(*id))?;
         if let Err(e) = PersistEnv::delete(&state.db, *id) {
@@ -373,12 +370,11 @@ impl Environment {
 
         // reconcile all online agents
         let (ids, handles): (Vec<_>, Vec<_>) = {
-            let agents = state.pool.read().await;
             env.node_map
                 .right_values()
                 // find all agents associated with the env
                 .filter_map(|peer| match peer {
-                    EnvPeer::Internal(id) => agents.get(id),
+                    EnvPeer::Internal(id) => state.pool.get(id),
                     _ => None,
                 })
                 // map the agents to rpc clients
@@ -397,14 +393,13 @@ impl Environment {
         let reconciliations = join_all(handles).await;
         info!("reconcile done, updating agent states...");
 
-        let mut agents = state.pool.write().await;
         let mut success = 0;
         let num_reconciles = ids.len();
         for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
                 Ok(Ok(Ok(agent_state))) => {
-                    if let Some(agent) = agents.get_mut(&id) {
+                    if let Some(mut agent) = state.pool.get_mut(&id) {
                         agent.set_state(agent_state);
                         if let Err(e) = agent.save(&state.db, id) {
                             error!("failed to save agent {id} to the database: {e}");
@@ -429,10 +424,10 @@ impl Environment {
     // TODO: this is almost exactly the same as `cleanup`, maybe we can merge it
     // later
     pub async fn forcefully_inventory(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
-        let mut envs_lock = state.envs.write().await;
-        let env = envs_lock
-            .get_mut(&id)
-            .ok_or(CleanupError::EnvNotFound(id))?;
+        let env = state
+            .get_env(id)
+            .ok_or(CleanupError::EnvNotFound(id))?
+            .clone();
 
         // stop the timeline if it's running
         if let Some(handle) = &*env.timeline_handle.lock().await {
@@ -441,13 +436,11 @@ impl Environment {
 
         // reconcile all online agents
         let (ids, handles): (Vec<_>, Vec<_>) = {
-            let mut agents = state.pool.write().await;
-
             let mut ids = vec![];
             let mut handles = vec![];
             for peer in env.node_map.right_values() {
-                let Some(agent) = (match peer {
-                    EnvPeer::Internal(id) => agents.get_mut(id),
+                let Some(mut agent) = (match peer {
+                    EnvPeer::Internal(id) => state.pool.get_mut(id),
                     _ => continue,
                 }) else {
                     continue;
@@ -475,14 +468,13 @@ impl Environment {
         let reconciliations = join_all(handles).await;
         info!("reconcile done, updating agent states...");
 
-        let mut agents = state.pool.write().await;
         let mut success = 0;
         let num_reconciles = ids.len();
         for (id, result) in ids.into_iter().zip(reconciliations) {
             match result {
                 // oh god
                 Ok(Ok(Ok(agent_state))) => {
-                    if let Some(agent) = agents.get_mut(&id) {
+                    if let Some(mut agent) = state.pool.get_mut(&id) {
                         agent.set_state(agent_state);
                         if let Err(e) = agent.save(&state.db, id) {
                             error!("failed to save agent {id} to the database: {e}");
@@ -515,7 +507,7 @@ impl Environment {
     pub fn matching_nodes<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<AgentId, Agent>,
+        pool: &'a DashMap<AgentId, Agent>,
         port_type: PortType,
     ) -> impl Iterator<Item = AgentPeer> + 'a {
         self.node_map
@@ -553,13 +545,17 @@ impl Environment {
     pub fn matching_agents<'a>(
         &'a self,
         targets: &'a NodeTargets,
-        pool: &'a HashMap<AgentId, Agent>,
-    ) -> impl Iterator<Item = &'a Agent> + 'a {
+        pool: &'a DashMap<AgentId, Agent>,
+    ) -> impl Iterator<Item = dashmap::mapref::one::Ref<'a, AgentId, Agent>> {
         self.matching_nodes(targets, pool, PortType::Node) // ignore node type
             .filter_map(|agent_peer| match agent_peer {
                 AgentPeer::Internal(id, _) => pool.get(&id),
                 AgentPeer::External(_) => None,
             })
+    }
+
+    pub fn get_cannon(&self, id: CannonId) -> Option<Arc<CannonInstance>> {
+        Some(Arc::clone(self.cannons.get(&id)?.value()))
     }
 }
 
@@ -567,12 +563,10 @@ impl Environment {
 pub async fn initial_reconcile(env_id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
     let mut pending_reconciliations = vec![];
     {
-        let envs_lock = state.envs.read().await;
-        let env = envs_lock
-            .get(&env_id)
-            .ok_or(ReconcileError::EnvNotFound(env_id))?;
-
-        let pool_lock = state.pool.read().await;
+        let env = state
+            .get_env(env_id)
+            .ok_or(ReconcileError::EnvNotFound(env_id))?
+            .clone();
 
         for (key, node) in &env.initial_nodes {
             let EnvNode::Internal(node) = node else {
@@ -584,7 +578,7 @@ pub async fn initial_reconcile(env_id: EnvId, state: &GlobalState) -> Result<(),
                 .get_agent_by_key(key)
                 .ok_or_else(|| ReconcileError::ExpectedInternalAgentPeer { key: key.clone() })?;
 
-            let Some(client) = pool_lock.get(&id).and_then(|a| a.client_owned()) else {
+            let Some(client) = state.pool.get(&id).and_then(|a| a.client_owned()) else {
                 continue;
             };
 
@@ -599,12 +593,12 @@ pub async fn initial_reconcile(env_id: EnvId, state: &GlobalState) -> Result<(),
             let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
 
             node_state.peers = env
-                .matching_nodes(&node.peers, &pool_lock, PortType::Node)
+                .matching_nodes(&node.peers, &state.pool, PortType::Node)
                 .filter(not_me)
                 .collect();
 
             node_state.validators = env
-                .matching_nodes(&node.validators, &pool_lock, PortType::Bft)
+                .matching_nodes(&node.validators, &state.pool, PortType::Bft)
                 .filter(not_me)
                 .collect();
 
@@ -613,8 +607,7 @@ pub async fn initial_reconcile(env_id: EnvId, state: &GlobalState) -> Result<(),
         }
     }
 
-    if let Err(e) = reconcile_agents(state, pending_reconciliations.into_iter(), &state.pool).await
-    {
+    if let Err(e) = reconcile_agents(state, pending_reconciliations.into_iter()).await {
         error!("an error occurred on initial reconciliation, inventorying all agents: {e}");
         if let Err(e) = Environment::forcefully_inventory(env_id, state).await {
             error!("an error occurred inventorying agents: {e}");
