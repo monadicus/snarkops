@@ -12,7 +12,7 @@ use snops_common::{
     state::{AgentId, NodeKey},
 };
 
-use super::{DelegationError, EnvNode};
+use super::{DelegationError, EnvNodeState};
 use crate::state::{Agent, AgentClient, Busy, GlobalState};
 
 pub struct AgentMapping {
@@ -64,6 +64,14 @@ impl AgentMapping {
         })
     }
 
+    pub fn from_agent_id(agent_id: AgentId, state: &GlobalState, labels: &[Spur]) -> Option<Self> {
+        state.pool.get(&agent_id).map(|agent| Self {
+            id: agent_id,
+            claim: agent.get_env_claim(),
+            mask: agent.mask(labels),
+        })
+    }
+
     /// Attempt to atomically claim the agent
     pub fn claim(&self) -> Option<Arc<Busy>> {
         // avoid needlessly upgrading the weak pointer
@@ -105,15 +113,15 @@ pub fn get_agent_mappings(
 }
 
 /// Get a list of unique labels given a node config
-pub fn labels_from_nodes(nodes: &IndexMap<NodeKey, EnvNode>) -> Vec<Spur> {
+pub fn labels_from_nodes(nodes: &IndexMap<NodeKey, EnvNodeState>) -> Vec<Spur> {
     let mut labels = HashSet::new();
 
     for node in nodes.values() {
         match node {
-            EnvNode::Internal(n) => {
+            EnvNodeState::Internal(n) => {
                 labels.extend(&n.labels);
             }
-            EnvNode::External(_) => {}
+            EnvNodeState::External(_) => {}
         }
     }
 
@@ -159,7 +167,7 @@ pub fn find_compute_agent(
 /// with an agent in parallel
 pub fn pair_with_nodes(
     agents: Vec<AgentMapping>,
-    nodes: &IndexMap<NodeKey, EnvNode>,
+    nodes: &IndexMap<NodeKey, EnvNodeState>,
     labels: &[Spur],
 ) -> Result<impl Iterator<Item = (NodeKey, AgentId, Arc<Busy>)>, Vec<DelegationError>> {
     // errors that occurred while pairing nodes with agents
@@ -173,11 +181,11 @@ pub fn pair_with_nodes(
         // filter out external nodes
         // split into nodes that want specific agents and nodes that want specific labels
         .filter_map(|(key, env_node)| match env_node {
-            EnvNode::Internal(n) => match n.agent {
+            EnvNodeState::Internal(n) => match n.agent {
                 Some(agent) => Some((Some((key, agent)), None)),
                 None => Some((None, Some((key, n.mask(key, labels))))),
             },
-            EnvNode::External(_) => None,
+            EnvNodeState::External(_) => None,
         })
         // unzip and filter out the Nones
         .fold((vec![], vec![]), |(mut vec_a, mut vec_b), (a, b)| {
@@ -190,8 +198,13 @@ pub fn pair_with_nodes(
             (vec_a, vec_b)
         });
 
-    if agents.len() < want_ids.len() + want_labels.len() {
-        return Err(vec![DelegationError::InsufficientAgentCount]);
+    let num_needed = want_ids.len() + want_labels.len();
+    let num_available = agents.len();
+    if num_available < num_needed {
+        return Err(vec![DelegationError::InsufficientAgentCount(
+            num_available,
+            num_needed,
+        )]);
     }
 
     // another optimization that could be made is to sort nodes based on the number

@@ -32,7 +32,7 @@ use crate::{
 };
 
 /// The tuple to pass into `reconcile_agents`.
-pub type PendingAgentReconcile = (AgentId, AgentClient, AgentState);
+pub type PendingAgentReconcile = (AgentId, Option<AgentClient>, AgentState);
 
 /// Reconcile a bunch of agents at once.
 pub async fn reconcile_agents<I>(state: &GlobalState, iter: I) -> Result<(), BatchReconcileError>
@@ -44,10 +44,27 @@ where
 
     for (id, client, target) in iter {
         agent_ids.push(id);
-        handles.push(tokio::spawn(async move { client.reconcile(target).await }));
+
+        // if the client is present, queue a reconcile
+        if let Some(client) = client {
+            handles.push(tokio::spawn(async move { client.reconcile(target).await }));
+
+            // otherwise just change the agent state so it'll inventory on
+            // reconnect
+        } else if let Some(mut agent) = state.pool.get_mut(&id) {
+            agent.set_state(target);
+            if let Err(e) = agent.save(&state.db, id) {
+                error!("failed to save agent {id} to the database: {e}");
+            }
+        }
+    }
+
+    if handles.is_empty() {
+        return Ok(());
     }
 
     let num_reconciliations = handles.len();
+
     info!("beginning reconciliation...");
     let reconciliations = join_all(handles).await;
     info!("reconciliation complete, updating agent states...");
@@ -174,7 +191,7 @@ impl Environment {
                             Entry::Vacant(ent) => {
                                 ent.insert((
                                     $agent.id(),
-                                    $agent.client_owned().ok_or(ExecutionError::AgentOffline)?,
+                                    $agent.client_owned(),
                                     $agent.state().clone().map_node(|mut n| {
                                         $({
                                             let $key = &n.$key;

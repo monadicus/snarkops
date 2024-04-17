@@ -104,7 +104,7 @@ impl Env {
             } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/timelines/{timeline_id}/steps");
 
-                client.get(dbg!(ep)).send()?
+                client.get(ep).send()?
             }
             Timelines { id } => {
                 let ep = format!("{url}/api/v1/env/{id}/timelines");

@@ -6,6 +6,7 @@ use tarpc::{client::RpcError, context};
 
 use crate::error::StateError;
 
+#[derive(Clone)]
 pub struct AgentClient(pub(super) AgentServiceClient);
 
 impl AgentClient {

@@ -74,8 +74,8 @@ pub enum DelegationError {
     AgentMissingMode(AgentId, NodeKey),
     #[error("agent {0} not found for node {1}")]
     AgentNotFound(AgentId, NodeKey),
-    #[error("insufficient number of agents to satisfy the request")]
-    InsufficientAgentCount,
+    #[error("insufficient number of agents to satisfy the request: have {0}: need {1}")]
+    InsufficientAgentCount(usize, usize),
     #[error("could not find any agents for node {0}")]
     NoAvailableAgents(NodeKey),
 }
@@ -84,7 +84,7 @@ impl_into_status_code!(DelegationError, |value| match value {
     AgentAlreadyClaimed(_, _) => StatusCode::IM_USED,
     AgentNotFound(_, _) => StatusCode::NOT_FOUND,
     AgentMissingMode(_, _) => StatusCode::BAD_REQUEST,
-    InsufficientAgentCount | NoAvailableAgents(_) => {
+    InsufficientAgentCount(_, _) | NoAvailableAgents(_) => {
         StatusCode::SERVICE_UNAVAILABLE
     }
 });

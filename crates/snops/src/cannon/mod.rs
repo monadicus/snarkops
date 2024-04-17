@@ -108,7 +108,7 @@ pub struct CannonInstance {
     /// channel to send authorizations to the the task
     auth_sender: UnboundedSender<Authorization>,
 
-    fired_txs: Arc<AtomicUsize>,
+    pub(crate) fired_txs: Arc<AtomicUsize>,
     tx_count: Option<usize>,
 }
 

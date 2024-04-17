@@ -81,7 +81,7 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
 
                         // get the node key that corresponds to this agent
                         let Some(node_key) =
-                            env.node_map.get_by_right(&EnvPeer::Internal(agent.id()))
+                            env.node_peers.get_by_right(&EnvPeer::Internal(agent.id()))
                         else {
                             continue;
                         };

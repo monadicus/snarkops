@@ -152,14 +152,14 @@ async fn get_timelines(Path(env_id): Path<String>, State(state): State<AppState>
 }
 
 async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let Some(env_id) = id_or_none(dbg!(&env_id)) else {
+    let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     let Some(env) = state.envs.get(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    Json(&env.node_map).into_response()
+    Json(&env.node_states).into_response()
 }
 
 async fn post_env_prepare(
