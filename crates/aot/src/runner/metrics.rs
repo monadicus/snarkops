@@ -1,37 +1,34 @@
 // This file exists because the NAMES in the snarkos-node-metrics are
 // `pub(super)` for some reason.
 
-use metrics::{bft, blocks, consensus, router, tcp};
+use metrics::{bft, blocks, committee, consensus, router, tcp};
 
 pub const COUNTER_NAMES: [&str; 1] = [bft::LEADERS_ELECTED];
 
-pub const GAUGE_NAMES: [&str; 18] = [
+pub const GAUGE_NAMES: [&str; 19] = [
     bft::CONNECTED,
     bft::CONNECTING,
     bft::LAST_STORED_ROUND,
     bft::PROPOSAL_ROUND,
     bft::CERTIFIED_BATCHES,
-    blocks::HEIGHT,
+    bft::HEIGHT,
+    bft::LAST_COMMITTED_ROUND,
     blocks::SOLUTIONS,
     blocks::TRANSACTIONS,
-    blocks::TRANSMISSIONS,
+    blocks::PROOF_TARGET,
+    blocks::COINBASE_TARGET,
+    blocks::CUMULATIVE_PROOF_TARGET,
     consensus::COMMITTED_CERTIFICATES,
-    consensus::LAST_COMMITTED_ROUND,
     consensus::UNCONFIRMED_SOLUTIONS,
     consensus::UNCONFIRMED_TRANSACTIONS,
-    consensus::UNCONFIRMED_TRANSMISSIONS,
     router::CONNECTED,
     router::CANDIDATE,
     router::RESTRICTED,
     tcp::TCP_TASKS,
 ];
 
-pub const HISTOGRAM_NAMES: [&str; 7] = [
+pub const HISTOGRAM_NAMES: [&str; 3] = [
     bft::COMMIT_ROUNDS_LATENCY,
     consensus::CERTIFICATE_COMMIT_LATENCY,
     consensus::BLOCK_LATENCY,
-    tcp::NOISE_CODEC_ENCRYPTION_TIME,
-    tcp::NOISE_CODEC_DECRYPTION_TIME,
-    tcp::NOISE_CODEC_ENCRYPTION_SIZE,
-    tcp::NOISE_CODEC_DECRYPTION_SIZE,
 ];
