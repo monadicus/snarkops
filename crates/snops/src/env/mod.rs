@@ -4,7 +4,11 @@ pub mod set;
 pub mod timeline;
 
 use core::fmt;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use bimap::BiMap;
 use dashmap::DashMap;
@@ -189,13 +193,18 @@ impl Environment {
                 }
 
                 ItemDocument::Nodes(nodes) => {
+                    // maps of states and peers that are new to this environment
                     let mut incoming_states = IndexMap::default();
                     let mut incoming_peers = BiMap::default();
+
+                    // set of resolved keys that will be present (new and old)
+                    let mut agent_keys = HashSet::new();
 
                     // flatten replicas
                     for (doc_node_key, mut doc_node) in nodes.nodes {
                         let num_replicas = doc_node.replicas.unwrap_or(1);
-                        for i in 0..num_replicas {
+                        // nobody needs more than 10k replicas anyway
+                        for i in 0..num_replicas.min(10000) {
                             let node_key = match num_replicas {
                                 0 => Err(PrepareError::NodeHas0Replicas)?,
                                 1 => doc_node_key.to_owned(),
@@ -208,6 +217,7 @@ impl Environment {
                                     node_key
                                 }
                             };
+                            agent_keys.insert(node_key.clone());
 
                             // nodes in flattened_nodes have replicas unset
                             doc_node.replicas.take();
@@ -216,8 +226,9 @@ impl Environment {
                             // where the agent state is the same, insert the new state
                             // otherwise keep the old state
 
-                            // ! Skip delegating nodes that are already present in the node map
+                            // Skip delegating nodes that are already present in the node map
                             if node_peers.contains_left(&node_key) {
+                                info!("{env_id}: skipping node {node_key} - already configured");
                                 continue;
                             }
 
@@ -241,7 +252,7 @@ impl Environment {
                     let nodes_to_remove = node_peers
                         .iter()
                         .filter_map(|(k, v)| match v {
-                            EnvPeer::Internal(_) => (!incoming_states.contains_key(k)).then_some(k),
+                            EnvPeer::Internal(_) => (!agent_keys.contains(k)).then_some(k),
                             EnvPeer::External(_) => (!nodes.external.contains_key(k)).then_some(k),
                         })
                         .cloned()
@@ -250,13 +261,17 @@ impl Environment {
                     // get a set of all labels the nodes can reference
                     let labels = labels_from_nodes(&incoming_states);
 
+                    for key in &nodes_to_remove {
+                        info!("{env_id}: removing node {key}");
+                    }
+
                     // list of agents that are now free because their nodes are no longer
                     // going to be part of the environment
-                    let mut removed_agents = incoming_peers
+                    let mut removed_agents = node_peers
                         .iter()
                         .filter_map(|(key, mode)| {
                             if let (EnvPeer::Internal(agent), false) =
-                                (mode, incoming_states.contains_key(key))
+                                (mode, agent_keys.contains(key))
                             {
                                 Some(*agent)
                             } else {
@@ -298,7 +313,10 @@ impl Environment {
                         })
                         .collect();
 
-                    info!("delegated {} nodes to agents", incoming_peers.len());
+                    info!(
+                        "{env_id}: delegated {} nodes to agents",
+                        incoming_peers.len()
+                    );
                     for (key, node) in &incoming_peers {
                         info!("node {key}: {node}");
 
@@ -411,20 +429,26 @@ impl Environment {
 
         state.envs.insert(env_id, Arc::clone(&env));
 
-        // reconcile agents that are freed up from the delta between environments
-        if let Err(e) = reconcile_agents(
-            &state,
-            agents_to_inventory.into_iter().filter_map(|id| {
-                Some((
-                    id,
-                    state.pool.get(&id)?.client_owned(),
-                    AgentState::Inventory,
-                ))
-            }),
-        )
-        .await
-        {
-            error!("an error occurred while attempting to inventory newly freed agents: {e}");
+        if !agents_to_inventory.is_empty() {
+            info!(
+                "{env_id}: inventorying {} spare agents...",
+                agents_to_inventory.len()
+            );
+            // reconcile agents that are freed up from the delta between environments
+            if let Err(e) = reconcile_agents(
+                &state,
+                agents_to_inventory.into_iter().filter_map(|id| {
+                    Some((
+                        id,
+                        state.pool.get(&id)?.client_owned(),
+                        AgentState::Inventory,
+                    ))
+                }),
+            )
+            .await
+            {
+                error!("an error occurred while attempting to inventory newly freed agents: {e}");
+            }
         }
 
         // reconcile the nodes
