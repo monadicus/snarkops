@@ -2,14 +2,11 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, ValueHint};
-use serde_json::Value;
+use reqwest::blocking::{Client, Response};
 
 /// For interacting with snop environments.
 #[derive(Debug, Parser)]
 pub struct Env {
-    /// The url the control plane is on.
-    #[clap(short, long, default_value = "http://localhost:1234", value_hint = ValueHint::Url)]
-    url: String,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -17,6 +14,17 @@ pub struct Env {
 /// Env commands
 #[derive(Debug, Parser)]
 enum Commands {
+    /// List all environments.
+    List,
+
+    /// Show the current topology of a specific environment.
+    #[command(arg_required_else_help = true)]
+    Topology {
+        /// Show a specific env.
+        #[clap(value_hint = ValueHint::Other)]
+        id: String,
+    },
+
     /// Prepare a (test) environment.
     #[command(arg_required_else_help = true)]
     Prepare {
@@ -44,42 +52,35 @@ enum Commands {
 }
 
 impl Env {
-    pub fn run(self) -> Result<()> {
-        let client = reqwest::blocking::Client::new();
-
+    pub fn run(self, url: &str, client: Client) -> Result<Response> {
         use Commands::*;
-        let response = match self.command {
+        Ok(match self.command {
+            List => {
+                let ep = format!("{url}/api/v1/env/list");
+
+                client.get(ep).send()?
+            }
+            Topology { id } => {
+                let ep = format!("{url}/api/v1/env/{id}/topology");
+
+                client.get(ep).send()?
+            }
             Prepare { id, spec } => {
-                let ep = format!("{}/api/v1/env/{id}/prepare", self.url);
+                let ep = format!("{url}/api/v1/env/{id}/prepare");
                 let file: String = std::fs::read_to_string(spec)?;
 
                 client.post(ep).body(file).send()?
             }
-
             Start { id } => {
-                let ep = format!("{}/api/v1/env/{id}", self.url);
+                let ep = format!("{url}/api/v1/env/{id}");
 
                 client.post(ep).send()?
             }
-
             Stop { id } => {
-                let ep = format!("{}/api/v1/env/{id}", self.url);
+                let ep = format!("{url}/api/v1/env/{id}");
 
                 client.delete(ep).send()?
             }
-        };
-
-        if !response.status().is_success() {
-            println!("error {}", response.status());
-        }
-
-        let value = match response.content_length() {
-            Some(0) | None => None,
-            _ => response.json::<Value>().map(Some)?,
-        };
-
-        println!("{}", serde_json::to_string_pretty(&value)?);
-
-        Ok(())
+        })
     }
 }

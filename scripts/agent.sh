@@ -15,6 +15,9 @@ ENDPOINT="127.0.0.1:1234"
 DATA_PATH="$(pwd)/snops-data/$INDEX"
 AGENT_BIN="$DATA_PATH/agent"
 
+# create the data path if it doesn't exist
+mkdir -p "$DATA_PATH"
+
 echo "Starting agent in ${DATA_PATH}"
 
 while true; do

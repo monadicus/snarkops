@@ -9,7 +9,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use bimap::{BiHashMap, BiMap};
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snops_common::state::{AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TxPipeId};
 use tokio::{
     sync::{Mutex, RwLock},
@@ -67,14 +67,14 @@ pub struct TxPipes {
 }
 
 /// The effective test state of a node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum EnvNode {
     Internal(Node),
     External(ExternalNode),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize)]
 /// A way of looking up a peer in the test state.
 /// Could technically use AgentPeer like this but it would have needless port
 /// information

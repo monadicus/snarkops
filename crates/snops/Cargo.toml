@@ -11,7 +11,7 @@ axum = { workspace = true, features = [
 	"tokio",
 	"ws",
 ] }
-bimap.workspace = true
+bimap = { workspace = true, features = ["serde"] }
 bincode.workspace = true
 bytes.workspace = true
 checkpoint.workspace = true
@@ -23,7 +23,7 @@ fixedbitset.workspace = true
 futures-util.workspace = true
 hmac.workspace = true
 http.workspace = true
-indexmap.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
 jwt.workspace = true
 lazy_static.workspace = true
 prometheus-http-query = "0.8"
