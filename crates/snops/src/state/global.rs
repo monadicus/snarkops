@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use prometheus_http_query::Client as PrometheusClient;
 use snops_common::{
     constant::ENV_AGENT_KEY,
-    state::{AgentId, EnvId},
+    state::{AgentId, AgentState, EnvId},
 };
 use tokio::sync::Mutex;
 use tracing::info;
@@ -68,10 +68,34 @@ impl GlobalState {
             envs.insert(id, Arc::new(loaded));
         }
 
+        let pool = db.load::<AgentPool>()?;
+
+        // Get a set of all agents in envs
+        let agents_in_envs = envs
+            .iter()
+            .flat_map(|e| {
+                let env = e.value();
+                env.node_peers
+                    .right_values()
+                    .filter_map(|p| match p {
+                        crate::env::EnvPeer::Internal(id) => Some(*id),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<HashSet<_>>();
+
+        // For all agents not in envs, set their state to Inventory
+        for mut entry in pool.iter_mut() {
+            if !agents_in_envs.contains(entry.key()) {
+                entry.set_state(AgentState::Inventory);
+            }
+        }
+
         Ok(Self {
             cli,
             agent_key: std::env::var(ENV_AGENT_KEY).ok(),
-            pool: db.load()?,
+            pool,
             storage,
             envs,
             prom_httpsd: Default::default(),
