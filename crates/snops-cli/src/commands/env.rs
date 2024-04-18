@@ -7,6 +7,9 @@ use reqwest::blocking::{Client, Response};
 /// For interacting with snop environments.
 #[derive(Debug, Parser)]
 pub struct Env {
+    /// Show a specific env.
+    #[clap(value_hint = ValueHint::Other)]
+    id: String,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -15,69 +18,37 @@ pub struct Env {
 #[derive(Debug, Parser)]
 enum Commands {
     /// Clean a specific environment.
-    #[command(arg_required_else_help = true)]
-    Clean {
-        /// Show a specific env.
-        #[clap(value_hint = ValueHint::Other)]
-        id: String,
-    },
-    /// List all environments.
-    List,
+    Clean,
 
     /// List all steps for a specific timeline.
-    #[command(arg_required_else_help = true)]
     Timeline {
-        /// Show a specific env.
-        #[clap(value_hint = ValueHint::Other)]
-        env_id: String,
-
         /// Show a specific timeline steps.
         #[clap(value_hint = ValueHint::Other)]
         timeline_id: String,
     },
 
     /// List all timelines for a specific environment.
-    #[command(arg_required_else_help = true)]
-    Timelines {
-        /// Show a specific env.
-        #[clap(value_hint = ValueHint::Other)]
-        id: String,
-    },
+    Timelines,
 
     /// Show the current topology of a specific environment.
-    #[command(arg_required_else_help = true)]
-    Topology {
-        /// Show a specific env.
-        #[clap(value_hint = ValueHint::Other)]
-        id: String,
-    },
+    Topology,
 
     /// Prepare a (test) environment.
-    #[command(arg_required_else_help = true)]
     Prepare {
-        id: String,
         /// The test spec file.
         #[clap(value_hint = ValueHint::AnyPath)]
         spec: PathBuf,
     },
 
     /// Start an environment's timeline (a test).
-    #[command(arg_required_else_help = true)]
     Start {
-        /// Start a specific env.
-        #[clap(value_hint = ValueHint::Other)]
-        env_id: String,
         /// Start a specific timeline.
         #[clap(value_hint = ValueHint::Other)]
         timeline_id: String,
     },
 
     /// Stop an environment's timeline.
-    #[command(arg_required_else_help = true)]
     Stop {
-        /// Stop a specific env.
-        #[clap(value_hint = ValueHint::Other)]
-        env_id: String,
         /// Stop a specific timeline.
         #[clap(value_hint = ValueHint::Other)]
         timeline_id: String,
@@ -88,53 +59,40 @@ impl Env {
     pub fn run(self, url: &str, client: Client) -> Result<Response> {
         use Commands::*;
         Ok(match self.command {
-            Clean { id } => {
-                let ep = format!("{url}/api/v1/env/{id}");
+            Clean => {
+                let ep = format!("{url}/api/v1/env/{}", self.id);
 
                 client.delete(ep).send()?
             }
-            List => {
-                let ep = format!("{url}/api/v1/env/list");
+
+            Timeline { timeline_id } => {
+                let ep = format!("{url}/api/v1/env/{}/timelines/{timeline_id}/steps", self.id);
 
                 client.get(ep).send()?
             }
-            Timeline {
-                env_id,
-                timeline_id,
-            } => {
-                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{timeline_id}/steps");
+            Timelines => {
+                let ep = format!("{url}/api/v1/env/{}/timelines", self.id);
 
                 client.get(ep).send()?
             }
-            Timelines { id } => {
-                let ep = format!("{url}/api/v1/env/{id}/timelines");
+            Topology => {
+                let ep = format!("{url}/api/v1/env/{}/topology", self.id);
 
                 client.get(ep).send()?
             }
-            Topology { id } => {
-                let ep = format!("{url}/api/v1/env/{id}/topology");
-
-                client.get(ep).send()?
-            }
-            Prepare { id, spec } => {
-                let ep = format!("{url}/api/v1/env/{id}/prepare");
+            Prepare { spec } => {
+                let ep = format!("{url}/api/v1/env/{}/prepare", self.id);
                 let file: String = std::fs::read_to_string(spec)?;
 
                 client.post(ep).body(file).send()?
             }
-            Start {
-                env_id,
-                timeline_id,
-            } => {
-                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{timeline_id}");
+            Start { timeline_id } => {
+                let ep = format!("{url}/api/v1/env/{}/timelines/{timeline_id}", self.id);
 
                 client.post(ep).send()?
             }
-            Stop {
-                env_id,
-                timeline_id,
-            } => {
-                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{timeline_id}");
+            Stop { timeline_id } => {
+                let ep = format!("{url}/api/v1/env/{}/timelines/{timeline_id}", self.id);
 
                 client.delete(ep).send()?
             }
