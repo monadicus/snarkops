@@ -8,7 +8,7 @@ use reqwest::blocking::{Client, Response};
 #[derive(Debug, Parser)]
 pub struct Env {
     /// Show a specific env.
-    #[clap(value_hint = ValueHint::Other)]
+    #[clap(default_value="default", value_hint = ValueHint::Other)]
     id: String,
     #[clap(subcommand)]
     command: Commands,

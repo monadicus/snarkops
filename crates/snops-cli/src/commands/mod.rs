@@ -15,8 +15,9 @@ pub enum Commands {
         /// Which shell you want to generate completions for.
         shell: clap_complete::Shell,
     },
-    //
+    #[clap(alias = "l")]
     List(list::List),
+    #[clap(alias = "e")]
     Env(env::Env),
 }
 
