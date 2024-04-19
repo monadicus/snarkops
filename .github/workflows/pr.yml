@@ -63,7 +63,7 @@ jobs:
         with:
           repository: AleoHQ/snarkOS
           fetch-depth: 0
-          ref: ec943b39968215e17f43b5f53fd73acba66e3a5f # latest canarynet
+          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
           path: snarkos
 
       - name: 📥 Checkout snarkVM
@@ -71,7 +71,7 @@ jobs:
         with:
           repository: AleoHQ/snarkVM
           fetch-depth: 0
-          ref: ed20562d6f97ef593f051ce3cc848644e785f817 # latest canarynet
+          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
           path: snarkvm
 
       - name: ☁️ Install Nightly
@@ -97,7 +97,7 @@ jobs:
         with:
           repository: AleoHQ/snarkOS
           fetch-depth: 0
-          ref: ec943b39968215e17f43b5f53fd73acba66e3a5f # latest canarynet
+          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
           path: snarkos
 
       - name: 📥 Checkout snarkVM
@@ -105,7 +105,7 @@ jobs:
         with:
           repository: AleoHQ/snarkVM
           fetch-depth: 0
-          ref: ed20562d6f97ef593f051ce3cc848644e785f817 # latest canarynet
+          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
           path: snarkvm
 
       - name: 🥬 Use Mold Linker
