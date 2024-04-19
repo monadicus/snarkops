@@ -63,11 +63,8 @@ impl GlobalState {
         // if an else was used here, the lock would be held for the entire function so
         // we return early to prevent a deadlock
 
-        let info = api::get_storage_info(format!(
-            "http://{}/api/v1/env/{env_id}/storage",
-            &self.endpoint
-        ))
-        .await?;
+        let info = api::get_storage_info(format!("{}/api/v1/env/{env_id}/storage", &self.endpoint))
+            .await?;
 
         self.env_to_storage
             .write()

@@ -83,6 +83,7 @@ async fn main() {
 
     // get the endpoint
     let (endpoint, ws_uri) = args.endpoint_and_uri();
+    info!("connecting to {endpoint}");
 
     // create the data directory
     tokio::fs::create_dir_all(&args.path)
