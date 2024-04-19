@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     net::IpAddr,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use snops_common::{
@@ -11,11 +12,15 @@ use snops_common::{
 };
 use tokio::{
     process::Child,
+    select,
     sync::{Mutex as AsyncMutex, RwLock},
     task::AbortHandle,
 };
+use tracing::info;
 
 use crate::{api, cli::Cli, metrics::Metrics};
+
+pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub type AppState = Arc<GlobalState>;
 
@@ -75,5 +80,32 @@ impl GlobalState {
             .insert(env_id, info.clone());
 
         Ok(info)
+    }
+
+    /// Attempt to gracefully shutdown the node if one is running.
+    pub async fn node_graceful_shutdown(&self) {
+        if let Some((mut child, id)) = self.child.write().await.take().and_then(|ch| {
+            let id = ch.id()?;
+            Some((ch, id))
+        }) {
+            use nix::{
+                sys::signal::{self, Signal},
+                unistd::Pid,
+            };
+
+            // send SIGINT to the child process
+            signal::kill(Pid::from_raw(id as i32), Signal::SIGINT).unwrap();
+
+            // wait for graceful shutdown or kill process after 10 seconds
+            let timeout = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT);
+
+            select! {
+                _ = child.wait() => (),
+                _ = timeout => {
+                    info!("snarkos process did not gracefully shut down, killing...");
+                    child.kill().await.unwrap();
+                }
+            }
+        }
     }
 }
