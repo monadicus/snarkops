@@ -260,6 +260,7 @@ async fn main() {
         }
     }
 
+    state.node_graceful_shutdown().await;
     info!("snops agent has shut down gracefully :)");
 }
 
