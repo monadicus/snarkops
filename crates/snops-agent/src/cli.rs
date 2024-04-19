@@ -84,18 +84,10 @@ impl Cli {
             query.push_str(&format!("&labels={}", labels.join(",")));
         }
 
-        let split = endpoint.split("://").collect::<Vec<_>>();
-
-        let (is_tls, host) = if split.len() == 2 {
-            (split[0] == "wss" || split[0] == "https", split[1])
-        } else {
-            (
-                false,
-                *split
-                    .first()
-                    .expect("invalid endpoint argument. expected scheme://host or ip"),
-            )
-        };
+        let (is_tls, host) = endpoint
+            .split_once("://")
+            .map(|(left, right)| (left == "wss" || left == "https", right))
+            .unwrap_or((false, endpoint.as_str()));
 
         let addr = format!("{host}{}", if host.contains(':') { "" } else { ":1234" });
 
