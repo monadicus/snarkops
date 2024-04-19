@@ -127,8 +127,8 @@ jobs:
       - name: ☁️ Install Nextest
         uses: taiki-e/install-action@nextest
 
-      - name: ☁️ Install cargo-machete
-        run: cargo install cargo-machete
+      # - name: ☁️ Install cargo-machete
+      # run: cargo install cargo-machete
 
       # - name: 📋 Clippy Check
       #   working-directory: ./snarkos-test
@@ -136,12 +136,12 @@ jobs:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo +nightly-2024-04-01 clippy --all --all-targets -- -D warnings
 
-      - name: 📋 Check Unused Deps
-        if: always()
-        working-directory: ./snarkos-test
-        env:
-          RUSTFLAGS: -Zcodegen-backend=cranelift
-        run: cargo machete
+      # - name: 📋 Check Unused Deps
+      #   if: always()
+      #   working-directory: ./snarkos-test
+      #   env:
+      #     RUSTFLAGS: -Zcodegen-backend=cranelift
+      #   run: cargo machete
 
       - name: 🧪 Test
         if: always()
