@@ -20,6 +20,11 @@ pub struct Cli {
     pub path: PathBuf,
 
     #[arg(long)]
+    /// Hostname to advertise to the control plane, used when resolving the
+    /// control plane's address for external cannons can be an external IP
+    /// or FQDN, will have the port appended
+    ///
+    /// must contain http:// or https://
     pub hostname: Option<String>,
 }
 

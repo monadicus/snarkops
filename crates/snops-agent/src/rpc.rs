@@ -1,6 +1,4 @@
-use std::{
-    collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration,
-};
+use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
 use snops_common::{
     constant::{
@@ -18,7 +16,6 @@ use tarpc::{context, ClientMessage, Response};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
-    select,
 };
 use tracing::{debug, error, info, trace, warn, Level};
 
@@ -26,8 +23,6 @@ use crate::{api, metrics::MetricComputer, reconcile, state::AppState};
 
 /// The JWT file name.
 pub const JWT_FILE: &str = "jwt";
-
-pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -97,32 +92,7 @@ impl AgentService for AgentRpcServer {
                     // kill existing child if running
                     AgentState::Node(_, node) if node.online => {
                         info!("cleaning up snarkos process...");
-
-                        if let Some((mut child, id)) =
-                            state.child.write().await.take().and_then(|ch| {
-                                let id = ch.id()?;
-                                Some((ch, id))
-                            })
-                        {
-                            use nix::{
-                                sys::signal::{self, Signal},
-                                unistd::Pid,
-                            };
-
-                            // send SIGINT to the child process
-                            signal::kill(Pid::from_raw(id as i32), Signal::SIGINT).unwrap();
-
-                            // wait for graceful shutdown or kill process after 10 seconds
-                            let timeout = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT);
-
-                            select! {
-                                _ = child.wait() => (),
-                                _ = timeout => {
-                                    info!("snarkos process did not gracefully shut down, killing...");
-                                    child.kill().await.unwrap();
-                                }
-                            }
-                        }
+                        state.node_graceful_shutdown().await;
                     }
 
                     _ => (),
@@ -457,7 +427,7 @@ impl AgentService for AgentRpcServer {
         // download the snarkOS binary
         api::check_binary(
             env_id,
-            &format!("http://{}", &self.state.endpoint),
+            &self.state.endpoint,
             &self.state.cli.path.join(SNARKOS_FILE),
         ) // TODO: http(s)?
         .await
@@ -471,7 +441,7 @@ impl AgentService for AgentRpcServer {
             .stderr(std::io::stderr())
             .arg("execute")
             .arg("--query")
-            .arg(&format!("http://{}{query}", self.state.endpoint))
+            .arg(&format!("{}{query}", self.state.endpoint))
             .arg(auth)
             .spawn()
             .map_err(|e| {

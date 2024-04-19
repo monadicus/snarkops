@@ -10,7 +10,7 @@ pub mod source;
 use std::{
     path::PathBuf,
     process::Stdio,
-    sync::{atomic::AtomicUsize, Arc, OnceLock},
+    sync::{atomic::AtomicUsize, Arc},
 };
 
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -110,23 +110,6 @@ pub struct CannonInstance {
 
     pub(crate) fired_txs: Arc<AtomicUsize>,
     tx_count: Option<usize>,
-}
-
-#[tokio::main]
-async fn get_external_ip() -> Option<String> {
-    let sources: external_ip::Sources = external_ip::get_http_sources();
-    let consensus = external_ip::ConsensusBuilder::new()
-        .add_sources(sources)
-        .build();
-    consensus.get_consensus().await.map(|s| s.to_string())
-}
-
-async fn get_host(state: &GlobalState) -> Option<String> {
-    static ONCE: OnceLock<Option<String>> = OnceLock::new();
-    match state.cli.hostname.as_ref() {
-        Some(host) => Some(host.to_owned()),
-        None => ONCE.get_or_init(get_external_ip).to_owned(),
-    }
 }
 
 pub struct CannonReceivers {
@@ -373,10 +356,12 @@ impl ExecutionContext {
                     ComputeTarget::Agent { .. } => suffix,
                     // demox needs to locate it
                     ComputeTarget::Demox { .. } => {
-                        let host = get_host(state)
-                            .await
-                            .ok_or(ExecutionContextError::NoDemoxHostConfigured)?;
-                        format!("http://{host}:{}{suffix}", state.cli.port)
+                        let host = state
+                            .cli
+                            .hostname
+                            .as_ref()
+                            .ok_or(ExecutionContextError::NoHostnameConfigured)?;
+                        format!("{host}:{}{suffix}", state.cli.port)
                     }
                 };
                 trace!("cannon {env_id}.{cannon_id} using realtime query {query}");
