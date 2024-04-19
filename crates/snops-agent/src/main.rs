@@ -13,7 +13,7 @@ use std::{
 
 use clap::Parser;
 use cli::Cli;
-use futures::{executor::block_on, SinkExt};
+use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::HeaderValue;
 use snops_common::{
@@ -29,7 +29,7 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::{self, client::IntoClientRequest},
 };
-use tracing::{error, info, level_filters::LevelFilter, warn};
+use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing, JWT_FILE};
@@ -74,14 +74,9 @@ async fn main() {
 
     // get the network interfaces available to this node
     let internal_addrs = net::get_internal_addrs().expect("failed to get network interfaces");
-    let external_addr = args
-        .external
-        .then(|| block_on(net::get_external_addr()))
-        .flatten();
+    let external_addr = args.external;
     if let Some(addr) = external_addr {
         info!("using external addr: {}", addr);
-    } else if args.external {
-        warn!("failed to get external address");
     } else {
         info!("skipping external addr");
     }

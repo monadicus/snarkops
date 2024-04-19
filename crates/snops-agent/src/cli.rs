@@ -40,7 +40,7 @@ pub struct Cli {
     /// which agents are on shared networks, and for
     /// external-to-external connections
     #[arg(long)]
-    pub external: bool,
+    pub external: Option<IpAddr>,
 
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
@@ -84,9 +84,17 @@ impl Cli {
             query.push_str(&format!("&labels={}", labels.join(",")));
         }
 
+        let split = endpoint.split("://").collect::<Vec<_>>();
+
+        let (proto, host) = if split.len() == 2 {
+            (split[0], split[1])
+        } else {
+            ("ws", split[0])
+        };
+
         let ws_uri = Uri::builder()
-            .scheme("ws")
-            .authority(endpoint.to_string())
+            .scheme(proto)
+            .authority(host)
             .path_and_query(query)
             .build()
             .unwrap();
