@@ -36,13 +36,9 @@ pub async fn check_files(
 
     // TODO: store binary based on binary id
     // download the snarkOS binary
-    api::check_binary(
-        env_id,
-        &format!("http://{}", &state.endpoint),
-        &base_path.join(SNARKOS_FILE),
-    ) // TODO: http(s)?
-    .await
-    .expect("failed to acquire snarkOS binary");
+    api::check_binary(env_id, &state.endpoint, &base_path.join(SNARKOS_FILE)) // TODO: http(s)?
+        .await
+        .expect("failed to acquire snarkOS binary");
 
     let version_file = storage_path.join(VERSION_FILE);
 
@@ -58,12 +54,12 @@ pub async fn check_files(
 
     let genesis_path = storage_path.join(SNARKOS_GENESIS_FILE);
     let genesis_url = format!(
-        "http://{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
+        "{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
         &state.endpoint
     );
     let ledger_path = storage_path.join(LEDGER_STORAGE_FILE);
     let ledger_url = format!(
-        "http://{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
+        "{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
         &state.endpoint
     );
 
@@ -294,7 +290,7 @@ impl<'a> CheckpointSource<'a> {
                     meta.height, meta.timestamp
                 );
                 let checkpoint_url = format!(
-                    "http://{}/content/storage/{storage_id}/{}",
+                    "{}/content/storage/{storage_id}/{}",
                     &state.endpoint, meta.filename
                 );
                 let path = storage_path.join(&meta.filename);

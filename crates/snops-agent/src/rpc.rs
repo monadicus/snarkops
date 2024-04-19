@@ -427,7 +427,7 @@ impl AgentService for AgentRpcServer {
         // download the snarkOS binary
         api::check_binary(
             env_id,
-            &format!("http://{}", &self.state.endpoint),
+            &self.state.endpoint,
             &self.state.cli.path.join(SNARKOS_FILE),
         ) // TODO: http(s)?
         .await
@@ -441,7 +441,7 @@ impl AgentService for AgentRpcServer {
             .stderr(std::io::stderr())
             .arg("execute")
             .arg("--query")
-            .arg(&format!("http://{}{query}", self.state.endpoint))
+            .arg(&format!("{}{query}", self.state.endpoint))
             .arg(auth)
             .spawn()
             .map_err(|e| {

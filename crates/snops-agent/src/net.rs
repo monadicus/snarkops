@@ -30,17 +30,3 @@ pub fn get_internal_addrs() -> Result<Vec<IpAddr>> {
         })
         .collect())
 }
-
-pub async fn get_external_addr() -> Option<IpAddr> {
-    // default behavior of the external_ip::get_ip function uses
-    // dns sources, which have given me addresses that resolve to
-    // networks that are not mine...
-
-    let sources: external_ip::Sources = external_ip::get_http_sources();
-    let consensus = external_ip::ConsensusBuilder::new()
-        .add_sources(sources)
-        .build();
-    consensus.get_consensus().await
-}
-// 172.253.198.135
-// 172.217.38.175
