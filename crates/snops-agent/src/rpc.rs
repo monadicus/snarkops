@@ -1,5 +1,6 @@
 use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
+use futures::future;
 use snops_common::{
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
@@ -277,11 +278,10 @@ impl AgentService for AgentRpcServer {
                         tracing::debug!("node command: {command:?}");
                         let mut child = command.spawn().expect("failed to start child");
 
-                        // start a new task to log stdout
-                        // TODO: probably also want to read stderr
                         let stdout: tokio::process::ChildStdout = child.stdout.take().unwrap();
                         let stderr: tokio::process::ChildStderr = child.stderr.take().unwrap();
 
+                        let is_quiet_enabled = state.cli.quiet;
                         tokio::spawn(async move {
                             let child_span = tracing::span!(Level::INFO, "child process stdout");
                             let _enter = child_span.enter();
@@ -290,8 +290,15 @@ impl AgentService for AgentRpcServer {
                             let mut reader2 = BufReader::new(stderr).lines();
 
                             loop {
+                                // if quiet mode is enabled, we don't need to read stdout
+                                let reader = if is_quiet_enabled {
+                                    future::Either::Left(future::pending())
+                                } else {
+                                    future::Either::Right(reader1.next_line())
+                                };
+
                                 tokio::select! {
-                                    Ok(line) = reader1.next_line() => {
+                                    Ok(line) = reader => {
                                         if let Some(line) = line {
                                             info!(line);
                                         } else {

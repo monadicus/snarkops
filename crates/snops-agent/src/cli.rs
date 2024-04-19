@@ -50,6 +50,10 @@ pub struct Cli {
 
     #[clap(flatten)]
     pub modes: AgentMode,
+
+    #[clap(short, long, default_value_t = false)]
+    /// Run the agent in quiet mode, suppressing most node output
+    pub quiet: bool,
 }
 
 impl Cli {
