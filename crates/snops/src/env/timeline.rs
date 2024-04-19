@@ -321,12 +321,14 @@ impl Environment {
                             reconcile_agents(&task_state, pending_reconciliations.into_values())
                                 .await
                         {
-                            error!("failed to reconcile agents in timeline: {e}");
-                            if let Err(e) =
-                                Environment::forcefully_inventory(env_id, &task_state).await
-                            {
+                            // TODO: timeline setting to enable cleanup on error
+                            // in many cases, maintaining the failure state is easier to
+                            // troubleshoot. can shoot alerts here too
+
+                            /* error!("failed to reconcile agents in timeline: {e}");
+                            if let Err(e) = Environment::cleanup(env_id, &task_state).await {
                                 error!("failed to inventory agents: {e}");
-                            }
+                            } */
 
                             return Err(e.into());
                         };

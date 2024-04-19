@@ -206,7 +206,7 @@ async fn post_timeline(
 async fn delete_timeline(
     Path((env_id, t_id)): Path<(String, String)>,
     State(state): State<AppState>,
-) -> impl IntoResponse {
+) -> Response {
     let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -221,15 +221,12 @@ async fn delete_timeline(
     }
 }
 
-async fn delete_env(
-    Path(env_id): Path<String>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+async fn delete_env(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
     let Some(env_id) = id_or_none(&env_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    match Environment::cleanup(&env_id, &state).await {
+    match Environment::cleanup(env_id, &state).await {
         Ok(_) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }
