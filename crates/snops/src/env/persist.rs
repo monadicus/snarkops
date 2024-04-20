@@ -1,12 +1,12 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 
 use bimap::BiMap;
 use bytes::{Buf, BufMut};
-use indexmap::IndexMap;
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use snops_common::state::{AgentId, CannonId, EnvId, NodeKey, StorageId, TxPipeId};
 
-use super::{EnvError, EnvNode, EnvPeer, Environment, PrepareError, TxPipes};
+use super::{EnvError, EnvNodeState, EnvPeer, Environment, PrepareError, TxPipes};
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -43,24 +43,27 @@ pub struct PersistEnv {
 impl From<&Environment> for PersistEnv {
     fn from(value: &Environment) -> Self {
         let nodes = value
-            .initial_nodes
+            .node_states
             .iter()
-            .filter_map(|(k, v)| {
-                let agent_index = value.node_map.get_by_left(k).and_then(|v| {
+            .filter_map(|entry| {
+                let key = entry.key();
+                let agent_index = value.node_peers.get_by_left(key).and_then(|v| {
                     if let EnvPeer::Internal(a) = v {
                         Some(a)
                     } else {
                         None
                     }
                 });
-                match v {
-                    EnvNode::Internal(n) => agent_index.map(|agent| {
+                match entry.value() {
+                    EnvNodeState::Internal(n) => agent_index.map(|agent| {
                         (
-                            k.clone(),
+                            key.clone(),
                             PersistNode::Internal(*agent, Box::new(n.clone())),
                         )
                     }),
-                    EnvNode::External(n) => Some((k.clone(), PersistNode::External(n.clone()))),
+                    EnvNodeState::External(n) => {
+                        Some((key.clone(), PersistNode::External(n.clone())))
+                    }
                 }
             })
             .collect();
@@ -74,7 +77,7 @@ impl From<&Environment> for PersistEnv {
             cannon_configs: value
                 .cannon_configs
                 .iter()
-                .map(|(k, (source, sink))| (*k, source.clone(), sink.clone()))
+                .map(|v| (*v.key(), v.0.clone(), v.1.clone()))
                 .collect(),
         }
     }
@@ -92,16 +95,16 @@ impl PersistEnv {
             .ok_or(PrepareError::MissingStorage)?;
 
         let mut node_map = BiMap::default();
-        let mut initial_nodes = IndexMap::default();
+        let initial_nodes = DashMap::default();
         for (key, v) in self.nodes {
             match v {
                 PersistNode::Internal(agent, n) => {
                     node_map.insert(key.clone(), EnvPeer::Internal(agent));
-                    initial_nodes.insert(key, EnvNode::Internal(*n));
+                    initial_nodes.insert(key, EnvNodeState::Internal(*n));
                 }
                 PersistNode::External(n) => {
                     node_map.insert(key.clone(), EnvPeer::External(key.clone()));
-                    initial_nodes.insert(key, EnvNode::External(n));
+                    initial_nodes.insert(key, EnvNodeState::External(n));
                 }
             }
         }
@@ -133,7 +136,7 @@ impl PersistEnv {
             );
         }
 
-        let mut cannon_configs = HashMap::new();
+        let cannon_configs = DashMap::new();
         for (k, source, sink) in self.cannon_configs {
             cannon_configs.insert(k, (source, sink));
         }
@@ -141,8 +144,8 @@ impl PersistEnv {
         Ok(Environment {
             id: self.id,
             storage: storage.clone(),
-            node_map,
-            initial_nodes,
+            node_peers: node_map,
+            node_states: initial_nodes,
             tx_pipe,
             cannon_configs,
             aot_bin: DEFAULT_AOT_BIN.clone(),
@@ -150,7 +153,7 @@ impl PersistEnv {
 
             // TODO: create persistence for these documents or move out of env
             outcomes: Default::default(),
-            timeline: Default::default(),
+            timelines: Default::default(),
             timeline_handle: Default::default(),
         })
     }

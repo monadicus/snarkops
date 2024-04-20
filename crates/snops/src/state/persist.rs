@@ -78,7 +78,7 @@ impl PersistStorage {
 
 impl DbCollection for AgentPool {
     fn restore(db: &Database) -> Result<Self, DatabaseError> {
-        let mut map = AgentPool::default();
+        let map = AgentPool::default();
         for row in db.agents.iter() {
             let Some(id) = load_interned_id(row, "agent") else {
                 continue;

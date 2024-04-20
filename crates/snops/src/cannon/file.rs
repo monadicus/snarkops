@@ -86,8 +86,8 @@ impl TransactionDrain {
     }
 
     /// Save persistence for this drain
-    pub fn write_persistence(&self, ctx: &ExecutionContext) {
-        let Some(env) = ctx.env.upgrade() else {
+    pub async fn write_persistence(&self, ctx: &ExecutionContext) {
+        let Some(env) = ctx.state.get_env(ctx.env_id) else {
             return;
         };
 

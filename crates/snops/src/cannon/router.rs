@@ -32,10 +32,7 @@ async fn state_root(
             .into_response();
     };
 
-    let Some(env) = ({
-        let env = state.envs.read().await;
-        env.get(&env_id).cloned()
-    }) else {
+    let Some(env) = state.get_env(env_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "environment not found" })),
@@ -43,8 +40,7 @@ async fn state_root(
             .into_response();
     };
 
-    let cannon_lock = env.cannons.read().await;
-    let Some(cannon) = cannon_lock.get(&cannon_id) else {
+    let Some(cannon) = env.get_cannon(cannon_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "cannon not found" })),
@@ -97,10 +93,7 @@ async fn transaction(
             .into_response();
     };
 
-    let Some(env) = ({
-        let env = state.envs.read().await;
-        env.get(&env_id).cloned()
-    }) else {
+    let Some(env) = state.get_env(env_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "environment not found" })),
@@ -108,8 +101,7 @@ async fn transaction(
             .into_response();
     };
 
-    let cannon_lock = env.cannons.read().await;
-    let Some(cannon) = cannon_lock.get(&cannon_id) else {
+    let Some(cannon) = env.get_cannon(cannon_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "cannon not found" })),
@@ -140,10 +132,7 @@ async fn authorization(
             .into_response();
     };
 
-    let Some(env) = ({
-        let env = state.envs.read().await;
-        env.get(&env_id).cloned()
-    }) else {
+    let Some(env) = state.get_env(env_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "environment not found" })),
@@ -151,8 +140,7 @@ async fn authorization(
             .into_response();
     };
 
-    let cannon_lock = env.cannons.read().await;
-    let Some(cannon) = cannon_lock.get(&cannon_id) else {
+    let Some(cannon) = env.get_cannon(cannon_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "cannon not found" })),

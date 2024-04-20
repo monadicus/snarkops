@@ -17,6 +17,7 @@ bytes.workspace = true
 checkpoint.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
+dashmap = { workspace = true, features = ["serde"] }
 duration-str.workspace = true
 fixedbitset.workspace = true
 futures-util.workspace = true

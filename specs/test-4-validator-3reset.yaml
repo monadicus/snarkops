@@ -23,7 +23,7 @@ nodes:
 ---
 version: timeline.snarkos.testing.monadic.us/v1
 
-name: testing ledger reset 3 times
+name: testing-ledger-reset-3-times
 description: |-
   ledger reset test validators 0 and 1 three times
 

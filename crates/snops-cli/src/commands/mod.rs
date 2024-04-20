@@ -5,6 +5,7 @@ use serde_json::Value;
 use crate::cli::Cli;
 
 mod env;
+mod list;
 
 #[derive(Debug, Parser)]
 pub enum Commands {
@@ -14,6 +15,9 @@ pub enum Commands {
         /// Which shell you want to generate completions for.
         shell: clap_complete::Shell,
     },
+    #[clap(alias = "l")]
+    List(list::List),
+    #[clap(alias = "e")]
     Env(env::Env),
 }
 
@@ -29,7 +33,8 @@ impl Commands {
                 clap_complete::generate(shell, &mut cmd, cmd_name, &mut std::io::stdout());
                 return Ok(());
             }
-            Commands::Env(test) => test.run(url, client),
+            Commands::Env(env) => env.run(url, client),
+            Commands::List(list) => list.run(url, client),
         }?;
 
         if !response.status().is_success() {

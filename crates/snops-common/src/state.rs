@@ -22,6 +22,7 @@ pub type AgentId = InternedId;
 pub type EnvId = InternedId;
 pub type CannonId = InternedId;
 pub type StorageId = InternedId;
+pub type TimelineId = InternedId;
 pub type TxPipeId = InternedId;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -432,10 +433,14 @@ impl Serialize for NodeKey {
     }
 }
 
-impl AgentId {
+impl InternedId {
     pub fn rand() -> Self {
         let id = rand::thread_rng().next_u32();
         Self(INTERN.get_or_intern(format!("agent-{}", id)))
+    }
+
+    pub fn into_inner(self) -> u32 {
+        self.0.into_inner().get()
     }
 }
 

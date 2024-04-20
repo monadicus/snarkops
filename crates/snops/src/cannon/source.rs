@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snops_common::{
@@ -209,20 +210,22 @@ impl TxSource {
             } => {
                 let sample_pk = || {
                     private_keys
-                        .get(rand::random::<usize>() % private_keys.len())
+                        .iter()
+                        .choose(&mut rand::thread_rng())
                         .and_then(|k| env.storage.sample_keysource_pk(k).try_string())
                         .ok_or(SourceError::CouldNotSelect("private key"))
                 };
                 let sample_addr = || {
                     addresses
-                        .get(rand::random::<usize>() % addresses.len())
+                        .iter()
+                        .choose(&mut rand::thread_rng())
                         .and_then(|k| env.storage.sample_keysource_addr(k).try_string())
                         .ok_or(SourceError::CouldNotSelect("address"))
                 };
 
                 let mode = tx_modes
                     .iter()
-                    .nth(rand::random::<usize>() % tx_modes.len())
+                    .choose(&mut rand::thread_rng())
                     .ok_or(SourceError::NoTxModeAvailable)?;
 
                 let auth = match mode {
@@ -259,11 +262,9 @@ impl ComputeTarget {
         match self {
             ComputeTarget::Agent { labels } => {
                 // find a client, mark it as busy
-                let (client, _busy) = find_compute_agent(
-                    state.pool.read().await.values(),
-                    &labels.clone().unwrap_or_default(),
-                )
-                .ok_or(SourceError::NoAvailableAgents("authorization"))?;
+                let (client, _busy) =
+                    find_compute_agent(state, &labels.clone().unwrap_or_default())
+                        .ok_or(SourceError::NoAvailableAgents("authorization"))?;
 
                 // execute the authorization
                 client
