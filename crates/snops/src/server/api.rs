@@ -14,7 +14,6 @@ use snops_common::{
 };
 use tower::Service;
 use tower_http::services::ServeFile;
-use tracing::info;
 
 use super::{error::ServerError, AppState};
 use crate::env::Environment;
@@ -37,6 +36,24 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/env/:env_id/timelines", get(get_timelines))
 }
 
+macro_rules! id_or_notfound {
+    ($id:ident) => {
+        let Some($id) = id_or_none(&$id) else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+    };
+    ($($id:ident),+) => {
+        $(id_or_notfound!($id);)+
+    };
+}
+macro_rules! get_or_notfound {
+    ($env:ident = $state:ident . $group:ident [$id:ident]) => {
+        let Some($env) = $state.$group.get(&$id) else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+    };
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum StorageType {
@@ -46,12 +63,8 @@ enum StorageType {
 }
 
 async fn get_storage_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
-    let Some(env_id) = id_or_none(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let Some(env) = state.envs.get(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    id_or_notfound!(env_id);
+    get_or_notfound!(env = state.envs[env_id]);
 
     Json(env.storage.info()).into_response()
 }
@@ -61,12 +74,9 @@ async fn redirect_storage(
     state: State<AppState>,
     req: Request,
 ) -> Response {
-    let Some(env_id) = id_or_none(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let Some(env) = state.envs.get(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    id_or_notfound!(env_id);
+    get_or_notfound!(env = state.envs[env_id]);
+
     let real_id = &env.storage.id;
 
     let filename = match ty {
@@ -94,19 +104,20 @@ fn status_ok() -> Response {
 }
 
 async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Response {
-    let Some(agent) = id_or_none(&id).and_then(|id| state.pool.get(&id)) else {
-        return ServerError::AgentNotFound(id.clone()).into_response();
+    id_or_notfound!(id);
+    get_or_notfound!(agent = state.pool[id]);
+
+    let Some(rpc) = agent.rpc() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
 
-    // TODO: get rid of these unwraps
-    agent
-        .rpc()
-        .unwrap()
+    match rpc
         .get_metric(tarpc::context::current(), AgentMetric::Tps)
         .await
-        .unwrap()
-        .to_string()
-        .into_response()
+    {
+        Ok(tps) => tps.to_string().into_response(),
+        Err(_e) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 async fn get_env_list(State(state): State<AppState>) -> Response {
@@ -117,22 +128,9 @@ async fn get_timeline(
     Path((env_id, t_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Response {
-    info!("get_env_timeline: env_id: {}, t_id: {}", env_id, t_id);
-    let Some(env_id) = id_or_none(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-
-    let Some(env) = state.envs.get(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-
-    let Some(t_id) = id_or_none(&t_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-
-    let Some(timeline) = &env.timelines.get(&t_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    id_or_notfound!(env_id, t_id);
+    get_or_notfound!(env = state.envs[env_id]);
+    get_or_notfound!(timeline = env.timelines[t_id]);
 
     Json(json!({
         "steps": timeline.len(),
@@ -141,23 +139,15 @@ async fn get_timeline(
 }
 
 async fn get_timelines(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let Some(env_id) = id_or_none(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let Some(env) = state.envs.get(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    id_or_notfound!(env_id);
+    get_or_notfound!(env = state.envs[env_id]);
 
     Json(&env.timelines.iter().map(|t| *t.key()).collect::<Vec<_>>()).into_response()
 }
 
 async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let Some(env_id) = id_or_none(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let Some(env) = state.envs.get(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    id_or_notfound!(env_id);
+    get_or_notfound!(env = state.envs[env_id]);
 
     Json(&env.node_states).into_response()
 }
@@ -189,13 +179,7 @@ async fn post_timeline(
     Path((env_id, t_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Response {
-    let Some(env_id) = id_or_none(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-
-    let Some(t_id) = id_or_none(&t_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    id_or_notfound!(env_id, t_id);
 
     match Environment::execute(state, env_id, t_id).await {
         Ok(()) => status_ok(),
@@ -207,13 +191,7 @@ async fn delete_timeline(
     Path((env_id, t_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Response {
-    let Some(env_id) = id_or_none(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-
-    let Some(t_id) = id_or_none(&t_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    id_or_notfound!(env_id, t_id);
 
     match Environment::cleanup_timeline(env_id, t_id, &state).await {
         Ok(_) => status_ok(),
@@ -222,9 +200,7 @@ async fn delete_timeline(
 }
 
 async fn delete_env(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let Some(env_id) = id_or_none(&env_id) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    id_or_notfound!(env_id);
 
     match Environment::cleanup(env_id, &state).await {
         Ok(_) => status_ok(),
