@@ -50,6 +50,10 @@ pub struct Cli {
 
     #[clap(flatten)]
     pub modes: AgentMode,
+
+    #[clap(short, long, default_value_t = false)]
+    /// Run the agent in quiet mode, suppressing most node output
+    pub quiet: bool,
 }
 
 impl Cli {
@@ -81,7 +85,15 @@ impl Cli {
         // add &labels= if id is present
         if let Some(labels) = &self.labels {
             info!("using labels: {:?}", labels);
-            query.push_str(&format!("&labels={}", labels.join(",")));
+            query.push_str(&format!(
+                "&labels={}",
+                labels
+                    .iter()
+                    .filter(|s| s.is_empty())
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
         }
 
         let (is_tls, host) = endpoint
