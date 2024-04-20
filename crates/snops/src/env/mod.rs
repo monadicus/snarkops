@@ -118,11 +118,6 @@ impl Environment {
             .collect()
     }
 
-    // /// A function to a diff between two environments
-    // pub fn diff(&self, other: &Environment) -> Result<(), EnvError> {
-
-    // }
-
     /// Prepare a test. This will set the current test on the GlobalState.
     ///
     /// **This will error if the current env is not unset before calling to
