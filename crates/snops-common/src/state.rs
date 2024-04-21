@@ -24,6 +24,7 @@ pub type CannonId = InternedId;
 pub type StorageId = InternedId;
 pub type TimelineId = InternedId;
 pub type TxPipeId = InternedId;
+pub type MetricId = InternedId;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentState {

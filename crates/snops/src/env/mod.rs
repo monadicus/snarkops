@@ -7,7 +7,7 @@ use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
 };
 
 use bimap::BiMap;
@@ -15,12 +15,16 @@ use dashmap::DashMap;
 use indexmap::{map::Entry, IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use snops_common::state::{
-    AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TimelineId, TxPipeId,
+    id_or_none, AgentId, AgentPeer, AgentState, CannonId, EnvId, MetricId, NodeKey, TimelineId,
+    TxPipeId,
 };
-use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{error, info, warn};
 
-use self::{error::*, persist::PersistEnv, timeline::reconcile_agents};
+use self::{
+    error::*,
+    persist::PersistEnv,
+    timeline::{reconcile_agents, TimelineInstance},
+};
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -33,9 +37,8 @@ use crate::{
     error::DeserializeError,
     schema::{
         nodes::{ExternalNode, Node},
-        outcomes::OutcomeMetrics,
+        outcomes::{MetricQueries, PromQuery},
         storage::{LoadedStorage, DEFAULT_AOT_BIN},
-        timeline::TimelineEvent,
         ItemDocument, NodeTargets,
     },
     state::{Agent, GlobalState},
@@ -46,8 +49,7 @@ pub struct Environment {
     pub id: EnvId,
     pub storage: Arc<LoadedStorage>,
 
-    pub outcomes: OutcomeMetrics,
-    // TODO: pub outcome_results: RwLock<OutcomeResults>,
+    pub metric_queries: MetricQueries,
     pub node_peers: BiMap<NodeKey, EnvPeer>,
     pub node_states: DashMap<NodeKey, EnvNodeState>,
     pub aot_bin: PathBuf,
@@ -58,9 +60,8 @@ pub struct Environment {
     pub cannon_configs: DashMap<CannonId, (TxSource, TxSink)>,
     /// Map of cannon ids to their cannon instances
     pub cannons: DashMap<CannonId, Arc<CannonInstance>>,
-
-    pub timelines: DashMap<TimelineId, Vec<TimelineEvent>>,
-    pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
+    /// Map of timeline ids to their timeline instances
+    pub timelines: DashMap<TimelineId, Arc<TimelineInstance>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -118,6 +119,12 @@ impl Environment {
             .collect()
     }
 
+    pub fn resolve_metric_query(&self, metric: &str) -> Option<&PromQuery> {
+        let id = id_or_none::<MetricId>(metric);
+        id.and_then(|id| self.metric_queries.get(&id))
+            .or_else(|| PromQuery::builtin(metric))
+    }
+
     /// Prepare a test. This will set the current test on the GlobalState.
     ///
     /// **This will error if the current env is not unset before calling to
@@ -135,11 +142,15 @@ impl Environment {
 
         let (mut node_peers, mut node_states, cannons, mut tx_pipe) =
             if let Some(ref env) = prev_env {
-                // stop the timeline if it's running
-                // TODO: when there are multiple timelines and they run in step mode, don't do
-                // this
-                if let Some(handle) = &*env.timeline_handle.lock().await {
-                    handle.abort();
+                // stop unpaused timelines with running executions
+                for timeline in env
+                    .timelines
+                    .iter()
+                    .filter(|t| t.paused.load(Ordering::Acquire))
+                {
+                    if let Some(handle) = &*timeline.handle.lock().await {
+                        handle.abort();
+                    }
                 }
 
                 // reuse certain elements from the previous environment with the same
@@ -163,7 +174,7 @@ impl Environment {
 
         let cannon_configs = DashMap::default();
         let timelines = DashMap::default();
-        let mut outcomes: Option<OutcomeMetrics> = None;
+        let mut metric_queries: Option<MetricQueries> = None;
 
         let mut immediate_cannons = vec![];
         let mut agents_to_inventory = IndexSet::<AgentId>::default();
@@ -353,12 +364,19 @@ impl Environment {
                 }
 
                 ItemDocument::Timeline(sub_timeline) => {
-                    timelines.insert(sub_timeline.name, sub_timeline.timeline);
+                    timelines.insert(
+                        sub_timeline.name,
+                        Arc::new(TimelineInstance::new(
+                            sub_timeline.name,
+                            sub_timeline.timeline,
+                            sub_timeline.outcomes,
+                        )),
+                    );
                 }
 
-                ItemDocument::Outcomes(sub_outcomes) => match outcomes {
+                ItemDocument::Outcomes(sub_outcomes) => match metric_queries {
                     Some(ref mut outcomes) => outcomes.extend(sub_outcomes.metrics.into_iter()),
-                    None => outcomes = Some(sub_outcomes.metrics),
+                    None => metric_queries = Some(sub_outcomes.metrics),
                 },
 
                 _ => warn!("ignored unimplemented document type"),
@@ -367,7 +385,7 @@ impl Environment {
 
         let storage = storage.ok_or(PrepareError::MissingStorage)?;
         let storage_id = storage.id;
-        let outcomes = outcomes.unwrap_or_default();
+        let metric_queries = metric_queries.unwrap_or_default();
 
         // review cannon configurations to ensure all playback sources and sinks
         // have a real file backing them
@@ -404,7 +422,7 @@ impl Environment {
         let env = Arc::new(Environment {
             id: env_id,
             storage,
-            outcomes,
+            metric_queries,
             // TODO: outcome_results: Default::default(),
             node_peers,
             node_states,
@@ -414,7 +432,6 @@ impl Environment {
             // TODO: specify the binary when uploading the test or something
             aot_bin: DEFAULT_AOT_BIN.clone(),
             timelines,
-            timeline_handle: Default::default(),
         });
 
         if let Err(e) = PersistEnv::from(env.as_ref()).save(&state.db, env_id) {
@@ -488,12 +505,13 @@ impl Environment {
             .ok_or(CleanupError::EnvNotFound(id))?
             .clone();
 
-        env.timelines
+        let timeline = env
+            .timelines
             .remove(&timeline_id)
             .ok_or(CleanupError::TimelineNotFound(id, timeline_id))?;
 
         // stop the timeline if it's running
-        if let Some(handle) = &*env.timeline_handle.lock().await {
+        if let Some(handle) = &*timeline.1.handle.lock().await {
             handle.abort();
         }
 
@@ -514,9 +532,11 @@ impl Environment {
 
         state.prom_httpsd.lock().await.set_dirty();
 
-        // stop the timeline if it's running
-        if let Some(handle) = &*env.timeline_handle.lock().await {
-            handle.abort();
+        // stop all currently running timelines
+        for timeline in env.timelines.iter() {
+            if let Some(handle) = &*timeline.handle.lock().await {
+                handle.abort();
+            }
         }
 
         if let Err(e) = reconcile_agents(

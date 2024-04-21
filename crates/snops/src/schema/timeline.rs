@@ -7,14 +7,17 @@ use serde::{
 };
 use snops_common::state::{CannonId, DocHeightRequest, InternedId, NodeKey};
 
-use super::NodeTargets;
+use super::{outcomes::OutcomeMetrics, NodeTargets};
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Document {
     pub name: InternedId,
     pub description: Option<String>,
+    #[serde(default)]
     pub timeline: Vec<TimelineEvent>,
+    #[serde(default)]
+    pub outcomes: OutcomeMetrics,
 }
 
 /// An event in the test timeline.

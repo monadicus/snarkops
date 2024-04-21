@@ -22,6 +22,7 @@ use crate::{
     impl_bencdec_serde,
     schema::{
         nodes::{ExternalNode, Node},
+        outcomes::MetricQueries,
         storage::DEFAULT_AOT_BIN,
     },
     state::StorageMap,
@@ -30,6 +31,7 @@ use crate::{
 pub struct PersistEnv {
     pub id: EnvId,
     pub storage_id: StorageId,
+    pub metric_queries: MetricQueries,
     /// List of nodes and their states or external node info
     pub nodes: Vec<(NodeKey, PersistNode)>,
     /// List of drains and the number of consumed lines
@@ -71,6 +73,7 @@ impl From<&Environment> for PersistEnv {
         PersistEnv {
             id: value.id,
             storage_id: value.storage.id,
+            metric_queries: value.metric_queries.clone(),
             nodes,
             tx_pipe_drains: value.tx_pipe.drains.keys().cloned().collect(),
             tx_pipe_sinks: value.tx_pipe.sinks.keys().cloned().collect(),
@@ -144,6 +147,7 @@ impl PersistEnv {
         Ok(Environment {
             id: self.id,
             storage: storage.clone(),
+            metric_queries: self.metric_queries,
             node_peers: node_map,
             node_states: initial_nodes,
             tx_pipe,
@@ -152,9 +156,7 @@ impl PersistEnv {
             cannons: Default::default(), // TODO: load cannons first
 
             // TODO: create persistence for these documents or move out of env
-            outcomes: Default::default(),
             timelines: Default::default(),
-            timeline_handle: Default::default(),
         })
     }
 }
@@ -250,7 +252,9 @@ impl DbCollection for Vec<PersistEnv> {
     }
 }
 
-const ENV_VERSION: u8 = 1;
+const ENV_VERSION: u8 = 2;
+const ENV_VERSION_METRIC_QUERIES: u8 = 2;
+
 impl DbDocument for PersistEnv {
     type Key = EnvId;
 
@@ -278,9 +282,18 @@ impl DbDocument for PersistEnv {
                 DatabaseError::DeserializeError(key.to_string(), "env".to_owned(), e)
             })?;
 
+        let metric_queries = if version >= ENV_VERSION_METRIC_QUERIES {
+            bincode::deserialize(buf).map_err(|e| {
+                DatabaseError::DeserializeError(key.to_string(), "env".to_owned(), e)
+            })?
+        } else {
+            Default::default()
+        };
+
         Ok(Some(PersistEnv {
             id: key,
             storage_id,
+            metric_queries,
             nodes,
             tx_pipe_drains,
             tx_pipe_sinks,
@@ -300,6 +313,7 @@ impl DbDocument for PersistEnv {
                 &self.tx_pipe_drains,
                 &self.tx_pipe_sinks,
                 &self.cannon_configs,
+                &self.metric_queries,
             ),
         )
         .map_err(|e| DatabaseError::SerializeError(key.to_string(), "env".to_owned(), e))?;
