@@ -2,7 +2,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -12,7 +12,11 @@ use prometheus_http_query::response::Data;
 use promql_parser::label::{MatchOp, Matcher};
 use rand::RngCore;
 use snops_common::state::{AgentId, AgentState, CannonId, EnvId, TimelineId};
-use tokio::{select, sync::Mutex, task::JoinHandle};
+use tokio::{
+    select,
+    sync::{oneshot, Mutex},
+    task::JoinHandle,
+};
 use tracing::{debug, error, info, warn};
 
 use super::{
@@ -41,12 +45,14 @@ pub struct TimelineInstance {
     pub events: Vec<TimelineEvent>,
     /// Expected outcomes of this timeline.
     pub outcomes: OutcomeMetrics,
-    /// Whether or not the timeline instance is currently paused.
-    pub paused: AtomicBool,
     /// The task handle that represents the execution of this timeline. This is
     /// NOT used for individual steps, but rather when the entire timeline is
     /// being stepped through.
-    pub handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
+    ///
+    /// A oneshot sender channel is included in the handle pair. It can be used
+    /// to signal to the handle that the handle should abort *after* the current
+    /// step is finished executing (i.e., when pausing).
+    pub handle: Mutex<Option<(JoinHandle<Result<(), ExecutionError>>, oneshot::Sender<()>)>>,
     /// The current step that we are on.
     pub step: AtomicUsize,
     /// Semaphore to prevent multiple step executions from occurring
@@ -60,7 +66,6 @@ impl TimelineInstance {
             id,
             events,
             outcomes,
-            paused: Default::default(),
             handle: Default::default(),
             step: Default::default(),
             step_mutex: Default::default(),
@@ -76,7 +81,9 @@ impl TimelineInstance {
             return Err(ExecutionError::TimelineAlreadyStarted);
         }
 
-        let _step_guard = self.step_mutex.lock().await;
+        let Ok(_guard) = self.step_mutex.try_lock() else {
+            return Err(ExecutionError::TimelineAlreadyStarted);
+        };
 
         let step_index = self.step.load(Ordering::Acquire);
         let Some(event) = self.events.get(step_index) else {
@@ -367,15 +374,76 @@ impl TimelineInstance {
         None
     }
 
-    pub async fn pause(self: &Arc<TimelineInstance>) {
-        // set pause bool to true
-        unimplemented!()
+    /// Pause execution of the timeline if it is currently being executed.
+    /// Returns `true` if the timeline was running.
+    pub async fn pause(self: &Arc<TimelineInstance>) -> bool {
+        if let Some((handle, cancel)) = self.handle.lock().await.take() {
+            let _ = cancel.send(());
+            !handle.is_finished()
+        } else {
+            false
+        }
     }
 
-    pub async fn unpause(self: &Arc<TimelineInstance>) {
-        // set paused bool to false
-        // wait for current handle to stop, then set new handle
-        unimplemented!();
+    /// Resume (or start) execution of the timeline and set its handle.
+    pub async fn resume(
+        self: &Arc<TimelineInstance>,
+        state: &Arc<GlobalState>,
+        env: &Arc<Environment>,
+    ) -> Result<(), ExecutionError> {
+        // abort if timeline is already being executed
+
+        let mut handle = self.handle.lock().await;
+
+        if !handle
+            .as_ref()
+            .map(|(h, _)| h.is_finished())
+            .unwrap_or(true)
+        {
+            return Err(ExecutionError::TimelineAlreadyStarted);
+        }
+
+        info!(
+            "starting/resuming timeline {} playback for env {} with {} events",
+            self.id,
+            env.id,
+            self.events.len()
+        );
+
+        let (tx, mut rx) = oneshot::channel();
+
+        let timeline = Arc::clone(self);
+        let state = Arc::clone(state);
+        let env = Arc::clone(env);
+        let task_handle = tokio::spawn(async move {
+            loop {
+                timeline.advance(&state, &env).await?;
+
+                // break if we have run out of steps
+                if timeline.step.load(Ordering::Acquire) >= timeline.events.len() {
+                    info!("------------------------------------------");
+                    info!("playback of environment timeline completed");
+                    info!("------------------------------------------");
+                    break;
+                }
+
+                // break if the timeline is paused
+                if rx.try_recv().is_ok() {
+                    debug!("timeline execution paused");
+                    break;
+                }
+            }
+
+            // check outcomes
+            // TODO: do something with this return result
+            let _ = timeline.check_outcomes(&state, &env).await;
+
+            Ok(())
+        });
+
+        *handle = Some((task_handle, tx));
+
+        Ok(())
     }
 }
 
@@ -473,49 +541,7 @@ impl Environment {
                 .value(),
         );
 
-        info!(
-            "starting timeline {timeline_id} playback for env {env_id} with {} events",
-            timeline.events.len()
-        );
-
-        // TODO do we need to move these locks now to a new struct inside the timelines
-        // hashmap?
-        let mut handle_lock = timeline.handle.lock().await;
-
-        // abort if timeline is already being executed
-        if !handle_lock
-            .as_ref()
-            .map(JoinHandle::is_finished)
-            .unwrap_or(true)
-        {
-            Err(ExecutionError::TimelineAlreadyStarted)?;
-        }
-
-        let timeline = Arc::clone(&timeline);
-        *handle_lock = Some(tokio::spawn(async move {
-            loop {
-                timeline.advance(&state, &env).await?;
-
-                // break if we have run out of steps
-                if timeline.step.load(Ordering::Acquire) >= timeline.events.len() {
-                    info!("------------------------------------------");
-                    info!("playback of environment timeline completed");
-                    info!("------------------------------------------");
-                    break;
-                }
-
-                // break if the timeline is paused
-                if timeline.paused.load(Ordering::Acquire) {
-                    break;
-                }
-            }
-
-            // check outcomes
-            // TODO: do something with this return result
-            let _ = timeline.check_outcomes(&state, &env).await;
-
-            Ok(())
-        }));
+        timeline.resume(&state, &env).await?;
 
         Ok(())
     }

@@ -7,7 +7,7 @@ use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::{atomic::Ordering, Arc},
+    sync::Arc,
 };
 
 use bimap::BiMap;
@@ -142,13 +142,9 @@ impl Environment {
 
         let (mut node_peers, mut node_states, cannons, mut tx_pipe) =
             if let Some(ref env) = prev_env {
-                // stop unpaused timelines with running executions
-                for timeline in env
-                    .timelines
-                    .iter()
-                    .filter(|t| t.paused.load(Ordering::Acquire))
-                {
-                    if let Some(handle) = &*timeline.handle.lock().await {
+                // stop timelines with running executions
+                for timeline in env.timelines.iter() {
+                    if let Some((handle, _)) = &*timeline.handle.lock().await {
                         handle.abort();
                     }
                 }
@@ -511,7 +507,7 @@ impl Environment {
             .ok_or(CleanupError::TimelineNotFound(id, timeline_id))?;
 
         // stop the timeline if it's running
-        if let Some(handle) = &*timeline.1.handle.lock().await {
+        if let Some((handle, _)) = &*timeline.1.handle.lock().await {
             handle.abort();
         }
 
@@ -534,7 +530,7 @@ impl Environment {
 
         // stop all currently running timelines
         for timeline in env.timelines.iter() {
-            if let Some(handle) = &*timeline.handle.lock().await {
+            if let Some((handle, _)) = &*timeline.handle.lock().await {
                 handle.abort();
             }
         }
