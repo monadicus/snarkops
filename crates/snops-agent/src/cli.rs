@@ -89,7 +89,7 @@ impl Cli {
                 "&labels={}",
                 labels
                     .iter()
-                    .filter(|s| s.is_empty())
+                    .filter(|s| !s.is_empty())
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(",")
