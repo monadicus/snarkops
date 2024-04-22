@@ -383,33 +383,6 @@ impl Document {
                 tokio::fs::try_exists(&output)
                     .await
                     .map_err(|e| StorageError::FailedToGenGenesis(id, e))?;
-
-                // tar a ledger if it exists
-                let res = Command::new("tar")
-                    .current_dir(&base)
-                    .arg("czf")
-                    .arg(LEDGER_STORAGE_FILE) // TODO: move constants from client...
-                    .arg(LEDGER_BASE_DIR)
-                    .kill_on_drop(true)
-                    .spawn()
-                    .map_err(|e| {
-                        StorageError::Command(CommandError::action("spawning", "tar ledger", e), id)
-                    })?
-                    .wait()
-                    .await
-                    .map_err(|e| {
-                        StorageError::Command(CommandError::action("waiting", "tar ledger", e), id)
-                    })?;
-
-                if !res.success() {
-                    warn!("error running tar command...");
-                }
-
-                tokio::fs::try_exists(&base.join(LEDGER_STORAGE_FILE))
-                    .await
-                    .map_err(|e| StorageError::FailedToTarLedger(id, e))?;
-
-                // TODO: transactions
             }
 
             // no generation params passed
@@ -438,9 +411,7 @@ impl Document {
                 .current_dir(&base)
                 .arg("czf")
                 .arg(LEDGER_STORAGE_FILE)
-                .arg("-C") // tar the contents of the "ledger" directory
                 .arg(LEDGER_BASE_DIR)
-                .arg(".")
                 .kill_on_drop(true)
                 .spawn()
                 .map_err(|e| {
@@ -456,6 +427,10 @@ impl Document {
             {
                 error!("failed to compress ledger");
             }
+
+            tokio::fs::try_exists(&base.join(LEDGER_STORAGE_FILE))
+                .await
+                .map_err(|e| StorageError::FailedToTarLedger(id, e))?;
         }
 
         let mut accounts = HashMap::new();

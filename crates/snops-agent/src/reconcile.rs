@@ -192,6 +192,8 @@ pub async fn load_ledger(
             .arg("-C") // the untar_dir must exist. this will extract the contents of the tar to the
             // directory
             .arg(untar_dir)
+            .arg("--strip-components") // remove the parent "ledger" directory within the tar
+            .arg("1")
             .kill_on_drop(true)
             .spawn()
             .map_err(|err| {
