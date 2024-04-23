@@ -60,11 +60,7 @@ impl GlobalState {
             .collect::<Vec<_>>()
     }
 
-    pub async fn get_env_info(&self, env_id: EnvId) -> anyhow::Result<StorageInfo> {
-        if let Some(info) = self.env_to_storage.read().await.get(&env_id).cloned() {
-            return Ok(info);
-        }
-
+    pub async fn fetch_env_info(&self, env_id: EnvId) -> anyhow::Result<StorageInfo> {
         // if an else was used here, the lock would be held for the entire function so
         // we return early to prevent a deadlock
 
@@ -77,6 +73,14 @@ impl GlobalState {
             .insert(env_id, info.clone());
 
         Ok(info)
+    }
+
+    pub async fn get_env_info(&self, env_id: EnvId) -> anyhow::Result<StorageInfo> {
+        if let Some(info) = self.env_to_storage.read().await.get(&env_id).cloned() {
+            return Ok(info);
+        }
+
+        self.fetch_env_info(env_id).await
     }
 
     /// Attempt to gracefully shutdown the node if one is running.

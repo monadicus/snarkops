@@ -128,10 +128,12 @@ impl AgentService for AgentRpcServer {
                 let height = &node.height.1;
 
                 // get the storage info for this environment if we don't have it cached
-                let info = state
-                    .get_env_info(*env_id)
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
+                let info = (if is_same_env {
+                    state.get_env_info(*env_id).await
+                } else {
+                    state.fetch_env_info(*env_id).await
+                })
+                .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
 
                 trace!("checking storage files...");
 
