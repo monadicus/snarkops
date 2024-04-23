@@ -99,6 +99,8 @@ where
         num_reconciliations
     );
 
+    state.prom_httpsd.lock().await.set_dirty();
+
     if success == num_reconciliations {
         Ok(())
     } else {
