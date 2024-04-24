@@ -81,7 +81,7 @@ impl GlobalState {
             }
 
             info!(
-                "setting agent {} to Inventory state due to missing env",
+                "setting agent {} to Inventory state due to missing env {env}",
                 entry.key()
             );
             entry.set_state(AgentState::Inventory);

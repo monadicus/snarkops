@@ -176,7 +176,7 @@ async fn handle_socket(
 
                 if let AgentState::Node(env, _) = agent.state() {
                     if !state.envs.contains_key(env) {
-                        info!("setting agent {id} to Inventory state due to missing env");
+                        info!("setting agent {id} to Inventory state due to missing env {env}");
                         agent.set_state(AgentState::Inventory);
                     }
                 }
