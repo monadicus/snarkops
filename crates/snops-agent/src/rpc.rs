@@ -128,12 +128,10 @@ impl AgentService for AgentRpcServer {
                 let height = &node.height.1;
 
                 // get the storage info for this environment if we don't have it cached
-                let info = (if is_same_env {
-                    state.get_env_info(*env_id).await
-                } else {
-                    state.fetch_env_info(*env_id).await
-                })
-                .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
+                let info = state
+                    .get_env_info(*env_id)
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
 
                 trace!("checking storage files...");
 
@@ -149,8 +147,11 @@ impl AgentService for AgentRpcServer {
 
             // reconcile towards new state
             match target.clone() {
-                // do nothing on inventory state
-                AgentState::Inventory => (),
+                // inventory state is waiting for a node to be started
+                AgentState::Inventory => {
+                    // wipe the env info cache. don't want to have stale storage info
+                    state.env_info.write().await.take();
+                }
 
                 // start snarkOS node when node
                 AgentState::Node(env_id, node) => {
