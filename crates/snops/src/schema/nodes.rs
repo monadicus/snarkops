@@ -443,10 +443,11 @@ impl Display for KeySource {
 }
 
 impl KeySource {
+    /// Add an index to a key source only if it did not have an index before
     pub fn with_index(&self, idx: usize) -> Self {
         match self {
-            KeySource::Committee(_) => KeySource::Committee(Some(idx)),
-            KeySource::Named(name, _) => KeySource::Named(*name, Some(idx)),
+            KeySource::Committee(None) => KeySource::Committee(Some(idx)),
+            KeySource::Named(name, None) => KeySource::Named(*name, Some(idx)),
             _ => self.clone(),
         }
     }

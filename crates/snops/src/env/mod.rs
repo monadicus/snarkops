@@ -233,8 +233,8 @@ impl Environment {
                                 Entry::Vacant(ent) => {
                                     // replace the key with a new one
                                     let mut node = doc_node.to_owned();
-                                    if let Some(key) = node.key.take() {
-                                        node.key = Some(key.with_index(i))
+                                    if let Some(key) = node.key.as_mut() {
+                                        *key = key.with_index(i);
                                     }
                                     ent.insert(EnvNodeState::Internal(node))
                                 }
