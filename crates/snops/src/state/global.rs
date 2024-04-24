@@ -11,7 +11,7 @@ use tracing::info;
 use super::{persist::PersistStorage, AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
     cli::Cli,
-    db::Database,
+    db::{document::DbDocument, Database},
     env::{persist::PersistEnv, Environment},
     error::StateError,
     server::{error::StartError, prometheus::HttpsdResponse},
@@ -70,26 +70,22 @@ impl GlobalState {
 
         let pool = db.load::<AgentPool>()?;
 
-        // Get a set of all agents in envs
-        let agents_in_envs = envs
-            .iter()
-            .flat_map(|e| {
-                let env = e.value();
-                env.node_peers
-                    .right_values()
-                    .filter_map(|p| match p {
-                        crate::env::EnvPeer::Internal(id) => Some(*id),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<HashSet<_>>();
-
         // For all agents not in envs, set their state to Inventory
         for mut entry in pool.iter_mut() {
-            if !agents_in_envs.contains(entry.key()) {
-                entry.set_state(AgentState::Inventory);
+            let AgentState::Node(env, _) = entry.value().state() else {
+                continue;
+            };
+
+            if envs.contains_key(env) {
+                continue;
             }
+
+            info!(
+                "setting agent {} to Inventory state due to missing env",
+                entry.key()
+            );
+            entry.set_state(AgentState::Inventory);
+            let _ = entry.value().save(&db, *entry.key());
         }
 
         Ok(Self {
