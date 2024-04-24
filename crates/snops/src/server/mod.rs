@@ -160,15 +160,25 @@ async fn handle_socket(
                     break 'reconnect;
                 };
 
+                let id = agent.id();
                 if agent.is_connected() {
-                    warn!("connecting agent is trying to identify as an already-connected agent");
+                    warn!(
+                        "connecting agent is trying to identify as an already-connected agent {id}"
+                    );
                     break 'reconnect;
                 }
 
                 // compare the stored nonce with the JWT's nonce
                 if agent.claims().nonce != claims.nonce {
-                    warn!("connecting agent is trying to identify with an invalid nonce");
+                    warn!("connecting agent {id} is trying to identify with an invalid nonce");
                     break 'reconnect;
+                }
+
+                if let AgentState::Node(env, _) = agent.state() {
+                    if !state.envs.contains_key(env) {
+                        info!("setting agent {id} to Inventory state due to missing env");
+                        agent.set_state(AgentState::Inventory);
+                    }
                 }
 
                 // attach the current known agent state to the handshake
@@ -177,7 +187,6 @@ async fn handle_socket(
                 // mark the agent as connected, update the flags as well
                 agent.mark_connected(client, query.flags);
 
-                let id = agent.id();
                 info!("agent {id} reconnected");
                 if let Err(e) = agent.save(&state.db, id) {
                     error!("failed to save agent {id} to the database: {e}");
