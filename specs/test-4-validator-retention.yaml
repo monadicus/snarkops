@@ -23,7 +23,7 @@ nodes:
 ---
 version: timeline.snarkos.testing.monadic.us/v1
 
-name: testing rewind twice
+name: testing-rewind-twice
 description: |-
   This timeline, when paired with a short retention policy, will test the
   following snarkops/snarkos features:

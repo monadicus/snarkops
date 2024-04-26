@@ -9,6 +9,7 @@ use std::{
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
+use rand::seq::IteratorRandom;
 use serde::{
     de::{DeserializeOwned, Visitor},
     Deserialize, Deserializer, Serialize,
@@ -229,7 +230,7 @@ impl Document {
 
         // add the prepared storage to the storage map
 
-        if state.storage.read().await.contains_key(&id) {
+        if state.storage.contains_key(&id) {
             // TODO: we probably don't want to warn here. instead, it would be nice to
             // hash/checksum the storage to compare it with the conflicting storage
             warn!("a storage with the id {id} has already been prepared");
@@ -382,33 +383,6 @@ impl Document {
                 tokio::fs::try_exists(&output)
                     .await
                     .map_err(|e| StorageError::FailedToGenGenesis(id, e))?;
-
-                // tar a ledger if it exists
-                let res = Command::new("tar")
-                    .current_dir(&base)
-                    .arg("czf")
-                    .arg(LEDGER_STORAGE_FILE) // TODO: move constants from client...
-                    .arg(LEDGER_BASE_DIR)
-                    .kill_on_drop(true)
-                    .spawn()
-                    .map_err(|e| {
-                        StorageError::Command(CommandError::action("spawning", "tar ledger", e), id)
-                    })?
-                    .wait()
-                    .await
-                    .map_err(|e| {
-                        StorageError::Command(CommandError::action("waiting", "tar ledger", e), id)
-                    })?;
-
-                if !res.success() {
-                    warn!("error running tar command...");
-                }
-
-                tokio::fs::try_exists(&base.join(LEDGER_STORAGE_FILE))
-                    .await
-                    .map_err(|e| StorageError::FailedToTarLedger(id, e))?;
-
-                // TODO: transactions
             }
 
             // no generation params passed
@@ -437,9 +411,7 @@ impl Document {
                 .current_dir(&base)
                 .arg("czf")
                 .arg(LEDGER_STORAGE_FILE)
-                .arg("-C") // tar the contents of the "ledger" directory
                 .arg(LEDGER_BASE_DIR)
-                .arg(".")
                 .kill_on_drop(true)
                 .spawn()
                 .map_err(|e| {
@@ -455,6 +427,10 @@ impl Document {
             {
                 error!("failed to compress ledger");
             }
+
+            tokio::fs::try_exists(&base.join(LEDGER_STORAGE_FILE))
+                .await
+                .map_err(|e| StorageError::FailedToTarLedger(id, e))?;
         }
 
         let mut accounts = HashMap::new();
@@ -570,11 +546,10 @@ impl Document {
             checkpoints,
             persist: self.persist,
         });
-        let mut storage_lock = state.storage.write().await;
         if let Err(e) = PersistStorage::from(storage.deref()).save(&state.db, id) {
             error!("failed to save storage meta: {e}");
         }
-        storage_lock.insert(id.to_owned(), storage.clone());
+        state.storage.insert(id, storage.clone());
 
         Ok(storage)
     }
@@ -660,7 +635,7 @@ impl LoadedStorage {
             KeySource::Committee(None) => self
                 .committee
                 .values()
-                .nth(rand::random::<usize>() % self.committee.len())
+                .choose(&mut rand::thread_rng())
                 .cloned()
                 .into(),
             KeySource::Named(name, Some(i)) => self
@@ -671,11 +646,7 @@ impl LoadedStorage {
             KeySource::Named(name, None) => self
                 .accounts
                 .get(name)
-                .and_then(|a| {
-                    a.values()
-                        .nth(rand::random::<usize>() % self.accounts.len())
-                        .cloned()
-                })
+                .and_then(|a| a.values().choose(&mut rand::thread_rng()).cloned())
                 .into(),
         }
     }
@@ -692,7 +663,7 @@ impl LoadedStorage {
             KeySource::Committee(None) => self
                 .committee
                 .keys()
-                .nth(rand::random::<usize>() % self.committee.len())
+                .choose(&mut rand::thread_rng())
                 .cloned()
                 .into(),
             KeySource::Named(name, Some(i)) => self
@@ -703,11 +674,7 @@ impl LoadedStorage {
             KeySource::Named(name, None) => self
                 .accounts
                 .get(name)
-                .and_then(|a| {
-                    a.keys()
-                        .nth(rand::random::<usize>() % self.accounts.len())
-                        .cloned()
-                })
+                .and_then(|a| a.keys().choose(&mut rand::thread_rng()).cloned())
                 .into(),
         }
     }

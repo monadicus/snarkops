@@ -17,7 +17,7 @@ pub const ENV_ENDPOINT_DEFAULT: &str = "127.0.0.1:1234";
 #[derive(Debug, Parser)]
 pub struct Cli {
     #[arg(long)]
-    /// Control plane endpoint address
+    /// Control plane endpoint address (IP, or wss://host, http://host)
     pub endpoint: Option<String>,
 
     #[arg(long)]
@@ -40,7 +40,7 @@ pub struct Cli {
     /// which agents are on shared networks, and for
     /// external-to-external connections
     #[arg(long)]
-    pub external: bool,
+    pub external: Option<IpAddr>,
 
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
@@ -50,6 +50,10 @@ pub struct Cli {
 
     #[clap(flatten)]
     pub modes: AgentMode,
+
+    #[clap(short, long, default_value_t = false)]
+    /// Run the agent in quiet mode, suppressing most node output
+    pub quiet: bool,
 }
 
 impl Cli {
@@ -81,16 +85,37 @@ impl Cli {
         // add &labels= if id is present
         if let Some(labels) = &self.labels {
             info!("using labels: {:?}", labels);
-            query.push_str(&format!("&labels={}", labels.join(",")));
+            query.push_str(&format!(
+                "&labels={}",
+                labels
+                    .iter()
+                    .filter(|s| !s.is_empty())
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
         }
 
+        let (is_tls, host) = endpoint
+            .split_once("://")
+            .map(|(left, right)| (left == "wss" || left == "https", right))
+            .unwrap_or((false, endpoint.as_str()));
+
+        let addr = format!("{host}{}", if host.contains(':') { "" } else { ":1234" });
+
         let ws_uri = Uri::builder()
-            .scheme("ws")
-            .authority(endpoint.to_string())
+            .scheme(if is_tls { "wss" } else { "ws" })
+            .authority(addr.to_owned())
             .path_and_query(query)
             .build()
             .unwrap();
 
-        (endpoint.to_string(), ws_uri)
+        (
+            format!(
+                "{proto}://{addr}",
+                proto = if is_tls { "https" } else { "http" },
+            ),
+            ws_uri,
+        )
     }
 }

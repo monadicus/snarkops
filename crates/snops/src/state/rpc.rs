@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use snops_common::{
     rpc::{agent::AgentServiceClient, error::ReconcileError},
     state::{AgentState, EnvId},
@@ -6,6 +8,7 @@ use tarpc::{client::RpcError, context};
 
 use crate::error::StateError;
 
+#[derive(Clone)]
 pub struct AgentClient(pub(super) AgentServiceClient);
 
 impl AgentClient {
@@ -13,8 +16,10 @@ impl AgentClient {
         &self,
         to: AgentState,
     ) -> Result<Result<AgentState, ReconcileError>, RpcError> {
+        let mut ctx = context::current();
+        ctx.deadline += Duration::from_secs(300);
         self.0
-            .reconcile(context::current(), to.clone())
+            .reconcile(ctx, to.clone())
             .await
             .map(|res| res.map(|_| to))
     }

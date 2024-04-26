@@ -144,8 +144,8 @@ pub enum ExecutionContextError {
     EnvDropped(Option<CannonId>, Option<CannonId>),
     #[error("no available agents `{0}` for exec ctx `{1}`")]
     NoAvailableAgents(&'static str, CannonId),
-    #[error("no --host configured for demox based cannon")]
-    NoDemoxHostConfigured,
+    #[error("no --hostname configured for demox based cannon")]
+    NoHostnameConfigured,
     #[error("tx drain `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
     TransactionDrainNotFound(EnvId, CannonId, TxPipeId),
     #[error("tx sink `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
@@ -154,7 +154,7 @@ pub enum ExecutionContextError {
 
 impl_into_status_code!(ExecutionContextError, |value| match value {
     Broadcast(_, _) | BroadcastRequest(_, _) => StatusCode::MISDIRECTED_REQUEST,
-    NoAvailableAgents(_, _) | NoDemoxHostConfigured => StatusCode::SERVICE_UNAVAILABLE,
+    NoAvailableAgents(_, _) | NoHostnameConfigured => StatusCode::SERVICE_UNAVAILABLE,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 

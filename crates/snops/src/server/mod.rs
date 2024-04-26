@@ -45,6 +45,7 @@ mod api;
 mod content;
 pub mod error;
 pub mod jwt;
+pub mod models;
 pub mod prometheus;
 mod rpc;
 
@@ -152,7 +153,6 @@ async fn handle_socket(
 
     let id: AgentId = 'insertion: {
         let client = client.clone();
-        let mut pool = state.pool.write().await;
         let mut handshake = Handshake {
             loki: state.cli.loki.clone(),
             ..Default::default()
@@ -161,20 +161,30 @@ async fn handle_socket(
         // attempt to reconnect if claims were passed
         'reconnect: {
             if let Some(claims) = claims {
-                let Some(agent) = pool.get_mut(&claims.id) else {
+                let Some(mut agent) = state.pool.get_mut(&claims.id) else {
                     warn!("connecting agent is trying to identify as an unrecognized agent");
                     break 'reconnect;
                 };
 
+                let id = agent.id();
                 if agent.is_connected() {
-                    warn!("connecting agent is trying to identify as an already-connected agent");
+                    warn!(
+                        "connecting agent is trying to identify as an already-connected agent {id}"
+                    );
                     break 'reconnect;
                 }
 
                 // compare the stored nonce with the JWT's nonce
                 if agent.claims().nonce != claims.nonce {
-                    warn!("connecting agent is trying to identify with an invalid nonce");
+                    warn!("connecting agent {id} is trying to identify with an invalid nonce");
                     break 'reconnect;
+                }
+
+                if let AgentState::Node(env, _) = agent.state() {
+                    if !state.envs.contains_key(env) {
+                        info!("setting agent {id} to Inventory state due to missing env {env}");
+                        agent.set_state(AgentState::Inventory);
+                    }
                 }
 
                 // attach the current known agent state to the handshake
@@ -183,7 +193,6 @@ async fn handle_socket(
                 // mark the agent as connected, update the flags as well
                 agent.mark_connected(client, query.flags);
 
-                let id = agent.id();
                 info!("agent {id} reconnected");
                 if let Err(e) = agent.save(&state.db, id) {
                     error!("failed to save agent {id} to the database: {e}");
@@ -213,7 +222,12 @@ async fn handle_socket(
         let id = query.id.unwrap_or_else(AgentId::rand);
 
         // check if an agent with this id is already online
-        if pool.get(&id).map(Agent::is_connected).unwrap_or_default() {
+        if state
+            .pool
+            .get(&id)
+            .map(|a| a.is_connected())
+            .unwrap_or_default()
+        {
             warn!("an agent is trying to identify as an already-connected agent {id}");
             socket.send(Message::Close(None)).await.ok();
             return;
@@ -240,9 +254,12 @@ async fn handle_socket(
         if let Err(e) = agent.save(&state.db, id) {
             error!("failed to save agent {id} to the database: {e}");
         }
-        pool.insert(id, agent);
+        state.pool.insert(id, agent);
 
-        info!("agent {id} connected; pool is now {} nodes", pool.len());
+        info!(
+            "agent {id} connected; pool is now {} nodes",
+            state.pool.len()
+        );
 
         id
     };
@@ -251,8 +268,7 @@ async fn handle_socket(
     let state2 = Arc::clone(&state);
     tokio::spawn(async move {
         if let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await {
-            let mut state = state2.pool.write().await;
-            if let Some(agent) = state.get_mut(&id) {
+            if let Some(mut agent) = state2.pool.get_mut(&id) {
                 info!(
                     "agent {id} [{}], labels: {:?}, addrs: {external:?} {internal:?} @ {ports}, local pk: {}",
                     agent.modes(),
@@ -335,8 +351,7 @@ async fn handle_socket(
     {
         // TODO: remove agent after 10 minutes of inactivity
 
-        let mut pool = state.pool.write().await;
-        if let Some(agent) = pool.get_mut(&id) {
+        if let Some(mut agent) = state.pool.get_mut(&id) {
             agent.mark_disconnected();
         }
 

@@ -5,14 +5,14 @@ use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-use snops_common::state::{CannonId, DocHeightRequest, NodeKey};
+use snops_common::state::{CannonId, DocHeightRequest, InternedId, NodeKey};
 
 use super::NodeTargets;
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Document {
-    pub name: String,
+    pub name: InternedId,
     pub description: Option<String>,
     pub timeline: Vec<TimelineEvent>,
 }

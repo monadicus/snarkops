@@ -1,11 +1,28 @@
-use axum::Router;
+use axum::{
+    middleware,
+    response::{IntoResponse, Response},
+    Router,
+};
+use http::{StatusCode, Uri};
 use tower_http::services::{ServeDir, ServeFile};
 
 use super::AppState;
 use crate::{
     schema::storage::{DEFAULT_AGENT_BIN, DEFAULT_AOT_BIN},
+    server::error::ServerError,
     state::GlobalState,
 };
+
+async fn not_found(uri: Uri, res: Response) -> Response {
+    match res.status() {
+        StatusCode::NOT_FOUND => {
+            let path = uri.path();
+            let content = path.split('/').last().unwrap();
+            ServerError::ContentNotFound(content.to_owned()).into_response()
+        }
+        _ => res,
+    }
+}
 
 pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
     // create storage path
@@ -22,4 +39,5 @@ pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
         .route_service("/agent", ServeFile::new(DEFAULT_AGENT_BIN.clone()))
         // ledger/block storage derived from tests (.tar.gz'd)
         .nest_service("/storage", ServeDir::new(storage_path))
+        .layer(middleware::map_response(not_found))
 }

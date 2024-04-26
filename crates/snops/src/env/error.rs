@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     impl_into_status_code, impl_into_type_str,
-    state::{AgentId, CannonId, EnvId, NodeKey},
+    state::{AgentId, CannonId, EnvId, NodeKey, TimelineId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -30,6 +30,8 @@ pub enum ExecutionError {
     Join(#[from] JoinError),
     #[error(transparent)]
     Reconcile(#[from] BatchReconcileError),
+    #[error("env `{0}` timeline `{1}` not found")]
+    TimelineNotFound(EnvId, TimelineId),
     #[error("env timeline is already being executed")]
     TimelineAlreadyStarted,
     #[error("unknown cannon: `{0}`")]
@@ -72,8 +74,8 @@ pub enum DelegationError {
     AgentMissingMode(AgentId, NodeKey),
     #[error("agent {0} not found for node {1}")]
     AgentNotFound(AgentId, NodeKey),
-    #[error("insufficient number of agents to satisfy the request")]
-    InsufficientAgentCount,
+    #[error("insufficient number of agents to satisfy the request: have {0}: need {1}")]
+    InsufficientAgentCount(usize, usize),
     #[error("could not find any agents for node {0}")]
     NoAvailableAgents(NodeKey),
 }
@@ -82,7 +84,7 @@ impl_into_status_code!(DelegationError, |value| match value {
     AgentAlreadyClaimed(_, _) => StatusCode::IM_USED,
     AgentNotFound(_, _) => StatusCode::NOT_FOUND,
     AgentMissingMode(_, _) => StatusCode::BAD_REQUEST,
-    InsufficientAgentCount | NoAvailableAgents(_) => {
+    InsufficientAgentCount(_, _) | NoAvailableAgents(_) => {
         StatusCode::SERVICE_UNAVAILABLE
     }
 });
@@ -136,6 +138,8 @@ impl Serialize for PrepareError {
 pub enum CleanupError {
     #[error("env `{0}` not found")]
     EnvNotFound(EnvId),
+    #[error("env `{0}` timeline `{1}` not found")]
+    TimelineNotFound(EnvId, TimelineId),
 }
 
 impl_into_status_code!(CleanupError, |_| StatusCode::NOT_FOUND);

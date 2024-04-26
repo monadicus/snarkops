@@ -1,7 +1,6 @@
-use std::{
-    collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration,
-};
+use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
+use futures::future;
 use snops_common::{
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
@@ -18,7 +17,6 @@ use tarpc::{context, ClientMessage, Response};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
-    select,
 };
 use tracing::{debug, error, info, trace, warn, Level};
 
@@ -26,8 +24,6 @@ use crate::{api, metrics::MetricComputer, reconcile, state::AppState};
 
 /// The JWT file name.
 pub const JWT_FILE: &str = "jwt";
-
-pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -106,32 +102,7 @@ impl AgentService for AgentRpcServer {
                     // kill existing child if running
                     AgentState::Node(_, node) if node.online => {
                         info!("cleaning up snarkos process...");
-
-                        if let Some((mut child, id)) =
-                            state.child.write().await.take().and_then(|ch| {
-                                let id = ch.id()?;
-                                Some((ch, id))
-                            })
-                        {
-                            use nix::{
-                                sys::signal::{self, Signal},
-                                unistd::Pid,
-                            };
-
-                            // send SIGINT to the child process
-                            signal::kill(Pid::from_raw(id as i32), Signal::SIGINT).unwrap();
-
-                            // wait for graceful shutdown or kill process after 10 seconds
-                            let timeout = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT);
-
-                            select! {
-                                _ = child.wait() => (),
-                                _ = timeout => {
-                                    info!("snarkos process did not gracefully shut down, killing...");
-                                    child.kill().await.unwrap();
-                                }
-                            }
-                        }
+                        state.node_graceful_shutdown().await;
                     }
 
                     _ => (),
@@ -185,8 +156,11 @@ impl AgentService for AgentRpcServer {
 
             // reconcile towards new state
             match target.clone() {
-                // do nothing on inventory state
-                AgentState::Inventory => (),
+                // inventory state is waiting for a node to be started
+                AgentState::Inventory => {
+                    // wipe the env info cache. don't want to have stale storage info
+                    state.env_info.write().await.take();
+                }
 
                 // start snarkOS node when node
                 AgentState::Node(env_id, node) => {
@@ -327,11 +301,10 @@ impl AgentService for AgentRpcServer {
                         tracing::debug!("node command: {command:?}");
                         let mut child = command.spawn().expect("failed to start child");
 
-                        // start a new task to log stdout
-                        // TODO: probably also want to read stderr
                         let stdout: tokio::process::ChildStdout = child.stdout.take().unwrap();
                         let stderr: tokio::process::ChildStderr = child.stderr.take().unwrap();
 
+                        let is_quiet_enabled = state.cli.quiet;
                         tokio::spawn(async move {
                             let child_span = tracing::span!(Level::INFO, "child process stdout");
                             let _enter = child_span.enter();
@@ -340,8 +313,15 @@ impl AgentService for AgentRpcServer {
                             let mut reader2 = BufReader::new(stderr).lines();
 
                             loop {
+                                // if quiet mode is enabled, we don't need to read stdout
+                                let reader = if is_quiet_enabled {
+                                    future::Either::Left(future::pending())
+                                } else {
+                                    future::Either::Right(reader1.next_line())
+                                };
+
                                 tokio::select! {
-                                    Ok(line) = reader1.next_line() => {
+                                    Ok(line) = reader => {
                                         if let Some(line) = line {
                                             info!(line);
                                         } else {
@@ -477,7 +457,7 @@ impl AgentService for AgentRpcServer {
         // download the snarkOS binary
         api::check_binary(
             env_id,
-            &format!("http://{}", &self.state.endpoint),
+            &self.state.endpoint,
             &self.state.cli.path.join(SNARKOS_FILE),
         ) // TODO: http(s)?
         .await
@@ -491,7 +471,7 @@ impl AgentService for AgentRpcServer {
             .stderr(std::io::stderr())
             .arg("execute")
             .arg("--query")
-            .arg(&format!("http://{}{query}", self.state.endpoint))
+            .arg(&format!("{}{query}", self.state.endpoint))
             .arg(auth)
             .spawn()
             .map_err(|e| {
