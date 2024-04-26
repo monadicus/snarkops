@@ -1,3 +1,5 @@
+use std::{collections::HashMap, str::FromStr};
+
 use axum::{
     extract::{Path, Request, State},
     http::StatusCode,
@@ -10,13 +12,13 @@ use serde_json::json;
 use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     rpc::agent::AgentMetric,
-    state::{id_or_none, EnvId},
+    state::{id_or_none, EnvId, NodeKey},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
 
-use super::{error::ServerError, AppState};
-use crate::env::Environment;
+use super::{error::ServerError, models::AgentStatusResponse, AppState};
+use crate::env::{EnvPeer, Environment};
 use crate::{cannon::router::redirect_cannon_routes, schema::storage::DEFAULT_AOT_BIN};
 
 #[macro_export]
@@ -32,9 +34,15 @@ macro_rules! unwrap_or_not_found {
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/agents", get(get_agents))
+        .route("/agents/:id", get(get_agent))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/list", get(get_env_list))
         .route("/env/:env_id/topology", get(get_env_topology))
+        .route("/env/:env_id/agents", get(get_env_agents))
+        .route(
+            "/env/:env_id/agents/:node_ty/:node_key",
+            get(get_env_agent_key),
+        )
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/storage", get(get_storage_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
@@ -98,6 +106,13 @@ fn status_ok() -> Response {
     (StatusCode::OK, Json(json!({"status": "ok"}))).into_response()
 }
 
+async fn get_agent(state: State<AppState>, Path(id): Path<String>) -> Response {
+    let id = unwrap_or_not_found!(id_or_none(&id));
+    let agent = unwrap_or_not_found!(state.pool.get(&id));
+
+    Json(AgentStatusResponse::from(agent.value())).into_response()
+}
+
 async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Response {
     let id = unwrap_or_not_found!(id_or_none(&id));
     let agent = unwrap_or_not_found!(state.pool.get(&id));
@@ -146,6 +161,37 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
     let env = unwrap_or_not_found!(state.envs.get(&env_id));
 
     Json(&env.node_states).into_response()
+}
+
+/// Get a map of node keys to agent ids
+async fn get_env_agents(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+
+    Json(
+        env.node_peers
+            .iter()
+            .filter_map(|(k, v)| match v {
+                EnvPeer::Internal(id) => Some((k, *id)),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>(),
+    )
+    .into_response()
+}
+
+/// Given a node key, get the agent id and connection status
+async fn get_env_agent_key(
+    Path((env_id, node_type, node_key)): Path<(String, String, String)>,
+    State(state): State<AppState>,
+) -> Response {
+    let node_key = unwrap_or_not_found!(NodeKey::from_str(&format!("{node_type}/{node_key}")).ok());
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let agent_id = unwrap_or_not_found!(env.get_agent_by_key(&node_key));
+    let agent = unwrap_or_not_found!(state.pool.get(&agent_id));
+
+    Json(AgentStatusResponse::from(agent.value())).into_response()
 }
 
 async fn post_env_prepare(

@@ -44,6 +44,7 @@ mod api;
 mod content;
 pub mod error;
 pub mod jwt;
+pub mod models;
 pub mod prometheus;
 mod rpc;
 
