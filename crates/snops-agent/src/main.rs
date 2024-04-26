@@ -111,7 +111,7 @@ async fn main() {
         cli: args,
         endpoint,
         jwt: Mutex::new(jwt),
-        env_to_storage: Default::default(),
+        env_info: Default::default(),
         agent_state: Default::default(),
         reconcilation_handle: Default::default(),
         child: Default::default(),
@@ -145,7 +145,7 @@ async fn main() {
             let mut req = ws_uri.to_owned().into_client_request().unwrap();
 
             // invalidate env info cache
-            state.env_to_storage.write().await.clear();
+            state.env_info.write().await.take();
 
             // attach JWT if we have one
             {

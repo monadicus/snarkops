@@ -34,7 +34,7 @@ pub struct GlobalState {
     pub endpoint: String,
     pub jwt: Mutex<Option<String>>,
     pub agent_state: RwLock<AgentState>,
-    pub env_to_storage: RwLock<HashMap<EnvId, StorageInfo>>,
+    pub env_info: RwLock<Option<(EnvId, StorageInfo)>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,
     pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
                                        * not sure yet */
@@ -61,20 +61,15 @@ impl GlobalState {
     }
 
     pub async fn get_env_info(&self, env_id: EnvId) -> anyhow::Result<StorageInfo> {
-        if let Some(info) = self.env_to_storage.read().await.get(&env_id).cloned() {
-            return Ok(info);
+        match self.env_info.read().await.as_ref() {
+            Some((id, info)) if *id == env_id => return Ok(info.clone()),
+            _ => {}
         }
-
-        // if an else was used here, the lock would be held for the entire function so
-        // we return early to prevent a deadlock
 
         let info = api::get_storage_info(format!("{}/api/v1/env/{env_id}/storage", &self.endpoint))
             .await?;
 
-        self.env_to_storage
-            .write()
-            .await
-            .insert(env_id, info.clone());
+        *self.env_info.write().await = Some((env_id, info.clone()));
 
         Ok(info)
     }

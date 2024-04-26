@@ -233,8 +233,8 @@ impl Environment {
                                 Entry::Vacant(ent) => {
                                     // replace the key with a new one
                                     let mut node = doc_node.to_owned();
-                                    if let Some(key) = node.key.take() {
-                                        node.key = Some(key.with_index(i))
+                                    if let Some(key) = node.key.as_mut() {
+                                        *key = key.with_index(i);
                                     }
                                     ent.insert(EnvNodeState::Internal(node))
                                 }
@@ -431,12 +431,12 @@ impl Environment {
             // reconcile agents that are freed up from the delta between environments
             if let Err(e) = reconcile_agents(
                 &state,
-                agents_to_inventory.into_iter().filter_map(|id| {
-                    Some((
+                agents_to_inventory.into_iter().map(|id| {
+                    (
                         id,
-                        state.pool.get(&id)?.client_owned(),
+                        state.pool.get(&id).and_then(|a| a.client_owned()),
                         AgentState::Inventory,
-                    ))
+                    )
                 }),
             )
             .await
@@ -533,12 +533,12 @@ impl Environment {
                 // to the env.node_peers.right_values(), which is NOT Send
                 .collect::<Vec<_>>()
                 .into_iter()
-                .filter_map(|id| {
-                    Some((
+                .map(|id| {
+                    (
                         id,
-                        state.pool.get(&id)?.client_owned(),
+                        state.pool.get(&id).and_then(|a| a.client_owned()),
                         AgentState::Inventory,
-                    ))
+                    )
                 }),
         )
         .await
