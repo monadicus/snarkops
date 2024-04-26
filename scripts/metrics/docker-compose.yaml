@@ -1,40 +1,40 @@
-name: snops-metrics
+version: "3"
 
 services:
   prometheus:
     image: prom/prometheus
-    container_name: snops-prometheus
     user: root
     expose: [9090]
     ports: [9090:9090]
     restart: unless-stopped
-    # network_mode: host
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - ../../metrics-data/prometheus:/prometheus
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - host.docker.internal:host-gateway
 
   loki:
     image: grafana/loki
-    container_name: snops-loki
     user: root
     expose: [3100]
     ports: [3100:3100]
     restart: unless-stopped
     volumes:
-      - ./loki.yml:/mnt/config/loki-config.yaml
       - ../../metrics-data/loki:/loki
+      - ./loki.yml:/mnt/config/loki-config.yaml
 
+  # default grafana credentials are username: "admin" and password: "admin"
   grafana:
     image: grafana/grafana-enterprise
-    container_name: snops-grafana
     user: root
     # depends_on: [prometheus]
     ports: [3000:3000]
     restart: unless-stopped
     volumes:
       - ./grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/ds.yaml
+      - ./grafana/dashboard.yaml:/etc/grafana/provisioning/dashboards/main.yaml
       - ../../metrics-data/grafana:/var/lib/grafana
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     extra_hosts:
-        - "prometheus:host-gateway"
+      - prometheus:host-gateway
