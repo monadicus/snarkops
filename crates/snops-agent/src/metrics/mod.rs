@@ -7,8 +7,6 @@ use std::{
     time::Duration,
 };
 
-use tracing::warn;
-
 use self::tps::TpsMetric;
 use crate::state::GlobalState;
 
@@ -47,8 +45,7 @@ pub fn init(state: Arc<GlobalState>) {
                     .await
                 {
                     Ok(response) => response,
-                    Err(e) => {
-                        warn!("failed to scrape latest metrics: {e}");
+                    Err(_e) => {
                         break 'metrics Default::default();
                     }
                 };

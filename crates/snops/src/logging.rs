@@ -7,8 +7,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use serde_json::{json, Value};
-use tracing::debug;
+use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -80,7 +79,7 @@ pub async fn log_request(uri: Uri, method: Method, req_stamp: ReqStamp, res: Res
     let duration = now - time_in;
     let http_status = res.status().as_u16();
 
-    let log_line = RequestLogLine {
+    let _log_line = RequestLogLine {
         uuid: uuid.to_string(),
         timestamp: now.to_rfc3339(),
         time_in: time_in.to_rfc3339(),
@@ -93,7 +92,7 @@ pub async fn log_request(uri: Uri, method: Method, req_stamp: ReqStamp, res: Res
     };
 
     // TODO: send to logging services
-    debug!("REQUEST LOG LINE:\n{}", json!(log_line));
+    // debug!("REQUEST LOG LINE:\n{}", json!(log_line));
 
     res
 }

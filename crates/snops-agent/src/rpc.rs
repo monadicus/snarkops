@@ -59,7 +59,7 @@ impl AgentService for AgentRpcServer {
         }
 
         // store loki server URL
-        if let Some(loki) = handshake.loki {
+        if let Some(loki) = handshake.loki.and_then(|l| l.parse::<url::Url>().ok()) {
             self.state
                 .loki
                 .lock()
@@ -323,13 +323,13 @@ impl AgentService for AgentRpcServer {
                                 tokio::select! {
                                     Ok(line) = reader => {
                                         if let Some(line) = line {
-                                            info!(line);
+                                            println!("{line}");
                                         } else {
                                             break;
                                         }
                                     }
                                     Ok(Some(line)) = reader2.next_line() => {
-                                        error!(line);
+                                        eprintln!("{line}");
                                     }
                                 }
                             }

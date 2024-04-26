@@ -2,10 +2,7 @@
 use std::fs::File;
 #[cfg(feature = "flame")]
 use std::io::BufWriter;
-use std::{
-    io::{self},
-    path::PathBuf,
-};
+use std::{io, path::PathBuf, thread};
 
 use anyhow::Result;
 use clap::Parser;
@@ -66,6 +63,11 @@ impl Flushable for tracing_flame::FlushGuard<BufWriter<File>> {
     }
 }
 
+#[cfg(feature = "flame")]
+type FlameGuard = Box<dyn Flushable>;
+#[cfg(not(feature = "flame"))]
+type FlameGuard = ();
+
 impl Cli {
     /// Initializes the logger.
     ///
@@ -78,7 +80,7 @@ impl Cli {
     /// 5 => info, debug, trace, snarkos_node_router=trace
     /// 6 => info, debug, trace, snarkos_node_tcp=trace
     /// ```
-    pub fn init_logger(&self) -> (Box<dyn Flushable>, Vec<WorkerGuard>) {
+    pub fn init_logger(&self) -> (FlameGuard, Vec<WorkerGuard>) {
         let verbosity = self.verbosity;
 
         match verbosity {
@@ -88,7 +90,7 @@ impl Cli {
         };
 
         // Filter out undesirable logs. (unfortunately EnvFilter cannot be cloned)
-        let [filter, filter2] = std::array::from_fn(|_| {
+        let [filter, filter2, filter3] = std::array::from_fn(|_| {
             let filter = tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("mio=off".parse().unwrap())
                 .add_directive("tokio_util=off".parse().unwrap())
@@ -156,7 +158,7 @@ impl Cli {
         };
 
         #[cfg(not(feature = "flame"))]
-        let guard = Box::new(());
+        let guard = ();
 
         if let Some(logfile) = self.log.as_ref() {
             // Create the directories tree for a logfile if it doesn't exist.
@@ -215,8 +217,12 @@ impl Cli {
             }
 
             let (layer, task) = builder.build_url(loki.to_owned()).expect("bad loki url");
-            tokio::task::spawn(task);
-            layers.push(Box::new(layer));
+            thread::spawn(|| {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let handle = rt.spawn(task);
+                rt.block_on(handle).unwrap();
+            });
+            layers.push(Box::new(layer.with_filter(filter3)));
         }
 
         let subscriber = tracing_subscriber::registry::Registry::default().with(layers);
@@ -225,8 +231,7 @@ impl Cli {
         (guard, guards)
     }
 
-    #[tokio::main]
-    pub async fn run(self) -> Result<()> {
+    pub fn run(self) -> Result<()> {
         let _guards = self.init_logger();
 
         match self.command {
@@ -234,7 +239,7 @@ impl Cli {
             Command::Genesis(command) => command.parse(),
             Command::Ledger(command) => command.parse(),
             #[cfg(feature = "node")]
-            Command::Run(command) => command.parse().await,
+            Command::Run(command) => command.parse(),
             Command::Execute(command) => command.parse(),
             Command::Authorize(command) => {
                 println!("{}", serde_json::to_string(&command.parse()?)?);

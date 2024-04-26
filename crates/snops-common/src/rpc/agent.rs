@@ -1,7 +1,6 @@
 use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
-use url::Url;
 
 use super::error::*;
 use crate::{
@@ -12,7 +11,7 @@ use crate::{
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Handshake {
     pub jwt: Option<String>,
-    pub loki: Option<Url>,
+    pub loki: Option<String>,
     pub state: AgentState,
 }
 

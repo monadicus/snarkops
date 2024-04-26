@@ -154,7 +154,7 @@ async fn handle_socket(
     let id: AgentId = 'insertion: {
         let client = client.clone();
         let mut handshake = Handshake {
-            loki: state.cli.loki.clone(),
+            loki: state.cli.loki.as_ref().map(|u| u.to_string()),
             ..Default::default()
         };
 
