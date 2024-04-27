@@ -17,6 +17,9 @@ pub struct Env {
 /// Env commands
 #[derive(Debug, Parser)]
 enum Commands {
+    /// List an env's agents
+    Agents,
+
     /// Clean a specific environment.
     Clean,
 
@@ -59,12 +62,16 @@ impl Env {
     pub fn run(self, url: &str, client: Client) -> Result<Response> {
         use Commands::*;
         Ok(match self.command {
+            Agents => {
+                let ep = format!("{url}/api/v1/env/{}/agents", self.id);
+
+                client.get(ep).send()?
+            }
             Clean => {
                 let ep = format!("{url}/api/v1/env/{}", self.id);
 
                 client.delete(ep).send()?
             }
-
             Timeline { timeline_id } => {
                 let ep = format!("{url}/api/v1/env/{}/timelines/{timeline_id}/steps", self.id);
 

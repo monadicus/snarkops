@@ -12,6 +12,8 @@ pub struct List {
 /// List commands
 #[derive(Debug, Parser)]
 enum Commands {
+    /// List all agents.
+    Agents,
     /// List all environments.
     Env,
 }
@@ -20,6 +22,11 @@ impl List {
     pub fn run(self, url: &str, client: Client) -> Result<Response> {
         use Commands::*;
         Ok(match self.command {
+            Agents => {
+                let ep = format!("{url}/api/v1/agents");
+
+                client.get(ep).send()?
+            }
             Env => {
                 let ep = format!("{url}/api/v1/env/list");
 

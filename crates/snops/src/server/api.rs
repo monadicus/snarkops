@@ -98,8 +98,61 @@ async fn redirect_storage(
 }
 
 async fn get_agents(state: State<AppState>) -> impl IntoResponse {
-    // TODO: return actual relevant info about agents
-    Json(json!({ "count": state.pool.len() }))
+    let total = state.pool.len();
+
+    let mut ids = Vec::with_capacity(total);
+    let mut num_online = 0;
+    let mut num_available = 0;
+    let mut num_offline = 0;
+    let mut num_vals = 0;
+    let mut num_provers = 0;
+    let mut num_clients = 0;
+    let mut num_computes = 0;
+    for agent in state.pool.iter() {
+        ids.push(agent.id().to_string());
+        match agent.rpc() {
+            Some(_) => {
+                num_online += 1;
+            }
+            None => {
+                num_offline += 1;
+                continue;
+            }
+        }
+
+        dbg!(agent.id().to_string());
+
+        if dbg!(agent.is_inventory()) {
+            num_available += 1;
+            continue;
+        }
+
+        let mode = dbg!(agent.modes());
+        if mode.validator {
+            num_vals += 1;
+        }
+        if mode.prover {
+            num_provers += 1;
+        }
+        if mode.client {
+            num_clients += 1;
+        }
+        if mode.compute {
+            num_computes += 1;
+        }
+    }
+
+    Json(json!({
+        "total": total,
+        "num_online": num_online,
+        "num_offline": num_offline,
+        "num_available": num_available,
+        "num_vals": num_vals,
+        "num_provers": num_provers,
+        "num_clients": num_clients,
+        "num_computes": num_computes,
+        "agents": ids,
+    }))
 }
 
 fn status_ok() -> Response {
