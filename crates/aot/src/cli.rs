@@ -9,7 +9,7 @@ use clap::Parser;
 use crossterm::tty::IsTty;
 use reqwest::Url;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{layer::SubscriberExt, registry, Layer};
+use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
@@ -132,8 +132,9 @@ impl Cli {
             }
         };
 
-        let mut subscriber = tracing_subscriber::registry().with(filter);
+        let subscriber = tracing_subscriber::registry().with(filter);
 
+        let mut layers = vec![];
         let mut guards = vec![];
 
         macro_rules! non_blocking_appender {
@@ -152,7 +153,7 @@ impl Cli {
         let guard = if self.enable_profiling {
             let (flame_layer, guard) =
                 tracing_flame::FlameLayer::with_file("./tracing.folded").unwrap();
-            subscriber = subscriber.with(flame_layer);
+            layers.push(flame_layer.boxed());
             Box::new(guard) as Box<dyn Flushable>
         } else {
             Box::new(())
@@ -175,29 +176,32 @@ impl Cli {
             non_blocking_appender!(log_writer = (file_appender));
 
             // Add layer redirecting logs to the file
-            subscriber = subscriber.with(
+
+            layers.push(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(false)
                     .with_thread_ids(true)
-                    .with_writer(log_writer),
-            );
-        }
+                    .with_writer(log_writer)
+                    .boxed(),
+            )
+        };
 
         // Initialize tracing.
         // Add layer using LogWriter for stdout / terminal
         if matches!(self.command, Command::Run(_)) {
             non_blocking_appender!(stdout = (io::stdout()));
 
-            subscriber = subscriber.with(
+            layers.push(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(io::stdout().is_tty())
                     .with_thread_ids(true)
-                    .with_writer(stdout),
+                    .with_writer(stdout)
+                    .boxed(),
             );
         } else {
             non_blocking_appender!(stderr = (io::stderr()));
-            subscriber = subscriber.with(tracing_subscriber::fmt::layer().with_writer(stderr));
-        };
+            layers.push(tracing_subscriber::fmt::layer().with_writer(stderr).boxed());
+        }
 
         if let Some(loki) = &self.loki {
             let mut builder = tracing_loki::builder();
@@ -221,10 +225,10 @@ impl Cli {
                 let handle = rt.spawn(task);
                 rt.block_on(handle).unwrap();
             });
-            subscriber = subscriber.with(layer);
-        }
+            layers.push(layer.boxed());
+        };
 
-        tracing::subscriber::set_global_default(subscriber).unwrap();
+        tracing::subscriber::set_global_default(subscriber.with(layers)).unwrap();
         (guard, guards)
     }
 
