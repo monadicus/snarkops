@@ -26,6 +26,7 @@ checkpoint = { workspace = true, features = ["write"] }
 clap.workspace = true
 colored.workspace = true
 crossterm = { workspace = true, optional = true }
+futures.workspace = true
 indexmap.workspace = true
 indicatif.workspace = true
 lazy_static.workspace = true

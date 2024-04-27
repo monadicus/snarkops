@@ -217,11 +217,7 @@ impl Cli {
             }
 
             let (layer, task) = builder.build_url(loki.to_owned()).expect("bad loki url");
-            thread::spawn(|| {
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                let handle = rt.spawn(task);
-                rt.block_on(handle).unwrap();
-            });
+            thread::spawn(|| futures::executor::block_on(task));
             layers.push(Box::new(layer.with_filter(filter3)));
         }
 
