@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use reqwest::blocking::{Client, Response};
+use snops_common::state::NodeKey;
+
+mod timeline;
 
 /// For interacting with snop environments.
 #[derive(Debug, Parser)]
@@ -17,21 +20,26 @@ pub struct Env {
 /// Env commands
 #[derive(Debug, Parser)]
 enum Commands {
+    /// Get an env's specific agent by.
+    Agent {
+        /// The agent's key. i.e validator/0, client/foo, prover/9, compute/1,
+        /// or combination.
+        #[clap(value_hint = ValueHint::Other)]
+        key: NodeKey,
+    },
+
     /// List an env's agents
     Agents,
 
     /// Clean a specific environment.
     Clean,
 
-    /// List all steps for a specific timeline.
-    Timeline {
-        /// Show a specific timeline steps.
-        #[clap(value_hint = ValueHint::Other)]
-        timeline_id: String,
-    },
+    /// List all environments.
+    /// Ignores the env id.
+    List,
 
-    /// List all timelines for a specific environment.
-    Timelines,
+    /// List all steps for a specific timeline.
+    Timeline(timeline::Timeline),
 
     /// Show the current topology of a specific environment.
     Topology,
@@ -42,6 +50,9 @@ enum Commands {
         #[clap(value_hint = ValueHint::AnyPath)]
         spec: PathBuf,
     },
+
+    /// Get an env's storage info.
+    Storage,
 
     /// Start an environment's timeline (a test).
     Start {
@@ -62,6 +73,11 @@ impl Env {
     pub fn run(self, url: &str, client: Client) -> Result<Response> {
         use Commands::*;
         Ok(match self.command {
+            Agent { key } => {
+                let ep = format!("{url}/api/v1/env/{}/agents/{}", self.id, key);
+
+                client.get(ep).send()?
+            }
             Agents => {
                 let ep = format!("{url}/api/v1/env/{}/agents", self.id);
 
@@ -72,16 +88,12 @@ impl Env {
 
                 client.delete(ep).send()?
             }
-            Timeline { timeline_id } => {
-                let ep = format!("{url}/api/v1/env/{}/timelines/{timeline_id}/steps", self.id);
+            List => {
+                let ep = format!("{url}/api/v1/env/list");
 
                 client.get(ep).send()?
             }
-            Timelines => {
-                let ep = format!("{url}/api/v1/env/{}/timelines", self.id);
-
-                client.get(ep).send()?
-            }
+            Timeline(timeline) => timeline.run(url, &self.id, client)?,
             Topology => {
                 let ep = format!("{url}/api/v1/env/{}/topology", self.id);
 
@@ -92,6 +104,11 @@ impl Env {
                 let file: String = std::fs::read_to_string(spec)?;
 
                 client.post(ep).body(file).send()?
+            }
+            Storage => {
+                let ep = format!("{url}/api/v1/env/{}/storage", self.id);
+
+                client.get(ep).send()?
             }
             Start { timeline_id } => {
                 let ep = format!("{url}/api/v1/env/{}/timelines/{timeline_id}", self.id);

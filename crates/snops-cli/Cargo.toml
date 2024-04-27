@@ -11,3 +11,4 @@ clap.workspace = true
 clap_complete.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
 serde_json.workspace = true
+snops-common.workspace = true
