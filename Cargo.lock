@@ -3401,7 +3401,6 @@ dependencies = [
  "clap",
  "colored",
  "crossterm",
- "futures",
  "indexmap 2.2.6",
  "indicatif",
  "lazy_static",
