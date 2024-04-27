@@ -38,7 +38,10 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/list", get(get_env_list))
         .route("/env/:env_id/topology", get(get_env_topology))
-        // .route("/env/:env_id/topology/resolved", get(get_env_agent_states))
+        .route(
+            "/env/:env_id/topology/resolved",
+            get(get_env_topology_resolved),
+        )
         .route("/env/:env_id/agents", get(get_env_agents))
         .route(
             "/env/:env_id/agents/:node_ty/:node_key",
@@ -176,10 +179,6 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
     let env = unwrap_or_not_found!(state.envs.get(&env_id));
 
-    // instead want
-    // { agents: { [agent id]: node key }, nodes: { [key]: somewhat resolved state
-    // }, externals: { [key]: ips } }
-
     let mut internal = HashMap::new();
     let mut extenral = HashMap::new();
 
@@ -200,6 +199,28 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
     }
 
     Json(json!({"internal": internal, "external": extenral })).into_response()
+}
+
+async fn get_env_topology_resolved(
+    Path(env_id): Path<String>,
+    State(state): State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+
+    let mut resolved = HashMap::new();
+
+    for (_, peer) in env.node_peers.iter() {
+        // safe to unwrap because we know the agent exists
+        if let EnvPeer::Internal(id) = peer {
+            let agent = state.pool.get(id).unwrap();
+            let state = agent.state().clone();
+
+            resolved.insert(*id, state);
+        }
+    }
+
+    Json(resolved).into_response()
 }
 
 /// Get a map of node keys to agent ids

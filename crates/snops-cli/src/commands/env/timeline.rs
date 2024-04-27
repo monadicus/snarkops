@@ -18,16 +18,20 @@ pub struct Timeline {
 #[derive(Debug, Parser)]
 enum Commands {
     /// Apply a timeline to an environment.
+    #[clap(alias = "a")]
     Apply,
 
     /// Delete a timeline from an environment.zs
+    #[clap(alias = "d")]
     Delete,
 
     /// List all steps for a specific timeline.
+    #[clap(alias = "i")]
     Info,
 
     /// List all timelines for a specific environment.
     /// Timeline id is ignored.
+    #[clap(alias = "ls")]
     List,
 }
 

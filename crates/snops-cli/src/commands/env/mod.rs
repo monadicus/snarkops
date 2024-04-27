@@ -21,6 +21,7 @@ pub struct Env {
 #[derive(Debug, Parser)]
 enum Commands {
     /// Get an env's specific agent by.
+    #[clap(alias = "a")]
     Agent {
         /// The agent's key. i.e validator/0, client/foo, prover/9, compute/1,
         /// or combination.
@@ -32,19 +33,29 @@ enum Commands {
     Agents,
 
     /// Clean a specific environment.
+    #[clap(alias = "c")]
     Clean,
 
     /// List all environments.
     /// Ignores the env id.
+    #[clap(alias = "ls")]
     List,
 
     /// List all steps for a specific timeline.
+    #[clap(alias = "t")]
     Timeline(timeline::Timeline),
 
     /// Show the current topology of a specific environment.
+    #[clap(alias = "top")]
     Topology,
 
+    /// Show the resolved topology of a specific environment.
+    /// Shows only internal agents.
+    #[clap(alias = "top-res")]
+    TopologyResolved,
+
     /// Prepare a (test) environment.
+    #[clap(alias = "p")]
     Prepare {
         /// The test spec file.
         #[clap(value_hint = ValueHint::AnyPath)]
@@ -52,6 +63,7 @@ enum Commands {
     },
 
     /// Get an env's storage info.
+    #[clap(alias = "store")]
     Storage,
 
     /// Start an environment's timeline (a test).
@@ -96,6 +108,11 @@ impl Env {
             Timeline(timeline) => timeline.run(url, &self.id, client)?,
             Topology => {
                 let ep = format!("{url}/api/v1/env/{}/topology", self.id);
+
+                client.get(ep).send()?
+            }
+            TopologyResolved => {
+                let ep = format!("{url}/api/v1/env/{}/topology/resolved", self.id);
 
                 client.get(ep).send()?
             }

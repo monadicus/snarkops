@@ -18,10 +18,12 @@ pub struct Agent {
 #[derive(Debug, Parser)]
 enum Commands {
     /// Get the specific agent.
+    #[clap(alias = "i")]
     Info,
 
     /// List all agents.
     /// Ignores the agent id.
+    #[clap(alias = "ls")]
     List,
 
     /// Get the specific agent's TPS.
