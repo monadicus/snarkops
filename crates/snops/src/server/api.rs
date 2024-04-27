@@ -120,14 +120,14 @@ async fn get_agents(state: State<AppState>) -> impl IntoResponse {
             }
         }
 
-        dbg!(agent.id().to_string());
-
-        if dbg!(agent.is_inventory()) {
+        if agent.is_inventory() {
             num_available += 1;
             continue;
         }
 
-        let mode = dbg!(agent.modes());
+        // TODO not what I want
+        // want a way to get the way the agent is active as
+        let mode = agent.modes();
         if mode.validator {
             num_vals += 1;
         }
@@ -213,7 +213,30 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
     let env = unwrap_or_not_found!(state.envs.get(&env_id));
 
-    Json(&env.node_states).into_response()
+    // instead want
+    // { agents: { [agent id]: node key }, nodes: { [key]: somewhat resolved state
+    // }, externals: { [key]: ips } }
+
+    let mut internal = HashMap::new();
+    let mut extenral = HashMap::new();
+
+    for (nk, peer) in env.node_peers.iter() {
+        // safe to unwrap because we know the agent exists
+        let node_state = env.node_states.get(nk).unwrap().clone();
+        match peer {
+            EnvPeer::Internal(id) => {
+                internal.insert(*id, node_state);
+            }
+            EnvPeer::External(ip) => {
+                extenral.insert(
+                    nk.to_string(),
+                    json!({"ip": ip.to_string(), "ports": node_state}),
+                );
+            }
+        }
+    }
+
+    Json(json!({"internal": internal, "external": extenral })).into_response()
 }
 
 /// Get a map of node keys to agent ids
