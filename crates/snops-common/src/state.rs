@@ -51,7 +51,7 @@ pub struct NodeState {
     pub node_key: NodeKey,
     pub ty: NodeType,
     pub private_key: KeyState,
-    /// Increment the usize whenever the request is updated.  
+    /// Increment the usize whenever the request is updated.
     pub height: (usize, HeightRequest),
 
     pub online: bool,
