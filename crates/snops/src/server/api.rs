@@ -12,7 +12,7 @@ use serde_json::json;
 use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     rpc::agent::AgentMetric,
-    state::{id_or_none, EnvId, NodeKey},
+    state::{id_or_none, AgentState, EnvId, NodeKey},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
@@ -105,17 +105,7 @@ async fn get_agents(state: State<AppState>) -> impl IntoResponse {
     let agents = state
         .pool
         .iter()
-        .map(|agent| {
-            json!({
-                "id": agent.id(),
-                "online": agent.rpc().is_some(),
-                "env_id": match agent.env() {
-                    Some(env_id) => serde_json::to_value(env_id).unwrap(),
-                    None => serde_json::Value::Null,
-                },
-            }
-            )
-        })
+        .map(|agent| AgentStatusResponse::from(agent.value()))
         .collect::<Vec<_>>();
 
     Json(agents).into_response()
@@ -180,7 +170,7 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
     let env = unwrap_or_not_found!(state.envs.get(&env_id));
 
     let mut internal = HashMap::new();
-    let mut extenral = HashMap::new();
+    let mut external = HashMap::new();
 
     for (nk, peer) in env.node_peers.iter() {
         // safe to unwrap because we know the agent exists
@@ -190,7 +180,7 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
                 internal.insert(*id, node_state);
             }
             EnvPeer::External(ip) => {
-                extenral.insert(
+                external.insert(
                     nk.to_string(),
                     json!({"ip": ip.to_string(), "ports": node_state}),
                 );
@@ -198,7 +188,7 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
         }
     }
 
-    Json(json!({"internal": internal, "external": extenral })).into_response()
+    Json(json!({"internal": internal, "external": external })).into_response()
 }
 
 async fn get_env_topology_resolved(
@@ -214,9 +204,12 @@ async fn get_env_topology_resolved(
         // safe to unwrap because we know the agent exists
         if let EnvPeer::Internal(id) = peer {
             let agent = state.pool.get(id).unwrap();
-            let state = agent.state().clone();
-
-            resolved.insert(*id, state);
+            match agent.state().clone() {
+                AgentState::Inventory => continue,
+                AgentState::Node(_, state) => {
+                    resolved.insert(*id, state);
+                }
+            }
         }
     }
 
