@@ -46,27 +46,12 @@ impl AgentState {
     }
 }
 
-fn serialize_height<S>(
-    (n, duration): &(usize, HeightRequest),
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    match duration {
-        HeightRequest::Top => serializer.serialize_str(&format!("top/{n}")),
-        HeightRequest::Absolute(h) => serializer.serialize_str(&format!("abs/{n}/{h}")),
-        HeightRequest::Checkpoint(c) => serializer.serialize_str(&format!("cp/{n}/{c}")),
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeState {
     pub node_key: NodeKey,
     pub ty: NodeType,
     pub private_key: KeyState,
     /// Increment the usize whenever the request is updated.  
-    #[serde(serialize_with = "serialize_height")]
     pub height: (usize, HeightRequest),
 
     pub online: bool,
