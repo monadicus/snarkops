@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use reqwest::Url;
 use snops_common::{
     api::StorageInfo,
     rpc::control::ControlServiceClient,
@@ -33,6 +34,7 @@ pub struct GlobalState {
     pub cli: Cli,
     pub endpoint: String,
     pub jwt: Mutex<Option<String>>,
+    pub loki: Mutex<Option<Url>>,
     pub agent_state: RwLock<AgentState>,
     pub env_info: RwLock<Option<(EnvId, StorageInfo)>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,

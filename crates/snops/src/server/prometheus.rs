@@ -94,7 +94,7 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
                             targets: [agent_addr],
                             labels: [
                                 ("env_id".into(), env_id.to_string()),
-                                ("agent_id".into(), node_key.to_string()),
+                                ("node_key".into(), node_key.to_string()),
                             ]
                             .into_iter()
                             .collect(),

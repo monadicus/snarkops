@@ -58,6 +58,15 @@ impl AgentService for AgentRpcServer {
                 .expect("failed to write jwt file");
         }
 
+        // store loki server URL
+        if let Some(loki) = handshake.loki.and_then(|l| l.parse::<url::Url>().ok()) {
+            self.state
+                .loki
+                .lock()
+                .expect("failed to acquire loki URL lock")
+                .replace(loki);
+        }
+
         // reconcile if state has changed
         let needs_reconcile = *self.state.agent_state.read().await != handshake.state;
         if needs_reconcile {
@@ -170,6 +179,17 @@ impl AgentService for AgentRpcServer {
                     } else {
                         state.cli.path.join(LEDGER_BASE_DIR)
                     };
+
+                    // add loki URL if one is set
+                    if let Some(loki) = &*state.loki.lock().unwrap() {
+                        command
+                            .env(
+                                "SNOPS_LOKI_LABELS",
+                                format!("env_id={},node_key={}", env_id, node.node_key),
+                            )
+                            .arg("--loki")
+                            .arg(loki.as_str());
+                    }
 
                     command
                         .stdout(Stdio::piped())
@@ -303,13 +323,13 @@ impl AgentService for AgentRpcServer {
                                 tokio::select! {
                                     Ok(line) = reader => {
                                         if let Some(line) = line {
-                                            info!(line);
+                                            println!("{line}");
                                         } else {
                                             break;
                                         }
                                     }
                                     Ok(Some(line)) = reader2.next_line() => {
-                                        error!(line);
+                                        eprintln!("{line}");
                                     }
                                 }
                             }
