@@ -4,6 +4,9 @@ use serde_json::Value;
 
 use crate::cli::Cli;
 
+/// The dummy value for the ids to hack around the missing required argument.
+static DUMMY_ID: &str = "dummy_value___";
+
 mod agent;
 mod env;
 

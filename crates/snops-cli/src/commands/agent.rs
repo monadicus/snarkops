@@ -1,15 +1,19 @@
+use std::str::FromStr;
+
 use anyhow::Result;
 use clap::{error::ErrorKind, CommandFactory, Parser, ValueHint};
 use reqwest::blocking::{Client, Response};
+use snops_common::state::AgentId;
 
+use super::DUMMY_ID;
 use crate::cli::Cli;
 
 /// For interacting with snop environments.
 #[derive(Debug, Parser)]
 pub struct Agent {
     /// Show a specific agent's info.
-    #[clap(value_hint = ValueHint::Other, default_value = "")]
-    id: String,
+    #[clap(value_hint = ValueHint::Other, default_value = DUMMY_ID)]
+    id: AgentId,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -39,7 +43,7 @@ impl Agent {
 
                 client.get(ep).send()?
             }
-            _ if self.id.is_empty() => {
+            _ if self.id == AgentId::from_str(DUMMY_ID).unwrap() => {
                 let mut cmd = Cli::command();
                 cmd.error(
                     ErrorKind::MissingRequiredArgument,

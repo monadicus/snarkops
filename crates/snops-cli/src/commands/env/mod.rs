@@ -23,7 +23,7 @@ enum Commands {
     /// Get an env's specific agent by.
     #[clap(alias = "a")]
     Agent {
-        /// The agent's key. i.e validator/0, client/foo, prover/9, compute/1,
+        /// The agent's key. i.e validator/0, client/foo, prover/9,
         /// or combination.
         #[clap(value_hint = ValueHint::Other)]
         key: NodeKey,

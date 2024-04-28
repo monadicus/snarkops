@@ -1,15 +1,18 @@
+use std::str::FromStr;
+
 use anyhow::Result;
 use clap::{error::ErrorKind, CommandFactory, Parser, ValueHint};
 use reqwest::blocking::{Client, Response};
+use snops_common::state::TimelineId;
 
-use crate::cli::Cli;
+use crate::{cli::Cli, commands::DUMMY_ID};
 
 /// For interacting with snop environments.
 #[derive(Debug, Parser)]
 pub struct Timeline {
     /// The timeline id.
-    #[clap(value_hint = ValueHint::Other, default_value = "")]
-    id: String,
+    #[clap(value_hint = ValueHint::Other, default_value = DUMMY_ID)]
+    id: TimelineId,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -44,7 +47,7 @@ impl Timeline {
 
                 client.get(ep).send()?
             }
-            _ if self.id.is_empty() => {
+            _ if self.id == TimelineId::from_str(DUMMY_ID).unwrap() => {
                 let mut cmd = Cli::command();
                 cmd.error(
                     ErrorKind::MissingRequiredArgument,
