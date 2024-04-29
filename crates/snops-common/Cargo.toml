@@ -10,6 +10,7 @@ futures.workspace = true
 http.workspace = true
 lasso.workspace = true
 lazy_static.workspace = true
+paste.workspace = true
 regex.workspace = true
 rand.workspace = true
 serde.workspace = true

@@ -4,6 +4,7 @@ pub mod state;
 pub use lasso;
 pub mod api;
 pub mod constant;
+pub mod format;
 
 pub mod prelude {
     pub use crate::rpc::*;
