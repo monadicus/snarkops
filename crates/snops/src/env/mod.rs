@@ -71,7 +71,6 @@ pub struct TxPipes {
 
 /// The effective test state of a node.
 #[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum EnvNodeState {
     Internal(Node),
