@@ -18,7 +18,7 @@ use snarkvm::{
 };
 use snops_common::state::NodeType;
 
-use crate::{ledger::Addrs, Account, Network, PrivateKey};
+use crate::{ledger::Addrs, Account, DbLedger, Network, PrivateKey};
 
 mod metrics;
 
@@ -127,6 +127,12 @@ impl Runner {
             .transpose()?;
 
         let storage_mode = StorageMode::Custom(self.ledger.clone());
+
+        if let Err(e) = DbLedger::load(genesis.clone(), storage_mode.clone()) {
+            tracing::error!("aot failed to load ledger: {e}");
+            // L in binary = 01001100 = 76
+            std::process::exit(76);
+        }
 
         // slight alterations to the normal `metrics::initialize_metrics` because of
         // visibility issues

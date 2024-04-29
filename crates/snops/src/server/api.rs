@@ -12,7 +12,7 @@ use serde_json::json;
 use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     rpc::agent::AgentMetric,
-    state::{id_or_none, EnvId, NodeKey},
+    state::{id_or_none, AgentState, EnvId, NodeKey},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
@@ -38,6 +38,10 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/env/list", get(get_env_list))
         .route("/env/:env_id/topology", get(get_env_topology))
+        .route(
+            "/env/:env_id/topology/resolved",
+            get(get_env_topology_resolved),
+        )
         .route("/env/:env_id/agents", get(get_env_agents))
         .route(
             "/env/:env_id/agents/:node_ty/:node_key",
@@ -98,8 +102,13 @@ async fn redirect_storage(
 }
 
 async fn get_agents(state: State<AppState>) -> impl IntoResponse {
-    // TODO: return actual relevant info about agents
-    Json(json!({ "count": state.pool.len() }))
+    let agents = state
+        .pool
+        .iter()
+        .map(|agent| AgentStatusResponse::from(agent.value()))
+        .collect::<Vec<_>>();
+
+    Json(agents).into_response()
 }
 
 fn status_ok() -> Response {
@@ -160,7 +169,51 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
     let env = unwrap_or_not_found!(state.envs.get(&env_id));
 
-    Json(&env.node_states).into_response()
+    let mut internal = HashMap::new();
+    let mut external = HashMap::new();
+
+    for (nk, peer) in env.node_peers.iter() {
+        // safe to unwrap because we know the agent exists
+        let node_state = env.node_states.get(nk).unwrap().clone();
+        match peer {
+            EnvPeer::Internal(id) => {
+                internal.insert(*id, node_state);
+            }
+            EnvPeer::External(ip) => {
+                external.insert(
+                    nk.to_string(),
+                    json!({"ip": ip.to_string(), "ports": node_state}),
+                );
+            }
+        }
+    }
+
+    Json(json!({"internal": internal, "external": external })).into_response()
+}
+
+async fn get_env_topology_resolved(
+    Path(env_id): Path<String>,
+    State(state): State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+
+    let mut resolved = HashMap::new();
+
+    for (_, peer) in env.node_peers.iter() {
+        // safe to unwrap because we know the agent exists
+        if let EnvPeer::Internal(id) = peer {
+            let agent = state.pool.get(id).unwrap();
+            match agent.state().clone() {
+                AgentState::Inventory => continue,
+                AgentState::Node(_, state) => {
+                    resolved.insert(*id, state);
+                }
+            }
+        }
+    }
+
+    Json(resolved).into_response()
 }
 
 /// Get a map of node keys to agent ids

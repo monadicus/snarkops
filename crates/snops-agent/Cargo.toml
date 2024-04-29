@@ -16,13 +16,13 @@ local-ip-address.workspace = true
 nix = { workspace = true, features = ["signal"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
 simple_moving_average.workspace = true
-snops-common = { path = "../snops-common" }
+snops-common.workspace = true
 tarpc.workspace = true
 tokio = { workspace = true, features = [
-  "macros",
-  "process",
-  "signal",
-  "rt-multi-thread",
+	"macros",
+	"process",
+	"signal",
+	"rt-multi-thread",
 ] }
 tokio-tungstenite.workspace = true
 tracing-appender.workspace = true

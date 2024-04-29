@@ -90,7 +90,7 @@ impl Cli {
         };
 
         // Filter out undesirable logs. (unfortunately EnvFilter cannot be cloned)
-        let [filter, filter2, filter3] = std::array::from_fn(|_| {
+        let filter = {
             let filter = tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("mio=off".parse().unwrap())
                 .add_directive("tokio_util=off".parse().unwrap())
@@ -130,7 +130,9 @@ impl Cli {
             } else {
                 filter.add_directive("snarkos_node_tcp=off".parse().unwrap())
             }
-        });
+        };
+
+        let subscriber = tracing_subscriber::registry().with(filter);
 
         let mut layers = vec![];
         let mut guards = vec![];
@@ -174,14 +176,15 @@ impl Cli {
             non_blocking_appender!(log_writer = (file_appender));
 
             // Add layer redirecting logs to the file
+
             layers.push(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(false)
+                    .with_thread_ids(true)
                     .with_writer(log_writer)
-                    .with_filter(filter2)
                     .boxed(),
-            );
-        }
+            )
+        };
 
         // Initialize tracing.
         // Add layer using LogWriter for stdout / terminal
@@ -191,14 +194,14 @@ impl Cli {
             layers.push(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(io::stdout().is_tty())
+                    .with_thread_ids(true)
                     .with_writer(stdout)
-                    .with_filter(filter)
                     .boxed(),
             );
         } else {
             non_blocking_appender!(stderr = (io::stderr()));
             layers.push(tracing_subscriber::fmt::layer().with_writer(stderr).boxed());
-        };
+        }
 
         if let Some(loki) = &self.loki {
             let mut builder = tracing_loki::builder();
@@ -222,12 +225,10 @@ impl Cli {
                 let handle = rt.spawn(task);
                 rt.block_on(handle).unwrap();
             });
-            layers.push(Box::new(layer.with_filter(filter3)));
-        }
+            layers.push(layer.boxed());
+        };
 
-        let subscriber = tracing_subscriber::registry::Registry::default().with(layers);
-
-        tracing::subscriber::set_global_default(subscriber).unwrap();
+        tracing::subscriber::set_global_default(subscriber.with(layers)).unwrap();
         (guard, guards)
     }
 
