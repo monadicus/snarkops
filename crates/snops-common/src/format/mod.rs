@@ -20,35 +20,40 @@ pub enum DataReadError {
     Custom(String),
 }
 
-pub fn write_data_with_headers<W: Write, F: DataFormat>(
+pub fn write_data<W: Write, F: DataFormat>(
     writer: &mut W,
     data: &F,
-) -> Result<(), DataWriteError> {
-    // write the default (latest) header
-    F::Header::default().write_data(writer)?;
-    // write the data
-    data.write_data(writer)
+) -> Result<usize, DataWriteError> {
+    Ok(data.write_header(writer)? + data.write_data(writer)?)
 }
 
 pub fn read_data<R: Read, F: DataFormat>(reader: &mut R) -> Result<F, DataReadError> {
-    // the header is read with a default version as headers cannot have versioned
-    // headers...
-    let header_header = <F::Header as DataFormat>::Header::default();
-    let header = F::Header::read_data(header_header, reader)?;
-
-    // using the header, read the data
-    F::read_data(header, reader)
+    let header = F::read_header(reader)?;
+    F::read_data(reader, header)
 }
 
 /// `DataFormat` is a trait for serializing and deserializing binary data.
 ///
 /// A header is read/written containing the versions of the desired data
 pub trait DataFormat: Sized {
-    type Header: DataFormat + Clone + Copy + Default + Sized;
+    type Header: DataFormat + Clone + Sized;
+    const LATEST_HEADER: Self::Header;
+
+    fn write_header<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(Self::LATEST_HEADER.write_header(writer)? + Self::LATEST_HEADER.write_data(writer)?)
+    }
+
+    fn read_header<R: Read>(reader: &mut R) -> Result<Self::Header, DataReadError> {
+        // read the header's header
+        let header_header = Self::Header::read_header(reader)?;
+        // read the header's data
+        let header = Self::Header::read_data(reader, header_header)?;
+        Ok(header)
+    }
 
     /// Write the data to the writer
-    fn write_data<W: Write>(&self, writer: &mut W) -> Result<(), DataWriteError>;
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError>;
 
     /// Read the data from the reader
-    fn read_data<R: Read>(header: Self::Header, reader: &mut R) -> Result<Self, DataReadError>;
+    fn read_data<R: Read>(reader: &mut R, header: Self::Header) -> Result<Self, DataReadError>;
 }
