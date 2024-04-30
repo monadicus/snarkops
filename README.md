@@ -1,4 +1,12 @@
-# snarkOS Operations
+<!-- TODO snops image <p align="center">
+  <a href="https://monadic.us/">
+    <img width="90%" alt="snops" src="">
+  </a>
+</p> -->
+
+<h1 align="center">
+  SNOPS
+</h1>
 
 This repository is home to the `snops` (snarkOS operations) ecosystem, and
 `snarkos-aot`, a crate for performing ahead-of-time ledger actions.
@@ -59,10 +67,17 @@ it, and listens for requests from implementors of its HTTP API (such as the
 environment.
 
 For metrics and outcome guarantees, the control plane can also be linked to a
-Prometheus server. TODO: how?
+Prometheus server. The Prometheus server can be local or remote.
 
-In order to instruct the control plane after it has been started, you can use
-the included snops-cli. TODO: how?
+For logging, the control plane can be liked to a Loki instance.
+
+The Prometheus metrics can also be hooked into a Grafana dashboard. The Loki instance can also be linked to a Grafana dashboard and visuzlized there.
+
+For an example deployment of Prometheus, Loki, and Grafana you can refer to our example configurations in `scripts/metrics`.
+
+<!-- TODO nice to have eventually -->
+<!-- In order to instruct the control plane after it has been started, you can use
+the included snops-cli. TODO: how? -->
 
 ### Agents
 
