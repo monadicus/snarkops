@@ -12,6 +12,7 @@ node = [
 	"snarkos-node",
 	"crossterm",
 	"snarkos-node/metrics",
+	"snarkos-node-metrics",
 	"metrics-exporter-prometheus",
 	"num_cpus",
 	"rayon",
@@ -41,6 +42,7 @@ serde.workspace = true
 serde_json.workspace = true
 snarkos-account.workspace = true
 snarkos-node = { workspace = true, optional = true }
+snarkos-node-metrics = { workspace = true, optional = true }
 snarkvm.workspace = true
 snops-common.workspace = true
 tokio.workspace = true
@@ -50,7 +52,6 @@ tracing-flame = { workspace = true, optional = true }
 tracing-loki = "0.2.4"
 tracing-subscriber.workspace = true
 rocksdb = { workspace = true, features = ["lz4"] }
-snarkos-node-metrics = { workspace = true }
 
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
