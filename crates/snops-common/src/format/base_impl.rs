@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use super::{DataFormat, DataReadError, DataWriteError};
+use super::{packed_int::PackedUint, DataFormat, DataReadError, DataWriteError};
 
 macro_rules! impl_tuple_dataformat {
     ($($name:ident),+) => {
@@ -27,7 +27,7 @@ macro_rules! impl_tuple_dataformat {
                     Ok(written)
                 }
 
-                fn read_data<R: Read>(reader: &mut R, header: Self::Header) -> Result<Self, DataReadError> {
+                fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
                     let ($([<$name:lower>],)+) = header;
                     Ok(($($name::read_data(reader, [<$name:lower>])?,)+))
                 }
@@ -39,6 +39,7 @@ macro_rules! impl_tuple_dataformat {
 
 impl_tuple_dataformat!(A, B);
 impl_tuple_dataformat!(A, B, C);
+
 impl DataFormat for () {
     type Header = ();
     const LATEST_HEADER: Self::Header = ();
@@ -55,7 +56,7 @@ impl DataFormat for () {
         Ok(0)
     }
 
-    fn read_data<R: Read>(_reader: &mut R, _header: Self::Header) -> Result<Self, DataReadError> {
+    fn read_data<R: Read>(_reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
         Ok(())
     }
 }
@@ -72,7 +73,7 @@ macro_rules! impl_integer_dataformat {
 
             fn read_data<R: Read>(
                 reader: &mut R,
-                _header: Self::Header,
+                _header: &Self::Header,
             ) -> Result<Self, DataReadError> {
                 let mut bytes = [0u8; core::mem::size_of::<$ty>()];
                 reader.read_exact(&mut bytes)?;
@@ -93,66 +94,18 @@ impl_integer_dataformat!(i32);
 impl_integer_dataformat!(i64);
 impl_integer_dataformat!(i128);
 
-pub enum DynamicLength {
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-}
-
-impl DataFormat for DynamicLength {
+impl DataFormat for bool {
     type Header = ();
     const LATEST_HEADER: Self::Header = ();
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
-        Ok(match self {
-            DynamicLength::U8(val) => 0u8.write_data(writer)? + val.write_data(writer)?,
-            DynamicLength::U16(val) => 1u8.write_data(writer)? + val.write_data(writer)?,
-            DynamicLength::U32(val) => 2u8.write_data(writer)? + val.write_data(writer)?,
-            DynamicLength::U64(val) => 3u8.write_data(writer)? + val.write_data(writer)?,
-        })
+        Ok(writer.write(&[*self as u8])?)
     }
 
-    fn read_data<R: Read>(reader: &mut R, _header: Self::Header) -> Result<Self, DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
         let mut byte = [0u8; 1];
         reader.read_exact(&mut byte)?;
-        let byte = byte[0];
-        Ok(match byte {
-            0 => DynamicLength::U8(u8::read_data(reader, ())?),
-            1 => DynamicLength::U16(u16::read_data(reader, ())?),
-            2 => DynamicLength::U32(u32::read_data(reader, ())?),
-            3 => DynamicLength::U64(u64::read_data(reader, ())?),
-            _ => {
-                return Err(DataReadError::Custom(
-                    "Invalid DynamicLength byte".to_string(),
-                ))
-            }
-        })
-    }
-}
-
-impl From<usize> for DynamicLength {
-    fn from(val: usize) -> Self {
-        if val <= u8::MAX as usize {
-            DynamicLength::U8(val as u8)
-        } else if val <= u16::MAX as usize {
-            DynamicLength::U16(val as u16)
-        } else if val <= u32::MAX as usize {
-            DynamicLength::U32(val as u32)
-        } else {
-            DynamicLength::U64(val as u64)
-        }
-    }
-}
-
-impl From<DynamicLength> for usize {
-    fn from(val: DynamicLength) -> Self {
-        match val {
-            DynamicLength::U8(val) => val as usize,
-            DynamicLength::U16(val) => val as usize,
-            DynamicLength::U32(val) => val as usize,
-            DynamicLength::U64(val) => val as usize,
-        }
+        Ok(byte[0] != 0)
     }
 }
 
@@ -162,16 +115,78 @@ impl DataFormat for String {
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let bytes = self.as_bytes();
+        Ok(PackedUint::from(bytes.len()).write_data(writer)? + writer.write(bytes)?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        let len = usize::from(PackedUint::read_data(reader, &())?);
+        let mut bytes = vec![0u8; len];
+        reader.read_exact(&mut bytes)?;
+        Ok(String::from_utf8(bytes)?)
+    }
+}
+
+impl<T: DataFormat + Default + Copy, const N: usize> DataFormat for [T; N] {
+    type Header = T::Header;
+    const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
-        written += DynamicLength::from(bytes.len()).write_data(writer)?;
-        written += writer.write(bytes)?;
+        for item in self.iter() {
+            written += item.write_data(writer)?;
+        }
         Ok(written)
     }
 
-    fn read_data<R: Read>(reader: &mut R, _header: Self::Header) -> Result<Self, DataReadError> {
-        let len = DynamicLength::read_data(reader, ())?;
-        let mut bytes = vec![0u8; usize::from(len)];
-        reader.read_exact(&mut bytes)?;
-        String::from_utf8(bytes).map_err(|_| DataReadError::Custom("Invalid UTF-8".to_string()))
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        let mut data = [T::default(); N];
+        for item in data.iter_mut() {
+            *item = T::read_data(reader, header)?;
+        }
+        Ok(data)
+    }
+}
+
+impl<T: DataFormat> DataFormat for Option<T> {
+    type Header = T::Header;
+    const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(match self {
+            None => 0u8.write_data(writer)?,
+            Some(value) => 1u8.write_data(writer)? + value.write_data(writer)?,
+        })
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        let mut byte = [0u8; 1];
+        reader.read_exact(&mut byte)?;
+        Ok(match byte[0] {
+            0 => None,
+            1 => Some(T::read_data(reader, header)?),
+            _ => return Err(DataReadError::Custom("invalid Option tag".to_string())),
+        })
+    }
+}
+
+impl<T: DataFormat> DataFormat for Vec<T> {
+    type Header = T::Header;
+    const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        let mut written = PackedUint::from(self.len()).write_data(writer)?;
+        for item in self.iter() {
+            written += item.write_data(writer)?;
+        }
+        Ok(written)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        let len = usize::from(PackedUint::read_data(reader, &())?);
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(T::read_data(reader, header)?);
+        }
+        Ok(data)
     }
 }
