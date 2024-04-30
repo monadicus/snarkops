@@ -4583,6 +4583,7 @@ dependencies = [
  "clap_complete",
  "reqwest 0.12.3",
  "serde_json",
+ "snops-common",
 ]
 
 [[package]]

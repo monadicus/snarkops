@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
     rpc::agent::AgentServiceClient,
-    state::{AgentId, AgentMode, AgentState, NodeState, PortConfig},
+    state::{AgentId, AgentMode, AgentState, EnvId, NodeState, PortConfig},
     INTERN,
 };
 
@@ -165,6 +165,13 @@ impl Agent {
     /// this agent for an environment.
     pub fn get_env_claim(&self) -> Weak<Busy> {
         Arc::downgrade(&self.env_claim)
+    }
+
+    pub fn env(&self) -> Option<EnvId> {
+        match &self.state {
+            AgentState::Node(id, _) => Some(*id),
+            _ => None,
+        }
     }
 
     /// The ID of this agent.
