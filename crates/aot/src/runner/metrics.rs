@@ -1,7 +1,7 @@
 // This file exists because the NAMES in the snarkos-node-metrics are
 // `pub(super)` for some reason.
 
-use metrics::{bft, blocks, consensus, router, tcp};
+use snarkos_node_metrics::{bft, blocks, consensus, router, tcp};
 
 pub const COUNTER_NAMES: [&str; 1] = [bft::LEADERS_ELECTED];
 

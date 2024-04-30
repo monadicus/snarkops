@@ -9,12 +9,12 @@ version = "0.1.0"
 default = ["node"]
 flame = ["tracing-flame"]
 node = [
-  "snarkos-node",
-  "crossterm",
-  "snarkos-node/metrics",
-  "metrics-exporter-prometheus",
-  "num_cpus",
-  "rayon",
+	"snarkos-node",
+	"crossterm",
+	"snarkos-node/metrics",
+	"metrics-exporter-prometheus",
+	"num_cpus",
+	"rayon",
 ]
 
 [dependencies]
@@ -50,10 +50,12 @@ tracing-flame = { workspace = true, optional = true }
 tracing-loki = "0.2.4"
 tracing-subscriber.workspace = true
 rocksdb = { workspace = true, features = ["lz4"] }
+snarkos-node-metrics = { workspace = true }
+
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 tikv-jemallocator = "0.5"
 
-[dependencies.metrics]
-package = "snarkos-node-metrics"
-path = "../../../snarkos/node/metrics"
+# [dependencies.metrics]
+# package = "snarkos-node-metrics"
+# path = "../../../snarkos/node/metrics"

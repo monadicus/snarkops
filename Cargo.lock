@@ -3418,7 +3418,7 @@ dependencies = [
  "serde_json",
  "snarkos-account",
  "snarkos-node",
- "snarkos-node-metrics 2.2.7",
+ "snarkos-node-metrics",
  "snarkvm",
  "snops-common",
  "tikv-jemallocator",
@@ -3451,7 +3451,7 @@ dependencies = [
  "snarkos-node-bft",
  "snarkos-node-cdn",
  "snarkos-node-consensus",
- "snarkos-node-metrics 2.2.7 (git+https://github.com/AleoNet/snarkOS?rev=9be1039d7)",
+ "snarkos-node-metrics",
  "snarkos-node-rest",
  "snarkos-node-router",
  "snarkos-node-sync",
@@ -3485,7 +3485,7 @@ dependencies = [
  "snarkos-node-bft-events",
  "snarkos-node-bft-ledger-service",
  "snarkos-node-bft-storage-service",
- "snarkos-node-metrics 2.2.7 (git+https://github.com/AleoNet/snarkOS?rev=9be1039d7)",
+ "snarkos-node-metrics",
  "snarkos-node-sync",
  "snarkos-node-tcp",
  "snarkvm",
@@ -3506,7 +3506,7 @@ dependencies = [
  "indexmap 2.2.6",
  "rayon",
  "serde",
- "snarkos-node-metrics 2.2.7 (git+https://github.com/AleoNet/snarkOS?rev=9be1039d7)",
+ "snarkos-node-metrics",
  "snarkos-node-sync-locators",
  "snarkvm",
  "tokio-util",
@@ -3523,7 +3523,7 @@ dependencies = [
  "lru",
  "parking_lot 0.12.1",
  "rand",
- "snarkos-node-metrics 2.2.7 (git+https://github.com/AleoNet/snarkOS?rev=9be1039d7)",
+ "snarkos-node-metrics",
  "snarkvm",
  "tokio",
  "tracing",
@@ -3576,22 +3576,10 @@ dependencies = [
  "snarkos-node-bft",
  "snarkos-node-bft-ledger-service",
  "snarkos-node-bft-storage-service",
- "snarkos-node-metrics 2.2.7 (git+https://github.com/AleoNet/snarkOS?rev=9be1039d7)",
+ "snarkos-node-metrics",
  "snarkvm",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "snarkos-node-metrics"
-version = "2.2.7"
-dependencies = [
- "metrics-exporter-prometheus 0.13.1",
- "parking_lot 0.12.1",
- "rayon",
- "snarkvm",
- "time",
- "tokio",
 ]
 
 [[package]]
@@ -3653,7 +3641,7 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "snarkos-account",
- "snarkos-node-metrics 2.2.7 (git+https://github.com/AleoNet/snarkOS?rev=9be1039d7)",
+ "snarkos-node-metrics",
  "snarkos-node-router-messages",
  "snarkos-node-sync-locators",
  "snarkos-node-tcp",
@@ -3735,7 +3723,7 @@ dependencies = [
  "futures-util",
  "once_cell",
  "parking_lot 0.12.1",
- "snarkos-node-metrics 2.2.7 (git+https://github.com/AleoNet/snarkOS?rev=9be1039d7)",
+ "snarkos-node-metrics",
  "tokio",
  "tokio-util",
  "tracing",

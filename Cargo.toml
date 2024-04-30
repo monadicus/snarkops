@@ -94,6 +94,7 @@ sled = "0.34"
 # snarkos-node = { path = "../snarkos/node" }
 snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "9be1039d7" }
 snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "9be1039d7" }
+snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "9be1039d7" }
 # snarkvm = { path = "../snarkvm", default-features = false }
 snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "aef07da", features = [
 	"rocks",
