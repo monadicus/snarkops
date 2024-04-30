@@ -8,7 +8,7 @@ use snops_common::state::AgentId;
 use super::DUMMY_ID;
 use crate::Cli;
 
-/// For interacting with snop environments.
+/// For interacting with snop agents.
 #[derive(Debug, Parser)]
 pub struct Agent {
     /// Show a specific agent's info.

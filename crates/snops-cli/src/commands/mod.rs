@@ -9,6 +9,8 @@ pub(crate) static DUMMY_ID: &str = "dummy_value___";
 
 mod agent;
 mod env;
+#[cfg(feature = "mangen")]
+mod mangen;
 
 #[derive(Debug, Parser)]
 pub enum Commands {
@@ -20,6 +22,8 @@ pub enum Commands {
     },
     #[clap(alias = "a")]
     Agent(agent::Agent),
+    #[cfg(feature = "mangen")]
+    Mangen(mangen::Mangen),
     #[clap(alias = "e")]
     Env(env::Env),
 }
@@ -37,7 +41,11 @@ impl Commands {
                 return Ok(());
             }
             Commands::Agent(agent) => agent.run(url, client),
-
+            #[cfg(feature = "mangen")]
+            Commands::Mangen(mangen) => {
+                mangen.run()?;
+                return Ok(());
+            }
             Commands::Env(env) => env.run(url, client),
         }?;
 

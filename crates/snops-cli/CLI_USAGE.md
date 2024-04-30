@@ -10,6 +10,7 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli agent info`↴](#snops-cli-agent-info)
 * [`snops-cli agent list`↴](#snops-cli-agent-list)
 * [`snops-cli agent tps`↴](#snops-cli-agent-tps)
+* [`snops-cli mangen`↴](#snops-cli-mangen)
 * [`snops-cli env`↴](#snops-cli-env)
 * [`snops-cli env agent`↴](#snops-cli-env-agent)
 * [`snops-cli env agents`↴](#snops-cli-env-agents)
@@ -34,7 +35,8 @@ This document contains the help content for the `snops-cli` command-line program
 ###### **Subcommands:**
 
 * `autocomplete` — Generate shell completions
-* `agent` — For interacting with snop environments
+* `agent` — For interacting with snop agents
+* `mangen` — For generating snops manpages. Only with the mangen feature enabled
 * `env` — For interacting with snop environments
 
 ###### **Options:**
@@ -62,7 +64,7 @@ Generate shell completions
 
 ## `snops-cli agent`
 
-For interacting with snop environments
+For interacting with snop agents
 
 **Usage:** `snops-cli agent [ID] <COMMAND>`
 
@@ -101,6 +103,20 @@ List all agents. Ignores the agent id
 Get the specific agent's TPS
 
 **Usage:** `snops-cli agent tps`
+
+
+
+## `snops-cli mangen`
+
+For generating snops manpages. Only with the mangen feature enabled
+
+**Usage:** `snops-cli mangen [DIRECTORY]`
+
+###### **Arguments:**
+
+* `<DIRECTORY>`
+
+  Default value: `target/man/snops-cli`
 
 
 
