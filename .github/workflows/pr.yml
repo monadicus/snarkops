@@ -40,11 +40,9 @@ jobs:
 
   #     - uses: Swatinem/rust-cache@v2
   #       with:
-  #         workspaces: snarkos-test
   #         key: cache-v1
 
   #     - name: Build
-  #       working-directory: ./snarkos-test
   #       env:
   #         RUSTFLAGS: -Zcodegen-backend=cranelift -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
   #       run: cargo +nightly-2024-04-01 build --verbose
@@ -62,7 +60,6 @@ jobs:
           components: rustfmt
 
       - name: 📋 Format Check
-        working-directory: ./snarkos-test
         run: cargo +nightly fmt -- --check
 
   test:
@@ -84,7 +81,6 @@ jobs:
       - name: 🫙 Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: snarkos-test
           key: cache-v1
           cache-on-failure: true
 
@@ -95,21 +91,18 @@ jobs:
       # run: cargo install cargo-machete
 
       # - name: 📋 Clippy Check
-      #   working-directory: ./snarkos-test
       #   env:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo +nightly-2024-04-01 clippy --all --all-targets -- -D warnings
 
       # - name: 📋 Check Unused Deps
       #   if: always()
-      #   working-directory: ./snarkos-test
       #   env:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo machete
 
       - name: 🧪 Test
         if: always()
-        working-directory: ./snarkos-test
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
         run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast
