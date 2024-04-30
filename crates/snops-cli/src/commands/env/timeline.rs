@@ -5,21 +5,21 @@ use clap::{error::ErrorKind, CommandFactory, Parser, ValueHint};
 use reqwest::blocking::{Client, Response};
 use snops_common::state::TimelineId;
 
-use crate::{cli::Cli, commands::DUMMY_ID};
+use crate::{Cli, DUMMY_ID};
 
-/// For interacting with snop environments.
+/// For interacting with snop environment timelines.
 #[derive(Debug, Parser)]
 pub struct Timeline {
     /// The timeline id.
     #[clap(value_hint = ValueHint::Other, default_value = DUMMY_ID)]
     id: TimelineId,
     #[clap(subcommand)]
-    command: Commands,
+    command: TimelineCommands,
 }
 
-/// Env commands
+/// Timeline commands
 #[derive(Debug, Parser)]
-enum Commands {
+enum TimelineCommands {
     /// Apply a timeline to an environment.
     #[clap(alias = "a")]
     Apply,
@@ -40,7 +40,7 @@ enum Commands {
 
 impl Timeline {
     pub fn run(self, url: &str, env_id: &str, client: Client) -> Result<Response> {
-        use Commands::*;
+        use TimelineCommands::*;
         Ok(match self.command {
             List => {
                 let ep = format!("{url}/api/v1/env/{env_id}/timelines");

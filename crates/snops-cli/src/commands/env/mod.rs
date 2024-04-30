@@ -14,12 +14,12 @@ pub struct Env {
     #[clap(default_value = "default", value_hint = ValueHint::Other)]
     id: String,
     #[clap(subcommand)]
-    command: Commands,
+    command: EnvCommands,
 }
 
 /// Env commands
 #[derive(Debug, Parser)]
-enum Commands {
+enum EnvCommands {
     /// Get an env's specific agent by.
     #[clap(alias = "a")]
     Agent {
@@ -83,7 +83,7 @@ enum Commands {
 
 impl Env {
     pub fn run(self, url: &str, client: Client) -> Result<Response> {
-        use Commands::*;
+        use EnvCommands::*;
         Ok(match self.command {
             Agent { key } => {
                 let ep = format!("{url}/api/v1/env/{}/agents/{}", self.id, key);
