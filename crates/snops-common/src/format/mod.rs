@@ -8,18 +8,27 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DataWriteError {
+    /// Error from writing data
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+    /// A custom user defined error
     #[error("{0}")]
     Custom(String),
 }
 
 #[derive(Debug, Error)]
 pub enum DataReadError {
+    /// Error from reading data
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+    /// Error from reading UTF-8 strings
     #[error("utf8 error: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
+    /// The read data cannot be automatically upgraded given the available
+    /// headers
+    #[error("upgrade unavailable: {0}")]
+    UpgradeUnavailable(String),
+    /// A custom user defined error
     #[error("{0}")]
     Custom(String),
 }
