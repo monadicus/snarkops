@@ -150,13 +150,13 @@ impl Runner {
 
             // Register the metrics so they exist on init.
             for name in metrics::GAUGE_NAMES {
-                ::metrics::register_gauge(name);
+                ::snarkos_node_metrics::register_gauge(name);
             }
             for name in metrics::COUNTER_NAMES {
-                ::metrics::register_counter(name);
+                ::snarkos_node_metrics::register_counter(name);
             }
             for name in metrics::HISTOGRAM_NAMES {
-                ::metrics::register_histogram(name);
+                ::snarkos_node_metrics::register_histogram(name);
             }
         }
 

@@ -40,11 +40,9 @@ jobs:
 
   #     - uses: Swatinem/rust-cache@v2
   #       with:
-  #         workspaces: snarkos-test
   #         key: cache-v1
 
   #     - name: Build
-  #       working-directory: ./snarkos-test
   #       env:
   #         RUSTFLAGS: -Zcodegen-backend=cranelift -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
   #       run: cargo +nightly-2024-04-01 build --verbose
@@ -55,24 +53,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
-        with:
-          path: snarkos-test
-
-      - name: 📥 Checkout snarkOS
-        uses: actions/checkout@v4
-        with:
-          repository: AleoHQ/snarkOS
-          fetch-depth: 0
-          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
-          path: snarkos
-
-      - name: 📥 Checkout snarkVM
-        uses: actions/checkout@v4
-        with:
-          repository: AleoHQ/snarkVM
-          fetch-depth: 0
-          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
-          path: snarkvm
 
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -80,7 +60,6 @@ jobs:
           components: rustfmt
 
       - name: 📋 Format Check
-        working-directory: ./snarkos-test
         run: cargo +nightly fmt -- --check
 
   test:
@@ -89,24 +68,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
-        with:
-          path: snarkos-test
-
-      - name: 📥 Checkout snarkOS
-        uses: actions/checkout@v4
-        with:
-          repository: AleoHQ/snarkOS
-          fetch-depth: 0
-          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
-          path: snarkos
-
-      - name: 📥 Checkout snarkVM
-        uses: actions/checkout@v4
-        with:
-          repository: AleoHQ/snarkVM
-          fetch-depth: 0
-          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
-          path: snarkvm
 
       - name: 🥬 Use Mold Linker
         uses: rui314/setup-mold@v1
@@ -120,7 +81,6 @@ jobs:
       - name: 🫙 Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: snarkos-test
           key: cache-v1
           cache-on-failure: true
 
@@ -131,21 +91,18 @@ jobs:
       # run: cargo install cargo-machete
 
       # - name: 📋 Clippy Check
-      #   working-directory: ./snarkos-test
       #   env:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo +nightly-2024-04-01 clippy --all --all-targets -- -D warnings
 
       # - name: 📋 Check Unused Deps
       #   if: always()
-      #   working-directory: ./snarkos-test
       #   env:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo machete
 
       - name: 🧪 Test
         if: always()
-        working-directory: ./snarkos-test
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
         run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast
