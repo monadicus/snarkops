@@ -63,7 +63,7 @@ jobs:
         with:
           repository: AleoHQ/snarkOS
           fetch-depth: 0
-          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
+          ref: 9be1039d7426040e15299631d59a66a8d97251a7 # latest canarynet
           path: snarkos
 
       - name: 📥 Checkout snarkVM
@@ -71,7 +71,7 @@ jobs:
         with:
           repository: AleoHQ/snarkVM
           fetch-depth: 0
-          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
+          ref: aef07da8ed38aa4c3cdb2d946e0b6c783cc72cd3 # latest canarynet
           path: snarkvm
 
       - name: ☁️ Install Nightly

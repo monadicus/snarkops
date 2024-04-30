@@ -3564,7 +3564,6 @@ dependencies = [
  "lru",
  "parking_lot 0.12.1",
  "rand",
- "rayon",
  "snarkos-account",
  "snarkos-node-bft",
  "snarkos-node-bft-ledger-service",
@@ -3580,7 +3579,10 @@ name = "snarkos-node-metrics"
 version = "2.2.7"
 dependencies = [
  "metrics-exporter-prometheus 0.13.1",
+ "parking_lot 0.12.1",
+ "rayon",
  "snarkvm",
+ "time",
  "tokio",
 ]
 
@@ -3669,6 +3671,7 @@ dependencies = [
  "rand",
  "serde",
  "snarkos-node-bft-ledger-service",
+ "snarkos-node-router",
  "snarkos-node-sync-communication-service",
  "snarkos-node-sync-locators",
  "snarkvm",
