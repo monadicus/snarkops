@@ -36,6 +36,13 @@ impl DataFormat for PackedUint {
         let mut num_bytes = [0u8; 1];
         reader.read_exact(&mut num_bytes)?;
 
+        if num_bytes[0] > 8 {
+            return Err(DataReadError::Custom(format!(
+                "PackedUint received `{}` length, which is greater than 8",
+                num_bytes[0]
+            )));
+        }
+
         // read that many bytes
         let mut bytes = [0u8; 8];
         reader.read_exact(&mut bytes[..num_bytes[0] as usize])?;
