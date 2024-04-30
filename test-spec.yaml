@@ -11,8 +11,12 @@ fetch: https://example.com/genesis.block
 # instructions for generating this test
 generate:
   accounts:
-    - file: accounts.json
-      total: 5
+    # generate 5 accounts with a random seed
+    foo: 5
+    # generate 5 accounts with a given seed
+    bar:
+      count: 5
+      seed: 12345
 
   # genesis generation
   genesis:
@@ -46,7 +50,6 @@ id: public-tx-500
 name: public tx, 500 rounds, 800 accounts
 description: |
   This ledger was built to test a large volume of accounts
-prefer_existing: true
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
@@ -61,6 +64,9 @@ external:
     bft: 11.12.13.14:5000
     node: 11.12.13.14:4130
     rest: 11.12.13.14:3030
+
+  # shorthand of the above (uses default ports)
+  validator/2@canarynet: 11.12.13.14
 
   validator/1@devnet:
     bft: 11.12.13.14:5000

@@ -8,10 +8,10 @@ use snops_common::{
     api::{CheckpointMeta, StorageInfo},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, LEDGER_STORAGE_FILE, SNARKOS_FILE,
-        SNARKOS_GENESIS_FILE,
+        SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
     rpc::error::ReconcileError,
-    state::{EnvId, HeightRequest},
+    state::{EnvId, HeightRequest, StorageId},
 };
 use tokio::process::Command;
 use tracing::{debug, error, info, trace};
@@ -27,7 +27,7 @@ pub async fn check_files(
 ) -> Result<(), ReconcileError> {
     let base_path = &state.cli.path;
     let storage_id = &info.id;
-    let storage_path = base_path.join("storage").join(storage_id);
+    let storage_path = base_path.join("storage").join(storage_id.to_string());
 
     // create the directory containing the storage files
     tokio::fs::create_dir_all(&storage_path)
@@ -36,21 +36,35 @@ pub async fn check_files(
 
     // TODO: store binary based on binary id
     // download the snarkOS binary
-    api::check_binary(
-        env_id,
-        &format!("http://{}", &state.endpoint),
-        &base_path.join(SNARKOS_FILE),
-    ) // TODO: http(s)?
-    .await
-    .expect("failed to acquire snarkOS binary");
+    api::check_binary(env_id, &state.endpoint, &base_path.join(SNARKOS_FILE)) // TODO: http(s)?
+        .await
+        .expect("failed to acquire snarkOS binary");
 
+    let version_file = storage_path.join(VERSION_FILE);
+
+    // wipe old storage when the version changes
+    if get_version_from_path(&version_file).await? != Some(info.version) && storage_path.exists() {
+        let _ = tokio::fs::remove_dir_all(&storage_path).await;
+    }
+
+    std::fs::create_dir_all(&storage_path).map_err(|e| {
+        error!("failed to create storage directory: {e}");
+        ReconcileError::StorageSetupError("create storage directory".to_string())
+    })?;
+
+    let genesis_path = storage_path.join(SNARKOS_GENESIS_FILE);
     let genesis_url = format!(
-        "http://{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
+        "{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
+        &state.endpoint
+    );
+    let ledger_path = storage_path.join(LEDGER_STORAGE_FILE);
+    let ledger_url = format!(
+        "{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
         &state.endpoint
     );
 
     // download the genesis block
-    api::check_file(genesis_url, &storage_path.join(SNARKOS_GENESIS_FILE))
+    api::check_file(genesis_url, &genesis_path)
         .await
         .map_err(|e| {
             error!("failed to download {SNARKOS_GENESIS_FILE} from the control plane: {e}");
@@ -63,17 +77,20 @@ pub async fn check_files(
         return Ok(());
     }
 
-    let ledger_url = format!(
-        "http://{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
-        &state.endpoint
-    );
-
     // download the ledger file
-    api::check_file(ledger_url, &storage_path.join(LEDGER_STORAGE_FILE))
+    api::check_file(ledger_url, &ledger_path)
         .await
         .map_err(|e| {
             error!("failed to download {SNARKOS_GENESIS_FILE} from the control plane: {e}");
             ReconcileError::StorageAcquireError(LEDGER_STORAGE_FILE.to_owned())
+        })?;
+
+    // write the regen version to a "version" file
+    tokio::fs::write(&version_file, info.version.to_string())
+        .await
+        .map_err(|e| {
+            error!("failed to write storage version: {e}");
+            ReconcileError::StorageSetupError("write storage version".to_string())
         })?;
 
     Ok(())
@@ -88,7 +105,7 @@ pub async fn load_ledger(
 ) -> Result<bool, ReconcileError> {
     let base_path = &state.cli.path;
     let storage_id = &info.id;
-    let storage_path = base_path.join("storage").join(storage_id);
+    let storage_path = base_path.join("storage").join(storage_id.to_string());
 
     // use a persisted directory for the untar when configured
     let (untar_base, untar_dir) = if info.persist {
@@ -175,6 +192,8 @@ pub async fn load_ledger(
             .arg("-C") // the untar_dir must exist. this will extract the contents of the tar to the
             // directory
             .arg(untar_dir)
+            .arg("--strip-components") // remove the parent "ledger" directory within the tar
+            .arg("1")
             .kill_on_drop(true)
             .spawn()
             .map_err(|err| {
@@ -217,7 +236,9 @@ pub async fn load_ledger(
     .ok_or(ReconcileError::CheckpointAcquireError)?;
 
     // download checkpoint if necessary, and get the path
-    let path = checkpoint.acquire(state, &storage_path, storage_id).await?;
+    let path = checkpoint
+        .acquire(state, &storage_path, *storage_id)
+        .await?;
 
     // apply the checkpoint to the ledger
     let res = Command::new(dbg!(state.cli.path.join(SNARKOS_FILE)))
@@ -262,7 +283,7 @@ impl<'a> CheckpointSource<'a> {
         self,
         state: &GlobalState,
         storage_path: &Path,
-        storage_id: &str,
+        storage_id: StorageId,
     ) -> Result<PathBuf, ReconcileError> {
         Ok(match self {
             CheckpointSource::Meta(meta) => {
@@ -271,7 +292,7 @@ impl<'a> CheckpointSource<'a> {
                     meta.height, meta.timestamp
                 );
                 let checkpoint_url = format!(
-                    "http://{}/content/storage/{storage_id}/{}",
+                    "{}/content/storage/{storage_id}/{}",
                     &state.endpoint, meta.filename
                 );
                 let path = storage_path.join(&meta.filename);
@@ -341,4 +362,17 @@ fn find_checkpoint_by_span<'a>(
         .into_iter()
         .rev()
         .find_map(|(t, c)| if t <= timestamp { Some(c) } else { None })
+}
+
+async fn get_version_from_path(path: &PathBuf) -> Result<Option<u16>, ReconcileError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let data = tokio::fs::read_to_string(path).await.map_err(|e| {
+        error!("failed to read storage version: {e}");
+        ReconcileError::StorageSetupError("failed to read storage version".to_string())
+    })?;
+
+    Ok(data.parse().ok())
 }

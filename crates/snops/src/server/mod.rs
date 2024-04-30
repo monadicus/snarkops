@@ -8,70 +8,63 @@ use axum::{
     },
     http::HeaderMap,
     middleware,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 use futures_util::stream::StreamExt;
+use http::StatusCode;
+use prometheus_http_query::Client as PrometheusClient;
 use serde::Deserialize;
 use snops_common::{
+    constant::HEADER_AGENT_KEY,
     prelude::*,
     rpc::{
         agent::{AgentServiceClient, Handshake},
         control::ControlService,
     },
 };
-use surrealdb::Surreal;
 use tarpc::server::Channel;
 use tokio::select;
 use tracing::{error, info, warn};
 
 use self::{
     error::StartError,
-    jwt::{Claims, JWT_NONCE, JWT_SECRET},
+    jwt::{Claims, JWT_SECRET},
     rpc::ControlRpcServer,
 };
 use crate::{
     cli::Cli,
+    db::{self, document::DbDocument},
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
-    state::{util::OpaqueDebug, Agent, AgentFlags, AppState, GlobalState},
+    state::{Agent, AgentFlags, AppState, GlobalState},
 };
 
 mod api;
 mod content;
 pub mod error;
 pub mod jwt;
+pub mod models;
 pub mod prometheus;
 mod rpc;
 
 pub async fn start(cli: Cli) -> Result<(), StartError> {
-    let mut path = cli.path.clone();
-    path.push("data.db");
-    let db = Surreal::new::<surrealdb::engine::local::File>(path).await?;
+    let db = db::Database::open(&cli.path.join("store"))?;
 
     let prometheus = cli
         .prometheus
-        .and_then(|p| prometheus_http_query::Client::try_from(format!("http://{p}")).ok()); // TODO: https
+        .as_ref()
+        .and_then(|p| PrometheusClient::try_from(p.as_str()).ok());
 
-    let state = GlobalState {
-        cli,
-        db,
-        pool: Default::default(),
-        storage_ids: Default::default(),
-        storage: Default::default(),
-        envs: Default::default(),
-        prom_httpsd: Default::default(),
-        prometheus: OpaqueDebug(prometheus),
-    };
+    let state = Arc::new(GlobalState::load(cli, db, prometheus).await?);
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
         .nest("/prometheus", prometheus::routes())
-        // /env/<id>/ledger/* - ledger query service reverse proxying /mainnet/latest/stateRoot
         .nest("/content", content::init_routes(&state).await)
-        .with_state(Arc::new(state))
+        .with_state(state)
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
 
@@ -97,8 +90,23 @@ async fn agent_ws_handler(
     headers: HeaderMap,
     State(state): State<AppState>,
     Query(query): Query<AgentWsQuery>,
-) -> impl IntoResponse {
+) -> Response {
+    match (&state.agent_key, headers.get(HEADER_AGENT_KEY)) {
+        // assert key equals passed header
+        (Some(key), Some(header)) if key == header.to_str().unwrap_or_default() => (),
+
+        // forbid if key is incorrect
+        (Some(_), _) => {
+            warn!("an agent has attempted to connect with a mismatching agent key");
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+
+        // allow if no key is present
+        _ => (),
+    }
+
     ws.on_upgrade(|socket| handle_socket(socket, headers, state, query))
+        .into_response()
 }
 
 async fn handle_socket(
@@ -129,13 +137,7 @@ async fn handle_socket(
                 }
             }
 
-            // ensure the nonce is correct
-            if claims.nonce == *JWT_NONCE {
-                true
-            } else {
-                warn!("connecting agent specified invalid JWT nonce");
-                false
-            }
+            true
         });
 
     // TODO: the client should provide us with some information about itself (num
@@ -151,36 +153,63 @@ async fn handle_socket(
 
     let id: AgentId = 'insertion: {
         let client = client.clone();
-        let mut pool = state.pool.write().await;
-        let mut handshake = Handshake::default();
+        let mut handshake = Handshake {
+            loki: state.cli.loki.as_ref().map(|u| u.to_string()),
+            ..Default::default()
+        };
 
         // attempt to reconnect if claims were passed
         'reconnect: {
             if let Some(claims) = claims {
-                let Some(agent) = pool.get_mut(&claims.id) else {
+                let Some(mut agent) = state.pool.get_mut(&claims.id) else {
                     warn!("connecting agent is trying to identify as an unrecognized agent");
                     break 'reconnect;
                 };
 
+                let id = agent.id();
                 if agent.is_connected() {
-                    warn!("connecting agent is trying to identify as an already-connected agent");
+                    warn!(
+                        "connecting agent is trying to identify as an already-connected agent {id}"
+                    );
                     break 'reconnect;
                 }
 
-                agent.mark_connected(client);
+                // compare the stored nonce with the JWT's nonce
+                if agent.claims().nonce != claims.nonce {
+                    warn!("connecting agent {id} is trying to identify with an invalid nonce");
+                    break 'reconnect;
+                }
 
-                let id = agent.id();
+                if let AgentState::Node(env, _) = agent.state() {
+                    if !state.envs.contains_key(env) {
+                        info!("setting agent {id} to Inventory state due to missing env {env}");
+                        agent.set_state(AgentState::Inventory);
+                    }
+                }
+
+                // attach the current known agent state to the handshake
+                agent.state().clone_into(&mut handshake.state);
+
+                // mark the agent as connected, update the flags as well
+                agent.mark_connected(client, query.flags);
+
                 info!("agent {id} reconnected");
-
-                // TODO: probably want to reconcile with old state?
+                if let Err(e) = agent.save(&state.db, id) {
+                    error!("failed to save agent {id} to the database: {e}");
+                }
 
                 // handshake with client
+                // note: this may cause a reconciliation, so this *may* be non-instant
                 // unwrap safety: this agent was just `mark_connected` with a valid client
                 let client = agent.rpc().cloned().unwrap();
                 tokio::spawn(async move {
                     // we do this in a separate task because we don't want to hold up pool insertion
-                    if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
-                        error!("failed to perform client handshake: {e}");
+                    match client.handshake(tarpc::context::current(), handshake).await {
+                        Ok(Ok(())) => (),
+                        Ok(Err(e)) => {
+                            error!("failed to perform client handshake reconciliation: {e}")
+                        }
+                        Err(e) => error!("failed to perform client handshake: {e}"),
                     }
                 });
 
@@ -189,10 +218,16 @@ async fn handle_socket(
         }
 
         // otherwise, we need to create an agent and give it a new JWT
-        let id = query.id.unwrap_or_default();
+        // TODO: remove unnamed agents
+        let id = query.id.unwrap_or_else(AgentId::rand);
 
         // check if an agent with this id is already online
-        if pool.get(&id).map(Agent::is_connected).unwrap_or_default() {
+        if state
+            .pool
+            .get(&id)
+            .map(|a| a.is_connected())
+            .unwrap_or_default()
+        {
             warn!("an agent is trying to identify as an already-connected agent {id}");
             socket.send(Message::Close(None)).await.ok();
             return;
@@ -208,25 +243,32 @@ async fn handle_socket(
         // handshake with the client
         tokio::spawn(async move {
             // we do this in a separate task because we don't want to hold up pool insertion
-            if let Err(e) = client.handshake(tarpc::context::current(), handshake).await {
-                error!("failed to perform client handshake: {e}");
+            match client.handshake(tarpc::context::current(), handshake).await {
+                Ok(Ok(())) => (),
+                Ok(Err(e)) => error!("failed to perform client handshake reconciliation: {e}"),
+                Err(e) => error!("failed to perform client handshake: {e}"),
             }
         });
 
         // insert a new agent into the pool
-        pool.insert(id, agent);
+        if let Err(e) = agent.save(&state.db, id) {
+            error!("failed to save agent {id} to the database: {e}");
+        }
+        state.pool.insert(id, agent);
 
-        info!("agent {id} connected; pool is now {} nodes", pool.len());
+        info!(
+            "agent {id} connected; pool is now {} nodes",
+            state.pool.len()
+        );
 
         id
     };
 
     // fetch the agent's network addresses on connect/reconnect
-    let state2 = state.clone();
+    let state2 = Arc::clone(&state);
     tokio::spawn(async move {
         if let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await {
-            let mut state = state2.pool.write().await;
-            if let Some(agent) = state.get_mut(&id) {
+            if let Some(mut agent) = state2.pool.get_mut(&id) {
                 info!(
                     "agent {id} [{}], labels: {:?}, addrs: {external:?} {internal:?} @ {ports}, local pk: {}",
                     agent.modes(),
@@ -235,6 +277,9 @@ async fn handle_socket(
                 );
                 agent.set_ports(ports);
                 agent.set_addrs(external, internal);
+                if let Err(e) = agent.save(&state2.db, id) {
+                    error!("failed to save agent {id} to the database: {e}");
+                }
             }
         }
     });
@@ -306,8 +351,7 @@ async fn handle_socket(
     {
         // TODO: remove agent after 10 minutes of inactivity
 
-        let mut pool = state.pool.write().await;
-        if let Some(agent) = pool.get_mut(&id) {
+        if let Some(mut agent) = state.pool.get_mut(&id) {
             agent.mark_disconnected();
         }
 

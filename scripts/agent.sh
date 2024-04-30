@@ -11,10 +11,29 @@ if [ -z "$INDEX" ]; then
   exit 1
 fi
 
+ENDPOINT="127.0.0.1:1234"
 DATA_PATH="$(pwd)/snops-data/$INDEX"
+AGENT_BIN="$DATA_PATH/agent"
 
-echo "Starting ${DATA_PATH}"
-cargo run --release -p snops-agent -- \
+# create the data path if it doesn't exist
+mkdir -p "$DATA_PATH"
+
+echo "Starting agent in ${DATA_PATH}"
+
+# Download the agent binary
+echo "Checking for agent binary..."
+
+# conditionally set the -z flag to check if the file exists
+if [ -e "$AGENT_BIN" ]
+then zflag="-z '$AGENT_BIN'"
+else zflag=
+fi
+
+curl -sSL "$ENDPOINT/content/agent" $zflag -o $AGENT_BIN
+chmod +x $AGENT_BIN
+
+$AGENT_BIN \
+  --endpoint "$ENDPOINT" \
   --id "local-$INDEX" \
   --path "$DATA_PATH" \
   --bind "0.0.0.0" \
@@ -26,4 +45,3 @@ cargo run --release -p snops-agent -- \
   --client --validator --compute \
   $@
 
-# --private-key-file "$DATA_PATH/key" \

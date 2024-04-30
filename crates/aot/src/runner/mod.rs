@@ -17,9 +17,8 @@ use snarkvm::{
     utilities::FromBytes,
 };
 use snops_common::state::NodeType;
-use tracing::info;
 
-use crate::{ledger::Addrs, Account, Network, PrivateKey};
+use crate::{ledger::Addrs, Account, DbLedger, Network, PrivateKey};
 
 mod metrics;
 
@@ -96,8 +95,20 @@ pub struct Runner {
 }
 
 impl Runner {
+    pub fn parse(self) -> Result<()> {
+        if std::env::var("DEFAULT_RUNTIME").ok().is_some() {
+            self.start_without_runtime()
+        } else {
+            Self::runtime().block_on(async move { self.start().await })
+        }
+    }
+
     #[tokio::main]
-    pub async fn parse(self) -> Result<()> {
+    pub async fn start_without_runtime(self) -> Result<()> {
+        self.start().await
+    }
+
+    pub async fn start(self) -> Result<()> {
         let bind_addr = self.bind_addr;
         let node_ip = SocketAddr::new(bind_addr, self.node);
         let rest_ip = SocketAddr::new(bind_addr, self.rest);
@@ -117,14 +128,22 @@ impl Runner {
 
         let storage_mode = StorageMode::Custom(self.ledger.clone());
 
+        if let Err(e) = DbLedger::load(genesis.clone(), storage_mode.clone()) {
+            tracing::error!("aot failed to load ledger: {e}");
+            // L in binary = 01001100 = 76
+            std::process::exit(76);
+        }
+
         // slight alterations to the normal `metrics::initialize_metrics` because of
         // visibility issues
         {
             // Build the Prometheus exporter.
-            metrics_exporter_prometheus::PrometheusBuilder::new()
+            if let Err(e) = metrics_exporter_prometheus::PrometheusBuilder::new()
                 .with_http_listener(metrics_ip)
                 .install()
-                .expect("can't build the prometheus exporter");
+            {
+                tracing::error!("can't build the prometheus exporter: {e}");
+            }
 
             // Register the snarkVM metrics.
             snarkvm::metrics::register_metrics();
@@ -196,7 +215,6 @@ impl Runner {
                     if last_height != height {
                         last_height = height;
 
-                        info!("creating checkpoint @ {height}...");
                         if let Err(e) = manager.poll() {
                             tracing::error!("backup loop error: {e:?}");
                         }
@@ -211,5 +229,34 @@ impl Runner {
         std::future::pending::<()>().await;
 
         Ok(())
+    }
+
+    /// Returns a runtime for the node.
+    pub fn runtime() -> tokio::runtime::Runtime {
+        // Retrieve the number of cores.
+        let num_cores = num_cpus::get();
+
+        // Initialize the number of tokio worker threads, max tokio blocking threads,
+        // and rayon cores. Note: We intentionally set the number of tokio
+        // worker threads and number of rayon cores to be more than the number
+        // of physical cores, because the node is expected to be I/O-bound.
+        let (num_tokio_worker_threads, max_tokio_blocking_threads, num_rayon_cores_global) =
+            (2 * num_cores, 512, num_cores);
+
+        // Initialize the parallelization parameters.
+        rayon::ThreadPoolBuilder::new()
+            .stack_size(8 * 1024 * 1024)
+            .num_threads(num_rayon_cores_global)
+            .build_global()
+            .unwrap();
+
+        // Initialize the runtime configuration.
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_stack_size(8 * 1024 * 1024)
+            .worker_threads(num_tokio_worker_threads)
+            .max_blocking_threads(max_tokio_blocking_threads)
+            .build()
+            .expect("Failed to initialize a runtime for the router")
     }
 }

@@ -8,6 +8,7 @@ use axum::{
 };
 use reqwest::StatusCode;
 use serde_json::json;
+use snops_common::state::id_or_none;
 
 use super::Authorization;
 use crate::state::AppState;
@@ -20,13 +21,18 @@ pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
 }
 
 async fn state_root(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(String, String)>,
     state: State<AppState>,
 ) -> Response {
-    let Some(env) = ({
-        let env = state.envs.read().await;
-        env.get(&env_id).cloned()
-    }) else {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "unknown cannon or environment" })),
+        )
+            .into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "environment not found" })),
@@ -34,8 +40,7 @@ async fn state_root(
             .into_response();
     };
 
-    let cannon_lock = env.cannons.read().await;
-    let Some(cannon) = cannon_lock.get(&cannon_id) else {
+    let Some(cannon) = env.get_cannon(cannon_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "cannon not found" })),
@@ -76,14 +81,19 @@ async fn state_root(
 }
 
 async fn transaction(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(String, String)>,
     state: State<AppState>,
     body: String,
 ) -> Response {
-    let Some(env) = ({
-        let env = state.envs.read().await;
-        env.get(&env_id).cloned()
-    }) else {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "unknown cannon or environment" })),
+        )
+            .into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "environment not found" })),
@@ -91,8 +101,7 @@ async fn transaction(
             .into_response();
     };
 
-    let cannon_lock = env.cannons.read().await;
-    let Some(cannon) = cannon_lock.get(&cannon_id) else {
+    let Some(cannon) = env.get_cannon(cannon_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "cannon not found" })),
@@ -111,14 +120,19 @@ async fn transaction(
 }
 
 async fn authorization(
-    Path((env_id, cannon_id)): Path<(usize, usize)>,
+    Path((env_id, cannon_id)): Path<(String, String)>,
     state: State<AppState>,
     Json(body): Json<Authorization>,
 ) -> Response {
-    let Some(env) = ({
-        let env = state.envs.read().await;
-        env.get(&env_id).cloned()
-    }) else {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "unknown cannon or environment" })),
+        )
+            .into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "environment not found" })),
@@ -126,8 +140,7 @@ async fn authorization(
             .into_response();
     };
 
-    let cannon_lock = env.cannons.read().await;
-    let Some(cannon) = cannon_lock.get(&cannon_id) else {
+    let Some(cannon) = env.get_cannon(cannon_id) else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "cannon not found" })),

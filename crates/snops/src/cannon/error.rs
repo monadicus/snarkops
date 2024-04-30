@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snops_common::{impl_into_status_code, impl_into_type_str, state::NodeKey};
+use snops_common::{
+    impl_into_status_code, impl_into_type_str,
+    state::{CannonId, EnvId, NodeKey, TxPipeId},
+};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
@@ -102,11 +105,11 @@ impl_into_status_code!(SourceError);
 #[derive(Debug, Error, AsRefStr)]
 pub enum CannonInstanceError {
     #[error("missing query port for cannon `{0}`")]
-    MissingQueryPort(usize),
+    MissingQueryPort(CannonId),
     #[error("cannon `{0}` is not configured to playback txs")]
-    NotConfiguredToPlayback(usize),
+    NotConfiguredToPlayback(CannonId),
     #[error("no target agent found for cannon `{0}`: {1}")]
-    TargetAgentNotFound(usize, NodeKey),
+    TargetAgentNotFound(CannonId, NodeKey),
 }
 
 impl_into_status_code!(CannonInstanceError, |value| match value {
@@ -130,28 +133,28 @@ impl Serialize for CannonInstanceError {
 #[derive(Debug, Error, AsRefStr)]
 pub enum ExecutionContextError {
     #[error("broadcast error for exec ctx `{0}`: {1}")]
-    Broadcast(usize, String),
+    Broadcast(CannonId, String),
     #[error("broadcast error for exec ctx `{0}`: {1}")]
-    BroadcastRequest(usize, #[source] reqwest::Error),
+    BroadcastRequest(CannonId, #[source] reqwest::Error),
     #[
-			error("env dropped{}{}`", 
+			error("env dropped{}{}`",
 			.0.map(|id| format!(" for cannon `{id}`")).unwrap_or_default(),
 			.1.map(|id| format!(" for exec ctx `{id}`")).unwrap_or_default()
 		)]
-    EnvDropped(Option<usize>, Option<usize>),
+    EnvDropped(Option<CannonId>, Option<CannonId>),
     #[error("no available agents `{0}` for exec ctx `{1}`")]
-    NoAvailableAgents(&'static str, usize),
-    #[error("no --host configured for demox based cannon")]
-    NoDemoxHostConfigured,
+    NoAvailableAgents(&'static str, CannonId),
+    #[error("no --hostname configured for demox based cannon")]
+    NoHostnameConfigured,
     #[error("tx drain `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
-    TransactionDrainNotFound(usize, usize, String),
+    TransactionDrainNotFound(EnvId, CannonId, TxPipeId),
     #[error("tx sink `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
-    TransactionSinkNotFound(usize, usize, String),
+    TransactionSinkNotFound(EnvId, CannonId, TxPipeId),
 }
 
 impl_into_status_code!(ExecutionContextError, |value| match value {
     Broadcast(_, _) | BroadcastRequest(_, _) => StatusCode::MISDIRECTED_REQUEST,
-    NoAvailableAgents(_, _) | NoDemoxHostConfigured => StatusCode::SERVICE_UNAVAILABLE,
+    NoAvailableAgents(_, _) | NoHostnameConfigured => StatusCode::SERVICE_UNAVAILABLE,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
@@ -175,22 +178,25 @@ pub enum CannonError {
     #[error(transparent)]
     CannonInstance(#[from] CannonInstanceError),
     #[error("cannon `{0}`: {1}")]
-    Command(usize, #[source] CommandError),
+    Command(CannonId, #[source] CommandError),
     #[error(transparent)]
     ExecutionContext(#[from] ExecutionContextError),
     #[error("target agent offline for {0} `{1}`: {2}")]
-    TargetAgentOffline(&'static str, usize, String),
+    TargetAgentOffline(&'static str, CannonId, String),
     #[error(transparent)]
     TransactionDrain(#[from] TransactionDrainError),
     #[error(transparent)]
     TransactionSink(#[from] TransactionSinkError),
     #[error("send `auth` error for cannon `{0}`: {1}")]
     SendAuthError(
-        usize,
+        CannonId,
         #[source] tokio::sync::mpsc::error::SendError<Authorization>,
     ),
     #[error("send `tx` error for cannon `{0}`: {1}")]
-    SendTxError(usize, #[source] tokio::sync::mpsc::error::SendError<String>),
+    SendTxError(
+        CannonId,
+        #[source] tokio::sync::mpsc::error::SendError<String>,
+    ),
     #[error(transparent)]
     Source(#[from] SourceError),
     #[error(transparent)]

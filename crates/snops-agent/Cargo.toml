@@ -8,7 +8,6 @@ anyhow.workspace = true
 bincode.workspace = true
 checkpoint.workspace = true
 clap.workspace = true
-external-ip.workspace = true
 futures.workspace = true
 futures-util.workspace = true
 http.workspace = true
@@ -17,10 +16,16 @@ local-ip-address.workspace = true
 nix = { workspace = true, features = ["signal"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
 simple_moving_average.workspace = true
-snops-common = { path = "../snops-common" }
+snops-common.workspace = true
 tarpc.workspace = true
-tokio = { workspace = true, features = ["macros", "process", "signal"] }
+tokio = { workspace = true, features = [
+	"macros",
+	"process",
+	"signal",
+	"rt-multi-thread",
+] }
 tokio-tungstenite.workspace = true
 tracing-appender.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+url.workspace = true

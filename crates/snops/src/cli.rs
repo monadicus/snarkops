@@ -1,6 +1,7 @@
-use std::{fmt::Display, net::SocketAddr, path::PathBuf, str::FromStr};
+use std::{fmt::Display, path::PathBuf, str::FromStr};
 
 use clap::Parser;
+use url::Url;
 
 #[derive(Debug, Parser)]
 pub struct Cli {
@@ -8,9 +9,15 @@ pub struct Cli {
     #[arg(long, default_value_t = 1234)]
     pub port: u16,
 
-    /// Optional IP:port that a Prometheus server is running on
+    // TODO: store services in a file config or something?
+    /// Optional URL referencing a Prometheus server
     #[arg(long)]
-    pub prometheus: Option<SocketAddr>,
+    pub prometheus: Option<Url>,
+
+    // TODO: clarify that this needs to be an IP that agents can reach (handle external/internal?)
+    /// Optional URL referencing a Loki server
+    #[arg(long)]
+    pub loki: Option<Url>,
 
     #[arg(long, default_value_t = PrometheusLocation::Docker)]
     pub prometheus_location: PrometheusLocation,
@@ -20,6 +27,11 @@ pub struct Cli {
     pub path: PathBuf,
 
     #[arg(long)]
+    /// Hostname to advertise to the control plane, used when resolving the
+    /// control plane's address for external cannons can be an external IP
+    /// or FQDN, will have the port appended
+    ///
+    /// must contain http:// or https://
     pub hostname: Option<String>,
 }
 

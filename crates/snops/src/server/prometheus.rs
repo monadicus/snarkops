@@ -42,12 +42,9 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
         // recompute the response and save it
         HttpsdResponse::Dirty => {
             debug!("httpsd response is dirty, regenerating...");
-            let pool = state.pool.read().await;
-            let envs = state.envs.read().await;
-
             let mut static_configs = vec![];
 
-            for (agent_id, agent) in pool.iter() {
+            for agent in state.pool.iter() {
                 let Some(mut agent_addr) =
                     (match (state.cli.prometheus_location, agent.has_label_str("local")) {
                         // agent is external: serve its external IP
@@ -78,13 +75,13 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
                 match agent.state() {
                     AgentState::Node(env_id, _) => {
                         // get the environment this agent belongs to
-                        let Some(env) = envs.get(env_id) else {
+                        let Some(env) = state.get_env(*env_id) else {
                             continue;
                         };
 
                         // get the node key that corresponds to this agent
                         let Some(node_key) =
-                            env.node_map.get_by_right(&EnvPeer::Internal(*agent_id))
+                            env.node_peers.get_by_right(&EnvPeer::Internal(agent.id()))
                         else {
                             continue;
                         };
@@ -97,7 +94,7 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
                             targets: [agent_addr],
                             labels: [
                                 ("env_id".into(), env_id.to_string()),
-                                ("agent_id".into(), node_key.to_string()),
+                                ("node_key".into(), node_key.to_string()),
                             ]
                             .into_iter()
                             .collect(),

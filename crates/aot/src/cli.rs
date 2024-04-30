@@ -2,20 +2,21 @@
 use std::fs::File;
 #[cfg(feature = "flame")]
 use std::io::BufWriter;
-use std::{
-    io::{self},
-    path::PathBuf,
-};
+use std::{io, path::PathBuf, thread};
 
 use anyhow::Result;
 use clap::Parser;
 use crossterm::tty::IsTty;
+use reqwest::Url;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
-use crate::{authorized::Execute, credits::Authorize, genesis::Genesis, ledger::Ledger};
+use crate::{
+    accounts::GenAccounts, authorized::Execute, credits::Authorize, genesis::Genesis,
+    ledger::Ledger,
+};
 
 #[derive(Debug, Parser)]
 #[clap(name = "snarkOS AoT", author = "MONADIC.US")]
@@ -28,6 +29,9 @@ pub struct Cli {
     #[arg(long, default_value_t = 4)]
     pub verbosity: u8,
 
+    #[arg(long)]
+    pub loki: Option<Url>,
+
     #[clap(subcommand)]
     pub command: Command,
 }
@@ -35,6 +39,7 @@ pub struct Cli {
 #[derive(Debug, Parser)]
 pub enum Command {
     Genesis(Genesis),
+    Accounts(GenAccounts),
     Ledger(Ledger),
     #[cfg(feature = "node")]
     Run(Runner),
@@ -58,6 +63,11 @@ impl Flushable for tracing_flame::FlushGuard<BufWriter<File>> {
     }
 }
 
+#[cfg(feature = "flame")]
+type FlameGuard = Box<dyn Flushable>;
+#[cfg(not(feature = "flame"))]
+type FlameGuard = ();
+
 impl Cli {
     /// Initializes the logger.
     ///
@@ -70,7 +80,7 @@ impl Cli {
     /// 5 => info, debug, trace, snarkos_node_router=trace
     /// 6 => info, debug, trace, snarkos_node_tcp=trace
     /// ```
-    pub fn init_logger(&self) -> (Box<dyn Flushable>, Vec<WorkerGuard>) {
+    pub fn init_logger(&self) -> (FlameGuard, Vec<WorkerGuard>) {
         let verbosity = self.verbosity;
 
         match verbosity {
@@ -80,7 +90,7 @@ impl Cli {
         };
 
         // Filter out undesirable logs. (unfortunately EnvFilter cannot be cloned)
-        let [filter, filter2] = std::array::from_fn(|_| {
+        let filter = {
             let filter = tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("mio=off".parse().unwrap())
                 .add_directive("tokio_util=off".parse().unwrap())
@@ -120,10 +130,19 @@ impl Cli {
             } else {
                 filter.add_directive("snarkos_node_tcp=off".parse().unwrap())
             }
-        });
+        };
+
+        let subscriber = tracing_subscriber::registry().with(filter);
 
         let mut layers = vec![];
         let mut guards = vec![];
+
+        macro_rules! non_blocking_appender {
+            ($name:ident = ( $args:expr )) => {
+                let ($name, guard) = tracing_appender::non_blocking($args);
+                guards.push(guard);
+            };
+        }
 
         if cfg!(not(feature = "flame")) && self.enable_profiling {
             // TODO should be an error
@@ -141,7 +160,7 @@ impl Cli {
         };
 
         #[cfg(not(feature = "flame"))]
-        let guard = Box::new(());
+        let guard = ();
 
         if let Some(logfile) = self.log.as_ref() {
             // Create the directories tree for a logfile if it doesn't exist.
@@ -154,41 +173,62 @@ impl Cli {
             }
 
             let file_appender = tracing_appender::rolling::daily(logfile_dir, logfile);
-            let (non_blocking, file_guard) = tracing_appender::non_blocking(file_appender);
-            guards.push(file_guard);
+            non_blocking_appender!(log_writer = (file_appender));
 
             // Add layer redirecting logs to the file
+
             layers.push(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(false)
-                    .with_writer(non_blocking)
-                    .with_filter(filter2)
+                    .with_thread_ids(true)
+                    .with_writer(log_writer)
                     .boxed(),
-            );
-        }
+            )
+        };
 
         // Initialize tracing.
         // Add layer using LogWriter for stdout / terminal
         if matches!(self.command, Command::Run(_)) {
-            let (stdout, g) = tracing_appender::non_blocking(io::stdout());
-            guards.push(g);
+            non_blocking_appender!(stdout = (io::stdout()));
 
             layers.push(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(io::stdout().is_tty())
+                    .with_thread_ids(true)
                     .with_writer(stdout)
-                    .with_filter(filter)
                     .boxed(),
             );
         } else {
-            let (stderr, g) = tracing_appender::non_blocking(io::stderr());
-            guards.push(g);
+            non_blocking_appender!(stderr = (io::stderr()));
             layers.push(tracing_subscriber::fmt::layer().with_writer(stderr).boxed());
+        }
+
+        if let Some(loki) = &self.loki {
+            let mut builder = tracing_loki::builder();
+
+            let env_var = std::env::var("SNOPS_LOKI_LABELS").ok();
+            let fields = match &env_var {
+                Some(var) => var
+                    .split(',')
+                    .map(|item| item.split_once('=').unwrap_or((item, "")))
+                    .collect(),
+                None => vec![],
+            };
+
+            for (key, value) in fields {
+                builder = builder.label(key, value).expect("bad loki label");
+            }
+
+            let (layer, task) = builder.build_url(loki.to_owned()).expect("bad loki url");
+            thread::spawn(|| {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let handle = rt.spawn(task);
+                rt.block_on(handle).unwrap();
+            });
+            layers.push(layer.boxed());
         };
 
-        let subscriber = tracing_subscriber::registry::Registry::default().with(layers);
-
-        tracing::subscriber::set_global_default(subscriber).unwrap();
+        tracing::subscriber::set_global_default(subscriber.with(layers)).unwrap();
         (guard, guards)
     }
 
@@ -196,6 +236,7 @@ impl Cli {
         let _guards = self.init_logger();
 
         match self.command {
+            Command::Accounts(command) => command.parse(),
             Command::Genesis(command) => command.parse(),
             Command::Ledger(command) => command.parse(),
             #[cfg(feature = "node")]

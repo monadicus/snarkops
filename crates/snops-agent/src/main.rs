@@ -13,10 +13,13 @@ use std::{
 
 use clap::Parser;
 use cli::Cli;
-use futures::{executor::block_on, SinkExt};
+use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::HeaderValue;
-use snops_common::rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport};
+use snops_common::{
+    constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
+    rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport},
+};
 use tarpc::server::Channel;
 use tokio::{
     select,
@@ -26,7 +29,7 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::{self, client::IntoClientRequest},
 };
-use tracing::{error, info, level_filters::LevelFilter, warn};
+use tracing::{error, info, level_filters::LevelFilter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing, JWT_FILE};
@@ -71,20 +74,16 @@ async fn main() {
 
     // get the network interfaces available to this node
     let internal_addrs = net::get_internal_addrs().expect("failed to get network interfaces");
-    let external_addr = args
-        .external
-        .then(|| block_on(net::get_external_addr()))
-        .flatten();
+    let external_addr = args.external;
     if let Some(addr) = external_addr {
         info!("using external addr: {}", addr);
-    } else if args.external {
-        warn!("failed to get external address");
     } else {
         info!("skipping external addr");
     }
 
     // get the endpoint
     let (endpoint, ws_uri) = args.endpoint_and_uri();
+    info!("connecting to {endpoint}");
 
     // create the data directory
     tokio::fs::create_dir_all(&args.path)
@@ -112,7 +111,8 @@ async fn main() {
         cli: args,
         endpoint,
         jwt: Mutex::new(jwt),
-        env_to_storage: Default::default(),
+        loki: Default::default(),
+        env_info: Default::default(),
         agent_state: Default::default(),
         reconcilation_handle: Default::default(),
         child: Default::default(),
@@ -146,7 +146,7 @@ async fn main() {
             let mut req = ws_uri.to_owned().into_client_request().unwrap();
 
             // invalidate env info cache
-            state.env_to_storage.write().await.clear();
+            state.env_info.write().await.take();
 
             // attach JWT if we have one
             {
@@ -158,6 +158,14 @@ async fn main() {
                             .expect("attach authorization header"),
                     );
                 }
+            }
+
+            // attach agent key if one is set in env vars
+            if let Ok(key) = std::env::var(ENV_AGENT_KEY) {
+                req.headers_mut().insert(
+                    HEADER_AGENT_KEY,
+                    HeaderValue::from_bytes(key.as_bytes()).expect("attach agent key header"),
+                );
             }
 
             let (mut ws_stream, _) = select! {
@@ -249,6 +257,7 @@ async fn main() {
         }
     }
 
+    state.node_graceful_shutdown().await;
     info!("snops agent has shut down gracefully :)");
 }
 

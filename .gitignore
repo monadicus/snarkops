@@ -5,3 +5,5 @@
 /snops-control-data
 /snops-data
 /metrics-data
+/specs/local-*.yaml
+.vscode/settings.json

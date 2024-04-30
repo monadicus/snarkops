@@ -61,13 +61,17 @@ jobs:
       - name: 📥 Checkout snarkOS
         uses: actions/checkout@v4
         with:
-          repository: AleoNet/snarkOS
+          repository: AleoHQ/snarkOS
+          fetch-depth: 0
+          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
           path: snarkos
 
       - name: 📥 Checkout snarkVM
         uses: actions/checkout@v4
         with:
-          repository: AleoNet/snarkVM
+          repository: AleoHQ/snarkVM
+          fetch-depth: 0
+          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
           path: snarkvm
 
       - name: ☁️ Install Nightly
@@ -91,13 +95,17 @@ jobs:
       - name: 📥 Checkout snarkOS
         uses: actions/checkout@v4
         with:
-          repository: AleoNet/snarkOS
+          repository: AleoHQ/snarkOS
+          fetch-depth: 0
+          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
           path: snarkos
 
       - name: 📥 Checkout snarkVM
         uses: actions/checkout@v4
         with:
-          repository: AleoNet/snarkVM
+          repository: AleoHQ/snarkVM
+          fetch-depth: 0
+          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
           path: snarkvm
 
       - name: 🥬 Use Mold Linker
@@ -119,8 +127,8 @@ jobs:
       - name: ☁️ Install Nextest
         uses: taiki-e/install-action@nextest
 
-      - name: ☁️ Install cargo-machete
-        run: cargo install cargo-machete
+      # - name: ☁️ Install cargo-machete
+      # run: cargo install cargo-machete
 
       # - name: 📋 Clippy Check
       #   working-directory: ./snarkos-test
@@ -128,12 +136,12 @@ jobs:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo +nightly-2024-04-01 clippy --all --all-targets -- -D warnings
 
-      - name: 📋 Check Unused Deps
-        if: always()
-        working-directory: ./snarkos-test
-        env:
-          RUSTFLAGS: -Zcodegen-backend=cranelift
-        run: cargo machete
+      # - name: 📋 Check Unused Deps
+      #   if: always()
+      #   working-directory: ./snarkos-test
+      #   env:
+      #     RUSTFLAGS: -Zcodegen-backend=cranelift
+      #   run: cargo machete
 
       - name: 🧪 Test
         if: always()

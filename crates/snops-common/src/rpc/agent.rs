@@ -3,18 +3,23 @@ use std::net::IpAddr;
 use serde::{Deserialize, Serialize};
 
 use super::error::*;
-use crate::state::{AgentState, PortConfig};
+use crate::{
+    prelude::EnvId,
+    state::{AgentState, PortConfig},
+};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Handshake {
     pub jwt: Option<String>,
+    pub loki: Option<String>,
+    pub state: AgentState,
 }
 
 /// The RPC service that agents implement as a server.
 #[tarpc::service]
 pub trait AgentService {
     /// Handshake with some initial connection details.
-    async fn handshake(handshake: Handshake);
+    async fn handshake(handshake: Handshake) -> Result<(), ReconcileError>;
 
     /// Control plane asks the agent for its external network address, along
     /// with local addrs.
@@ -34,7 +39,7 @@ pub trait AgentService {
     /// environment id is passed so the agent can determine which aot binary to
     /// use
     async fn execute_authorization(
-        env_id: usize,
+        env_id: EnvId,
         query: String,
         auth: String,
     ) -> Result<(), AgentError>;

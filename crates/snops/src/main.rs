@@ -7,12 +7,14 @@ use tracing_subscriber::prelude::*;
 
 pub mod cannon;
 pub mod cli;
+pub mod db;
 pub mod env;
 pub mod error;
 pub mod logging;
 pub mod schema;
 pub mod server;
 pub mod state;
+pub mod util;
 
 #[tokio::main]
 async fn main() {
@@ -28,8 +30,6 @@ async fn main() {
         .add_directive("hyper_util=off".parse().unwrap())
         .add_directive("hyper=off".parse().unwrap())
         .add_directive("reqwest=off".parse().unwrap())
-        .add_directive("surrealdb_core=off".parse().unwrap())
-        .add_directive("surrealdb=off".parse().unwrap())
         .add_directive("tungstenite=off".parse().unwrap())
         .add_directive("tokio_tungstenite=off".parse().unwrap())
         .add_directive("tarpc::client=ERROR".parse().unwrap())
