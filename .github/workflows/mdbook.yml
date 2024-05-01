@@ -4,13 +4,18 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write # To push a branch
+  pages: write # To push to a GitHub Pages site
+  id-token: write # To update the deployment status
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # To push a branch
-      pages: write # To push to a GitHub Pages site
-      id-token: write # To update the deployment status
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,16 +28,12 @@ jobs:
           curl -sSL $url | tar -xz --directory=./mdbook
           echo `pwd`/mdbook >> $GITHUB_PATH
       - name: Build Book
-        run: |
-          # This assumes your book is in the root of your repository.
-          # Just add a `cd` here if you need to change to another directory.
-          mdbook build
+        run: mdbook build
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
           path: "book"
       - name: Deploy to GitHub Pages
         id: deployment
