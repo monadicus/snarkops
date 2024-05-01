@@ -33,4 +33,4 @@ a [pull request](https://github.com/monadicus/snarkops/pulls).
 
 The `snops` source and documentation are released under
 the [MIT License
-](https://en.wikipedia.org/wiki/MIT_License).
+](https://github.com/monadicus/snarkops/blob/main/LICENSE).
