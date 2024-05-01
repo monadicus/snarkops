@@ -12,8 +12,21 @@
 # User Guide
 
 - [Overview](user_guide/README.md)
-- [CLI Help](clis/README.md)
-  - [AOT](clis/SNARKOS_AOT.md)
-  - [AGENT](clis/SNOPS_AGENT.md)
-  - [SNOPS](clis/SNOPS.md)
-  - [SNOPS_CLI](clis/SNOPS_CLI.md)
+  - [Setting up Environments](user_guide/envs/README.md)
+    - [Storage](user_guide/envs/STORAGE.md)
+    - [Topology](user_guide/envs/TOPOLOGY.md)
+    - [Timelines](user_guide/envs/TIMELINES.md)
+    - [Outcomes](user_guide/envs/OUTCOMES.md)
+  - [Running](user_guide/running/README.md)
+    - [Agent](user_guide/running/AGENT.md)
+    - [Control Plane](user_guide/running/CONTROL_PLANE.md)
+    - [Metrics and Logging](user_guide/running/METRICS_AND_LOGGING.md)
+  - [CLI Help](user_guide/clis/README.md)
+    - [AOT](user_guide/clis/SNARKOS_AOT.md)
+    - [AGENT](user_guide/clis/SNOPS_AGENT.md)
+    - [SNOPS](user_guide/clis/SNOPS.md)
+    - [SNOPS_CLI](user_guide/clis/SNOPS_CLI.md)
+
+# Developing
+
+TODO
