@@ -25,6 +25,8 @@ pub enum StorageError {
     FailedToFetchGenesis(StorageId, Url, #[source] reqwest::Error),
     #[error("writing genesis block id: `{0}`: {1}")]
     FailedToWriteGenesis(StorageId, #[source] std::io::Error),
+    #[error("creating ledger dir id: `{0}`: {1}")]
+    FailedToCreateLedgerDir(StorageId, #[source] std::io::Error),
     #[error("taring ledger id: `{0}`: {1}")]
     FailedToTarLedger(StorageId, #[source] std::io::Error),
     #[error("the specified storage ID {0} doesn't exist, and no generation params were specified")]
