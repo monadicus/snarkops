@@ -4,6 +4,7 @@ use self::{document::DbCollection, error::DatabaseError};
 
 pub mod document;
 pub mod error;
+pub mod tree;
 
 #[derive(Debug)]
 pub struct Database {

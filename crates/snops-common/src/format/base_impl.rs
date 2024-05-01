@@ -1,6 +1,9 @@
 use std::io::{Read, Write};
 
-use super::{packed_int::PackedUint, DataFormat, DataReadError, DataWriteError};
+use super::{
+    packed_int::PackedUint, DataFormat, DataFormatReader, DataFormatWriter, DataReadError,
+    DataWriteError,
+};
 
 macro_rules! impl_tuple_dataformat {
     ($($name:ident),+) => {
@@ -141,7 +144,7 @@ impl<T: DataFormat + Default + Copy, const N: usize> DataFormat for [T; N] {
     fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         let mut data = [T::default(); N];
         for item in data.iter_mut() {
-            *item = T::read_data(reader, header)?;
+            *item = reader.read_data(header)?;
         }
         Ok(data)
     }
@@ -153,8 +156,8 @@ impl<T: DataFormat> DataFormat for Option<T> {
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(match self {
-            None => 0u8.write_data(writer)?,
-            Some(value) => 1u8.write_data(writer)? + value.write_data(writer)?,
+            None => writer.write(&[0u8])?,
+            Some(value) => writer.write(&[1u8])? + writer.write_data(value)?,
         })
     }
 
@@ -163,7 +166,7 @@ impl<T: DataFormat> DataFormat for Option<T> {
         reader.read_exact(&mut byte)?;
         Ok(match byte[0] {
             0 => None,
-            1 => Some(T::read_data(reader, header)?),
+            1 => Some(reader.read_data(header)?),
             _ => return Err(DataReadError::Custom("invalid Option tag".to_string())),
         })
     }
@@ -176,7 +179,7 @@ impl<T: DataFormat> DataFormat for Vec<T> {
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = PackedUint::from(self.len()).write_data(writer)?;
         for item in self.iter() {
-            written += item.write_data(writer)?;
+            written += writer.write_data(item)?;
         }
         Ok(written)
     }
@@ -185,7 +188,7 @@ impl<T: DataFormat> DataFormat for Vec<T> {
         let len = usize::from(PackedUint::read_data(reader, &())?);
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
-            data.push(T::read_data(reader, header)?);
+            data.push(reader.read_data(header)?);
         }
         Ok(data)
     }

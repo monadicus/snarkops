@@ -4,7 +4,10 @@ use rand::RngCore;
 use serde::de::Error;
 
 use super::INTERNED_ID_REGEX;
-use crate::INTERN;
+use crate::{
+    format::{DataFormat, PackedUint},
+    INTERN,
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InternedId(lasso::Spur);
@@ -82,5 +85,51 @@ impl serde::Serialize for InternedId {
         S: serde::Serializer,
     {
         serializer.serialize_str(self.as_ref())
+    }
+}
+
+impl DataFormat for InternedId {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let s: &str = self.as_ref();
+        let bytes = s.as_bytes();
+        Ok(PackedUint::from(bytes.len()).write_data(writer)? + writer.write(bytes)?)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        _header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        let data = String::read_data(reader, &())?;
+        InternedId::from_str(&data).map_err(|e| {
+            crate::format::DataReadError::Custom(format!("error loading interned id {data}: {e}"))
+        })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_interned_id() {
+        let id = InternedId::rand();
+        let s = id.to_string();
+        let id2 = InternedId::from_str(&s).unwrap();
+        assert_eq!(id, id2);
+    }
+
+    #[test]
+    fn test_interned_id_dataformat() {
+        let id = InternedId::rand();
+        let mut buf = Vec::new();
+        id.write_data(&mut buf).unwrap();
+        let id2 = InternedId::read_data(&mut buf.as_slice(), &()).unwrap();
+        assert_eq!(id, id2);
     }
 }

@@ -28,19 +28,21 @@ pub enum DataReadError {
     /// headers
     #[error("upgrade unavailable: {0}")]
     UpgradeUnavailable(String),
+    #[error("invalid version: {0}")]
+    UnsupportedVersion(String),
     /// A custom user defined error
     #[error("{0}")]
     Custom(String),
 }
 
-pub fn write_data<W: Write, F: DataFormat>(
+pub fn write_dataformat<W: Write, F: DataFormat>(
     writer: &mut W,
     data: &F,
 ) -> Result<usize, DataWriteError> {
     Ok(data.write_header(writer)? + data.write_data(writer)?)
 }
 
-pub fn read_data<R: Read, F: DataFormat>(reader: &mut R) -> Result<F, DataReadError> {
+pub fn read_dataformat<R: Read, F: DataFormat>(reader: &mut R) -> Result<F, DataReadError> {
     let header = F::read_header(reader)?;
     F::read_data(reader, &header)
 }
@@ -60,8 +62,7 @@ pub trait DataFormat: Sized {
         // read the header's header
         let header_header = Self::Header::read_header(reader)?;
         // read the header's data
-        let header = Self::Header::read_data(reader, &header_header)?;
-        Ok(header)
+        reader.read_data(&header_header)
     }
 
     /// Write the data to the writer
@@ -69,4 +70,31 @@ pub trait DataFormat: Sized {
 
     /// Read the data from the reader
     fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError>;
+
+    /// Convert the data to a byte vector
+    fn to_byte_vec(&self) -> Result<Vec<u8>, DataWriteError> {
+        let mut buf = Vec::new();
+        self.write_data(&mut buf)?;
+        Ok(buf)
+    }
+}
+
+pub trait DataFormatWriter {
+    fn write_data<F: DataFormat>(&mut self, data: &F) -> Result<usize, DataWriteError>;
+}
+
+impl<W: Write> DataFormatWriter for W {
+    fn write_data<F: DataFormat>(&mut self, data: &F) -> Result<usize, DataWriteError> {
+        data.write_data(self)
+    }
+}
+
+pub trait DataFormatReader {
+    fn read_data<F: DataFormat>(&mut self, header: &F::Header) -> Result<F, DataReadError>;
+}
+
+impl<R: Read> DataFormatReader for R {
+    fn read_data<F: DataFormat>(&mut self, header: &F::Header) -> Result<F, DataReadError> {
+        F::read_data(self, header)
+    }
 }
