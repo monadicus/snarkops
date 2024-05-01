@@ -1,4 +1,4 @@
-use crate::prelude::MaskBit;
+use crate::{format::DataFormat, prelude::MaskBit};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -45,6 +45,46 @@ impl std::str::FromStr for NodeType {
             "validator" => Ok(Self::Validator),
             "prover" => Ok(Self::Prover),
             _ => Err("invalid node type string"),
+        }
+    }
+}
+
+impl DataFormat for NodeType {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        Ok(writer.write(&[match self {
+            Self::Client => 0,
+            Self::Validator => 1,
+            Self::Prover => 2,
+        }])?)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(crate::format::DataReadError::unsupported(
+                "NodeType",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        let mut byte = [0u8; 1];
+        reader.read_exact(&mut byte)?;
+        match byte[0] {
+            0 => Ok(Self::Client),
+            1 => Ok(Self::Validator),
+            2 => Ok(Self::Prover),
+            n => Err(crate::format::DataReadError::Custom(format!(
+                "invalid NodeType tag {n}, expected 0, 1, or 2"
+            ))),
         }
     }
 }

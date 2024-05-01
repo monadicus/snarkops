@@ -21,7 +21,7 @@ use crate::{
 /// The global state for the control plane.
 #[derive(Debug)]
 pub struct GlobalState {
-    pub db: Database,
+    pub db: OpaqueDebug<Database>,
     pub cli: Cli,
     pub agent_key: Option<String>,
     pub pool: AgentPool,
@@ -96,7 +96,7 @@ impl GlobalState {
             envs,
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
-            db,
+            db: OpaqueDebug(db),
         })
     }
 

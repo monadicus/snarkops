@@ -1,4 +1,7 @@
-use std::io::{Read, Write};
+use std::{
+    fmt::Display,
+    io::{Read, Write},
+};
 
 mod base_impl;
 mod packed_int;
@@ -33,6 +36,12 @@ pub enum DataReadError {
     /// A custom user defined error
     #[error("{0}")]
     Custom(String),
+}
+
+impl DataReadError {
+    pub fn unsupported(name: impl Display, expected: impl Display, found: impl Display) -> Self {
+        Self::UnsupportedVersion(format!("{name}: expected {expected}, found {found}"))
+    }
 }
 
 pub fn write_dataformat<W: Write, F: DataFormat>(

@@ -79,7 +79,7 @@ impl PersistStorage {
 impl DbCollection for AgentPool {
     fn restore(db: &Database) -> Result<Self, DatabaseError> {
         let map = AgentPool::default();
-        for row in db.agents.iter() {
+        for row in db.agents_old.iter() {
             let Some(id) = load_interned_id(row, "agent") else {
                 continue;
             };
@@ -108,7 +108,7 @@ impl DbDocument for Agent {
 
     fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
         let Some(raw) = db
-            .agents
+            .agents_old
             .get(key)
             .map_err(|e| DatabaseError::LookupError(key.to_string(), "agents".to_owned(), e))?
         else {
@@ -156,7 +156,7 @@ impl DbDocument for Agent {
         )
         .map_err(|e| DatabaseError::SerializeError(key.to_string(), "agents".to_owned(), e))?;
 
-        db.agents
+        db.agents_old
             .insert(key, buf)
             .map_err(|e| DatabaseError::SaveError(key.to_string(), "agents".to_owned(), e))?;
         Ok(())
@@ -164,7 +164,7 @@ impl DbDocument for Agent {
 
     fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
         Ok(db
-            .agents
+            .agents_old
             .remove(key)
             .map_err(|e| DatabaseError::DeleteError(key.to_string(), "agents".to_owned(), e))?
             .is_some())
@@ -174,7 +174,7 @@ impl DbDocument for Agent {
 impl DbCollection for Vec<PersistStorage> {
     fn restore(db: &Database) -> Result<Self, DatabaseError> {
         let mut vec = Vec::new();
-        for row in db.storage.iter() {
+        for row in db.storage_old.iter() {
             let Some(id) = load_interned_id(row, "storage") else {
                 continue;
             };
@@ -203,7 +203,7 @@ impl DbDocument for PersistStorage {
 
     fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
         let Some(raw) = db
-            .storage
+            .storage_old
             .get(key)
             .map_err(|e| DatabaseError::LookupError(key.to_string(), "storage".to_owned(), e))?
         else {
@@ -247,7 +247,7 @@ impl DbDocument for PersistStorage {
             ),
         )
         .map_err(|e| DatabaseError::SerializeError(key.to_string(), "storage".to_owned(), e))?;
-        db.storage
+        db.storage_old
             .insert(key, buf)
             .map_err(|e| DatabaseError::SaveError(key.to_string(), "storage".to_owned(), e))?;
         Ok(())
@@ -255,7 +255,7 @@ impl DbDocument for PersistStorage {
 
     fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
         Ok(db
-            .storage
+            .storage_old
             .remove(key)
             .map_err(|e| DatabaseError::DeleteError(key.to_string(), "storage".to_owned(), e))?
             .is_some())

@@ -3,6 +3,7 @@ use std::{fmt::Write, str::FromStr};
 use serde::de::Error;
 
 use super::{NodeType, NODE_KEY_REGEX};
+use crate::format::{DataFormat, DataFormatReader, DataFormatWriter};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct NodeKey {
@@ -68,5 +69,40 @@ impl serde::Serialize for NodeKey {
         S: serde::Serializer,
     {
         serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl DataFormat for NodeKey {
+    type Header = (u8, <NodeType as DataFormat>::Header);
+    const LATEST_HEADER: Self::Header = (1, <NodeType as DataFormat>::LATEST_HEADER);
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = 0;
+        written += writer.write_data(&self.ty)?;
+        written += writer.write_data(&self.id)?;
+        written += writer.write_data(&self.ns)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if header.0 != Self::LATEST_HEADER.0 {
+            return Err(crate::format::DataReadError::unsupported(
+                "NodeKey",
+                Self::LATEST_HEADER.0,
+                header.0,
+            ));
+        }
+
+        let ty = reader.read_data(&header.1)?;
+        let id = reader.read_data(&())?;
+        let ns = reader.read_data(&())?;
+
+        Ok(Self { ty, id, ns })
     }
 }

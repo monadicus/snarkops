@@ -46,6 +46,42 @@ impl<Key: DataFormat<Header = ()>, Value: DataFormat> DbTree<Key, Value> {
         })
     }
 
+    pub fn read_with_prefix<Prefix: DataFormat<Header = ()>>(
+        &self,
+        prefix: &Prefix,
+    ) -> Result<impl Iterator<Item = (Key, Value)>, DatabaseError> {
+        Ok(self
+            .tree
+            .scan_prefix(prefix.to_byte_vec()?)
+            .filter_map(|row| {
+                let (key_bytes, value_bytes) = match row {
+                    Ok((key, value)) => (key, value),
+                    Err(e) => {
+                        tracing::error!("Error reading row from store: {e}");
+                        return None;
+                    }
+                };
+
+                let key = match Key::read_data(&mut key_bytes.reader(), &()) {
+                    Ok(key) => key,
+                    Err(e) => {
+                        tracing::error!("Error parsing key from store: {e}");
+                        return None;
+                    }
+                };
+
+                let value = match read_dataformat(&mut value_bytes.reader()) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        tracing::error!("Error parsing value from store: {e}");
+                        return None;
+                    }
+                };
+
+                Some((key, value))
+            }))
+    }
+
     pub fn save(&self, key: Key, value: Value) -> Result<(), DatabaseError> {
         self.tree.insert(key.to_byte_vec()?, value.to_byte_vec()?)?;
         Ok(())
