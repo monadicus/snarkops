@@ -17,6 +17,9 @@ node = [
 	"num_cpus",
 	"rayon",
 ]
+docpages = ["clipages", "mangen"]
+clipages = ["snops-common/clipages"]
+mangen = ["snops-common/mangen"]
 
 [dependencies]
 aleo-std.workspace = true

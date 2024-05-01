@@ -3,6 +3,12 @@ name = "snops"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+docpages = ["clipages", "mangen"]
+clipages = ["snops-common/clipages"]
+mangen = ["snops-common/mangen"]
+
 [dependencies]
 axum = { workspace = true, features = [
 	"http2",

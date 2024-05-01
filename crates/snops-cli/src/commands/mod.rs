@@ -9,8 +9,6 @@ pub(crate) static DUMMY_ID: &str = "dummy_value___";
 
 mod agent;
 mod env;
-#[cfg(feature = "mangen")]
-mod mangen;
 
 #[derive(Debug, Parser)]
 pub enum Commands {
@@ -22,10 +20,12 @@ pub enum Commands {
     },
     #[clap(alias = "a")]
     Agent(agent::Agent),
-    #[cfg(feature = "mangen")]
-    Mangen(mangen::Mangen),
     #[clap(alias = "e")]
     Env(env::Env),
+    #[cfg(feature = "mangen")]
+    Man(snops_common::mangen::Mangen),
+    #[cfg(feature = "clipages")]
+    Md(snops_common::clipages::Clipages),
 }
 
 impl Commands {
@@ -41,12 +41,22 @@ impl Commands {
                 return Ok(());
             }
             Commands::Agent(agent) => agent.run(url, client),
+
+            Commands::Env(env) => env.run(url, client),
             #[cfg(feature = "mangen")]
-            Commands::Mangen(mangen) => {
-                mangen.run()?;
+            Commands::Man(mangen) => {
+                mangen.run(
+                    Cli::command(),
+                    env!("CARGO_PKG_VERSION"),
+                    env!("CARGO_PKG_NAME"),
+                )?;
                 return Ok(());
             }
-            Commands::Env(env) => env.run(url, client),
+            #[cfg(feature = "clipages")]
+            Commands::Md(clipages) => {
+                clipages.run::<Cli>(env!("CARGO_PKG_NAME"))?;
+                return Ok(());
+            }
         }?;
 
         if !response.status().is_success() {

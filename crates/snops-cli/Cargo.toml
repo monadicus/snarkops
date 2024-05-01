@@ -5,13 +5,14 @@ edition = "2021"
 
 [features]
 default = []
-mangen = ["clap_mangen"]
+docpages = ["clipages", "mangen"]
+clipages = ["snops-common/clipages"]
+mangen = ["snops-common/mangen"]
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
-clap_mangen = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["blocking", "json"] }
 serde_json.workspace = true
 snops-common.workspace = true

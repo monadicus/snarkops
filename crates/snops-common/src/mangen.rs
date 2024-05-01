@@ -1,11 +1,9 @@
 use std::{fs::OpenOptions, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result};
-use clap::{Command, CommandFactory, Parser, ValueHint};
+use clap::{Command, Parser, ValueHint};
 
-use crate::Cli;
-
-/// For generating snops manpages.
+/// For generating cli manpages.
 /// Only with the mangen feature enabled.
 #[derive(Debug, Parser)]
 pub struct Mangen {
@@ -14,16 +12,18 @@ pub struct Mangen {
 }
 
 impl Mangen {
-    pub fn run(self) -> Result<()> {
-        print_manpages(&self.directory, Cli::command())?;
+    pub fn run(self, cmd: Command, version: &'static str, pkg_name: &'static str) -> Result<()> {
+        print_manpages(&self.directory, cmd, version, pkg_name)?;
         Ok(())
     }
 }
 
-fn print_manpages(dir: &PathBuf, cmd: Command) -> Result<()> {
-    // `get_display_name()` is `Some` for all instances, except the root.
-    let version = env!("CARGO_PKG_VERSION");
-    let pkg_name = env!("CARGO_PKG_NAME");
+fn print_manpages(
+    dir: &PathBuf,
+    cmd: Command,
+    version: &'static str,
+    pkg_name: &'static str,
+) -> Result<()> {
     let name = cmd.get_name();
     std::fs::create_dir_all(dir).with_context(|| format!("creating {dir:?}"))?;
     let path = dir.join(format!("{name}.1"));
@@ -50,7 +50,12 @@ fn print_manpages(dir: &PathBuf, cmd: Command) -> Result<()> {
         // not long-running production code, so we just leak the names here.
         let subname = &*std::boxed::Box::leak(subname.into_boxed_str());
         let subcmd = subcmd.clone().name(subname).alias(subname).version(version);
-        print_manpages(dir, subcmd.clone().name(subname).version(version))?;
+        print_manpages(
+            dir,
+            subcmd.clone().name(subname).version(version),
+            version,
+            pkg_name,
+        )?;
     }
 
     Ok(())

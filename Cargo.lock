@@ -4694,8 +4694,11 @@ dependencies = [
 name = "snops-common"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "checkpoint",
  "clap",
+ "clap-markdown",
+ "clap_mangen",
  "futures",
  "http 1.1.0",
  "lasso",

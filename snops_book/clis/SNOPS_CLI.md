@@ -10,7 +10,6 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli agent info`↴](#snops-cli-agent-info)
 * [`snops-cli agent list`↴](#snops-cli-agent-list)
 * [`snops-cli agent tps`↴](#snops-cli-agent-tps)
-* [`snops-cli mangen`↴](#snops-cli-mangen)
 * [`snops-cli env`↴](#snops-cli-env)
 * [`snops-cli env agent`↴](#snops-cli-env-agent)
 * [`snops-cli env agents`↴](#snops-cli-env-agents)
@@ -27,6 +26,8 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli env storage`↴](#snops-cli-env-storage)
 * [`snops-cli env start`↴](#snops-cli-env-start)
 * [`snops-cli env stop`↴](#snops-cli-env-stop)
+* [`snops-cli man`↴](#snops-cli-man)
+* [`snops-cli md`↴](#snops-cli-md)
 
 ## `snops-cli`
 
@@ -36,8 +37,9 @@ This document contains the help content for the `snops-cli` command-line program
 
 * `autocomplete` — Generate shell completions
 * `agent` — For interacting with snop agents
-* `mangen` — For generating snops manpages. Only with the mangen feature enabled
 * `env` — For interacting with snop environments
+* `man` — For generating cli manpages. Only with the mangen feature enabled
+* `md` — For generating cli markdown. Only with the clipages feature enabled
 
 ###### **Options:**
 
@@ -103,20 +105,6 @@ List all agents. Ignores the agent id
 Get the specific agent's TPS
 
 **Usage:** `snops-cli agent tps`
-
-
-
-## `snops-cli mangen`
-
-For generating snops manpages. Only with the mangen feature enabled
-
-**Usage:** `snops-cli mangen [DIRECTORY]`
-
-###### **Arguments:**
-
-* `<DIRECTORY>`
-
-  Default value: `target/man/snops-cli`
 
 
 
@@ -294,6 +282,34 @@ Stop an environment's timeline
 ###### **Arguments:**
 
 * `<TIMELINE_ID>` — Stop a specific timeline
+
+
+
+## `snops-cli man`
+
+For generating cli manpages. Only with the mangen feature enabled
+
+**Usage:** `snops-cli man [DIRECTORY]`
+
+###### **Arguments:**
+
+* `<DIRECTORY>`
+
+  Default value: `target/man/snops-cli`
+
+
+
+## `snops-cli md`
+
+For generating cli markdown. Only with the clipages feature enabled
+
+**Usage:** `snops-cli md [DIRECTORY]`
+
+###### **Arguments:**
+
+* `<DIRECTORY>`
+
+  Default value: `snops_book/clis`
 
 
 
