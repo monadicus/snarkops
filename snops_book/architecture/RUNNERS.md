@@ -10,8 +10,9 @@ The regular `snarkos` installation and runner.
 
 Our own custom wrapper around `snarkos` that allows for some custom behaviors:
 
-- Additional logging setup/Changes
-- Custom Ports
-- Ahead-of-Time(AoT) Generation of public transactions
-- Custom Genesis Creation
-- Ledger Manipulation and viewing tools
+- Additional logging setup/changes
+- Custom ports
+- Ahead-of-Time(AoT) generation of public transactions
+- Custom Genesis creation
+- Ledger manipulation and viewing tools
+- Ledger checkpoint tooling

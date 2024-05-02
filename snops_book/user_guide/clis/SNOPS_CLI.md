@@ -20,12 +20,12 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli env timeline delete`↴](#snops-cli-env-timeline-delete)
 * [`snops-cli env timeline info`↴](#snops-cli-env-timeline-info)
 * [`snops-cli env timeline list`↴](#snops-cli-env-timeline-list)
+* [`snops-cli env timeline start`↴](#snops-cli-env-timeline-start)
+* [`snops-cli env timeline stop`↴](#snops-cli-env-timeline-stop)
 * [`snops-cli env topology`↴](#snops-cli-env-topology)
 * [`snops-cli env topology-resolved`↴](#snops-cli-env-topology-resolved)
 * [`snops-cli env prepare`↴](#snops-cli-env-prepare)
 * [`snops-cli env storage`↴](#snops-cli-env-storage)
-* [`snops-cli env start`↴](#snops-cli-env-start)
-* [`snops-cli env stop`↴](#snops-cli-env-stop)
 * [`snops-cli man`↴](#snops-cli-man)
 * [`snops-cli md`↴](#snops-cli-md)
 
@@ -125,8 +125,6 @@ For interacting with snop environments
 * `topology-resolved` — Show the resolved topology of a specific environment. Shows only internal agents
 * `prepare` — Prepare a (test) environment
 * `storage` — Get an env's storage info
-* `start` — Start an environment's timeline (a test)
-* `stop` — Stop an environment's timeline
 
 ###### **Arguments:**
 
@@ -184,6 +182,8 @@ List all steps for a specific timeline
 * `delete` — Delete a timeline from an environment.zs
 * `info` — List all steps for a specific timeline
 * `list` — List all timelines for a specific environment. Timeline id is ignored
+* `start` — Start an environment's timeline (a test)
+* `stop` — Stop an environment's timeline
 
 ###### **Arguments:**
 
@@ -225,6 +225,22 @@ List all timelines for a specific environment. Timeline id is ignored
 
 
 
+## `snops-cli env timeline start`
+
+Start an environment's timeline (a test)
+
+**Usage:** `snops-cli env timeline start`
+
+
+
+## `snops-cli env timeline stop`
+
+Stop an environment's timeline
+
+**Usage:** `snops-cli env timeline stop`
+
+
+
 ## `snops-cli env topology`
 
 Show the current topology of a specific environment
@@ -258,30 +274,6 @@ Prepare a (test) environment
 Get an env's storage info
 
 **Usage:** `snops-cli env storage`
-
-
-
-## `snops-cli env start`
-
-Start an environment's timeline (a test)
-
-**Usage:** `snops-cli env start <TIMELINE_ID>`
-
-###### **Arguments:**
-
-* `<TIMELINE_ID>` — Start a specific timeline
-
-
-
-## `snops-cli env stop`
-
-Stop an environment's timeline
-
-**Usage:** `snops-cli env stop <TIMELINE_ID>`
-
-###### **Arguments:**
-
-* `<TIMELINE_ID>` — Stop a specific timeline
 
 
 
