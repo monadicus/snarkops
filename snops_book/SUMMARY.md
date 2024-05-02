@@ -29,4 +29,4 @@
 
 # Developing
 
-- [Devloping](developing/README.md)
+- [Developing](developing/README.md)

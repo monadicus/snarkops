@@ -1,3 +1,3 @@
-# Devloping
+# Developing
 
 TODO
