@@ -36,6 +36,12 @@ enum TimelineCommands {
     /// Timeline id is ignored.
     #[clap(alias = "ls")]
     List,
+
+    /// Start an environment's timeline (a test).
+    Start,
+
+    /// Stop an environment's timeline.
+    Stop,
 }
 
 impl Timeline {
@@ -69,6 +75,16 @@ impl Timeline {
                 let ep = format!("{url}/api/v1/env/{env_id}/timelines/{}/steps", self.id);
 
                 client.get(ep).send()?
+            }
+            Start => {
+                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{}", self.id);
+
+                client.post(ep).send()?
+            }
+            Stop => {
+                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{}", self.id);
+
+                client.delete(ep).send()?
             }
         })
     }

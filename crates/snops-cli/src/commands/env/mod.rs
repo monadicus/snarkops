@@ -65,20 +65,6 @@ enum EnvCommands {
     /// Get an env's storage info.
     #[clap(alias = "store")]
     Storage,
-
-    /// Start an environment's timeline (a test).
-    Start {
-        /// Start a specific timeline.
-        #[clap(value_hint = ValueHint::Other)]
-        timeline_id: String,
-    },
-
-    /// Stop an environment's timeline.
-    Stop {
-        /// Stop a specific timeline.
-        #[clap(value_hint = ValueHint::Other)]
-        timeline_id: String,
-    },
 }
 
 impl Env {
@@ -126,16 +112,6 @@ impl Env {
                 let ep = format!("{url}/api/v1/env/{}/storage", self.id);
 
                 client.get(ep).send()?
-            }
-            Start { timeline_id } => {
-                let ep = format!("{url}/api/v1/env/{}/timelines/{timeline_id}", self.id);
-
-                client.post(ep).send()?
-            }
-            Stop { timeline_id } => {
-                let ep = format!("{url}/api/v1/env/{}/timelines/{timeline_id}", self.id);
-
-                client.delete(ep).send()?
             }
         })
     }
