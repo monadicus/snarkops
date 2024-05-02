@@ -28,14 +28,11 @@ The runner binaries. So an agent can ask for whatever version it needs from the 
 ### Environments
 
 An environment is a collection of snops documents that describe a particular use
-case's storage, topology, timeline, and expected outcomes (see some
-[examples](./specs/)). But will go over these more in detail in [TODO]().
+case's storage, topology, timeline, and expected outcomes. You will learn more about Environments later in [Environments](../user_guide/envs/README.md).
 
 #### Topology
 
 The topology of agents and how they connect as validators, clients, provers, or transaction cannons. Additionally, says which storage is being used.
-
-You will learn more about Environments later in [TODO]().
 
 #### Storage Management
 
