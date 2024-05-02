@@ -1,46 +1,46 @@
-# Command-Line Help for `snarkOS AoT`
+# Command-Line Help for `snarkos-aot`
 
-This document contains the help content for the `snarkOS AoT` command-line program.
+This document contains the help content for the `snarkos-aot` command-line program.
 
 **Command Overview:**
 
-* [`snarkOS AoT`↴](#snarkOS AoT)
-* [`snarkOS AoT genesis`↴](#snarkOS AoT-genesis)
-* [`snarkOS AoT accounts`↴](#snarkOS AoT-accounts)
-* [`snarkOS AoT ledger`↴](#snarkOS AoT-ledger)
-* [`snarkOS AoT ledger init`↴](#snarkOS AoT-ledger-init)
-* [`snarkOS AoT ledger tx`↴](#snarkOS AoT-ledger-tx)
-* [`snarkOS AoT ledger tx from-ops`↴](#snarkOS AoT-ledger-tx-from-ops)
-* [`snarkOS AoT ledger tx num`↴](#snarkOS AoT-ledger-tx-num)
-* [`snarkOS AoT ledger add`↴](#snarkOS AoT-ledger-add)
-* [`snarkOS AoT ledger add random`↴](#snarkOS AoT-ledger-add-random)
-* [`snarkOS AoT ledger add stdin`↴](#snarkOS AoT-ledger-add-stdin)
-* [`snarkOS AoT ledger view`↴](#snarkOS AoT-ledger-view)
-* [`snarkOS AoT ledger view top`↴](#snarkOS AoT-ledger-view-top)
-* [`snarkOS AoT ledger view block`↴](#snarkOS AoT-ledger-view-block)
-* [`snarkOS AoT ledger view balance`↴](#snarkOS AoT-ledger-view-balance)
-* [`snarkOS AoT ledger view records`↴](#snarkOS AoT-ledger-view-records)
-* [`snarkOS AoT ledger distribute`↴](#snarkOS AoT-ledger-distribute)
-* [`snarkOS AoT ledger rewind`↴](#snarkOS AoT-ledger-rewind)
-* [`snarkOS AoT ledger replay`↴](#snarkOS AoT-ledger-replay)
-* [`snarkOS AoT ledger execute`↴](#snarkOS AoT-ledger-execute)
-* [`snarkOS AoT ledger query`↴](#snarkOS AoT-ledger-query)
-* [`snarkOS AoT ledger hash`↴](#snarkOS AoT-ledger-hash)
-* [`snarkOS AoT ledger checkpoint`↴](#snarkOS AoT-ledger-checkpoint)
-* [`snarkOS AoT ledger checkpoint create`↴](#snarkOS AoT-ledger-checkpoint-create)
-* [`snarkOS AoT ledger checkpoint apply`↴](#snarkOS AoT-ledger-checkpoint-apply)
-* [`snarkOS AoT ledger checkpoint view`↴](#snarkOS AoT-ledger-checkpoint-view)
-* [`snarkOS AoT ledger checkpoint clean`↴](#snarkOS AoT-ledger-checkpoint-clean)
-* [`snarkOS AoT run`↴](#snarkOS AoT-run)
-* [`snarkOS AoT execute`↴](#snarkOS AoT-execute)
-* [`snarkOS AoT authorize`↴](#snarkOS AoT-authorize)
-* [`snarkOS AoT authorize transfer-public`↴](#snarkOS AoT-authorize-transfer-public)
-* [`snarkOS AoT man`↴](#snarkOS AoT-man)
-* [`snarkOS AoT md`↴](#snarkOS AoT-md)
+* [`snarkos-aot`↴](#snarkos-aot)
+* [`snarkos-aot genesis`↴](#snarkos-aot-genesis)
+* [`snarkos-aot accounts`↴](#snarkos-aot-accounts)
+* [`snarkos-aot ledger`↴](#snarkos-aot-ledger)
+* [`snarkos-aot ledger init`↴](#snarkos-aot-ledger-init)
+* [`snarkos-aot ledger tx`↴](#snarkos-aot-ledger-tx)
+* [`snarkos-aot ledger tx from-ops`↴](#snarkos-aot-ledger-tx-from-ops)
+* [`snarkos-aot ledger tx num`↴](#snarkos-aot-ledger-tx-num)
+* [`snarkos-aot ledger add`↴](#snarkos-aot-ledger-add)
+* [`snarkos-aot ledger add random`↴](#snarkos-aot-ledger-add-random)
+* [`snarkos-aot ledger add stdin`↴](#snarkos-aot-ledger-add-stdin)
+* [`snarkos-aot ledger view`↴](#snarkos-aot-ledger-view)
+* [`snarkos-aot ledger view top`↴](#snarkos-aot-ledger-view-top)
+* [`snarkos-aot ledger view block`↴](#snarkos-aot-ledger-view-block)
+* [`snarkos-aot ledger view balance`↴](#snarkos-aot-ledger-view-balance)
+* [`snarkos-aot ledger view records`↴](#snarkos-aot-ledger-view-records)
+* [`snarkos-aot ledger distribute`↴](#snarkos-aot-ledger-distribute)
+* [`snarkos-aot ledger rewind`↴](#snarkos-aot-ledger-rewind)
+* [`snarkos-aot ledger replay`↴](#snarkos-aot-ledger-replay)
+* [`snarkos-aot ledger execute`↴](#snarkos-aot-ledger-execute)
+* [`snarkos-aot ledger query`↴](#snarkos-aot-ledger-query)
+* [`snarkos-aot ledger hash`↴](#snarkos-aot-ledger-hash)
+* [`snarkos-aot ledger checkpoint`↴](#snarkos-aot-ledger-checkpoint)
+* [`snarkos-aot ledger checkpoint create`↴](#snarkos-aot-ledger-checkpoint-create)
+* [`snarkos-aot ledger checkpoint apply`↴](#snarkos-aot-ledger-checkpoint-apply)
+* [`snarkos-aot ledger checkpoint view`↴](#snarkos-aot-ledger-checkpoint-view)
+* [`snarkos-aot ledger checkpoint clean`↴](#snarkos-aot-ledger-checkpoint-clean)
+* [`snarkos-aot run`↴](#snarkos-aot-run)
+* [`snarkos-aot execute`↴](#snarkos-aot-execute)
+* [`snarkos-aot authorize`↴](#snarkos-aot-authorize)
+* [`snarkos-aot authorize transfer-public`↴](#snarkos-aot-authorize-transfer-public)
+* [`snarkos-aot man`↴](#snarkos-aot-man)
+* [`snarkos-aot md`↴](#snarkos-aot-md)
 
-## `snarkOS AoT`
+## `snarkos-aot`
 
-**Usage:** `snarkOS AoT [OPTIONS] <COMMAND>`
+**Usage:** `snarkos-aot [OPTIONS] <COMMAND>`
 
 ###### **Subcommands:**
 
@@ -67,9 +67,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT genesis`
+## `snarkos-aot genesis`
 
-**Usage:** `snarkOS AoT genesis [OPTIONS]`
+**Usage:** `snarkos-aot genesis [OPTIONS]`
 
 ###### **Options:**
 
@@ -98,9 +98,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT accounts`
+## `snarkos-aot accounts`
 
-**Usage:** `snarkOS AoT accounts [OPTIONS] <COUNT>`
+**Usage:** `snarkos-aot accounts [OPTIONS] <COUNT>`
 
 ###### **Arguments:**
 
@@ -113,9 +113,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger`
+## `snarkos-aot ledger`
 
-**Usage:** `snarkOS AoT ledger [OPTIONS] --genesis <GENESIS> --ledger <LEDGER> <COMMAND>`
+**Usage:** `snarkos-aot ledger [OPTIONS] --genesis <GENESIS> --ledger <LEDGER> <COMMAND>`
 
 ###### **Subcommands:**
 
@@ -146,15 +146,15 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger init`
+## `snarkos-aot ledger init`
 
-**Usage:** `snarkOS AoT ledger init`
+**Usage:** `snarkos-aot ledger init`
 
 
 
-## `snarkOS AoT ledger tx`
+## `snarkos-aot ledger tx`
 
-**Usage:** `snarkOS AoT ledger tx <COMMAND>`
+**Usage:** `snarkos-aot ledger tx <COMMAND>`
 
 ###### **Subcommands:**
 
@@ -163,9 +163,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger tx from-ops`
+## `snarkos-aot ledger tx from-ops`
 
-**Usage:** `snarkOS AoT ledger tx from-ops --operations <OPERATIONS>`
+**Usage:** `snarkos-aot ledger tx from-ops --operations <OPERATIONS>`
 
 ###### **Options:**
 
@@ -173,9 +173,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger tx num`
+## `snarkos-aot ledger tx num`
 
-**Usage:** `snarkOS AoT ledger tx num --private-keys <PRIVATE_KEYS> <NUM>`
+**Usage:** `snarkos-aot ledger tx num --private-keys <PRIVATE_KEYS> <NUM>`
 
 ###### **Arguments:**
 
@@ -187,9 +187,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger add`
+## `snarkos-aot ledger add`
 
-**Usage:** `snarkOS AoT ledger add <COMMAND>`
+**Usage:** `snarkos-aot ledger add <COMMAND>`
 
 ###### **Subcommands:**
 
@@ -198,9 +198,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger add random`
+## `snarkos-aot ledger add random`
 
-**Usage:** `snarkOS AoT ledger add random [OPTIONS] --private-keys <PRIVATE_KEYS>`
+**Usage:** `snarkos-aot ledger add random [OPTIONS] --private-keys <PRIVATE_KEYS>`
 
 ###### **Options:**
 
@@ -219,9 +219,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger add stdin`
+## `snarkos-aot ledger add stdin`
 
-**Usage:** `snarkOS AoT ledger add stdin [OPTIONS]`
+**Usage:** `snarkos-aot ledger add stdin [OPTIONS]`
 
 ###### **Options:**
 
@@ -230,9 +230,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger view`
+## `snarkos-aot ledger view`
 
-**Usage:** `snarkOS AoT ledger view <COMMAND>`
+**Usage:** `snarkos-aot ledger view <COMMAND>`
 
 ###### **Subcommands:**
 
@@ -243,15 +243,15 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger view top`
+## `snarkos-aot ledger view top`
 
-**Usage:** `snarkOS AoT ledger view top`
+**Usage:** `snarkos-aot ledger view top`
 
 
 
-## `snarkOS AoT ledger view block`
+## `snarkos-aot ledger view block`
 
-**Usage:** `snarkOS AoT ledger view block <BLOCK_HEIGHT>`
+**Usage:** `snarkos-aot ledger view block <BLOCK_HEIGHT>`
 
 ###### **Arguments:**
 
@@ -259,9 +259,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger view balance`
+## `snarkos-aot ledger view balance`
 
-**Usage:** `snarkOS AoT ledger view balance <ADDRESS>`
+**Usage:** `snarkos-aot ledger view balance <ADDRESS>`
 
 ###### **Arguments:**
 
@@ -269,9 +269,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger view records`
+## `snarkos-aot ledger view records`
 
-**Usage:** `snarkOS AoT ledger view records <PRIVATE_KEY>`
+**Usage:** `snarkos-aot ledger view records <PRIVATE_KEY>`
 
 ###### **Arguments:**
 
@@ -279,9 +279,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger distribute`
+## `snarkos-aot ledger distribute`
 
-**Usage:** `snarkOS AoT ledger distribute [OPTIONS] --from <FROM> --amount <AMOUNT>`
+**Usage:** `snarkos-aot ledger distribute [OPTIONS] --from <FROM> --amount <AMOUNT>`
 
 ###### **Options:**
 
@@ -292,9 +292,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger rewind`
+## `snarkos-aot ledger rewind`
 
-**Usage:** `snarkOS AoT ledger rewind <CHECKPOINT>`
+**Usage:** `snarkos-aot ledger rewind <CHECKPOINT>`
 
 ###### **Arguments:**
 
@@ -302,9 +302,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger replay`
+## `snarkos-aot ledger replay`
 
-**Usage:** `snarkOS AoT ledger replay [OPTIONS]`
+**Usage:** `snarkos-aot ledger replay [OPTIONS]`
 
 ###### **Options:**
 
@@ -322,9 +322,9 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger execute`
+## `snarkos-aot ledger execute`
 
-**Usage:** `snarkOS AoT ledger execute --query <QUERY> <AUTHORIZATION>`
+**Usage:** `snarkos-aot ledger execute --query <QUERY> <AUTHORIZATION>`
 
 ###### **Arguments:**
 
@@ -336,11 +336,11 @@ This document contains the help content for the `snarkOS AoT` command-line progr
 
 
 
-## `snarkOS AoT ledger query`
+## `snarkos-aot ledger query`
 
 Receive inquiries on /mainnet/latest/stateRoot
 
-**Usage:** `snarkOS AoT ledger query [OPTIONS]`
+**Usage:** `snarkos-aot ledger query [OPTIONS]`
 
 ###### **Options:**
 
@@ -364,15 +364,15 @@ Receive inquiries on /mainnet/latest/stateRoot
 
 
 
-## `snarkOS AoT ledger hash`
+## `snarkos-aot ledger hash`
 
-**Usage:** `snarkOS AoT ledger hash`
+**Usage:** `snarkos-aot ledger hash`
 
 
 
-## `snarkOS AoT ledger checkpoint`
+## `snarkos-aot ledger checkpoint`
 
-**Usage:** `snarkOS AoT ledger checkpoint <COMMAND>`
+**Usage:** `snarkos-aot ledger checkpoint <COMMAND>`
 
 ###### **Subcommands:**
 
@@ -383,19 +383,19 @@ Receive inquiries on /mainnet/latest/stateRoot
 
 
 
-## `snarkOS AoT ledger checkpoint create`
+## `snarkos-aot ledger checkpoint create`
 
 Create a checkpoint for the given ledger
 
-**Usage:** `snarkOS AoT ledger checkpoint create`
+**Usage:** `snarkos-aot ledger checkpoint create`
 
 
 
-## `snarkOS AoT ledger checkpoint apply`
+## `snarkos-aot ledger checkpoint apply`
 
 Apply a checkpoint to the given ledger
 
-**Usage:** `snarkOS AoT ledger checkpoint apply [OPTIONS] <CHECKPOINT>`
+**Usage:** `snarkos-aot ledger checkpoint apply [OPTIONS] <CHECKPOINT>`
 
 ###### **Arguments:**
 
@@ -412,25 +412,25 @@ Apply a checkpoint to the given ledger
 
 
 
-## `snarkOS AoT ledger checkpoint view`
+## `snarkos-aot ledger checkpoint view`
 
 View the available checkpoints
 
-**Usage:** `snarkOS AoT ledger checkpoint view`
+**Usage:** `snarkos-aot ledger checkpoint view`
 
 
 
-## `snarkOS AoT ledger checkpoint clean`
+## `snarkos-aot ledger checkpoint clean`
 
 Cleanup old checkpoints
 
-**Usage:** `snarkOS AoT ledger checkpoint clean`
+**Usage:** `snarkos-aot ledger checkpoint clean`
 
 
 
-## `snarkOS AoT run`
+## `snarkos-aot run`
 
-**Usage:** `snarkOS AoT run [OPTIONS] --genesis <GENESIS> --ledger <LEDGER> --type <type> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
+**Usage:** `snarkos-aot run [OPTIONS] --genesis <GENESIS> --ledger <LEDGER> --type <type> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
 
 ###### **Options:**
 
@@ -471,9 +471,9 @@ Cleanup old checkpoints
 
 
 
-## `snarkOS AoT execute`
+## `snarkos-aot execute`
 
-**Usage:** `snarkOS AoT execute --query <QUERY> <AUTHORIZATION>`
+**Usage:** `snarkos-aot execute --query <QUERY> <AUTHORIZATION>`
 
 ###### **Arguments:**
 
@@ -485,9 +485,9 @@ Cleanup old checkpoints
 
 
 
-## `snarkOS AoT authorize`
+## `snarkos-aot authorize`
 
-**Usage:** `snarkOS AoT authorize <COMMAND>`
+**Usage:** `snarkos-aot authorize <COMMAND>`
 
 ###### **Subcommands:**
 
@@ -495,9 +495,9 @@ Cleanup old checkpoints
 
 
 
-## `snarkOS AoT authorize transfer-public`
+## `snarkos-aot authorize transfer-public`
 
-**Usage:** `snarkOS AoT authorize transfer-public [OPTIONS] --private-key <PRIVATE_KEY> --recipient <RECIPIENT> --amount <AMOUNT>`
+**Usage:** `snarkos-aot authorize transfer-public [OPTIONS] --private-key <PRIVATE_KEY> --recipient <RECIPIENT> --amount <AMOUNT>`
 
 ###### **Options:**
 
@@ -516,11 +516,11 @@ Cleanup old checkpoints
 
 
 
-## `snarkOS AoT man`
+## `snarkos-aot man`
 
 For generating cli manpages. Only with the mangen feature enabled
 
-**Usage:** `snarkOS AoT man [DIRECTORY]`
+**Usage:** `snarkos-aot man [DIRECTORY]`
 
 ###### **Arguments:**
 
@@ -530,17 +530,17 @@ For generating cli manpages. Only with the mangen feature enabled
 
 
 
-## `snarkOS AoT md`
+## `snarkos-aot md`
 
 For generating cli markdown. Only with the clipages feature enabled
 
-**Usage:** `snarkOS AoT md [DIRECTORY]`
+**Usage:** `snarkos-aot md [DIRECTORY]`
 
 ###### **Arguments:**
 
 * `<DIRECTORY>`
 
-  Default value: `snops_book/clis`
+  Default value: `snops_book/user_guide/clis`
 
 
 

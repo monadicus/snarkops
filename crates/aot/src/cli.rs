@@ -21,7 +21,7 @@ use crate::{
 };
 
 #[derive(Debug, Parser)]
-#[clap(name = "snarkOS AoT", author = "MONADIC.US")]
+#[clap(author = "MONADIC.US")]
 pub struct Cli {
     #[arg(long)]
     pub enable_profiling: bool,

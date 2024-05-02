@@ -91,7 +91,7 @@ For generating cli markdown. Only with the clipages feature enabled
 
 * `<DIRECTORY>`
 
-  Default value: `snops_book/clis`
+  Default value: `snops_book/user_guide/clis`
 
 
 
