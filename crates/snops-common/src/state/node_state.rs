@@ -136,44 +136,6 @@ pub enum KeyState {
     // TODO: generated?/new
 }
 
-impl DataFormat for KeyState {
-    type Header = u8;
-    const LATEST_HEADER: Self::Header = 1;
-
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, crate::format::DataWriteError> {
-        match self {
-            Self::None => 0u8.write_data(writer),
-            Self::Local => 1u8.write_data(writer),
-            Self::Literal(s) => Ok(2u8.write_data(writer)? + s.write_data(writer)?),
-        }
-    }
-
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, crate::format::DataReadError> {
-        if *header != Self::LATEST_HEADER {
-            return Err(crate::format::DataReadError::unsupported(
-                "KeyState",
-                Self::LATEST_HEADER,
-                *header,
-            ));
-        }
-
-        match reader.read_data(&())? {
-            0u8 => Ok(Self::None),
-            1u8 => Ok(Self::Local),
-            2u8 => Ok(Self::Literal(reader.read_data(&())?)),
-            n => Err(crate::format::DataReadError::Custom(format!(
-                "Invalid KeyState discriminant: {n}",
-            ))),
-        }
-    }
-}
-
 impl From<Option<String>> for KeyState {
     fn from(s: Option<String>) -> Self {
         match s {
@@ -212,6 +174,44 @@ impl AgentPeer {
         match self {
             Self::Internal(ip, _) => Self::Internal(*ip, port),
             Self::External(addr) => Self::External(SocketAddr::new(addr.ip(), port)),
+        }
+    }
+}
+
+impl DataFormat for KeyState {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        match self {
+            Self::None => 0u8.write_data(writer),
+            Self::Local => 1u8.write_data(writer),
+            Self::Literal(s) => Ok(2u8.write_data(writer)? + s.write_data(writer)?),
+        }
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(crate::format::DataReadError::unsupported(
+                "KeyState",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        match reader.read_data(&())? {
+            0u8 => Ok(Self::None),
+            1u8 => Ok(Self::Local),
+            2u8 => Ok(Self::Literal(reader.read_data(&())?)),
+            n => Err(crate::format::DataReadError::Custom(format!(
+                "Invalid KeyState discriminant: {n}",
+            ))),
         }
     }
 }

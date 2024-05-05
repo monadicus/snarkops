@@ -196,3 +196,161 @@ impl DataFormat for AgentAddrs {
         })
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod test {
+    use snops_common::{format::{DataFormat, PackedUint}, state::{AgentMode, AgentState, HeightRequest, KeyState, NodeState, PortConfig}, INTERN};
+    use crate::state::{AgentAddrs, AgentFlags};
+    use std::net::{IpAddr, Ipv4Addr};
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() -> Result<(), Box<dyn std::error::Error>>{
+                let mut data = Vec::new();
+                $a.write_data(&mut data).unwrap();
+                assert_eq!(data, $b);
+
+                let mut reader = &data[..];
+                let read_value = <$ty>::read_data(&mut reader, &<$ty as DataFormat>::LATEST_HEADER).unwrap();
+
+                // write the data again because not every type implements PartialEq
+                let mut data2 = Vec::new();
+                read_value.write_data(&mut data2).unwrap();
+                assert_eq!(data, data2);
+                Ok(())
+            }
+
+        };
+    }
+
+    case!(agent_flags_1,
+        AgentFlags,
+        AgentFlags {
+            mode: AgentMode::from(0u8),
+            labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
+            local_pk: true,
+        },
+        [
+            0u8.to_byte_vec()?,
+            PackedUint(1).to_byte_vec()?,
+            "hello".to_string().to_byte_vec()?,
+            true.to_byte_vec()?,
+        ].concat()
+    );
+
+    case!(agent_addrs_1,
+        AgentAddrs,
+        AgentAddrs {
+            external: Some("1.2.3.4".parse()?),
+            internal: vec!["127.0.0.1".parse()?],
+        },
+        [
+            Some(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))).to_byte_vec()?,
+            vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))].to_byte_vec()?,
+        ].concat()
+    );
+
+    case!(agent_addrs_2,
+        AgentAddrs,
+        AgentAddrs {
+            external: None,
+            internal: vec![],
+        },
+        [
+            None::<IpAddr>.to_byte_vec()?,
+            Vec::<IpAddr>::new().to_byte_vec()?,
+        ].concat()
+    );
+
+    case!(agent_1,
+        crate::state::Agent,
+        crate::state::Agent::from_components(
+            crate::server::jwt::Claims {
+                id: "agent".parse()?,
+                nonce: 2,
+            },
+            AgentState::Inventory,
+            AgentFlags {
+                mode: AgentMode::from(0u8),
+                labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
+                local_pk: true,
+            },
+            Some(PortConfig { node: 0, bft: 1, rest: 2, metrics: 3 }),
+            Some(AgentAddrs {
+                external: Some("1.2.3.4".parse()?),
+                internal: vec!["127.0.0.1".parse()?],
+            }),
+        ),
+        [
+            "agent".to_string().to_byte_vec()?,
+            2u16.to_byte_vec()?,
+            0u8.to_byte_vec()?, // inventory state
+            AgentFlags {
+                mode: AgentMode::from(0u8),
+                labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
+                local_pk: true,
+            }.to_byte_vec()?,
+            Some(PortConfig { node: 0, bft: 1, rest: 2, metrics: 3 }).to_byte_vec()?,
+            Some(AgentAddrs {
+                external: Some("1.2.3.4".parse()?),
+                internal: vec!["127.0.0.1".parse()?],
+            }).to_byte_vec()?,
+        ].concat()
+    );
+
+    case!(agent_2,
+        crate::state::Agent,
+        crate::state::Agent::from_components(
+            crate::server::jwt::Claims {
+                id: "agent".parse()?,
+                nonce: 2,
+            },
+            AgentState::Node("env".parse()?, Box::new(NodeState {
+                node_key: "client/foo".parse()?,
+                private_key: KeyState::None,
+                height: (0, HeightRequest::Top),
+                online: true,
+                peers: vec![],
+                validators: vec![],
+                env: Default::default(),
+            })),
+            AgentFlags {
+                mode: AgentMode::from(5u8),
+                labels: Default::default(),
+                local_pk: true,
+            },
+            Some(PortConfig { node: 3, bft: 2, rest: 1, metrics: 0 }),
+            Some(AgentAddrs {
+                external: None,
+                internal: vec![],
+            }),
+        ),
+        [
+            "agent".to_string().to_byte_vec()?,
+            2u16.to_byte_vec()?,
+            1u8.to_byte_vec()?, // node state
+            "env".to_string().to_byte_vec()?,
+            NodeState {
+                node_key: "client/foo".parse()?,
+                private_key: KeyState::None,
+                height: (0, HeightRequest::Top),
+                online: true,
+                peers: vec![],
+                validators: vec![],
+                env: Default::default(),
+            }.to_byte_vec()?,
+            AgentFlags {
+                mode: AgentMode::from(5u8),
+                labels: Default::default(),
+                local_pk: true,
+            }.to_byte_vec()?,
+            Some(PortConfig { node: 3, bft: 2, rest: 1, metrics: 0 }).to_byte_vec()?,
+            Some(AgentAddrs {
+                external: None,
+                internal: vec![],
+            }).to_byte_vec()?,
+        ].concat()
+    );
+}

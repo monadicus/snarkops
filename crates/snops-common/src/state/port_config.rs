@@ -65,3 +65,42 @@ impl DataFormat for PortConfig {
         })
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::format::DataFormat;
+    use crate::state::PortConfig;
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
+                let mut data = Vec::new();
+                $a.write_data(&mut data).unwrap();
+                assert_eq!(data, $b);
+
+                let mut reader = &data[..];
+                let read_value =
+                    <$ty>::read_data(&mut reader, &<$ty as DataFormat>::LATEST_HEADER).unwrap();
+
+                // write the data again because not every type implements PartialEq
+                let mut data2 = Vec::new();
+                read_value.write_data(&mut data2).unwrap();
+                assert_eq!(data, data2);
+                Ok(())
+            }
+        };
+    }
+
+    case!(
+        port_config,
+        PortConfig,
+        PortConfig {
+            node: 0,
+            bft: 1,
+            rest: 2,
+            metrics: 3,
+        },
+        [0, 0, 1, 0, 2, 0, 3, 0]
+    );
+}
