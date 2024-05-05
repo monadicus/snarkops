@@ -25,7 +25,7 @@ Should we remove this??? Our commands already put the env id and name is never u
 
 The optional description for a topology document.
 
-### External
+### external
 
 Where you can optionally list exeternal nodes, i.e. nodes outside of the `control plane's` control.
 
@@ -56,7 +56,7 @@ external:
 		rest: 52.86.189.144:5555
 ```
 
-### Internal
+### internal
 
 Where you can optionally list internal nodes, i.e. `agents` controled by the plane that will run the provided mode. You will need the corresponding number of agents to create those nodes and their replicas.
 
