@@ -136,3 +136,72 @@ macro_rules! dataformat_test {
         }
     };
 }
+
+#[cfg(test)]
+mod test {
+    use super::{read_dataformat, write_dataformat, DataFormat, DataReadError, DataWriteError};
+
+    #[test]
+    fn test_read_write() -> Result<(), Box<dyn std::error::Error>> {
+        #[derive(Debug, PartialEq)]
+        struct Test {
+            a: u8,
+        }
+
+        impl DataFormat for Test {
+            type Header = u8;
+            const LATEST_HEADER: Self::Header = 1;
+
+            fn write_data<W: std::io::prelude::Write>(
+                &self,
+                writer: &mut W,
+            ) -> Result<usize, DataWriteError> {
+                self.a.write_data(writer)
+            }
+
+            fn read_data<R: std::io::prelude::Read>(
+                reader: &mut R,
+                header: &Self::Header,
+            ) -> Result<Self, DataReadError> {
+                if *header != Self::LATEST_HEADER {
+                    return Err(DataReadError::unsupported(
+                        "Test",
+                        Self::LATEST_HEADER,
+                        *header,
+                    ));
+                }
+                Ok(Test {
+                    a: u8::read_data(reader, &())?,
+                })
+            }
+        }
+
+        let value = Test { a: 42 };
+        let mut writer = Vec::new();
+
+        // two bytes are written because the header is 1 byte and the content is 1 byte
+        assert_eq!(write_dataformat(&mut writer, &value)?, 2);
+        assert_eq!(writer, [1u8, 42u8]);
+
+        let mut reader = writer.as_slice();
+        let decoded = read_dataformat::<_, Test>(&mut reader)?;
+        assert_eq!(value, decoded);
+
+        assert_eq!(
+            read_dataformat::<_, Test>(&mut [1u8, 43u8].as_slice())?,
+            Test { a: 43 }
+        );
+
+        assert!(
+            // invalid version
+            read_dataformat::<_, Test>(&mut [2u8, 43u8].as_slice()).is_err(),
+        );
+
+        assert!(
+            // EOF
+            read_dataformat::<_, Test>(&mut [1u8].as_slice()).is_err(),
+        );
+
+        Ok(())
+    }
+}
