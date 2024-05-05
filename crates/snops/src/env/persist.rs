@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use bimap::BiMap;
-use bytes::{Buf, BufMut};
 use dashmap::DashMap;
 use snops_common::{
-    format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter},
+    format::{
+        read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter,
+        DataReadError,
+    },
     state::{AgentId, CannonId, EnvId, NodeKey, StorageId, TxPipeId},
 };
 
@@ -17,11 +19,7 @@ use crate::{
         source::TxSource,
     },
     cli::Cli,
-    db::{
-        document::{concat_ids, DbDocument},
-        error::DatabaseError,
-        Database,
-    },
+    db::Database,
     schema::{
         nodes::{ExternalNode, Node, NodeFormatHeader},
         storage::DEFAULT_AOT_BIN,
@@ -113,7 +111,7 @@ impl PersistEnv {
 
         let mut tx_pipe = TxPipes::default();
         for drain_id in self.tx_pipe_drains {
-            let count = match PersistDrainCount::restore(db, (self.id, drain_id)) {
+            let count = match db.tx_drain_counts.restore((self.id, drain_id)) {
                 Ok(Some(count)) => count.count,
                 Ok(None) => 0,
                 Err(e) => {
@@ -257,6 +255,35 @@ pub struct PersistDrainCount {
     pub count: u32,
 }
 
+impl DataFormat for PersistDrainCount {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        writer.write_data(&self.count)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, snops_common::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(DataReadError::unsupported(
+                "PersistDrainCount",
+                Self::LATEST_HEADER,
+                header,
+            ));
+        }
+
+        Ok(PersistDrainCount {
+            count: reader.read_data(&())?,
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct PersistEnvHeader {
     version: u8,
@@ -357,58 +384,5 @@ impl DataFormat for PersistEnv {
             tx_pipe_sinks,
             cannon_configs,
         })
-    }
-}
-
-const DRAIN_COUNT_VERSION: u8 = 1;
-impl DbDocument for PersistDrainCount {
-    type Key = (EnvId, TxPipeId);
-
-    fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
-        let key_str = format!("{}.{}", key.0, key.1);
-        let key_bin = concat_ids([key.0, key.1]);
-
-        let Some(raw) = db.tx_drain_counts_old.get(key_bin).map_err(|e| {
-            DatabaseError::LookupError(key_str.clone(), "tx_pipe_drains".to_owned(), e)
-        })?
-        else {
-            return Ok(None);
-        };
-
-        let mut buf = raw.as_ref();
-        let version = buf.get_u8();
-        if version != DRAIN_COUNT_VERSION {
-            return Err(DatabaseError::UnsupportedVersion(
-                key_str,
-                "tx_pipe_drains".to_owned(),
-                version,
-            ));
-        };
-
-        let count = buf.get_u32();
-        Ok(Some(PersistDrainCount { count }))
-    }
-
-    fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
-        let key_str = format!("{}.{}", key.0, key.1);
-        let key_bin = concat_ids([key.0, key.1]);
-
-        let mut buf = vec![];
-        buf.put_u8(DRAIN_COUNT_VERSION);
-        buf.put_u32(self.count);
-        db.tx_drain_counts_old
-            .insert(key_bin, buf)
-            .map_err(|e| DatabaseError::SaveError(key_str, "tx_pipe_drains".to_owned(), e))?;
-        Ok(())
-    }
-
-    fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
-        let key_str = format!("{}.{}", key.0, key.1);
-        let key_bin = concat_ids([key.0, key.1]);
-
-        db.tx_drain_counts_old
-            .remove(key_bin)
-            .map_err(|e| DatabaseError::DeleteError(key_str, "tx_pipe_drains".to_owned(), e))
-            .map(|v| v.is_some())
     }
 }

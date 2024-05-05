@@ -4,7 +4,7 @@ use std::{
     num::NonZeroU8,
 };
 
-use checkpoint::RetentionSpan;
+use checkpoint::{RetentionPolicy, RetentionRule, RetentionSpan};
 use lasso::Spur;
 
 use super::{
@@ -406,5 +406,39 @@ impl DataFormat for RetentionSpan {
                 "invalid RetentionSpan discrminant: {n}",
             ))),
         }
+    }
+}
+
+impl DataFormat for RetentionPolicy {
+    type Header = (u8, <RetentionSpan as DataFormat>::Header);
+
+    const LATEST_HEADER: Self::Header = (1, RetentionSpan::LATEST_HEADER);
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        let rules = self
+            .rules
+            .iter()
+            .map(|r| (r.duration, r.keep))
+            .collect::<Vec<_>>();
+        rules.write_data(writer)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        if header.0 != Self::LATEST_HEADER.0 {
+            return Err(DataReadError::unsupported(
+                "RetentionPolicy",
+                Self::LATEST_HEADER.0,
+                header.0,
+            ));
+        }
+
+        let rules =
+            Vec::<(RetentionSpan, RetentionSpan)>::read_data(reader, &(header.1, header.1))?;
+        Ok(RetentionPolicy {
+            rules: rules
+                .into_iter()
+                .map(|(duration, keep)| RetentionRule { duration, keep })
+                .collect(),
+        })
     }
 }

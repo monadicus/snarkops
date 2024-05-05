@@ -55,11 +55,3 @@ pub fn load_interned_id(row: Result<(IVec, IVec), sled::Error>, kind: &str) -> O
         }
     }
 }
-
-pub fn concat_ids<const S: usize>(ids: [InternedId; S]) -> Vec<u8> {
-    let mut buf = Vec::new();
-    for id in ids {
-        buf.extend_from_slice(id.as_ref());
-    }
-    buf
-}

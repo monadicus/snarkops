@@ -2,6 +2,7 @@ use bytes::{Buf, BufMut};
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     constant::LEDGER_BASE_DIR,
+    format::{DataFormat, DataFormatReader},
     state::{AgentId, AgentState, InternedId, PortConfig, StorageId},
 };
 use tracing::info;
@@ -29,6 +30,42 @@ pub struct PersistStorage {
     pub persist: bool,
     pub accounts: Vec<InternedId>,
     pub retention_policy: Option<RetentionPolicy>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PersistStorageFormatHeader {
+    pub version: u8,
+    pub retention_policy: <RetentionPolicy as DataFormat>::Header,
+}
+
+impl DataFormat for PersistStorageFormatHeader {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        Ok(self.version.write_data(writer)? + self.retention_policy.write_data(writer)?)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, snops_common::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(snops_common::format::DataReadError::unsupported(
+                "PersistStorageFormatHeader",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        Ok(PersistStorageFormatHeader {
+            version: reader.read_data(&())?,
+            retention_policy: reader.read_data(&((), ()))?,
+        })
+    }
 }
 
 impl From<&LoadedStorage> for PersistStorage {
@@ -171,93 +208,46 @@ impl DbDocument for Agent {
     }
 }
 
-impl DbCollection for Vec<PersistStorage> {
-    fn restore(db: &Database) -> Result<Self, DatabaseError> {
-        let mut vec = Vec::new();
-        for row in db.storage_old.iter() {
-            let Some(id) = load_interned_id(row, "storage") else {
-                continue;
-            };
+impl DataFormat for PersistStorage {
+    type Header = PersistStorageFormatHeader;
+    const LATEST_HEADER: Self::Header = PersistStorageFormatHeader {
+        version: 1,
+        retention_policy: <RetentionPolicy as DataFormat>::LATEST_HEADER,
+    };
 
-            match DbDocument::restore(db, id) {
-                Ok(Some(storage)) => {
-                    vec.push(storage);
-                }
-                // should be unreachable
-                Ok(None) => {
-                    tracing::error!("Storage {} not found in database", id);
-                }
-                Err(e) => {
-                    tracing::error!("Error restoring storage {}: {}", id, e);
-                }
-            }
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+
+        written += self.id.write_data(writer)?;
+        written += self.version.write_data(writer)?;
+        written += self.persist.write_data(writer)?;
+        written += self.accounts.write_data(writer)?;
+        written += self.retention_policy.write_data(writer)?;
+
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, snops_common::format::DataReadError> {
+        if header.version != Self::LATEST_HEADER.version {
+            return Err(snops_common::format::DataReadError::unsupported(
+                "PersistStorage",
+                Self::LATEST_HEADER.version,
+                header.version,
+            ));
         }
 
-        Ok(vec)
-    }
-}
-
-const STORAGE_VERSION: u8 = 1;
-impl DbDocument for PersistStorage {
-    type Key = StorageId;
-
-    fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
-        let Some(raw) = db
-            .storage_old
-            .get(key)
-            .map_err(|e| DatabaseError::LookupError(key.to_string(), "storage".to_owned(), e))?
-        else {
-            return Ok(None);
-        };
-
-        let mut buf = raw.as_ref();
-        let version = buf.get_u8();
-        if version != STORAGE_VERSION {
-            return Err(DatabaseError::UnsupportedVersion(
-                key.to_string(),
-                "storage".to_owned(),
-                version,
-            ));
-        };
-
-        let (storage_version, accounts, persist, retention_policy) =
-            bincode::deserialize_from(&mut buf).map_err(|e| {
-                DatabaseError::DeserializeError(key.to_string(), "storage".to_owned(), e)
-            })?;
-
-        Ok(Some(PersistStorage {
-            id: key,
-            version: storage_version,
-            accounts,
-            persist,
-            retention_policy,
-        }))
-    }
-
-    fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
-        let mut buf = vec![];
-        buf.put_u8(STORAGE_VERSION);
-        bincode::serialize_into(
-            &mut buf,
-            &(
-                self.version,
-                &self.accounts,
-                self.persist,
-                &self.retention_policy,
-            ),
-        )
-        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "storage".to_owned(), e))?;
-        db.storage_old
-            .insert(key, buf)
-            .map_err(|e| DatabaseError::SaveError(key.to_string(), "storage".to_owned(), e))?;
-        Ok(())
-    }
-
-    fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
-        Ok(db
-            .storage_old
-            .remove(key)
-            .map_err(|e| DatabaseError::DeleteError(key.to_string(), "storage".to_owned(), e))?
-            .is_some())
+        Ok(PersistStorage {
+            id: reader.read_data(&())?,
+            version: reader.read_data(&())?,
+            persist: reader.read_data(&())?,
+            accounts: reader.read_data(&())?,
+            retention_policy: reader.read_data(&header.retention_policy)?,
+        })
     }
 }

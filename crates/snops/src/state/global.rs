@@ -8,7 +8,7 @@ use snops_common::{
 use tokio::sync::Mutex;
 use tracing::info;
 
-use super::{persist::PersistStorage, AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
+use super::{AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
     cli::Cli,
     db::{document::DbDocument, Database},
@@ -39,10 +39,9 @@ impl GlobalState {
         prometheus: Option<PrometheusClient>,
     ) -> Result<Self, StartError> {
         // Load storage meta from persistence, then read the storage data from FS
-        let storage_meta = db.load::<Vec<PersistStorage>>()?;
+        let storage_meta = db.storage.read_all();
         let storage = StorageMap::default();
-        for meta in storage_meta {
-            let id = meta.id;
+        for (id, meta) in storage_meta {
             let loaded = match meta.load(&cli).await {
                 Ok(l) => l,
                 Err(e) => {

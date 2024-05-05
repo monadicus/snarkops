@@ -18,7 +18,7 @@ use snops_common::state::{
     AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TimelineId, TxPipeId,
 };
 use tokio::{sync::Mutex, task::JoinHandle};
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 use self::{error::*, persist::PersistEnv, timeline::reconcile_agents};
 use crate::{
@@ -509,6 +509,15 @@ impl Environment {
             .ok_or(CleanupError::EnvNotFound(id))?;
         if let Err(e) = state.db.envs.delete(id) {
             error!("failed to save delete {id} to persistence: {e}");
+        }
+
+        match state.db.tx_drain_counts.delete_with_prefix(&id) {
+            Ok(count) => {
+                trace!("removed {count} transaction drains for env {id}");
+            }
+            Err(e) => {
+                error!("failed to remove transaction drains for env {id}: {e}");
+            }
         }
 
         state.prom_httpsd.lock().await.set_dirty();

@@ -28,7 +28,6 @@ use super::{
 };
 use crate::{
     cli::Cli,
-    db::document::DbDocument,
     error::CommandError,
     state::{persist::PersistStorage, GlobalState},
 };
@@ -546,7 +545,11 @@ impl Document {
             checkpoints,
             persist: self.persist,
         });
-        if let Err(e) = PersistStorage::from(storage.deref()).save(&state.db, id) {
+        if let Err(e) = state
+            .db
+            .storage
+            .save(id, PersistStorage::from(storage.deref()))
+        {
             error!("failed to save storage meta: {e}");
         }
         state.storage.insert(id, storage.clone());
