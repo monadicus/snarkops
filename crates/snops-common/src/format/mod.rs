@@ -3,7 +3,13 @@ use std::{
     io::{Read, Write},
 };
 
-mod base_impl;
+mod impl_checkpoint;
+mod impl_collections;
+mod impl_containers;
+mod impl_ints;
+mod impl_net;
+mod impl_strings;
+mod impl_tuples;
 mod packed_int;
 
 pub use packed_int::*;
@@ -108,4 +114,25 @@ impl<R: Read> DataFormatReader for R {
     fn read_data<F: DataFormat>(&mut self, header: &F::Header) -> Result<F, DataReadError> {
         F::read_data(self, header)
     }
+}
+
+#[macro_export]
+macro_rules! dataformat_test {
+    ($name:ident, $( $others:expr),* ) => {
+        #[test]
+        fn $name() -> Result<(), Box<dyn std::error::Error>> {
+            use snops_common::format::{write_dataformat, read_dataformat};
+
+            $(
+
+                let value = $others;
+                let mut writer = Vec::new();
+                write_dataformat(&mut writer, &value)?;
+                let mut reader = writer.as_slice();
+                let decoded = read_dataformat::<_, _>(&mut reader)?;
+                assert_eq!(value, decoded);
+            )*
+            Ok(())
+        }
+    };
 }

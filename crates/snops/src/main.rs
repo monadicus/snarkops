@@ -11,6 +11,7 @@ pub mod db;
 pub mod env;
 pub mod error;
 pub mod logging;
+pub mod persist;
 pub mod schema;
 pub mod server;
 pub mod state;

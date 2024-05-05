@@ -11,7 +11,7 @@ use tracing::debug;
 use super::{error::CannonError, ExecutionContext};
 use crate::{
     cannon::error::{TransactionDrainError, TransactionSinkError},
-    env::persist::PersistDrainCount,
+    persist::PersistDrainCount,
 };
 
 #[derive(Debug)]

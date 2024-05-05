@@ -1,5 +1,4 @@
 pub mod error;
-pub mod persist;
 pub mod set;
 pub mod timeline;
 
@@ -20,7 +19,7 @@ use snops_common::state::{
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{error, info, trace, warn};
 
-use self::{error::*, persist::PersistEnv, timeline::reconcile_agents};
+use self::{error::*, timeline::reconcile_agents};
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -30,6 +29,7 @@ use crate::{
     },
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, AgentMapping, BusyMode},
     error::DeserializeError,
+    persist::PersistEnv,
     schema::{
         nodes::{ExternalNode, Node},
         outcomes::OutcomeMetrics,

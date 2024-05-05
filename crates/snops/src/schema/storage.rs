@@ -26,11 +26,7 @@ use super::{
     error::{SchemaError, StorageError},
     nodes::{KeySource, ACCOUNTS_KEY_ID},
 };
-use crate::{
-    cli::Cli,
-    error::CommandError,
-    state::{persist::PersistStorage, GlobalState},
-};
+use crate::{cli::Cli, error::CommandError, persist::PersistStorage, state::GlobalState};
 
 pub const STORAGE_DIR: &str = "storage";
 

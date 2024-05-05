@@ -4,8 +4,8 @@ use snops_common::state::{AgentId, EnvId, TxPipeId};
 
 use self::{error::DatabaseError, tree::DbTree};
 use crate::{
-    env::persist::{PersistDrainCount, PersistEnv},
-    state::{persist::PersistStorage, Agent},
+    persist::{PersistDrainCount, PersistEnv, PersistStorage},
+    state::Agent,
 };
 
 pub mod error;

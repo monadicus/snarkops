@@ -2,7 +2,6 @@ pub mod authorized;
 pub mod error;
 pub mod file;
 mod net;
-pub mod persist;
 pub mod router;
 pub mod sink;
 pub mod source;
