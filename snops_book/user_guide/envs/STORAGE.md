@@ -1,10 +1,17 @@
 # Storage
 
-There any many options you could provide to a storage document.
+The storage document is where you can specify:
+
+- The generation or downloading of a genesis block.
+- You can specify how many validators there are.
+- Can specify how much each validator has bonded.
+- Can add additional accounts and give them balances.
+- Can specify how the ledger should be re-loaded.
+- How often checkpoints of the ledger should be made. 
 
 ## Fields
 
-The different top level fields you can specify in a version document and what they mean. You can skip to examples by clicking [here](#examples).
+The different top level fields you can specify in a storage document and what they mean. You can skip to examples by clicking [here](#examples).
 
 The required fields are italicized.
 
@@ -134,7 +141,16 @@ accounts:
 
 An optional field that has no default.
 
-TODO
+If specifed creates AOT `credits.aleo/public_tranfer` transactions.
+
+```yaml
+transactions:
+	- file: bulk.json # the file to write the tx's to.
+		total: 1000 # how many tx'r to write.
+		amount: 5_000 # the amount to transfer.
+		sources: [committee.0] # the accounts to transfer from.
+		destinations: [accounts.*] # the accounts to transfer to.
+```
 
 ## Examples
 

@@ -24,7 +24,7 @@ enum TimelineCommands {
     #[clap(alias = "a")]
     Apply,
 
-    /// Delete a timeline from an environment.zs
+    /// Delete a timeline from an environment.
     #[clap(alias = "d")]
     Delete,
 
