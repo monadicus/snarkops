@@ -2,20 +2,13 @@ use std::str::FromStr;
 
 use snops_common::{
     state::{
-        AgentId, AgentMode, AgentPeer, AgentState, DocHeightRequest, EnvId, HeightRequest, NodeKey,
-        NodeState, NodeType,
+        AgentId, AgentMode, AgentPeer, AgentState, EnvId, HeightRequest, NodeKey, NodeState,
+        NodeType,
     },
     INTERN,
 };
 
-use crate::{
-    env::persist::PersistNode,
-    schema::{
-        nodes::{ExternalNode, Node},
-        NodeTargets,
-    },
-    state::AgentFlags,
-};
+use crate::state::AgentFlags;
 
 macro_rules! bincode_test {
     ($name:ident, $( $others:expr),* ) => {
@@ -91,29 +84,4 @@ bincode_test!(
             .into_iter()
             .collect()
     }
-);
-
-bincode_test!(
-    test_persist_node,
-    PersistNode::External(ExternalNode {
-        bft: None,
-        rest: None,
-        node: None,
-    }),
-    PersistNode::Internal(
-        AgentId::rand(),
-        Box::new(Node {
-            online: true,
-            replicas: Some(3),
-            key: None,
-            height: DocHeightRequest::Top,
-            labels: [INTERN.get_or_intern("foo"), INTERN.get_or_intern("bar")]
-                .into_iter()
-                .collect(),
-            agent: None,
-            validators: NodeTargets::None,
-            peers: NodeTargets::None,
-            env: Default::default(),
-        })
-    )
 );

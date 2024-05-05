@@ -16,8 +16,6 @@ pub struct Database {
     /// Environment state, mapped by env id to env state
     pub(crate) envs: DbTree<EnvId, PersistEnv>,
 
-    /// Environment state, mapped by env id to env state
-    pub(crate) envs_old: sled::Tree,
     /// Last known agent state, mapped by agent id to agent state
     pub(crate) agents_old: sled::Tree,
     /// Loaded storages, mapped by storage id to storage info
@@ -42,7 +40,6 @@ impl Database {
     pub fn open(path: &PathBuf) -> Result<Self, DatabaseError> {
         let db = sled::open(path)?;
 
-        let envs_old = db.open_tree(b"env")?;
         let agents_old = db.open_tree(b"agent")?;
         let storage_old = db.open_tree(b"storage")?;
         let outcome_snapshots_old = db.open_tree(b"outcomes")?;
@@ -54,7 +51,6 @@ impl Database {
         Ok(Self {
             envs: DbTree::new(db.open_tree(b"v2/envs")?),
 
-            envs_old,
             agents_old,
             storage_old,
             outcome_snapshots_old,

@@ -14,7 +14,6 @@ use snops_common::{
 use wildmatch::WildMatch;
 
 use self::error::{NodeTargetError, SchemaError};
-use crate::db::document::BEncDec;
 
 pub mod cannon;
 pub mod error;
@@ -86,26 +85,6 @@ impl DataFormat for NodeTargets {
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
         let targets = Vec::<NodeTarget>::read_data(reader, header)?;
-        Ok(match targets.len() {
-            0 => NodeTargets::None,
-            // unwrap safety: length is guaranteed to be 1
-            1 => NodeTargets::One(targets.into_iter().next().unwrap()),
-            _ => NodeTargets::Many(targets),
-        })
-    }
-}
-
-impl BEncDec for NodeTargets {
-    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
-        bincode::serialize(&match self {
-            NodeTargets::None => vec![],
-            NodeTargets::One(target) => vec![target.clone()],
-            NodeTargets::Many(targets) => targets.clone(),
-        })
-    }
-
-    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
-        let targets = bincode::deserialize::<Vec<NodeTarget>>(bytes)?;
         Ok(match targets.len() {
             0 => NodeTargets::None,
             // unwrap safety: length is guaranteed to be 1

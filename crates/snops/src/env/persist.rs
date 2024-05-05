@@ -1,9 +1,8 @@
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use bimap::BiMap;
 use bytes::{Buf, BufMut};
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
 use snops_common::{
     format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter},
     state::{AgentId, CannonId, EnvId, NodeKey, StorageId, TxPipeId},
@@ -19,11 +18,10 @@ use crate::{
     },
     cli::Cli,
     db::{
-        document::{concat_ids, load_interned_id, BEncDec, DbCollection, DbDocument},
+        document::{concat_ids, DbDocument},
         error::DatabaseError,
         Database,
     },
-    impl_bencdec_serde,
     schema::{
         nodes::{ExternalNode, Node, NodeFormatHeader},
         storage::DEFAULT_AOT_BIN,
@@ -255,89 +253,8 @@ impl DataFormat for PersistNode {
     }
 }
 
-impl_bencdec_serde!(PersistNode);
-
-// ExternalNode's deserializer is tailored specifically to YAML and uses
-// deserialize_any, which is not supported by bincode.
-impl BEncDec for PersistNode {
-    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
-        let mut buf = Vec::new();
-        match self {
-            PersistNode::Internal(id, state) => {
-                buf.put_u8(0);
-
-                let id_bytes: &[u8] = id.as_ref();
-                buf.put_u8(id_bytes.len() as u8);
-                buf.extend_from_slice(id_bytes);
-
-                state.write_bytes(&mut buf)?;
-            }
-            PersistNode::External(n) => {
-                buf.put_u8(1);
-                n.write_bytes(&mut buf)?;
-            }
-        }
-        Ok(buf)
-    }
-
-    fn from_bytes(mut bytes: &[u8]) -> bincode::Result<Self> {
-        if bytes.is_empty() {
-            return Err(bincode::ErrorKind::Custom("end of input".to_owned()).into());
-        }
-
-        match bytes.get_u8() {
-            0 => {
-                let id_len = bytes.get_u8() as usize;
-                if bytes.len() < id_len {
-                    return Err(
-                        bincode::ErrorKind::Custom("invalid agent id length".to_owned()).into(),
-                    );
-                }
-                let id =
-                    AgentId::from_str(std::str::from_utf8(&bytes[..id_len]).map_err(|_| {
-                        bincode::ErrorKind::Custom("agent id not utf-8 string".to_owned())
-                    })?)
-                    .map_err(|_| bincode::ErrorKind::Custom("invalid agent id".to_owned()))?;
-                bytes.advance(id_len);
-                let state = Node::read_bytes(&mut bytes)?;
-                Ok(PersistNode::Internal(id, Box::new(state)))
-            }
-            1 => {
-                let n = ExternalNode::read_bytes(&mut bytes)?;
-                Ok(PersistNode::External(n))
-            }
-            _ => Err(bincode::ErrorKind::Custom("invalid node kind".to_owned()).into()),
-        }
-    }
-}
-
 pub struct PersistDrainCount {
     pub count: u32,
-}
-
-impl DbCollection for Vec<PersistEnv> {
-    fn restore(db: &Database) -> Result<Self, DatabaseError> {
-        let mut vec = Vec::new();
-        for row in db.envs_old.iter() {
-            let Some(id) = load_interned_id(row, "env") else {
-                continue;
-            };
-
-            match DbDocument::restore(db, id) {
-                Ok(Some(storage)) => {
-                    vec.push(storage);
-                }
-                // should be unreachable
-                Ok(None) => {
-                    tracing::error!("Env {} not found in database", id);
-                }
-                Err(e) => {
-                    tracing::error!("Error restoring env {}: {}", id, e);
-                }
-            }
-        }
-        Ok(vec)
-    }
 }
 
 #[derive(Clone)]
@@ -440,80 +357,6 @@ impl DataFormat for PersistEnv {
             tx_pipe_sinks,
             cannon_configs,
         })
-    }
-}
-
-const ENV_VERSION: u8 = 1;
-impl DbDocument for PersistEnv {
-    type Key = EnvId;
-
-    fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
-        let Some(raw) = db
-            .envs_old
-            .get(key)
-            .map_err(|e| DatabaseError::LookupError(key.to_string(), "env".to_owned(), e))?
-        else {
-            return Ok(None);
-        };
-
-        let mut buf = raw.as_ref();
-        let version = buf.get_u8();
-        if version != ENV_VERSION {
-            return Err(DatabaseError::UnsupportedVersion(
-                key.to_string(),
-                "env".to_owned(),
-                version,
-            ));
-        };
-
-        let (storage_id, nodes, tx_pipe_drains, tx_pipe_sinks, cannon_configs) =
-            bincode::deserialize(buf).map_err(|e| {
-                DatabaseError::DeserializeError(key.to_string(), "env".to_owned(), e)
-            })?;
-
-        Ok(Some(PersistEnv {
-            id: key,
-            storage_id,
-            nodes,
-            tx_pipe_drains,
-            tx_pipe_sinks,
-            cannon_configs,
-        }))
-    }
-
-    fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
-        let mut buf = vec![];
-        buf.put_u8(ENV_VERSION);
-
-        bincode::serialize_into(
-            &mut buf,
-            &(
-                &self.storage_id,
-                &self.nodes,
-                &self.tx_pipe_drains,
-                &self.tx_pipe_sinks,
-                &self.cannon_configs,
-            ),
-        )
-        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "env".to_owned(), e))?;
-
-        db.envs_old
-            .insert(key, buf)
-            .map_err(|e| DatabaseError::SaveError(key.to_string(), "env".to_owned(), e))?;
-        Ok(())
-    }
-
-    fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
-        let res = db.envs_old.remove(key).map(|v| v.is_some())?;
-
-        // remove drains associated with this env
-        for (drain_id, _) in db.tx_drain_counts_old.scan_prefix(key).flatten() {
-            if let Err(e) = db.tx_drain_counts_old.remove(drain_id) {
-                tracing::error!("Error deleting tx_pipe_drains for env {}: {e}", key);
-            }
-        }
-
-        Ok(res)
     }
 }
 

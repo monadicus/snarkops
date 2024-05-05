@@ -28,7 +28,6 @@ use crate::{
         source::TxSource,
         CannonInstance,
     },
-    db::document::DbDocument,
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, AgentMapping, BusyMode},
     error::DeserializeError,
     schema::{
@@ -417,7 +416,7 @@ impl Environment {
             timeline_handle: Default::default(),
         });
 
-        if let Err(e) = PersistEnv::from(env.as_ref()).save(&state.db, env_id) {
+        if let Err(e) = state.db.envs.save(env_id, PersistEnv::from(env.as_ref())) {
             error!("failed to save env {env_id} to persistence: {e}");
         }
 
@@ -508,7 +507,7 @@ impl Environment {
             .envs
             .remove(&id)
             .ok_or(CleanupError::EnvNotFound(id))?;
-        if let Err(e) = PersistEnv::delete(&state.db, id) {
+        if let Err(e) = state.db.envs.delete(id) {
             error!("failed to save delete {id} to persistence: {e}");
         }
 
