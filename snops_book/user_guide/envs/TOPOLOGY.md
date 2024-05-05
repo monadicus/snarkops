@@ -1,9 +1,11 @@
 # Topology
 
-The togology document is where you can specify:
+The topology document is where you can specify:
 
 - Internal connections(`agents` controlled by the `control plane`)
 - External connections(other nodes outside the `control plane`)
+
+The topology document is required for a `environment` to run.
 
 ## Fields
 
@@ -136,7 +138,7 @@ nodes:
 ### External Connections and a Client
 
 ```yaml
-vversion: nodes.snarkos.testing.monadic.us/v1
+version: nodes.snarkos.testing.monadic.us/v1
 name: 4-clients-canary
 
 external:

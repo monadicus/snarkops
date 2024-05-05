@@ -2,11 +2,12 @@
 
 The timeline document is where you can specify a multitude of different actions for the nodes to take.
 
-This is an optional document.
+This is an optional document at `environment` prepare time.
+You an also add timelines after an `environment` has started.
 
 ## Fields
 
-The different top level fields you can specify in a topology document and what they mean. You can skip to the different actions by clicking [here](#timeline-actions). You can skip to examples by clicking [here](#examples).
+The different top level fields you can specify in a timeline document and what they mean. You can skip to the different actions by clicking [here](#timeline-actions). You can skip to examples by clicking [here](#examples).
 
 The required fields are italicized.
 
@@ -64,6 +65,8 @@ This includes changing their `height`, `peers` or `validators`(validator nodes o
 
 You can spawn a cannon to fire transactions at a node.
 
+> [NOTE] Requires that the environment was prepared with a cannon document.
+
 A `name` is required.
 
 You can also optionally specify:
@@ -71,8 +74,6 @@ You can also optionally specify:
 - the `count` of tx's
 - `query` to overwrite the query's source node
 - `sink` to overwrite the cannon sink target
-
-Though they are required if a `cannon` document is not provided.
 
 ## Examples
 
@@ -182,7 +183,7 @@ timeline:
 ### External Connections and a Client
 
 ```yaml
-vversion: nodes.snarkos.testing.monadic.us/v1
+version: nodes.snarkos.testing.monadic.us/v1
 name: 4-clients-canary
 
 external:

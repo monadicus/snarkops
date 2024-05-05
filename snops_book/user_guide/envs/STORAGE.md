@@ -7,7 +7,9 @@ The storage document is where you can specify:
 - Can specify how much each validator has bonded.
 - Can add additional accounts and give them balances.
 - Can specify how the ledger should be re-loaded.
-- How often checkpoints of the ledger should be made. 
+- How often checkpoints of the ledger should be made.
+
+The storage document is required for a `environment` to run.
 
 ## Fields
 
