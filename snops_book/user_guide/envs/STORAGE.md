@@ -45,7 +45,7 @@ Tells the agents wether or not they should re-download the storage data. If enab
 
 `false` by default, which means this behavior is disabled.
 
-### rentention_policy
+### rentention-policy
 
 An optional field where you can specifiy a comma separated values of:
 - How long you want checkpoints to be taken for.
@@ -60,9 +60,9 @@ Some examples of rules:
 - 1Y:1M - for 1 year, keep a checkpoint every month
 - U:6M - for all time, keep a checkpoint every 6 months
 
-For example, `rentention_policy: 4h:1h,1W:U`.
+For example, `rentention-policy: 4h:1h,1W:U`.
 
-Additionaly you can do `rentention_policy: default`. Which is equivalent to `4h:1h,1D:8h,1W:1D,4W:1W,4M:1M,U:1Y`.
+Additionaly you can do `rentention-policy: default`. Which is equivalent to `4h:1h,1D:8h,1W:1D,4W:1W,4M:1M,U:1Y`.
 
 ### connect
 
@@ -81,7 +81,7 @@ Another subset of options to pass to the `genesis.block` generation.
 
 > [WARNING] This option conflicts with the `connect` option.
 
-##### private_key
+##### private-key
 
 An optional private key to provide to be the master key.
 
@@ -93,13 +93,13 @@ The optional numerical seed to provide. This seed infleunces the generation of a
 
 By default it is `1234567890`.
 
-##### additional_accounts
+##### additional-accounts
 
 The number of additional accounts to generate outside the initial validators to generate.
 
 By default it does not generate additional accounts.
 
-##### additional_accounts_balance
+##### additional-accounts-balance
 
 The initial balance to give to any additional non-validator accounts generated.
 
@@ -118,8 +118,8 @@ This can be either:
 	Good if you already know their private keys.
 - or the size of the committee and their balance amount:
 	```yaml
-	committee_size: 10 # must be 4 or greater
-	bonded_balance: 100_000_000 # must be 10 million or greater.
+	committee-size: 10 # must be 4 or greater
+	bonded-balance: 100_000_000 # must be 10 million or greater.
 	```
 
 By default it is a `comittee_size: 4` and `bonded_balance: 10_000_000`.

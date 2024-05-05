@@ -38,28 +38,218 @@ The optional description for a cannon document.
 
 Where the transactions should come from.
 
-There are several modes to chose from for a source:
+There are several modes to chose from for a source.
 
-TODO should do h4's for these and show the different fields.
+The type of source is determined by the options you provide.
 
-- playback: reads transactions from a file.
-- realtime: generates transactions in real time.
-- listen: receive authorizations from a persistent path.
+> [NOTE] You can only select one mode.
 
-You can find examples of these down [below](#examples).
+#### playback
+
+This `source` mode reads transactions from a file.
+
+##### _file-name_
+
+The name of the file to read transactions from.
+
+```yaml
+source:
+	file-name: txs.json
+```
+
+The format of the file is:
+
+```json
+{tx_1_info...}
+{tx_2_info...}
+```
+
+#### realtime
+
+This `source` mode generates transactions in real time.
+
+##### query
+
+Sets the query service for the cannon to use.
+
+Has two modes local ledger or a node in the `environment`.
+Optional defaults to the local ledger.
+
+###### local
+
+An optional field that if provided uses the node in the `environment` specified to sync from.
+
+Defaults to `None`, i.e. agent uses it's own local ledger as is.
+
+```yaml
+source:
+	query:
+		mode:
+			sync-from: client/1 # optional
+```
+
+###### node
+
+An optional field that if provided uses the node in the `environment` specified pulls that node's state root over RPC.
+
+```yaml
+source:
+	query:
+		mode: client/1 # required
+```
+
+##### compute
+
+Sets the compute service for the cannon to use.
+
+Has two modes agent or demox.
+Optional defaults to the agent.
+
+###### agent
+
+This tells the cannon to use agents in the `environment`.
+
+You can optionally provide a list of agent labels to specify which agents to use.
+
+```yaml
+source:
+	compute:
+		labels: foo,bar
+```
+
+###### demox
+
+This tells the cannon to use Demox's API to generate the executions.
+
+Requires the url for the API.
+
+```yaml
+source:
+	compute:
+		demox-api: https://exampl_url.com/api/v1
+```
+
+##### tx-modes
+
+The transaction methods to call.
+
+Optional defaults to `credits.aleo/transfer_public`.
+
+```yaml
+source:
+  tx-modes: [transfer-public]
+```
+
+> [NOTE] Only `credits.aleo` is supported at this time. And only transfer transactions.
+
+##### private-keys
+
+The private keys of the accounts that will make the transaction method call.
+
+Optional defaults to committee keys.
+
+```yaml
+source:
+  private-keys: [committee.$]
+```
+
+##### addresses
+
+The addresses of the accounts that will recieve the transfer.
+
+Optional defaults to committee keys.
+
+```yaml
+source:
+  addresses: [committee.$]
+```
+
+#### listen
+
+This `source` mode receive authorizations from a persistent path, `/api/v1/env/:env_id/cannons/:id/auth`.
+
+The same query mode as [above](#query).
+The compute mode as [above](#compute).
+
+However, they are now both requried.
+
+```yaml
+source:
+	query:
+		mode:
+			sync-from: client/1 # optional
+	compute:
+		labels: foo,bar # optional
+```
 
 ### _sink_
 
 Where the transactions should go to.
 
-TODO should do h4's for these and show the different fields.
+There are several modes to chose from for a sink.
 
-There are several modes to chose from for a sink:
+The type of sink is determined by the options you provide.
 
-- record: writes txs to a file.
-- realtime: sends the txs to a node in the env.
+> [NOTE] You can only select one mode.
 
-You can find examples of these down [below](#examples).
+#### record
+
+This `sink` mode writes txs to a file.
+
+##### _file-name_
+
+The name of the file to write transactions to.
+
+```yaml
+sink:
+	file_name: txs.json
+```
+
+The format of the file is:
+
+```json
+{tx_1_info...}
+{tx_2_info...}
+```
+
+##### tx_request_delay_ms
+
+An opitional field to specify how long between writes the tx should take, in milliseconds.
+
+Defaults to `1000`
+
+```yaml
+sink:
+	file-name: ...
+  tx-request-delay-ms: 1000
+```
+
+#### realtime
+
+This `sink` mode sends the txs to a node in the env.
+
+##### _target_
+
+The node target(s) the tx's shoud be fired at.
+
+```yaml
+sink:
+	target: client/1
+	rate: ...
+```
+
+##### _rate_
+
+The fire rate that tx's shoud be fired at.
+
+Read more about [fire rates](../../glossary/FIRE_RATE.md)
+
+```yaml
+sink:
+	target: ...
+	rate:
+		tx-delay-ms: 5000
+```
 
 ### instance
 
@@ -85,25 +275,13 @@ version: cannon.snarkos.testing.monadic.us/v1
 name: realtime-txs-record-to-file
 
 # realtime mode
-# no query or compute they are optional
 source:
-	# calls `aleo.credits/transfer_public`
-	# optional defaults to transfer public
   tx-modes: [transfer-public]
-	# private keys for making txs.
-	# optional defaults to committee keys.
   private-keys: [committee.$]
-	# addresses for transaction targets.
-	# optional defaults to committee keys.
   addresses: [committee.$]
 
-# record mode
 sink:
-	# the delay in milleseconds between writes of txs.
-	# optional defaults to `1000`.
-  tx-request-delay-ms: 1000
-	# the requried name of the file to record it to
-  file-name: txs.json
+	  file-name: txs.json
 
 # create the cannon immediately
 instance: true
@@ -120,15 +298,11 @@ name: txs-from-file-to-target-node
 
 # playback mode
 source:
-	# the required name of the file.
   file-name: txs.json
 
 # realtime mode
 sink:
-	# the required tx target node.
   target: validator/test-1
-	# the fire rate here is in repeat mode.
-	# required the delay between sending a tx.
   tx-delay-ms: 1000
 
 # create the cannon immediately

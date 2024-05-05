@@ -36,3 +36,4 @@
 
 - [Retention Rules](glossary/RETENTION_RULES.md)
 - [Node Targets](glossary/NODE_TARGETS.md)
+- [Fire Rates](glossary/FIRE_RATE.md)
