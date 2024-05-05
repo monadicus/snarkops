@@ -13,6 +13,7 @@ use super::{EnvError, EnvNodeState, EnvPeer, Environment, PrepareError, TxPipes}
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
+        persist::{TxSinkFormatHeader, TxSourceFormatHeader},
         sink::TxSink,
         source::TxSource,
     },
@@ -341,11 +342,10 @@ impl DbCollection for Vec<PersistEnv> {
 
 #[derive(Clone)]
 pub struct PersistEnvHeader {
-    env: u8,
+    version: u8,
     nodes: PersistNodeFormatHeader,
-    tx_pipe_drains: u8,
-    tx_pipe_sinks: u8,
-    cannon_configs: u8,
+    tx_source: TxSourceFormatHeader,
+    tx_sink: TxSinkFormatHeader,
 }
 
 impl DataFormat for PersistEnvHeader {
@@ -357,11 +357,10 @@ impl DataFormat for PersistEnvHeader {
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
         let mut written = 0;
-        written += writer.write_data(&self.env)?;
+        written += writer.write_data(&self.version)?;
         written += write_dataformat(writer, &self.nodes)?;
-        written += writer.write_data(&self.tx_pipe_drains)?;
-        written += writer.write_data(&self.tx_pipe_sinks)?;
-        written += writer.write_data(&self.cannon_configs)?;
+        written += write_dataformat(writer, &self.tx_source)?;
+        written += write_dataformat(writer, &self.tx_sink)?;
         Ok(written)
     }
 
@@ -377,18 +376,16 @@ impl DataFormat for PersistEnvHeader {
             ));
         }
 
-        let env = reader.read_data(&())?;
+        let version = reader.read_data(&())?;
         let nodes = read_dataformat(reader)?;
-        let tx_pipe_drains = reader.read_data(&())?;
-        let tx_pipe_sinks = reader.read_data(&())?;
-        let cannon_configs = reader.read_data(&())?;
+        let tx_source = read_dataformat(reader)?;
+        let tx_sink = read_dataformat(reader)?;
 
         Ok(PersistEnvHeader {
-            env,
+            version,
             nodes,
-            tx_pipe_drains,
-            tx_pipe_sinks,
-            cannon_configs,
+            tx_source,
+            tx_sink,
         })
     }
 }
@@ -396,11 +393,10 @@ impl DataFormat for PersistEnvHeader {
 impl DataFormat for PersistEnv {
     type Header = PersistEnvHeader;
     const LATEST_HEADER: Self::Header = PersistEnvHeader {
-        env: 1,
+        version: 1,
         nodes: PersistNode::LATEST_HEADER, // TODO: use PersistNode::LATEST_HEADER
-        tx_pipe_drains: 1,
-        tx_pipe_sinks: 1,
-        cannon_configs: 1,
+        tx_source: TxSource::LATEST_HEADER,
+        tx_sink: TxSink::LATEST_HEADER,
     };
 
     fn write_data<W: std::io::prelude::Write>(
@@ -410,10 +406,8 @@ impl DataFormat for PersistEnv {
         let mut written = 0;
 
         written += writer.write_data(&self.storage_id)?;
-        written += writer.write_data(&self.nodes)?; // TODO impl
-        written += writer.write_data(&self.tx_pipe_drains)?;
-        written += writer.write_data(&self.tx_pipe_sinks)?;
-        // written += writer.write_data(&self.cannon_configs)?; // TODO impl
+        written += writer.write_data(&self.nodes)?;
+        written += writer.write_data(&self.cannon_configs)?;
 
         Ok(written)
     }
@@ -422,28 +416,29 @@ impl DataFormat for PersistEnv {
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
-        if header.env != Self::LATEST_HEADER.env {
+        if header.version != Self::LATEST_HEADER.version {
             return Err(snops_common::format::DataReadError::unsupported(
                 "PersistEnv",
-                Self::LATEST_HEADER.env,
-                header.env,
+                Self::LATEST_HEADER.version,
+                header.version,
             ));
         }
 
         let id = reader.read_data(&())?;
         let storage_id = reader.read_data(&())?;
-        // let nodes = reader.read_data(&())?;  // TODO impl
+        let nodes = reader.read_data(&(header.tx_source.node_key, header.nodes.clone()))?;
         let tx_pipe_drains = reader.read_data(&())?;
         let tx_pipe_sinks = reader.read_data(&())?;
-        // let cannon_configs = reader.read_data(&())?;  // TODO impl
+        let cannon_configs =
+            reader.read_data(&((), header.tx_source.clone(), header.tx_sink.clone()))?;
 
         Ok(PersistEnv {
             id,
             storage_id,
-            nodes: vec![], // TODO impl
+            nodes,
             tx_pipe_drains,
             tx_pipe_sinks,
-            cannon_configs: vec![], // TODO impl
+            cannon_configs,
         })
     }
 }

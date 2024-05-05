@@ -17,6 +17,7 @@ macro_rules! impl_tuple_dataformat {
     ($($name:ident),+) => {
         impl<$($name: DataFormat),+> DataFormat for ($($name,)+) {
             type Header = ($($name::Header,)+);
+            // TODO: potentially make these into references
             const LATEST_HEADER: Self::Header = ($($name::LATEST_HEADER,)+);
 
             paste::paste! {

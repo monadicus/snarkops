@@ -12,7 +12,7 @@ use super::{persist::PersistStorage, AddrMap, AgentClient, AgentPool, EnvMap, St
 use crate::{
     cli::Cli,
     db::{document::DbDocument, Database},
-    env::{persist::PersistEnv, Environment},
+    env::Environment,
     error::StateError,
     server::{error::StartError, prometheus::HttpsdResponse},
     util::OpaqueDebug,
@@ -53,10 +53,9 @@ impl GlobalState {
             storage.insert(id, Arc::new(loaded));
         }
 
-        let env_meta = db.load::<Vec<PersistEnv>>()?;
+        let env_meta = db.envs.read_all();
         let envs = EnvMap::default();
-        for meta in env_meta {
-            let id = meta.id;
+        for (id, meta) in env_meta {
             let loaded = match meta.load(&db, &storage, &cli).await {
                 Ok(l) => l,
                 Err(e) => {
