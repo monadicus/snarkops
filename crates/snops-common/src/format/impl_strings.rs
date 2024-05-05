@@ -49,3 +49,37 @@ impl DataFormat for Spur {
         Ok(INTERN.get_or_intern(data))
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod test {
+    use lasso::Spur;
+
+    use crate::{format::DataFormat, INTERN};
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() {
+                let mut data = Vec::new();
+                $a.write_data(&mut data).unwrap();
+                assert_eq!(data, $b);
+
+                let mut reader = &data[..];
+                let read_value = <$ty>::read_data(&mut reader, &()).unwrap();
+                assert_eq!(read_value, $a);
+
+            }
+
+        };
+    }
+
+    case!(test_string, String, "hello".to_string(), b"\x01\x05hello");
+    case!(test_spur, Spur, INTERN.get_or_intern("hello"), b"\x01\x05hello");
+    // 0x15 is 21, which is the length of the string
+    case!(test_long_string, String, "This is a long string".to_string(), b"\x01\x15This is a long string");
+    // 0x1A is 26, which is the length of the string
+    case!(test_interned_string, Spur, INTERN.get_or_intern("This is an interned string"), b"\x01\x1AThis is an interned string");
+    case!(test_empty_string, String, "".to_string(), [1, 0]);
+    case!(test_empty_spur, Spur, INTERN.get_or_intern(""), [1, 0]);
+}

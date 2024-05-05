@@ -36,3 +36,30 @@ impl<T: DataFormat> DataFormat for Box<T> {
         Ok(Box::new(reader.read_data(header)?))
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod test {
+    use crate::format::DataFormat;
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() {
+                let mut data = Vec::new();
+                let value: $ty = $a;
+                value.write_data(&mut data).unwrap();
+                assert_eq!(data, &$b);
+
+                let mut reader = &data[..];
+                let read_value = <$ty>::read_data(&mut reader, &<$ty as DataFormat>::LATEST_HEADER).unwrap();
+                assert_eq!(read_value, value);
+
+            }
+
+        };
+    }
+
+    case!(test_option_none, Option<u8>, None, [0]);
+    case!(test_option_some, Option<u8>, Some(1), [1, 1]);
+}

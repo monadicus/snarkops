@@ -94,3 +94,57 @@ impl DataFormat for RetentionPolicy {
         })
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod test {
+    use crate::format::DataFormat;
+    use checkpoint::{RetentionPolicy, RetentionSpan};
+
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() {
+                let mut data = Vec::new();
+                let value: $ty = $a.parse().unwrap();
+                value.write_data(&mut data).unwrap();
+                assert_eq!(data, $b);
+
+                let mut reader = &data[..];
+                let read_value = <$ty>::read_data(&mut reader, &<$ty as DataFormat>::LATEST_HEADER).unwrap();
+                assert_eq!(read_value, value);
+
+            }
+
+        };
+    }
+
+    case!(retention_span_unlimited, RetentionSpan, "U", [0]);
+    case!(retention_span_minute, RetentionSpan, "1m", [1, 1]);
+    case!(retention_span_hour, RetentionSpan, "1h", [2, 1]);
+    case!(retention_span_day, RetentionSpan, "1D", [3, 1]);
+    case!(retention_span_week, RetentionSpan, "1W", [4, 1]);
+    case!(retention_span_month, RetentionSpan, "1M", [5, 1]);
+    case!(retention_span_year, RetentionSpan, "1Y", [6, 1]);
+
+    case!(retention_policy, RetentionPolicy, "1m:1m,1h:1h,1D:1D,1W:1W,1M:1M,1Y:1Y", [
+        1, 6,
+        1, 1, 1, 1,
+        2, 1, 2, 1,
+        3, 1, 3, 1,
+        4, 1, 4, 1,
+        5, 1, 5, 1,
+        6, 1, 6, 1
+    ]);
+
+    case!(retention_policy_u_u, RetentionPolicy, "U:U", [
+        1, 1,
+        0, 0
+    ]);
+
+    case!(retention_policy_u_1y, RetentionPolicy, "U:1Y", [
+        1, 1,
+        0, 6, 1
+    ]);
+}

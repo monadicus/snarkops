@@ -108,3 +108,59 @@ where
         Ok(data)
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod test {
+    use crate::format::DataFormat;
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() {
+                let mut data = Vec::new();
+                let value: $ty = $a;
+                value.write_data(&mut data).unwrap();
+                // we're not doing an assert here because
+                // the order of the elements in the collection is not guaranteed
+                // assert_eq!(data, &$b);
+
+                let mut reader = &data[..];
+                let read_value = <$ty>::read_data(&mut reader, &<$ty as DataFormat>::LATEST_HEADER).unwrap();
+                assert_eq!(read_value, value);
+
+            }
+
+        };
+    }
+
+    case!(test_vec_u8, Vec<u8>, vec![1, 2, 3], [
+        1, 3,
+        1, 2, 3
+    ]);
+    case!(test_vec_u16, Vec<u16>, vec![1, 2, 3], [
+        1, 3,
+        1, 0,
+        2, 0,
+        3, 0
+    ]);
+
+    case!(test_hashset_u8, std::collections::HashSet<u8>, [1, 2, 3].into_iter().collect(), [
+        1, 3,
+        1, 2, 3
+    ]);
+    case!(test_hashset_u16, std::collections::HashSet<u16>, [1, 2, 3].into_iter().collect(), [
+        1, 3,
+        1, 0,
+        2, 0,
+        3, 0
+    ]);
+
+    case!(test_hashmap_u8_u16, std::collections::HashMap<u8, u16>, [(1, 2), (3, 4)].into_iter().collect(), [
+        1, 4,
+        1, 0,
+        2, 0,
+        3, 0,
+        4, 0
+    ]);
+}

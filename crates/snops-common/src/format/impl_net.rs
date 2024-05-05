@@ -112,3 +112,62 @@ impl DataFormat for SocketAddr {
         }
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod test {
+    use crate::format::DataFormat;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() {
+                let mut data = Vec::new();
+                $a.write_data(&mut data).unwrap();
+                assert_eq!(data, &$b);
+
+                let mut reader = &data[..];
+                let read_value = <$ty>::read_data(&mut reader, &()).unwrap();
+                assert_eq!(read_value, $a);
+
+            }
+
+        };
+    }
+
+    case!(ip_localhost, Ipv4Addr, Ipv4Addr::LOCALHOST, [127, 0, 0, 1]);
+    case!(ip_v6_localhost, Ipv6Addr, "::1".parse::<Ipv6Addr>().unwrap(), [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 1,
+    ]);
+    case!(ip_v4, IpAddr, IpAddr::V4(Ipv4Addr::LOCALHOST), [0, 127, 0, 0, 1]);
+    case!(ip_v6, IpAddr, IpAddr::V6("::1".parse::<Ipv6Addr>().unwrap()), [
+        1,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 1,
+    ]);
+
+    case!(socket_v4, SocketAddrV4, SocketAddrV4::new(Ipv4Addr::LOCALHOST, 80), [
+        127, 0, 0, 1,
+        80, 0,
+    ]);
+    case!(socket_v6, SocketAddrV6, SocketAddrV6::new(Ipv6Addr::LOCALHOST, 8080, 0, 0), [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 1,
+        144, 31,
+    ]);
+
+    case!(socket_v4_socket, SocketAddr, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8080)), [
+        0,
+        127, 0, 0, 1,
+        144, 31,
+    ]);
+
+    case!(socket_v6_socket, SocketAddr, SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 8080, 0, 0)), [
+        1,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 1,
+        144, 31,
+    ]);
+}

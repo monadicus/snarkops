@@ -61,3 +61,58 @@ impl DataFormat for () {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod test {
+    use crate::format::DataFormat;
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() {
+                let mut data = Vec::new();
+                $a.write_data(&mut data).unwrap();
+                assert_eq!(data, &$b);
+
+                let mut reader = &data[..];
+                let read_value = <$ty>::read_data(&mut reader, &<$ty as DataFormat>::LATEST_HEADER).unwrap();
+                assert_eq!(read_value, $a);
+
+            }
+
+        };
+    }
+
+    case!(test_tuple_0, (), (), [0u8; 0]);
+    case!(test_tuple_2, (u8, u16), (1u8, 2u16), [1, 2, 0]);
+    case!(test_tuple_3, (u8, u16, u32), (1u8, 2u16, 3u32), [
+        1,
+        2, 0,
+        3, 0, 0, 0
+    ]);
+    case!(test_tuple_2_1, ((u8, u16), u32), ((1u8, 2u16), 3u32), [
+        1,
+        2, 0,
+        3, 0, 0, 0
+    ]);
+    case!(test_tuple_2_2, ((u8, u16), (u32, u64)), ((1u8, 2u16), (3u32, 4u64)), [
+        1,
+        2, 0,
+        3, 0, 0, 0,
+        4, 0, 0, 0, 0, 0, 0, 0
+    ]);
+    case!(test_tuple_2_rev, (u16, u8), (2u16, 1u8), [2, 0, 1]);
+    case!(test_tuple_2_1_rev, (u32, (u16, u8)), (3u32, (2u16, 1u8)), [
+        3, 0, 0, 0,
+        2, 0,
+        1
+    ]);
+    case!(test_tuple_2_2_rev, ((u32, u64), (u16, u8)), ((3u32, 4u64), (2u16, 1u8)), [
+        3, 0, 0, 0,
+        4, 0, 0, 0, 0, 0, 0, 0,
+        2,
+        0, 1
+    ]);
+
+}
