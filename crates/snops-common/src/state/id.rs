@@ -4,10 +4,7 @@ use rand::RngCore;
 use serde::de::Error;
 
 use super::INTERNED_ID_REGEX;
-use crate::{
-    format::{DataFormat, PackedUint},
-    INTERN,
-};
+use crate::{format::DataFormat, INTERN};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InternedId(lasso::Spur);
@@ -96,19 +93,14 @@ impl DataFormat for InternedId {
         &self,
         writer: &mut W,
     ) -> Result<usize, crate::format::DataWriteError> {
-        let s: &str = self.as_ref();
-        let bytes = s.as_bytes();
-        Ok(PackedUint::from(bytes.len()).write_data(writer)? + writer.write(bytes)?)
+        self.0.write_data(writer)
     }
 
     fn read_data<R: std::io::prelude::Read>(
         reader: &mut R,
         _header: &Self::Header,
     ) -> Result<Self, crate::format::DataReadError> {
-        let data = String::read_data(reader, &())?;
-        InternedId::from_str(&data).map_err(|e| {
-            crate::format::DataReadError::Custom(format!("error loading interned id {data}: {e}"))
-        })
+        Ok(InternedId(lasso::Spur::read_data(reader, &())?))
     }
 }
 

@@ -11,6 +11,7 @@ use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snops_common::{
+    format::{DataFormat, DataFormatReader, DataFormatWriter, DataReadError},
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
     state::{AgentId, DocHeightRequest, InternedId, NodeState},
@@ -44,6 +45,37 @@ pub struct ExternalNode {
     pub bft: Option<SocketAddr>,
     pub node: Option<SocketAddr>,
     pub rest: Option<SocketAddr>,
+}
+
+impl DataFormat for ExternalNode {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+        written += writer.write_data(&self.bft)?;
+        written += writer.write_data(&self.node)?;
+        written += writer.write_data(&self.rest)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        match header {
+            1 => {
+                let bft = reader.read_data(&())?;
+                let node = reader.read_data(&())?;
+                let rest = reader.read_data(&())?;
+                Ok(ExternalNode { bft, node, rest })
+            }
+            _ => Err(DataReadError::Custom("unsupported version".to_owned())),
+        }
+    }
 }
 
 impl BEncDec for ExternalNode {
@@ -269,6 +301,115 @@ impl BEncDec for DocHeightRequest {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct NodeFormatHeader {
+    pub(crate) key_source: <KeySource as DataFormat>::Header,
+    pub(crate) height_request: <DocHeightRequest as DataFormat>::Header,
+    pub(crate) node_targets: <NodeTargets as DataFormat>::Header,
+}
+
+impl DataFormat for NodeFormatHeader {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+        written += self.key_source.write_data(writer)?;
+        written += self.height_request.write_data(writer)?;
+        written += self.node_targets.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        match header {
+            1 => {
+                let key_source = KeySource::read_header(reader)?;
+                let height_request = DocHeightRequest::read_header(reader)?;
+                let node_targets = NodeTargets::read_header(reader)?;
+                Ok(NodeFormatHeader {
+                    key_source,
+                    height_request,
+                    node_targets,
+                })
+            }
+            _ => Err(DataReadError::unsupported(
+                "NodeFormatHeader",
+                Self::LATEST_HEADER,
+                *header,
+            )),
+        }
+    }
+}
+
+impl DataFormat for Node {
+    type Header = NodeFormatHeader;
+    const LATEST_HEADER: Self::Header = NodeFormatHeader {
+        key_source: KeySource::LATEST_HEADER,
+        height_request: DocHeightRequest::LATEST_HEADER,
+        node_targets: NodeTargets::LATEST_HEADER,
+    };
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+        written += self.online.write_data(writer)?;
+        written += self.replicas.write_data(writer)?;
+        written += self.key.write_data(writer)?;
+        written += self.height.write_data(writer)?;
+        written += self
+            .labels
+            .iter()
+            .cloned() // TODO: may need to make vec DataFormat impl not need a clone
+            .collect::<Vec<_>>()
+            .write_data(writer)?;
+        written += self.agent.write_data(writer)?;
+        written += self.validators.write_data(writer)?;
+        written += self.peers.write_data(writer)?;
+        written += self
+            .env
+            .clone()
+            .into_iter()
+            .collect::<Vec<(String, String)>>()
+            .write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        let online = reader.read_data(&())?;
+        let replicas = reader.read_data(&())?;
+        let key = reader.read_data(&header.key_source)?;
+        let height = reader.read_data(&header.height_request)?;
+        let labels = Vec::<Spur>::read_data(reader, &())?;
+        let agent = reader.read_data(&())?;
+        let validators = reader.read_data(&header.node_targets)?;
+        let peers = reader.read_data(&header.node_targets)?;
+        let env = Vec::<(String, String)>::read_data(reader, &((), ()))?;
+
+        Ok(Node {
+            online,
+            replicas,
+            key,
+            height,
+            labels: labels.into_iter().collect(),
+            agent,
+            validators,
+            peers,
+            env: env.into_iter().collect(),
+        })
+    }
+}
+
 impl BEncDec for Node {
     fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
         let mut buf = Vec::new();
@@ -439,6 +580,57 @@ impl Display for KeySource {
                 }
             }
         )
+    }
+}
+
+impl DataFormat for KeySource {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1u8;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        Ok(match self {
+            KeySource::Local => writer.write_data(&0u8)?,
+            KeySource::Literal(key) => writer.write_data(&1u8)? + writer.write_data(key)?,
+            KeySource::Committee(None) => writer.write_data(&2u8)?,
+            KeySource::Committee(Some(idx)) => {
+                // save a byte by making this a separate case
+                writer.write_data(&3u8)? + writer.write_data(idx)?
+            }
+            KeySource::Named(name, None) => writer.write_data(&4u8)? + writer.write_data(name)?,
+            KeySource::Named(name, Some(idx)) => {
+                // save a byte by making this a separate case
+                writer.write_data(&5u8)? + writer.write_data(name)? + writer.write_data(idx)?
+            }
+        })
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(DataReadError::unsupported(
+                "KeySource",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        match reader.read_data(&())? {
+            0u8 => Ok(KeySource::Local),
+            1u8 => Ok(KeySource::Literal(reader.read_data(&())?)),
+            2u8 => Ok(KeySource::Committee(None)),
+            3u8 => Ok(KeySource::Committee(Some(reader.read_data(&())?))),
+            4u8 => Ok(KeySource::Named(reader.read_data(&())?, None)),
+            5u8 => Ok(KeySource::Named(
+                reader.read_data(&())?,
+                Some(reader.read_data(&())?),
+            )),
+            n => Err(DataReadError::Custom(format!("invalid KeySource tag {n}"))),
+        }
     }
 }
 

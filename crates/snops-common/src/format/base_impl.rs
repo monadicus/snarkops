@@ -1,9 +1,17 @@
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    num::NonZeroU8,
+};
+
+use checkpoint::RetentionSpan;
+use lasso::Spur;
 
 use super::{
     packed_int::PackedUint, DataFormat, DataFormatReader, DataFormatWriter, DataReadError,
     DataWriteError,
 };
+use crate::INTERN;
 
 macro_rules! impl_tuple_dataformat {
     ($($name:ident),+) => {
@@ -97,6 +105,19 @@ impl_integer_dataformat!(i32);
 impl_integer_dataformat!(i64);
 impl_integer_dataformat!(i128);
 
+impl DataFormat for usize {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        PackedUint::from(*self).write_data(writer)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        Ok(usize::from(PackedUint::read_data(reader, header)?))
+    }
+}
+
 impl DataFormat for bool {
     type Header = ();
     const LATEST_HEADER: Self::Header = ();
@@ -172,6 +193,19 @@ impl<T: DataFormat> DataFormat for Option<T> {
     }
 }
 
+impl<T: DataFormat> DataFormat for Box<T> {
+    type Header = T::Header;
+    const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        self.as_ref().write_data(writer)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        Ok(Box::new(reader.read_data(header)?))
+    }
+}
+
 impl<T: DataFormat> DataFormat for Vec<T> {
     type Header = T::Header;
     const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
@@ -191,5 +225,185 @@ impl<T: DataFormat> DataFormat for Vec<T> {
             data.push(reader.read_data(header)?);
         }
         Ok(data)
+    }
+}
+
+impl DataFormat for NonZeroU8 {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(writer.write(&[self.get()])?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        let mut byte = [0u8; 1];
+        reader.read_exact(&mut byte)?;
+        NonZeroU8::new(byte[0]).ok_or(DataReadError::Custom("invalid NonZeroU8".to_string()))
+    }
+}
+
+impl DataFormat for Ipv4Addr {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(writer.write(&self.octets())?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        let mut octets = [0u8; 4];
+        reader.read_exact(&mut octets)?;
+        Ok(Ipv4Addr::from(octets))
+    }
+}
+
+impl DataFormat for Ipv6Addr {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(writer.write(&self.octets())?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        let mut octets = [0u8; 16];
+        reader.read_exact(&mut octets)?;
+        Ok(Ipv6Addr::from(octets))
+    }
+}
+
+impl DataFormat for SocketAddrV4 {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(self.ip().write_data(writer)? + self.port().write_data(writer)?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        Ok(SocketAddrV4::new(
+            reader.read_data(header)?,
+            reader.read_data(header)?,
+        ))
+    }
+}
+
+impl DataFormat for SocketAddrV6 {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(self.ip().write_data(writer)? + self.port().write_data(writer)?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        Ok(SocketAddrV6::new(
+            reader.read_data(header)?,
+            reader.read_data(header)?,
+            0,
+            0,
+        ))
+    }
+}
+
+impl DataFormat for SocketAddr {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        match self {
+            SocketAddr::V4(addr) => Ok(0u8.write_data(writer)? + addr.write_data(writer)?),
+            SocketAddr::V6(addr) => Ok(1u8.write_data(writer)? + addr.write_data(writer)?),
+        }
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        match reader.read_data(&())? {
+            0u8 => Ok(SocketAddr::V4(reader.read_data(&())?)),
+            1u8 => Ok(SocketAddr::V6(reader.read_data(&())?)),
+            n => Err(DataReadError::Custom(format!(
+                "invalid SocketAddr discriminant: {n}"
+            ))),
+        }
+    }
+}
+
+impl DataFormat for Spur {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let s: &str = INTERN.resolve(self);
+        let bytes = s.as_bytes();
+        Ok(PackedUint::from(bytes.len()).write_data(writer)? + writer.write(bytes)?)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        _header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        let data = String::read_data(reader, &())?;
+        Ok(INTERN.get_or_intern(data))
+    }
+}
+
+impl DataFormat for RetentionSpan {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        match self {
+            RetentionSpan::Unlimited => 0u8.write_data(writer),
+            RetentionSpan::Minute(b) => {
+                1u8.write_data(writer)?;
+                b.write_data(writer)
+            }
+            RetentionSpan::Hour(b) => {
+                2u8.write_data(writer)?;
+                b.write_data(writer)
+            }
+            RetentionSpan::Day(b) => {
+                3u8.write_data(writer)?;
+                b.write_data(writer)
+            }
+            RetentionSpan::Week(b) => {
+                4u8.write_data(writer)?;
+                b.write_data(writer)
+            }
+            RetentionSpan::Month(b) => {
+                5u8.write_data(writer)?;
+                b.write_data(writer)
+            }
+            RetentionSpan::Year(b) => {
+                6u8.write_data(writer)?;
+                b.write_data(writer)
+            }
+        }
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(DataReadError::unsupported(
+                "RetentionSpan",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+        match reader.read_data(&())? {
+            0u8 => Ok(RetentionSpan::Unlimited),
+            1u8 => Ok(RetentionSpan::Minute(reader.read_data(&())?)),
+            2u8 => Ok(RetentionSpan::Hour(reader.read_data(&())?)),
+            3u8 => Ok(RetentionSpan::Day(reader.read_data(&())?)),
+            4u8 => Ok(RetentionSpan::Week(reader.read_data(&())?)),
+            5u8 => Ok(RetentionSpan::Month(reader.read_data(&())?)),
+            6u8 => Ok(RetentionSpan::Year(reader.read_data(&())?)),
+            n => Err(DataReadError::Custom(format!(
+                "invalid RetentionSpan discrminant: {n}",
+            ))),
+        }
     }
 }

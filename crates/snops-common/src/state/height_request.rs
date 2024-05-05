@@ -1,3 +1,7 @@
+use checkpoint::RetentionSpan;
+
+use crate::format::{DataFormat, DataFormatReader, DataReadError};
+
 /// for some reason bincode does not allow deserialize_any so if i want to allow
 /// end users to type "top", 42, or "persist" i need to do have to copies of
 /// this where one is not untagged.
@@ -20,6 +24,47 @@ pub enum DocHeightRequest {
     // TruncateTime(i64),
 }
 
+impl DataFormat for DocHeightRequest {
+    type Header = (u8, <RetentionSpan as DataFormat>::Header);
+    const LATEST_HEADER: Self::Header = (1, RetentionSpan::LATEST_HEADER);
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        match self {
+            DocHeightRequest::Top => 0u8.write_data(writer),
+            DocHeightRequest::Absolute(height) => {
+                Ok(1u8.write_data(writer)? + height.write_data(writer)?)
+            }
+            DocHeightRequest::Checkpoint(retention) => {
+                Ok(2u8.write_data(writer)? + retention.write_data(writer)?)
+            }
+        }
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        if header.0 != Self::LATEST_HEADER.0 {
+            return Err(DataReadError::unsupported(
+                "DocHeightRequest",
+                Self::LATEST_HEADER.0,
+                header.0,
+            ));
+        }
+        match reader.read_data(&())? {
+            0u8 => Ok(DocHeightRequest::Top),
+            1u8 => Ok(DocHeightRequest::Absolute(reader.read_data(&())?)),
+            2u8 => Ok(DocHeightRequest::Checkpoint(reader.read_data(&header.1)?)),
+            n => Err(DataReadError::Custom(format!(
+                "invalid DocHeightRequest discrminant: {n}"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Default, Copy, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum HeightRequest {
@@ -34,6 +79,49 @@ pub enum HeightRequest {
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
+}
+
+// TODO: now that we don't use bincode for storage format, we should be able to
+// make remove HeightRequest and rename DocHeightRequest to HeightRequest
+impl DataFormat for HeightRequest {
+    type Header = (u8, <RetentionSpan as DataFormat>::Header);
+    const LATEST_HEADER: Self::Header = (1, RetentionSpan::LATEST_HEADER);
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        match self {
+            HeightRequest::Top => 0u8.write_data(writer),
+            HeightRequest::Absolute(height) => {
+                Ok(1u8.write_data(writer)? + height.write_data(writer)?)
+            }
+            HeightRequest::Checkpoint(retention) => {
+                Ok(2u8.write_data(writer)? + retention.write_data(writer)?)
+            }
+        }
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        if header.0 != Self::LATEST_HEADER.0 {
+            return Err(DataReadError::unsupported(
+                "HeightRequest",
+                Self::LATEST_HEADER.0,
+                header.0,
+            ));
+        }
+        match reader.read_data(&())? {
+            0u8 => Ok(HeightRequest::Top),
+            1u8 => Ok(HeightRequest::Absolute(reader.read_data(&())?)),
+            2u8 => Ok(HeightRequest::Checkpoint(reader.read_data(&header.1)?)),
+            n => Err(DataReadError::Custom(format!(
+                "invalid HeightRequest discrminant: {n}"
+            ))),
+        }
+    }
 }
 
 impl HeightRequest {
