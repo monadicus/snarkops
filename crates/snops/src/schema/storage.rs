@@ -548,7 +548,7 @@ impl Document {
         if let Err(e) = state
             .db
             .storage
-            .save(id, PersistStorage::from(storage.deref()))
+            .save(&id, &PersistStorage::from(storage.deref()))
         {
             error!("failed to save storage meta: {e}");
         }

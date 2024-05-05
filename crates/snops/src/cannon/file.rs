@@ -97,7 +97,7 @@ impl TransactionDrain {
             .state
             .db
             .tx_drain_counts
-            .save(key, PersistDrainCount { count })
+            .save(&key, &PersistDrainCount { count })
         {
             tracing::error!(
                 "Error saving drain count for env {}, drain {}: {e}",

@@ -212,7 +212,6 @@ pub struct Node {
 impl Node {
     pub fn into_state(&self, node_key: NodeKey) -> NodeState {
         NodeState {
-            ty: node_key.ty,
             node_key,
             private_key: Default::default(),
             height: (0, self.height.into()),
@@ -309,21 +308,11 @@ impl DataFormat for Node {
         written += self.replicas.write_data(writer)?;
         written += self.key.write_data(writer)?;
         written += self.height.write_data(writer)?;
-        written += self
-            .labels
-            .iter()
-            .cloned() // TODO: may need to make vec DataFormat impl not need a clone
-            .collect::<Vec<_>>()
-            .write_data(writer)?;
+        written += self.labels.write_data(writer)?;
         written += self.agent.write_data(writer)?;
         written += self.validators.write_data(writer)?;
         written += self.peers.write_data(writer)?;
-        written += self
-            .env
-            .clone()
-            .into_iter()
-            .collect::<Vec<(String, String)>>()
-            .write_data(writer)?;
+        written += self.env.write_data(writer)?;
         Ok(written)
     }
 

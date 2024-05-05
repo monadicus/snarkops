@@ -199,7 +199,7 @@ impl AgentService for AgentRpcServer {
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
                         .arg("--type")
-                        .arg(node.ty.to_string())
+                        .arg(node.node_key.ty.to_string())
                         // storage configuration
                         .arg("--genesis")
                         .arg(storage_path.join(SNARKOS_GENESIS_FILE))

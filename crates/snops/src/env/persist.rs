@@ -111,7 +111,7 @@ impl PersistEnv {
 
         let mut tx_pipe = TxPipes::default();
         for drain_id in self.tx_pipe_drains {
-            let count = match db.tx_drain_counts.restore((self.id, drain_id)) {
+            let count = match db.tx_drain_counts.restore(&(self.id, drain_id)) {
                 Ok(Some(count)) => count.count,
                 Ok(None) => 0,
                 Err(e) => {

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use fixedbitset::FixedBitSet;
 use serde::{Deserialize, Serialize};
 use snops_common::{
+    format::{DataFormat, DataFormatReader},
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
     state::AgentMode,
@@ -17,6 +18,41 @@ pub struct AgentFlags {
     pub(super) labels: HashSet<Spur>,
     #[serde(deserialize_with = "deser_pk", default, serialize_with = "ser_pk")]
     pub(super) local_pk: bool,
+}
+
+impl DataFormat for AgentFlags {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+        written += u8::from(self.mode).write_data(writer)?;
+        written += self.labels.write_data(writer)?;
+        written += self.local_pk.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, snops_common::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(snops_common::format::DataReadError::unsupported(
+                "AgentFlags",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        Ok(AgentFlags {
+            mode: AgentMode::from(u8::read_data(reader, &())?),
+            labels: reader.read_data(&())?,
+            local_pk: reader.read_data(&())?,
+        })
+    }
 }
 
 fn deser_mode<'de, D>(deser: D) -> Result<AgentMode, D::Error>

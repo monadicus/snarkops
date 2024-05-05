@@ -1,10 +1,7 @@
 use std::str::FromStr;
 
 use snops_common::{
-    state::{
-        AgentId, AgentMode, AgentPeer, AgentState, EnvId, HeightRequest, NodeKey, NodeState,
-        NodeType,
-    },
+    state::{AgentId, AgentMode, AgentPeer, AgentState, EnvId, HeightRequest, NodeKey, NodeState},
     INTERN,
 };
 
@@ -33,7 +30,6 @@ bincode_test!(
         EnvId::rand(),
         Box::new(NodeState {
             node_key: NodeKey::from_str("client/1").unwrap(),
-            ty: NodeType::Validator,
             private_key: snops_common::state::KeyState::Literal("foo".to_owned()),
             height: (0, HeightRequest::Top),
             online: true,

@@ -1,5 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
+use dashmap::DashMap;
 use prometheus_http_query::Client as PrometheusClient;
 use snops_common::{
     constant::ENV_AGENT_KEY,
@@ -11,7 +12,7 @@ use tracing::info;
 use super::{AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
     cli::Cli,
-    db::{document::DbDocument, Database},
+    db::Database,
     env::Environment,
     error::StateError,
     server::{error::StartError, prometheus::HttpsdResponse},
@@ -66,7 +67,7 @@ impl GlobalState {
             envs.insert(id, Arc::new(loaded));
         }
 
-        let pool = db.load::<AgentPool>()?;
+        let pool: DashMap<_, _> = db.agents.read_all().collect();
 
         // For all agents not in envs, set their state to Inventory
         for mut entry in pool.iter_mut() {
@@ -83,7 +84,7 @@ impl GlobalState {
                 entry.key()
             );
             entry.set_state(AgentState::Inventory);
-            let _ = entry.value().save(&db, *entry.key());
+            let _ = db.agents.save(entry.key(), entry.value());
         }
 
         Ok(Self {

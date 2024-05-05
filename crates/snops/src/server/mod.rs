@@ -35,7 +35,7 @@ use self::{
 };
 use crate::{
     cli::Cli,
-    db::{self, document::DbDocument},
+    db,
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
     state::{Agent, AgentFlags, AppState, GlobalState},
@@ -194,7 +194,7 @@ async fn handle_socket(
                 agent.mark_connected(client, query.flags);
 
                 info!("agent {id} reconnected");
-                if let Err(e) = agent.save(&state.db, id) {
+                if let Err(e) = state.db.agents.save(&id, &agent) {
                     error!("failed to save agent {id} to the database: {e}");
                 }
 
@@ -251,7 +251,7 @@ async fn handle_socket(
         });
 
         // insert a new agent into the pool
-        if let Err(e) = agent.save(&state.db, id) {
+        if let Err(e) = state.db.agents.save(&id, &agent) {
             error!("failed to save agent {id} to the database: {e}");
         }
         state.pool.insert(id, agent);
@@ -277,7 +277,7 @@ async fn handle_socket(
                 );
                 agent.set_ports(ports);
                 agent.set_addrs(external, internal);
-                if let Err(e) = agent.save(&state2.db, id) {
+                if let Err(e) = state2.db.agents.save(&id, &agent) {
                     error!("failed to save agent {id} to the database: {e}");
                 }
             }

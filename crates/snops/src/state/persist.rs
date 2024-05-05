@@ -1,26 +1,17 @@
-use bytes::{Buf, BufMut};
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     constant::LEDGER_BASE_DIR,
     format::{DataFormat, DataFormatReader},
-    state::{AgentId, AgentState, InternedId, PortConfig, StorageId},
+    state::{InternedId, StorageId},
 };
 use tracing::info;
 
-use super::{Agent, AgentPool};
 use crate::{
     cli::Cli,
-    db::{
-        document::{load_interned_id, DbCollection, DbDocument},
-        error::DatabaseError,
-        Database,
-    },
     schema::{
         error::StorageError,
         storage::{pick_commitee_addr, read_to_addrs, LoadedStorage, STORAGE_DIR},
     },
-    server::jwt::Claims,
-    state::{AgentAddrs, AgentFlags},
 };
 
 /// Metadata for storage that can be used to restore a loaded storage
@@ -110,101 +101,6 @@ impl PersistStorage {
             // TODO: waiting for #116 to be merged, then make a reusable function
             accounts: Default::default(),
         })
-    }
-}
-
-impl DbCollection for AgentPool {
-    fn restore(db: &Database) -> Result<Self, DatabaseError> {
-        let map = AgentPool::default();
-        for row in db.agents_old.iter() {
-            let Some(id) = load_interned_id(row, "agent") else {
-                continue;
-            };
-
-            match DbDocument::restore(db, id) {
-                Ok(Some(agent)) => {
-                    map.insert(id, agent);
-                }
-                // should be unreachable
-                Ok(None) => {
-                    tracing::error!("Agent {} not found in database", id);
-                }
-                Err(e) => {
-                    tracing::error!("Error restoring agent {}: {}", id, e);
-                }
-            }
-        }
-
-        Ok(map)
-    }
-}
-
-const AGENT_VERSION: u8 = 1;
-impl DbDocument for Agent {
-    type Key = AgentId;
-
-    fn restore(db: &Database, key: Self::Key) -> Result<Option<Self>, DatabaseError> {
-        let Some(raw) = db
-            .agents_old
-            .get(key)
-            .map_err(|e| DatabaseError::LookupError(key.to_string(), "agents".to_owned(), e))?
-        else {
-            return Ok(None);
-        };
-        let mut buf = raw.as_ref();
-        let version = buf.get_u8();
-        if version != AGENT_VERSION {
-            return Err(DatabaseError::UnsupportedVersion(
-                key.to_string(),
-                "agents".to_owned(),
-                version,
-            ));
-        };
-
-        let (state, nonce, flags, ports, addrs): (
-            AgentState,
-            u16,
-            AgentFlags,
-            Option<PortConfig>,
-            Option<AgentAddrs>,
-        ) = bincode::deserialize_from(&mut buf).map_err(|e| {
-            DatabaseError::DeserializeError(key.to_string(), "agents".to_owned(), e)
-        })?;
-
-        let claims = Claims { id: key, nonce };
-
-        Ok(Some(Agent::from_components(
-            claims, state, flags, ports, addrs,
-        )))
-    }
-
-    fn save(&self, db: &Database, key: Self::Key) -> Result<(), DatabaseError> {
-        let mut buf = vec![];
-        buf.put_u8(AGENT_VERSION);
-        bincode::serialize_into(
-            &mut buf,
-            &(
-                self.state(),
-                self.claims().nonce,
-                &self.flags,
-                &self.ports,
-                &self.addrs,
-            ),
-        )
-        .map_err(|e| DatabaseError::SerializeError(key.to_string(), "agents".to_owned(), e))?;
-
-        db.agents_old
-            .insert(key, buf)
-            .map_err(|e| DatabaseError::SaveError(key.to_string(), "agents".to_owned(), e))?;
-        Ok(())
-    }
-
-    fn delete(db: &Database, key: Self::Key) -> Result<bool, DatabaseError> {
-        Ok(db
-            .agents_old
-            .remove(key)
-            .map_err(|e| DatabaseError::DeleteError(key.to_string(), "agents".to_owned(), e))?
-            .is_some())
     }
 }
 

@@ -44,6 +44,7 @@ impl DataReadError {
     }
 }
 
+/// Write data and its header to a writer
 pub fn write_dataformat<W: Write, F: DataFormat>(
     writer: &mut W,
     data: &F,
@@ -51,6 +52,7 @@ pub fn write_dataformat<W: Write, F: DataFormat>(
     Ok(data.write_header(writer)? + data.write_data(writer)?)
 }
 
+/// Read data and its header from a reader
 pub fn read_dataformat<R: Read, F: DataFormat>(reader: &mut R) -> Result<F, DataReadError> {
     let header = F::read_header(reader)?;
     F::read_data(reader, &header)

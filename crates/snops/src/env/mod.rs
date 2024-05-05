@@ -416,7 +416,7 @@ impl Environment {
             timeline_handle: Default::default(),
         });
 
-        if let Err(e) = state.db.envs.save(env_id, PersistEnv::from(env.as_ref())) {
+        if let Err(e) = state.db.envs.save(&env_id, &PersistEnv::from(env.as_ref())) {
             error!("failed to save env {env_id} to persistence: {e}");
         }
 
@@ -507,7 +507,7 @@ impl Environment {
             .envs
             .remove(&id)
             .ok_or(CleanupError::EnvNotFound(id))?;
-        if let Err(e) = state.db.envs.delete(id) {
+        if let Err(e) = state.db.envs.delete(&id) {
             error!("failed to save delete {id} to persistence: {e}");
         }
 

@@ -82,7 +82,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
             }))
     }
 
-    pub fn restore(&self, key: Key) -> Result<Option<Value>, DatabaseError> {
+    pub fn restore(&self, key: &Key) -> Result<Option<Value>, DatabaseError> {
         Ok(self
             .tree
             .get(key.to_byte_vec()?)?
@@ -90,12 +90,12 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
             .transpose()?)
     }
 
-    pub fn save(&self, key: Key, value: Value) -> Result<(), DatabaseError> {
+    pub fn save(&self, key: &Key, value: &Value) -> Result<(), DatabaseError> {
         self.tree.insert(key.to_byte_vec()?, value.to_byte_vec()?)?;
         Ok(())
     }
 
-    pub fn delete(&self, key: Key) -> Result<bool, DatabaseError> {
+    pub fn delete(&self, key: &Key) -> Result<bool, DatabaseError> {
         Ok(self.tree.remove(key.to_byte_vec()?)?.is_some())
     }
 
@@ -123,7 +123,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
                     }
                 };
 
-                if let Err(e) = self.delete(key) {
+                if let Err(e) = self.delete(&key) {
                     tracing::error!("Error deleting key from store: {e}");
                     return 0;
                 }

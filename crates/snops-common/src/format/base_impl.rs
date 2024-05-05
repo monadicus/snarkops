@@ -1,6 +1,7 @@
 use std::{
+    collections::{HashMap, HashSet},
     io::{Read, Write},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     num::NonZeroU8,
 };
 
@@ -229,6 +230,64 @@ impl<T: DataFormat> DataFormat for Vec<T> {
     }
 }
 
+impl<T> DataFormat for HashSet<T>
+where
+    T: DataFormat + Eq + std::hash::Hash,
+{
+    type Header = T::Header;
+    const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        let mut written = PackedUint::from(self.len()).write_data(writer)?;
+        for item in self.iter() {
+            written += writer.write_data(item)?;
+        }
+        Ok(written)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        let len = usize::from(PackedUint::read_data(reader, &())?);
+        let mut data = HashSet::with_capacity(len);
+        for _ in 0..len {
+            data.insert(reader.read_data(header)?);
+        }
+        Ok(data)
+    }
+}
+
+impl<K, V> DataFormat for HashMap<K, V>
+where
+    K: DataFormat + Eq + std::hash::Hash,
+    V: DataFormat,
+{
+    type Header = (K::Header, V::Header);
+    const LATEST_HEADER: Self::Header = (K::LATEST_HEADER, V::LATEST_HEADER);
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        let mut written = PackedUint::from(self.len()).write_data(writer)?;
+        for (key, value) in self.iter() {
+            written += writer.write_data(key)?;
+            written += writer.write_data(value)?;
+        }
+        Ok(written)
+    }
+
+    fn read_data<R: Read>(
+        reader: &mut R,
+        (key_header, value_header): &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        let len = usize::from(PackedUint::read_data(reader, &())?);
+        let mut data = HashMap::with_capacity(len);
+        for _ in 0..len {
+            data.insert(
+                reader.read_data(key_header)?,
+                reader.read_data(value_header)?,
+            );
+        }
+        Ok(data)
+    }
+}
+
 impl DataFormat for NonZeroU8 {
     type Header = ();
     const LATEST_HEADER: Self::Header = ();
@@ -271,6 +330,28 @@ impl DataFormat for Ipv6Addr {
         let mut octets = [0u8; 16];
         reader.read_exact(&mut octets)?;
         Ok(Ipv6Addr::from(octets))
+    }
+}
+
+impl DataFormat for IpAddr {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        match self {
+            IpAddr::V4(addr) => Ok(0u8.write_data(writer)? + addr.write_data(writer)?),
+            IpAddr::V6(addr) => Ok(1u8.write_data(writer)? + addr.write_data(writer)?),
+        }
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        match reader.read_data(&())? {
+            0u8 => Ok(IpAddr::V4(reader.read_data(&())?)),
+            1u8 => Ok(IpAddr::V6(reader.read_data(&())?)),
+            n => Err(DataReadError::Custom(format!(
+                "invalid IpAddr discriminant: {n}"
+            ))),
+        }
     }
 }
 
