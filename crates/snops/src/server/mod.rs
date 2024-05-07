@@ -209,9 +209,9 @@ async fn handle_socket(
                     match client.handshake(ctx, handshake).await {
                         Ok(Ok(())) => (),
                         Ok(Err(e)) => {
-                            error!("failed to perform client handshake reconciliation: {e}")
+                            error!("failed to perform agent {id} handshake reconciliation: {e}")
                         }
-                        Err(e) => error!("failed to perform client handshake: {e}"),
+                        Err(e) => error!("failed to perform agent {id} handshake: {e}"),
                     }
                 });
 
@@ -249,8 +249,8 @@ async fn handle_socket(
             ctx.deadline += Duration::from_secs(300);
             match client.handshake(ctx, handshake).await {
                 Ok(Ok(())) => (),
-                Ok(Err(e)) => error!("failed to perform client handshake reconciliation: {e}"),
-                Err(e) => error!("failed to perform client handshake: {e}"),
+                Ok(Err(e)) => error!("failed to perform agent {id} handshake reconciliation: {e}"),
+                Err(e) => error!("failed to perform agent {id} handshake: {e}"),
             }
         });
 
