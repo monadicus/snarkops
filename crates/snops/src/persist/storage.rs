@@ -108,7 +108,7 @@ impl DataFormat for PersistStorage {
     type Header = PersistStorageFormatHeader;
     const LATEST_HEADER: Self::Header = PersistStorageFormatHeader {
         version: 1,
-        retention_policy: <RetentionPolicy as DataFormat>::LATEST_HEADER,
+        retention_policy: RetentionPolicy::LATEST_HEADER,
     };
 
     fn write_data<W: std::io::prelude::Write>(

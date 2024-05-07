@@ -60,10 +60,10 @@ impl DataFormat for Agent {
     type Header = AgentFormatHeader;
     const LATEST_HEADER: Self::Header = AgentFormatHeader {
         version: 1,
-        addrs: <AgentAddrs as DataFormat>::LATEST_HEADER,
-        node: <NodeState as DataFormat>::LATEST_HEADER,
-        flags: <AgentFlags as DataFormat>::LATEST_HEADER,
-        ports: <PortConfig as DataFormat>::LATEST_HEADER,
+        addrs: AgentAddrs::LATEST_HEADER,
+        node: NodeState::LATEST_HEADER,
+        flags: AgentFlags::LATEST_HEADER,
+        ports: PortConfig::LATEST_HEADER,
     };
 
     fn write_data<W: std::io::prelude::Write>(
@@ -200,8 +200,8 @@ impl DataFormat for AgentAddrs {
 #[cfg(test)]
 #[rustfmt::skip]
 mod test {
-    use snops_common::{format::{DataFormat, PackedUint}, state::{AgentMode, AgentState, HeightRequest, KeyState, NodeState, PortConfig}, INTERN};
-    use crate::state::{AgentAddrs, AgentFlags};
+    use snops_common::{format::{read_dataformat, write_dataformat, DataFormat, PackedUint}, state::{AgentMode, AgentState, HeightRequest, KeyState, NodeState, PortConfig}, INTERN};
+    use crate::{persist::AgentFormatHeader, state::{Agent, AgentAddrs, AgentFlags}};
     use std::net::{IpAddr, Ipv4Addr};
 
     macro_rules! case {
@@ -209,15 +209,15 @@ mod test {
             #[test]
             fn $name() -> Result<(), Box<dyn std::error::Error>>{
                 let mut data = Vec::new();
-                $a.write_data(&mut data).unwrap();
+                write_dataformat(&mut data, &$a)?;
                 assert_eq!(data, $b);
 
                 let mut reader = &data[..];
-                let read_value = <$ty>::read_data(&mut reader, &<$ty as DataFormat>::LATEST_HEADER).unwrap();
+                let read_value = read_dataformat::<_, $ty>(&mut reader)?;
 
                 // write the data again because not every type implements PartialEq
                 let mut data2 = Vec::new();
-                read_value.write_data(&mut data2).unwrap();
+                write_dataformat(&mut data2, &read_value)?;
                 assert_eq!(data, data2);
                 Ok(())
             }
@@ -233,6 +233,7 @@ mod test {
             local_pk: true,
         },
         [
+            AgentFlags::LATEST_HEADER.to_byte_vec()?,
             0u8.to_byte_vec()?,
             PackedUint(1).to_byte_vec()?,
             "hello".to_string().to_byte_vec()?,
@@ -247,6 +248,7 @@ mod test {
             internal: vec!["127.0.0.1".parse()?],
         },
         [
+            AgentAddrs::LATEST_HEADER.to_byte_vec()?,
             Some(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))).to_byte_vec()?,
             vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))].to_byte_vec()?,
         ].concat()
@@ -259,6 +261,7 @@ mod test {
             internal: vec![],
         },
         [
+            AgentAddrs::LATEST_HEADER.to_byte_vec()?,
             None::<IpAddr>.to_byte_vec()?,
             Vec::<IpAddr>::new().to_byte_vec()?,
         ].concat()
@@ -284,6 +287,8 @@ mod test {
             }),
         ),
         [
+            AgentFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            Agent::LATEST_HEADER.to_byte_vec()?,
             "agent".to_string().to_byte_vec()?,
             2u16.to_byte_vec()?,
             0u8.to_byte_vec()?, // inventory state
@@ -328,6 +333,8 @@ mod test {
             }),
         ),
         [
+            AgentFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            Agent::LATEST_HEADER.to_byte_vec()?,
             "agent".to_string().to_byte_vec()?,
             2u16.to_byte_vec()?,
             1u8.to_byte_vec()?, // node state
