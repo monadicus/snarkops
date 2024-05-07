@@ -3,9 +3,9 @@
 The storage document is where you can specify:
 
 - The generation or downloading of a genesis block.
-- You can specify how many validators there are.
+- You can specify how many validators there are in the intial committee.
 - Can specify how much each validator has bonded.
-- Can add additional accounts and give them balances.
+- Can add additional accounts with or without a balance.
 - Can specify how the ledger should be re-loaded.
 - How often checkpoints of the ledger should be made.
 
@@ -110,17 +110,17 @@ By default it is `0`.
 This can be either:
 
 - a list of addresses and their bonded balances:
-	```yaml
-	bonded-balances:
-		aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8: 10000000000000
-		aleo1pc5zapsghnp3r6qme0dhcvjslzgef89kggsvap8f7vxs3m38lqpsjn6v47: 10000000000000
-	```
-	Good if you already know their private keys.
+  ```yaml
+  bonded-balances:
+    aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8: 10000000000000
+    aleo1pc5zapsghnp3r6qme0dhcvjslzgef89kggsvap8f7vxs3m38lqpsjn6v47: 10000000000000
+  ```
+  Good if you already know their private keys.
 - or the size of the committee and their balance amount:
-	```yaml
-	committee-size: 10 # must be 4 or greater
-	bonded-balance: 100_000_000 # must be 10 million or greater.
-	```
+  ```yaml
+  committee-size: 10 # must be 4 or greater
+  bonded-balance: 100000000 # must be 10 million or greater.
+  ```
 
 By default it is a `comittee_size: 4` and `bonded_balance: 10_000_000`.
 
@@ -130,13 +130,13 @@ An optional field that has no default. Allows you to specify more accounts to be
 
 ```yaml
 accounts:
-	example: 3
-	foo:
-		count: 3
-		seed: 1
-	bar:
-		count: 6 # the first 3 of these will be the same as the first 3 of `foo`
-		seed: 1
+  example: 3
+  foo:
+    count: 3
+    seed: 1
+  bar:
+    count: 6 # the first 3 of these will be the same as the first 3 of `foo`
+    seed: 1
 ```
 
 #### transactions
@@ -147,11 +147,11 @@ If specifed creates AOT `credits.aleo/public_tranfer` transactions.
 
 ```yaml
 transactions:
-	- file: bulk.json # the file to write the tx's to.
-		total: 1000 # how many tx'r to write.
-		amount: 5_000 # the amount to transfer.
-		sources: [committee.0] # the accounts to transfer from.
-		destinations: [accounts.*] # the accounts to transfer to.
+  - file: bulk.json # the file to write the tx's to.
+    total: 1000 # how many tx'r to write.
+    amount: 5000 # the amount to transfer.
+    sources: [committee.0] # the accounts to transfer from.
+    destinations: [accounts.*] # the accounts to transfer to.
 ```
 
 ## Examples

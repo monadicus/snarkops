@@ -40,8 +40,8 @@ Note there are two kinds of actions:
 
 For, every action you can also specify a:
 
-- `duration`: how long the action should be done for. 
-- `timeout`: how long the action should take if it goes over it kills the timeline.
+- `duration`: is the minimum time until the next action is started.
+- `timeout`: how long the action should take. If it goes over it kills the timeline.
 
 ### online
 
@@ -103,7 +103,7 @@ version: timeline.snarkos.testing.monadic.us/v1
 name: turn-off-single-node-or-else
 
 timeline:
-	# .await forces the step to wait until the condition is met rather than applying the change immediately
+  # .await forces the step to wait until the condition is met rather than applying the change immediately
   - offline.await: */*
     # wait at most 10 seconds for the nodes to go offline or kill the timeline
     timeout: 10s
@@ -118,9 +118,9 @@ version: timeline.snarkos.testing.monadic.us/v1
 name: change-node-config
 
 timeline:
-	client/1:
-		# rollback the ledger by an hour (based on block timestamp deltas)
-		height: 1hr
+  client/1:
+    # rollback the ledger by an hour (based on block timestamp deltas)
+    height: 1hr
 ```
 
 ### Change Multiple Node Configs
@@ -132,20 +132,20 @@ version: timeline.snarkos.testing.monadic.us/v1
 name: change-multiple-node-configs
 
 timeline:
-	validator/1,validator/2:
-		# disconnect all peers
-		peers: []
-		# set validators
-		validators: [validator/3, validator/4]
-		# reset ledger completely
-		height: 0
+  validator/1,validator/2:
+    # disconnect all peers
+    peers: []
+    # set validators
+    validators: [validator/3, validator/4]
+    # reset ledger completely
+    height: 0
 
-	# affect all clients
-	client/*:
-		# set validators 1 and 2 as peers
-		peers: [validator/1, validator/2]
-		# set all clients to block 100
-		height: 100
+  # affect all clients
+  client/*:
+    # set validators 1 and 2 as peers
+    peers: [validator/1, validator/2]
+    # set all clients to block 100
+    height: 100
 ```
 
 ### Simple Cannon Example
@@ -202,6 +202,6 @@ nodes:
     replicas: 4
     height: 0
     validators: []
-		# has all of every type of node that are at canarynet as peers
+    # has all of every type of node that are at canarynet as peers
     peers: ["*/*@canarynet"] # so both validators and the client. 
 ```

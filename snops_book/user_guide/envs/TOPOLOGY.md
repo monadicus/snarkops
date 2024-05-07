@@ -50,12 +50,12 @@ If you do need to specify the socket address(ip and port) for the `bft`, `node` 
 ```yaml
 external:
   validator/alpha@canary:
-		bft: 3.111.151.121:4040
-		node: 3.111.151.121:3777
-		rest: 3.111.151.121:5555
+    bft: 3.111.151.121:4040
+    node: 3.111.151.121:3777
+    rest: 3.111.151.121:5555
   client/alpha-0@canary: # this will use the default port for node, but the ip from bft
-		bft: 52.86.189.144:4040
-		rest: 52.86.189.144:5555
+    bft: 52.86.189.144:4040
+    rest: 52.86.189.144:5555
 ```
 
 ### internal
@@ -127,7 +127,7 @@ name: 4-validators
 
 nodes:
   validator/test:
-		# this requires 4 agents
+    # this requires 4 agents
     replicas: 4
     key: committee.$
     height: 0
@@ -157,6 +157,6 @@ nodes:
     replicas: 4
     height: 0
     validators: []
-		# has all of every type of node that are at canarynet as peers
+    # has all of every type of node that are at canarynet as peers
     peers: ["*/*@canarynet"] # so both validators and the client. 
 ```

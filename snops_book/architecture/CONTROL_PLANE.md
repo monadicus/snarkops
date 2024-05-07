@@ -68,7 +68,7 @@ You can apply more than one timeline to an environment.
 
 #### Outcomes
 
-An optional descrption of expected outcomes after the execution of a timeline. This does requires a Prometheus instance for [metrics](#metrics-and-logging) to be running.
+An optional description of expected outcomes after the execution of a timeline. This does requires a Prometheus instance for [metrics](#metrics-and-logging) to be running.
 
 For some tests, such as guaranteeing a particular TPS after some events have been simulated, it is useful to objectively verify whether or not a test succeeded.
 

@@ -11,4 +11,3 @@ A snops "instance" is composed of multiple parts:
 
 <!-- TODO nice to have eventually -->
 <!-- In order to instruct the control plane after it has been started, you can use
-the included snops-cli. TODO: how? -->

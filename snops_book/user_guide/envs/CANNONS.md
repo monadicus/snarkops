@@ -2,9 +2,10 @@
 
 The cannon document is an optional where you can specify:
 
-- how to create transactions.
-- how to use transactions.
-- where to send transactions.
+- where to source transactions from (ahead-of-time generated file or generate in realtime)
+- what kinds of transactions to generate
+- where to send transactions (to a file, or a node in the topology)
+
 
 The cannon document is not required for a `environment` to run, but the document needs to be present at `prepare` time to work.
 
@@ -54,7 +55,7 @@ The name of the file to read transactions from.
 
 ```yaml
 source:
-	file-name: txs.json
+  file-name: txs.json
 ```
 
 The format of the file is:
@@ -83,9 +84,9 @@ Defaults to `None`, i.e. agent uses it's own local ledger as is.
 
 ```yaml
 source:
-	query:
-		mode:
-			sync-from: client/1 # optional
+  query:
+    mode:
+      sync-from: client/1 # optional
 ```
 
 ###### node
@@ -94,8 +95,8 @@ An optional field that if provided uses the node in the `environment` specified 
 
 ```yaml
 source:
-	query:
-		mode: client/1 # required
+  query:
+    mode: client/1 # required
 ```
 
 ##### compute
@@ -113,8 +114,8 @@ You can optionally provide a list of agent labels to specify which agents to use
 
 ```yaml
 source:
-	compute:
-		labels: foo,bar
+  compute:
+    labels: foo,bar
 ```
 
 ###### demox
@@ -125,8 +126,8 @@ Requires the url for the API.
 
 ```yaml
 source:
-	compute:
-		demox-api: https://exampl_url.com/api/v1
+  compute:
+    demox-api: https://exampl_url.com/api/v1
 ```
 
 ##### tx-modes
@@ -175,11 +176,11 @@ However, they are now both requried.
 
 ```yaml
 source:
-	query:
-		mode:
-			sync-from: client/1 # optional
-	compute:
-		labels: foo,bar # optional
+  query:
+    mode:
+      sync-from: client/1 # optional
+  compute:
+    labels: foo,bar # optional
 ```
 
 ### _sink_
@@ -202,7 +203,7 @@ The name of the file to write transactions to.
 
 ```yaml
 sink:
-	file_name: txs.json
+  file_name: txs.json
 ```
 
 The format of the file is:
@@ -220,7 +221,7 @@ Defaults to `1000`
 
 ```yaml
 sink:
-	file-name: ...
+  file-name: ...
   tx-request-delay-ms: 1000
 ```
 
@@ -234,8 +235,8 @@ The node target(s) the tx's shoud be fired at.
 
 ```yaml
 sink:
-	target: client/1
-	rate: ...
+  target: client/1
+  rate: ...
 ```
 
 ##### _rate_
@@ -246,9 +247,9 @@ Read more about [fire rates](../../glossary/FIRE_RATE.md)
 
 ```yaml
 sink:
-	target: ...
-	rate:
-		tx-delay-ms: 5000
+  target: ...
+  rate:
+    tx-delay-ms: 5000
 ```
 
 ### instance
@@ -281,7 +282,7 @@ source:
   addresses: [committee.$]
 
 sink:
-	  file-name: txs.json
+    file-name: txs.json
 
 # create the cannon immediately
 instance: true

@@ -1,18 +1,17 @@
 # Runners
 
-A runner is a `snarkos` node runner. Of which we have two different ways.
+A runner is a `snarkos` node runner.
 
-## Snarkos
-
-The regular `snarkos` installation and runner.
+Of which we currently only support our own wrapper around `snarkos`.
 
 ## Snarkos AoT
 
 Our own custom wrapper around `snarkos` that allows for some custom behaviors:
 
-- Additional logging setup/changes
-- Custom ports
-- Ahead-of-Time(AoT) generation of public transactions
-- Custom Genesis creation
-- Ledger manipulation and viewing tools
-- Ledger checkpoint tooling
+- configurable BFT port
+- configurable genesis block
+- configurable ledger paths
+- realtime ledger checkpoints
+- loki integration
+- ahead-of-time public transaction generation
+- transaction executions

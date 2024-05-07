@@ -6,9 +6,9 @@ Communicates with the control plane to receive state reconciliations and other m
 
 Agents are in charge of:
 
-- Running a [runner](./RUNNERS.md).
-	- Validators
-	- Clients
-	- Provers
+- Running a [node](./RUNNERS.md).
+  - Validators
+  - Clients
+  - Provers
 - Being a compute. For example generating transactions.
 - Send off transactions.
