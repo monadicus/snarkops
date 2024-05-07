@@ -196,7 +196,8 @@ async fn main() {
                     msg = server_response_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
                         let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize response");
-                        if (ws_stream.send(tungstenite::Message::Binary(bin)).await).is_err() {
+                        let send = ws_stream.send(tungstenite::Message::Binary(bin));
+                        if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
@@ -206,7 +207,8 @@ async fn main() {
                     msg = client_request_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
                         let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize request");
-                        if (ws_stream.send(tungstenite::Message::Binary(bin)).await).is_err() {
+                        let send = ws_stream.send(tungstenite::Message::Binary(bin));
+                        if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
@@ -214,6 +216,15 @@ async fn main() {
 
                     // handle incoming messages
                     msg = ws_stream.next() => match msg {
+                        Some(Ok(tungstenite::Message::Close(frame))) => {
+                            if let Some(frame) = frame {
+                                info!("The control plane has closed the connection: {frame}");
+                            } else {
+                                info!("The control plane has closed the connection");
+                            }
+                            break 'event;
+                        }
+
                         Some(Ok(tungstenite::Message::Binary(bin))) => {
                             let msg = match bincode::deserialize(&bin) {
                                 Ok(msg) => msg,
@@ -233,8 +244,8 @@ async fn main() {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
-
                         Some(Ok(o)) => {
+
                             println!("{o:#?}");
                         }
                     },
