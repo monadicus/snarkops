@@ -54,7 +54,7 @@ impl DataFormat for PersistNode {
     type Header = PersistNodeFormatHeader;
     const LATEST_HEADER: Self::Header = PersistNodeFormatHeader {
         node: Node::LATEST_HEADER,
-        external_node: <ExternalNode as DataFormat>::LATEST_HEADER,
+        external_node: ExternalNode::LATEST_HEADER,
     };
 
     fn write_data<W: std::io::prelude::Write>(
@@ -95,4 +95,111 @@ impl DataFormat for PersistNode {
             ))),
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use snops_common::{
+        format::DataFormat,
+        state::{DocHeightRequest, InternedId},
+    };
+
+    use crate::{
+        persist::{PersistNode, PersistNodeFormatHeader},
+        schema::{
+            nodes::{ExternalNode, Node, NodeFormatHeader},
+            NodeTargets,
+        },
+    };
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
+                let mut data = Vec::new();
+                let value: $ty = $a;
+                value.write_data(&mut data)?;
+                assert_eq!(data, $b);
+
+                let mut reader = &data[..];
+                let read_value =
+                    <$ty>::read_data(&mut reader, &<$ty as DataFormat>::LATEST_HEADER)?;
+
+                let mut rewritten = Vec::new();
+                read_value.write_data(&mut rewritten)?;
+                assert_eq!(data, rewritten);
+                Ok(())
+            }
+        };
+    }
+
+    case!(
+        node_header,
+        PersistNodeFormatHeader,
+        PersistNode::LATEST_HEADER,
+        [
+            NodeFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            Node::LATEST_HEADER.to_byte_vec()?,
+            ExternalNode::LATEST_HEADER.to_byte_vec()?,
+        ]
+        .concat()
+    );
+
+    case!(
+        node_internal,
+        PersistNode,
+        PersistNode::Internal(
+            InternedId::from_str("id")?,
+            Box::new(Node {
+                online: true,
+                replicas: None,
+                key: None,
+                height: DocHeightRequest::Top,
+                labels: Default::default(),
+                agent: None,
+                validators: NodeTargets::None,
+                peers: NodeTargets::None,
+                env: Default::default(),
+            })
+        ),
+        [
+            0u8.to_byte_vec()?,
+            InternedId::from_str("id")?.to_byte_vec()?,
+            Node {
+                online: true,
+                replicas: None,
+                key: None,
+                height: DocHeightRequest::Top,
+                labels: Default::default(),
+                agent: None,
+                validators: NodeTargets::None,
+                peers: NodeTargets::None,
+                env: Default::default(),
+            }
+            .to_byte_vec()?,
+        ]
+        .concat()
+    );
+
+    case!(
+        node_external,
+        PersistNode,
+        PersistNode::External(ExternalNode {
+            bft: None,
+            node: None,
+            rest: None
+        }),
+        [
+            1u8.to_byte_vec()?,
+            ExternalNode {
+                bft: None,
+                node: None,
+                rest: None
+            }
+            .to_byte_vec()?,
+        ]
+        .concat()
+    );
 }

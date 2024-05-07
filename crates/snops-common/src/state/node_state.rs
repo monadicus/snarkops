@@ -68,10 +68,10 @@ impl DataFormat for NodeState {
     type Header = NodeStateFormatHeader;
     const LATEST_HEADER: Self::Header = NodeStateFormatHeader {
         version: 1,
-        node_key: <NodeKey as DataFormat>::LATEST_HEADER,
-        key_state: <KeyState as DataFormat>::LATEST_HEADER,
-        height: <HeightRequest as DataFormat>::LATEST_HEADER,
-        peer: <AgentPeer as DataFormat>::LATEST_HEADER,
+        node_key: NodeKey::LATEST_HEADER,
+        key_state: KeyState::LATEST_HEADER,
+        height: HeightRequest::LATEST_HEADER,
+        peer: AgentPeer::LATEST_HEADER,
     };
 
     fn write_data<W: std::io::prelude::Write>(
@@ -255,4 +255,62 @@ impl DataFormat for AgentPeer {
             ))),
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::{
+        format::{read_dataformat, write_dataformat, DataFormat},
+        prelude::{HeightRequest, KeyState, NodeState, NodeStateFormatHeader},
+    };
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
+                let mut data = Vec::new();
+                write_dataformat(&mut data, &$a)?;
+                assert_eq!(data, $b);
+
+                let mut reader = &data[..];
+                let read_value = read_dataformat::<_, $ty>(&mut reader)?;
+
+                // write the data again because not every type implements PartialEq
+                let mut data2 = Vec::new();
+                write_dataformat(&mut data2, &read_value)?;
+                assert_eq!(data, data2);
+                Ok(())
+            }
+        };
+    }
+
+    case!(
+        node_state,
+        NodeState,
+        NodeState {
+            node_key: "client/foo".parse()?,
+            private_key: KeyState::None,
+            height: (0, HeightRequest::Top),
+            online: true,
+            peers: vec![],
+            validators: vec![],
+            env: Default::default(),
+        },
+        [
+            NodeStateFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            NodeState::LATEST_HEADER.to_byte_vec()?,
+            NodeState {
+                node_key: "client/foo".parse()?,
+                private_key: KeyState::None,
+                height: (0, HeightRequest::Top),
+                online: true,
+                peers: vec![],
+                validators: vec![],
+                env: Default::default(),
+            }
+            .to_byte_vec()?,
+        ]
+        .concat()
+    );
 }
