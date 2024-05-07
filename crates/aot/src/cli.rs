@@ -5,6 +5,8 @@ use std::io::BufWriter;
 use std::{io, path::PathBuf, thread};
 
 use anyhow::Result;
+#[cfg(any(feature = "clipages", feature = "mangen"))]
+use clap::CommandFactory;
 use clap::Parser;
 use crossterm::tty::IsTty;
 use reqwest::Url;
@@ -19,7 +21,7 @@ use crate::{
 };
 
 #[derive(Debug, Parser)]
-#[clap(name = "snarkOS AoT", author = "MONADIC.US")]
+#[clap(author = "MONADIC.US")]
 pub struct Cli {
     #[arg(long)]
     pub enable_profiling: bool,
@@ -46,6 +48,10 @@ pub enum Command {
     Execute(Execute),
     #[command(subcommand)]
     Authorize(Authorize),
+    #[cfg(feature = "mangen")]
+    Man(snops_common::mangen::Mangen),
+    #[cfg(feature = "clipages")]
+    Md(snops_common::clipages::Clipages),
 }
 
 pub trait Flushable {
@@ -246,6 +252,14 @@ impl Cli {
                 println!("{}", serde_json::to_string(&command.parse()?)?);
                 Ok(())
             }
+            #[cfg(feature = "mangen")]
+            Command::Man(mangen) => mangen.run(
+                Cli::command(),
+                env!("CARGO_PKG_VERSION"),
+                env!("CARGO_PKG_NAME"),
+            ),
+            #[cfg(feature = "clipages")]
+            Command::Md(clipages) => clipages.run::<Cli>(env!("CARGO_PKG_NAME")),
         }
     }
 }

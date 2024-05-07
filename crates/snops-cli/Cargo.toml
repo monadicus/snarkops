@@ -3,12 +3,26 @@ name = "snops-cli"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+docpages = ["clipages", "mangen"]
+clipages = ["snops-common/clipages"]
+mangen = ["snops-common/mangen"]
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
+reqwest = { workspace = true, features = ["blocking", "json"] }
+serde_json.workspace = true
+snops-common.workspace = true
+
+[build-dependencies]
+anyhow.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+clap_mangen = { workspace = true, optional = true }
+clap-markdown.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
 serde_json.workspace = true
 snops-common.workspace = true

@@ -9,7 +9,7 @@ pub struct Cli {
     url: String,
     /// The subcommand to run.
     #[clap(subcommand)]
-    pub subcommand: crate::commands::Commands,
+    pub subcommand: crate::Commands,
 }
 
 impl Cli {

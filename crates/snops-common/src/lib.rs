@@ -5,6 +5,11 @@ pub use lasso;
 pub mod api;
 pub mod constant;
 
+#[cfg(feature = "clipages")]
+pub mod clipages;
+#[cfg(feature = "mangen")]
+pub mod mangen;
+
 pub mod prelude {
     pub use crate::rpc::*;
     pub use crate::set::*;

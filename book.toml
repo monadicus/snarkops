@@ -1,0 +1,6 @@
+[book]
+authors = ["monadicus"]
+language = "en"
+multilingual = false
+src = "snops_book"
+title = "snops"
