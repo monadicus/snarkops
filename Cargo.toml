@@ -20,7 +20,7 @@ codegen-units = 1
 incremental = true
 lto = "fat"
 opt-level = 3
-panic = "abort"
+panic = "unwind"
 strip = true
 
 # For testing cargo bloat
