@@ -1,5 +1,5 @@
 use bytes::Buf;
-use snops_common::format::{read_dataformat, DataFormat};
+use snops_common::format::{read_dataformat, write_dataformat, DataFormat};
 
 use super::error::DatabaseError;
 
@@ -91,7 +91,10 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
     }
 
     pub fn save(&self, key: &Key, value: &Value) -> Result<(), DatabaseError> {
-        self.tree.insert(key.to_byte_vec()?, value.to_byte_vec()?)?;
+        let key_bytes = key.to_byte_vec()?;
+        let mut value_bytes = Vec::new();
+        write_dataformat(&mut value_bytes, value)?;
+        self.tree.insert(key_bytes, value_bytes)?;
         Ok(())
     }
 
