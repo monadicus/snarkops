@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-cargo run -p snops
+cargo run --profile release-big -p snops

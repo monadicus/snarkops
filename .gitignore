@@ -1,9 +1,16 @@
+# rust files
 **/target/
+
+# snops files
 /tests
-/snot-control-data
-/snot-data
 /snops-control-data
 /snops-data
 /metrics-data
 /specs/local-*.yaml
+
+# vscode files
 .vscode/settings.json
+
+# mdbook files
+book
+index.html

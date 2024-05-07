@@ -53,6 +53,9 @@ async fn main() {
         .try_init()
         .unwrap();
 
+    // For documentation purposes will exit after running the command.
+    #[cfg(any(feature = "clipages", feature = "mangen"))]
+    Cli::parse().run();
     let cli = Cli::parse();
 
     server::start(cli).await.expect("start server");
