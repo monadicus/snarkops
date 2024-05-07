@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use ::jwt::VerifyWithKey;
 use axum::{
@@ -204,7 +204,9 @@ async fn handle_socket(
                 let client = agent.rpc().cloned().unwrap();
                 tokio::spawn(async move {
                     // we do this in a separate task because we don't want to hold up pool insertion
-                    match client.handshake(tarpc::context::current(), handshake).await {
+                    let mut ctx = tarpc::context::current();
+                    ctx.deadline += Duration::from_secs(300);
+                    match client.handshake(ctx, handshake).await {
                         Ok(Ok(())) => (),
                         Ok(Err(e)) => {
                             error!("failed to perform client handshake reconciliation: {e}")
@@ -243,7 +245,9 @@ async fn handle_socket(
         // handshake with the client
         tokio::spawn(async move {
             // we do this in a separate task because we don't want to hold up pool insertion
-            match client.handshake(tarpc::context::current(), handshake).await {
+            let mut ctx = tarpc::context::current();
+            ctx.deadline += Duration::from_secs(300);
+            match client.handshake(ctx, handshake).await {
                 Ok(Ok(())) => (),
                 Ok(Err(e)) => error!("failed to perform client handshake reconciliation: {e}"),
                 Err(e) => error!("failed to perform client handshake: {e}"),
