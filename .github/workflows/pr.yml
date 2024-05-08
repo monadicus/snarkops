@@ -70,8 +70,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: read
+    # permissions:
+    #   pull-requests: read
     env:
       RUSTFLAGS: -Zcodegen-backend=cranelift
 
@@ -114,6 +114,7 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: changes
         with:
+          base:  ${{ github.ref_name }}
           filters: |
             top_toml:
               - 'Cargo.toml'
