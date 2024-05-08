@@ -19,7 +19,7 @@ using the environment schema.
 This can be used to create devnets, simulate events on the network like outages
 and attacks, and guarantee metrics.
 
-To learn more about `snops` we recommend checking out the mdbook [here](todo).
+To learn more about `snops` we recommend checking out the mdbook [here](https://monadicus.github.io/snarkops/).
 
 ## Contributing
 
