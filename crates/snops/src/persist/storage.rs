@@ -147,3 +147,87 @@ impl DataFormat for PersistStorage {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use std::str::FromStr;
+
+    use checkpoint::RetentionPolicy;
+    use snops_common::{
+        format::{read_dataformat, write_dataformat, DataFormat},
+        state::InternedId,
+    };
+
+    use crate::persist::{PersistStorage, PersistStorageFormatHeader};
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
+                let mut data = Vec::new();
+                write_dataformat(&mut data, &$a)?;
+                assert_eq!(data, $b);
+
+                let mut reader = &data[..];
+                let read_value = read_dataformat::<_, $ty>(&mut reader)?;
+
+                // write the data again because not every type implements PartialEq
+                let mut data2 = Vec::new();
+                write_dataformat(&mut data2, &read_value)?;
+                assert_eq!(data, data2);
+                Ok(())
+            }
+        };
+    }
+
+    case!(
+        storage_header,
+        PersistStorageFormatHeader,
+        PersistStorage::LATEST_HEADER,
+        [
+            PersistStorageFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            PersistStorage::LATEST_HEADER.version.to_byte_vec()?,
+            RetentionPolicy::LATEST_HEADER.to_byte_vec()?,
+        ]
+        .concat()
+    );
+
+    case!(
+        storage,
+        PersistStorage,
+        PersistStorage {
+            id: InternedId::from_str("id")?,
+            version: 1,
+            persist: true,
+            accounts: vec![],
+            retention_policy: None,
+        },
+        [
+            PersistStorageFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            PersistStorage::LATEST_HEADER.to_byte_vec()?,
+            InternedId::from_str("id")?.to_byte_vec()?,
+            1u16.to_byte_vec()?,
+            true.to_byte_vec()?,
+            Vec::<InternedId>::new().to_byte_vec()?,
+            None::<RetentionPolicy>.to_byte_vec()?,
+        ]
+        .concat()
+    );
+
+    case!(
+        storage_base,
+        PersistStorage,
+        PersistStorage {
+            id: InternedId::from_str("base")?,
+            version: 0,
+            persist: false,
+            accounts: vec![InternedId::from_str("accounts")?],
+            retention_policy: None,
+        },
+        [
+            1, 1, 1, 1, 1, 4, 98, 97, 115, 101, 0, 0, 0, 1, 1, 1, 8, 97, 99, 99, 111, 117, 110,
+            116, 115, 0
+        ]
+    );
+}
