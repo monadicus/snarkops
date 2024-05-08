@@ -80,6 +80,6 @@ mod test {
     case!(test_long_string, String, "This is a long string".to_string(), b"\x01\x15This is a long string");
     // 0x1A is 26, which is the length of the string
     case!(test_interned_string, Spur, INTERN.get_or_intern("This is an interned string"), b"\x01\x1AThis is an interned string");
-    case!(test_empty_string, String, "".to_string(), [1, 0]);
-    case!(test_empty_spur, Spur, INTERN.get_or_intern(""), [1, 0]);
+    case!(test_empty_string, String, "".to_string(), [0]);
+    case!(test_empty_spur, Spur, INTERN.get_or_intern(""), [0]);
 }
