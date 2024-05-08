@@ -13,7 +13,7 @@ pub struct Cli {
 
     // TODO: store services in a file config or something?
     /// Optional URL referencing a Prometheus server
-    #[arg(long)]
+    #[arg(long, env = "PROMETHEUS_URL")]
     pub prometheus: Option<Url>,
 
     // TODO: clarify that this needs to be an IP that agents can reach (handle external/internal?)
