@@ -2,7 +2,7 @@
 name: 🔧 Chore
 about: Submit a behind-the-scenes change request
 title: "🔧 "
-labels: "type: chore"
+labels: "chore"
 ---
 
 ## 🔧 Chore

@@ -2,7 +2,7 @@
 name: ✅ Task
 about: Submit a new Task
 title: "✅ "
-labels: "type: task"
+labels: "task"
 ---
 
 ## ✅ Task

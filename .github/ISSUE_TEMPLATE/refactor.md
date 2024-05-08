@@ -2,7 +2,7 @@
 name: ♻️ Refactor
 about: Submit a code cleanup request
 title: "♻️ "
-labels: "type: refactor"
+labels: "refactor"
 ---
 
 ## ♻️ Refactor
