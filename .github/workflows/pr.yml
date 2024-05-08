@@ -6,6 +6,12 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Cancel in progress workflows on pull_requests.
+# https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-a-fallback-value
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   # TODO move to a release ci
   # build:
@@ -64,6 +70,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
     env:
       RUSTFLAGS: -Zcodegen-backend=cranelift
 
@@ -110,17 +118,17 @@ jobs:
             top_toml:
               - 'Cargo.toml'
             aot:
-              - 'crates/aot/**/*.rs'
+              - 'crates/aot/**/*'
             checkpoint:
-              - 'crates/checkpoint/**/*.rs'
+              - 'crates/checkpoint/**/*'
             control_plane:
-              - 'crates/snops/**/*.rs'
+              - 'crates/snops/**/*'
             agent:
-              - 'crates/snops-agent/**/*.rs'
+              - 'crates/snops-agent/**/*'
             scli:
-              - 'crates/snops-cli/**/*.rs'
+              - 'crates/snops-cli/**/*'
             common:
-              - 'crates/snops-common/**/*.rs'
+              - 'crates/snops-common/**/*'
 
       - name: 🧪 Test All
         if:  steps.changes.outputs.top_toml == 'true'
