@@ -70,8 +70,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    # permissions:
-    #   pull-requests: read
+    permissions: read-all
     env:
       RUSTFLAGS: -Zcodegen-backend=cranelift
 
