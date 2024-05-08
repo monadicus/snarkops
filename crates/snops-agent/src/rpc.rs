@@ -466,7 +466,7 @@ impl AgentService for AgentRpcServer {
             AgentError::ProcessFailed
         })?;
 
-        let res = Command::new(dbg!(self.state.cli.path.join(SNARKOS_FILE)))
+        let res = Command::new(self.state.cli.path.join(SNARKOS_FILE))
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
             .arg("execute")
