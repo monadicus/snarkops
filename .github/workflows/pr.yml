@@ -64,6 +64,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -Zcodegen-backend=cranelift
 
     steps:
       - name: 📥 Checkout
@@ -101,8 +103,49 @@ jobs:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo machete
 
-      - name: 🧪 Test
-        if: always()
-        env:
-          RUSTFLAGS: -Zcodegen-backend=cranelift
-        run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            top_toml:
+              - 'Cargo.toml'
+            aot:
+              - 'crates/aot/**/*.rs'
+            checkpoint:
+              - 'crates/checkpoint/**/*.rs'
+            control_plane:
+              - 'crates/snops/**/*.rs'
+            agent:
+              - 'crates/snops-agent/**/*.rs'
+            scli:
+              - 'crates/snops-cli/**/*.rs'
+            common:
+              - 'crates/snops-common/**/*.rs'
+
+      - name: 🧪 Test All
+        if:  steps.changes.outputs.top_toml == 'true'
+        run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Aot
+        if:  steps.changes.outputs.checkpoint == 'true'
+        run: cargo +nightly-2024-04-01 nextest run -p snarkos-aot --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Checkpoint
+        if:  steps.changes.outputs.aot == 'true'
+        run: cargo +nightly-2024-04-01 nextest run -p snarkos-aot --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Common
+        if:  steps.changes.outputs.common == 'true'
+        run: cargo +nightly-2024-04-01 nextest run -p snops-common --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Control Plane
+        if:  steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true'
+        run: cargo +nightly-2024-04-01 nextest run -p snops --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Agent
+        if:  steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true'
+        run: cargo +nightly-2024-04-01 nextest run -p snops-agent --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Scli
+        if:  steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true'
+        run: cargo +nightly-2024-04-01 nextest run -p snops-cli --verbose --fail-fast --all-features
