@@ -2,7 +2,7 @@
 name: 🐛 Bug Report
 about: Submit a bug report if something isn't working
 title: "🐛 "
-labels: "type: bug"
+labels: "bug"
 ---
 
 ## 🐛 Bug Report

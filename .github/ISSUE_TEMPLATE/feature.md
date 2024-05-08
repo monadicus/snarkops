@@ -2,7 +2,7 @@
 name: ✨ Feature
 about: Submit a new feature request
 title: "✨ "
-labels: "type: feature"
+labels: "feature"
 ---
 
 ## ✨ Feature

@@ -2,7 +2,7 @@
 name: 📚 Documentation
 about: Report an issue related to documentation
 title: "📚 "
-labels: "type: documentation"
+labels: "documentation"
 ---
 
 ## 📚 Documentation
