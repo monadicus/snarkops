@@ -7,8 +7,9 @@ mod rpc;
 mod state;
 
 use std::{
+    mem::size_of,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use clap::Parser;
@@ -29,15 +30,20 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::{self, client::IntoClientRequest},
 };
-use tracing::{error, info, level_filters::LevelFilter};
+use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing, JWT_FILE};
 use crate::state::GlobalState;
 
+const PING_HEADER: &[u8] = b"snops-agent";
+const PING_LENGTH: usize = size_of::<u32>() + size_of::<u128>();
+const PING_INTERVAL_SEC: u64 = 10;
+
 #[tokio::main]
 async fn main() {
     let (stdout, _guard) = tracing_appender::non_blocking(std::io::stdout());
+    let start_time = Instant::now();
 
     let output: tracing_subscriber::fmt::Layer<
         _,
@@ -186,6 +192,8 @@ async fn main() {
             info!("Connection established with the control plane");
 
             let mut terminating = false;
+            let mut interval = tokio::time::interval(Duration::from_secs(PING_INTERVAL_SEC));
+            let mut num_pings: u32 = 0;
 
             'event: loop {
                 select! {
@@ -195,12 +203,26 @@ async fn main() {
                         break 'event;
                     }
 
+                    _ = interval.tick() => {
+                        // ping payload contains "snops-agent", number of pings, and uptime
+                        let mut payload = Vec::from(PING_HEADER);
+                        payload.extend_from_slice(&num_pings.to_le_bytes());
+                        payload.extend_from_slice(&start_time.elapsed().as_micros().to_le_bytes());
+
+                        let send = ws_stream.send(tungstenite::Message::Ping(payload));
+                        if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
+                            error!("The connection to the control plane was interrupted while sending ping");
+                            break 'event;
+                        }
+                    }
+
                     // handle outgoing responses
                     msg = server_response_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
                         let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize response");
-                        if (ws_stream.send(tungstenite::Message::Binary(bin)).await).is_err() {
-                            error!("The connection to the control plane was interrupted");
+                        let send = ws_stream.send(tungstenite::Message::Binary(bin));
+                        if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
+                            error!("The connection to the control plane was interrupted while sending agent message");
                             break 'event;
                         }
                     }
@@ -209,14 +231,53 @@ async fn main() {
                     msg = client_request_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
                         let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize request");
-                        if (ws_stream.send(tungstenite::Message::Binary(bin)).await).is_err() {
-                            error!("The connection to the control plane was interrupted");
+                        let send = ws_stream.send(tungstenite::Message::Binary(bin));
+                        if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
+                            error!("The connection to the control plane was interrupted while sending control message");
                             break 'event;
                         }
                     }
 
                     // handle incoming messages
                     msg = ws_stream.next() => match msg {
+                        Some(Ok(tungstenite::Message::Close(frame))) => {
+                            if let Some(frame) = frame {
+                                info!("The control plane has closed the connection: {frame}");
+                            } else {
+                                info!("The control plane has closed the connection");
+                            }
+                            break 'event;
+                        }
+
+                        Some(Ok(tungstenite::Message::Pong(payload))) => {
+                            let mut payload = payload.as_slice();
+                            // check the header
+                            if !payload.starts_with(PING_HEADER) {
+                                warn!("Received a pong payload with an invalid header prefix");
+                                continue;
+                            }
+                            payload = &payload[PING_HEADER.len()..];
+                            if payload.len() != PING_LENGTH {
+                                warn!("Received a pong payload with an invalid length {}, expected {PING_LENGTH}", payload.len());
+                                continue;
+                            }
+                            let (left, right) = payload.split_at(size_of::<u32>());
+                            let ping_index = u32::from_le_bytes(left.try_into().unwrap());
+                            let _uptime_start = u128::from_le_bytes(right.try_into().unwrap());
+
+                            if ping_index != num_pings {
+                                warn!("Received a pong payload with an invalid index {ping_index}, expected {num_pings}");
+                                continue;
+                            }
+
+                            num_pings += 1;
+
+                            // when desired, we can add this as a metric
+                            // let uptime_now = start_time.elapsed().as_micros();
+                            // let uptime_diff = uptime_now - uptime_start;
+
+                        }
+
                         Some(Ok(tungstenite::Message::Binary(bin))) => {
                             let msg = match bincode::deserialize(&bin) {
                                 Ok(msg) => msg,
@@ -236,8 +297,8 @@ async fn main() {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
-
                         Some(Ok(o)) => {
+
                             println!("{o:#?}");
                         }
                     },
