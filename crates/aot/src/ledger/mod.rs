@@ -2,20 +2,18 @@ use std::{net::SocketAddr, ops::Deref, path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
-use rand::{seq::SliceRandom, CryptoRng, Rng};
+use rand::{CryptoRng, Rng};
 use tracing::warn;
 
 use self::checkpoint::CheckpointCommand;
 use crate::{authorized::Execute, Address, PrivateKey};
 
-pub mod add;
 pub mod checkpoint;
 pub mod distribute;
 pub mod hash;
 pub mod init;
 pub mod query;
 pub mod truncate;
-pub mod tx;
 pub mod util;
 pub mod view;
 
@@ -79,23 +77,9 @@ comma_separated! {
     Addrs(SocketAddr);
 }
 
-impl PrivateKeys {
-    /// Returns a random 2 or 3 private keys.
-    fn random_accounts<R: Rng + CryptoRng>(&self, rng: &mut R) -> Vec<PrivateKey> {
-        let num = rng.gen_range(2..=3);
-        let chosen = self.0.choose_multiple(rng, num);
-
-        chosen.copied().collect()
-    }
-}
-
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     Init(init::Init),
-    #[clap(subcommand)]
-    Tx(tx::Tx),
-    #[clap(subcommand)]
-    Add(add::Add),
     #[clap(subcommand)]
     View(view::View),
     Distribute(distribute::Distribute),
@@ -119,19 +103,6 @@ impl Ledger {
             Commands::Init(init) => {
                 let ledger = util::open_ledger(genesis, ledger)?;
                 init.parse(&ledger)
-            }
-
-            Commands::Tx(tx) => {
-                // load the ledger into memory
-                // the secret sauce is `ConsensusMemory`, which tells snarkvm to keep the ledger
-                // in memory only
-                let ledger = util::open_ledger(genesis, ledger)?;
-                tx.parse(&ledger)
-            }
-
-            Commands::Add(add) => {
-                let ledger = util::open_ledger(genesis, ledger)?;
-                add.parse(&ledger)
             }
 
             Commands::View(view) => {

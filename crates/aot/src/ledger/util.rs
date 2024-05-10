@@ -5,7 +5,7 @@ use anyhow::bail;
 use rand::{thread_rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use snarkvm::{
-    circuit::{Aleo, AleoV0},
+    circuit::Aleo,
     console::{
         account::{PrivateKey, ViewKey},
         program::{Ciphertext, Identifier, Literal, Plaintext, ProgramID, Record, Value},
@@ -16,7 +16,6 @@ use snarkvm::{
     synthesizer::VM,
     utilities::FromBytes,
 };
-use tracing::{span, Level};
 
 use super::*;
 
@@ -123,7 +122,7 @@ pub fn make_transaction_proof<N: Network, C: ConsensusStorage<N>, A: Aleo<Networ
     )
 }
 
-pub fn make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
+pub fn _make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
     ledger: &Ledger<N, C>,
     address: Address<N>,
     amounts: Vec<u64>,
@@ -208,23 +207,6 @@ pub fn get_balance<N: Network, C: ConsensusStorage<N>>(
     }
 }
 
-pub fn add_block_with_transactions<N: Network, C: ConsensusStorage<N>, R: Rng + CryptoRng>(
-    ledger: &Ledger<N, C>,
-    private_key: PrivateKey<N>,
-    transactions: Vec<Transaction<N>>,
-    rng: &mut R,
-) -> Result<Block<N>> {
-    let block = ledger.prepare_advance_to_next_beacon_block(
-        &private_key,
-        vec![],
-        vec![],
-        transactions,
-        rng,
-    )?;
-    ledger.advance_to_next_block(&block)?;
-    Ok(block)
-}
-
 pub fn add_transaction_blocks<N: Network, C: ConsensusStorage<N>, R: Rng + CryptoRng>(
     ledger: &Ledger<N, C>,
     private_key: PrivateKey<N>,
@@ -248,83 +230,4 @@ pub fn add_transaction_blocks<N: Network, C: ConsensusStorage<N>, R: Rng + Crypt
     }
 
     Ok(count)
-}
-
-#[derive(Debug)]
-pub enum CannonTx {
-    Standalone(Transaction<crate::Network>),
-    Dependent(crate::TransactionID, Transaction<crate::Network>),
-}
-
-pub fn gen_n_tx<'a, C: ConsensusStorage<crate::Network>>(
-    ledger: &'a Ledger<crate::Network, C>,
-    private_keys: &'a PrivateKeys,
-    num_tx: u64,
-    max_tx_credits: Option<u64>,
-    private_txs_disabled: bool,
-) -> impl Iterator<Item = Result<CannonTx>> + 'a {
-    let tx_span = span!(Level::INFO, "tx generation");
-    (0..num_tx)
-        .map(move |_| {
-            let _enter = tx_span.enter();
-
-            let mut rng = ChaChaRng::from_rng(thread_rng())?;
-
-            let keys = private_keys.random_accounts(&mut rng);
-
-            let from = Address::try_from(keys[1])?;
-            let amount = match max_tx_credits {
-                Some(amount) => rng.gen_range(1..amount),
-                None => rng.gen_range(1..get_balance(from, ledger)? / 100),
-            };
-
-            let to = Address::try_from(keys[0])?;
-
-            let proof_span = span!(Level::INFO, "tx generation proof");
-            let _enter = proof_span.enter();
-
-            if private_txs_disabled || rng.gen_range(0..10) > 3 {
-                // generate public transactions 70% of the time
-                make_transaction_proof::<_, _, AleoV0>(
-                    ledger.vm(),
-                    to,
-                    amount,
-                    keys[1],
-                    keys.get(2).copied(),
-                )
-                .map(|tx| vec![CannonTx::Standalone(tx)])
-            } else {
-                // Generate private transactions 30% of the time (they require generating N + 1
-                // transactions)
-
-                let (record_tx, transfer_tx) = make_transaction_proof_private::<_, _, AleoV0>(
-                    ledger,
-                    to,
-                    vec![amount],
-                    keys[1],
-                    keys.get(2).copied(),
-                )?;
-
-                let tx_id = record_tx.id();
-
-                // Private transactions require the record transaction to be confirmed before
-                // the transfer_private execution is valid
-                Ok([CannonTx::Standalone(record_tx)]
-                    .into_iter()
-                    .chain(
-                        transfer_tx
-                            .into_iter()
-                            .map(|tx| CannonTx::Dependent(tx_id, tx)),
-                    )
-                    .collect())
-            }
-        })
-        // transpose Result<Vec> into Vec<Result>
-        .flat_map(|res| match res {
-            Ok(txs) => txs.into_iter().map(Ok).collect(),
-            Err(e) => {
-                eprintln!("Error generating transaction: {e}");
-                vec![Err(e)]
-            }
-        })
 }
