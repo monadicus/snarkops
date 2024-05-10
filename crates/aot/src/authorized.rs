@@ -29,12 +29,6 @@ pub struct Authorized {
     function: Authorization,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
-pub enum FeeMode {
-    Public,
-    Private,
-}
-
 #[derive(Debug, Args)]
 pub struct AuthorizeFee {
     #[arg(short, long)]
@@ -42,9 +36,6 @@ pub struct AuthorizeFee {
     /// The Authorization for the function.
     #[arg(short, long)]
     pub authorization: Authorized,
-    /// The fee mode: Public or Privete,
-    #[arg(short, long, value_enum, default_value_t = FeeMode::Public)]
-    pub fee_mode: FeeMode,
     /// The priority fee in microcredits.
     #[clap(long, default_value_t = 0)]
     pub priority_fee: u64,
@@ -55,22 +46,20 @@ pub struct AuthorizeFee {
 
 impl AuthorizeFee {
     pub fn parse(self) -> Result<Option<Authorization>> {
-        let fee = match self.fee_mode {
-            FeeMode::Public => self.authorization.fee_public(
+        let fee = if let Some(record) = self.record {
+            self.authorization.fee_private(
+                &self.private_key,
+                record,
+                self.priority_fee,
+                &mut rand::thread_rng(),
+            )
+        } else {
+            self.authorization.fee_public(
                 &self.private_key,
                 self.priority_fee,
                 &mut rand::thread_rng(),
-            )?,
-            FeeMode::Private if self.record.is_some() => self.authorization.fee_private(
-                &self.private_key,
-                self.record.unwrap(),
-                self.priority_fee,
-                &mut rand::thread_rng(),
-            )?,
-            FeeMode::Private => {
-                bail!("A private fee requires a record")
-            }
-        };
+            )
+        }?;
 
         Ok(fee)
     }
