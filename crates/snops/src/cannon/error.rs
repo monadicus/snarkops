@@ -18,9 +18,6 @@ pub enum AuthorizeError {
     #[error(transparent)]
     Command(#[from] CommandError),
     /// For if invalid JSON is returned from the AOT command
-    #[error("expected function, fee, and broadcast fields in response")]
-    InvalidJson,
-    /// For if invalid JSON is returned from the AOT command
     #[error("{0}")]
     Json(#[source] serde_json::Error),
     /// For if invalid JSON is returned from the AOT command

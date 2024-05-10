@@ -7,7 +7,7 @@ use serde::{
 };
 use snops_common::state::{CannonId, DocHeightRequest, InternedId, NodeKey};
 
-use super::NodeTargets;
+use super::{NodeTarget, NodeTargets};
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
@@ -50,6 +50,38 @@ pub enum Action {
     Cannon(Vec<SpawnCannon>),
     /// Set the height of some nodes' ledgers
     Config(IndexMap<NodeTargets, Reconfig>),
+    /// Execute
+    Execute(Execute),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Execute {
+    /// Execute a program
+    #[serde(rename_all = "kebab-case")]
+    Program {
+        private_key: String,
+        /// The program to execute
+        program: String,
+        /// The function to call
+        function: String,
+        /// The target node defaults to the source node
+        target: Option<NodeTarget>,
+        /// The inputs to the function
+        inputs: Vec<String>,
+        /// The optional priority fee
+        priority_fee: Option<u64>,
+        /// The optional fee record for a private fee
+        fee_record: Option<String>,
+    },
+    Transaction {
+        /// The transaction to execute
+        tx: String,
+        /// The cannon id of who to execute the transaction
+        cannon: CannonId,
+        /// The target node defaults to the source node
+        target: Option<NodeTarget>,
+    },
 }
 
 impl<'de> Deserialize<'de> for Actions {
@@ -83,6 +115,7 @@ impl<'de> Deserialize<'de> for Actions {
                             "offline" => Action::Offline(map.next_value()?),
                             "cannon" => Action::Cannon(map.next_value()?),
                             "config" => Action::Config(map.next_value()?),
+                            "execute" => Action::Execute(map.next_value()?),
 
                             _ => return Err(A::Error::custom(format!("unsupported action {key}"))),
                         },

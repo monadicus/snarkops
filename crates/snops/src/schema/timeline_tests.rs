@@ -40,6 +40,31 @@ fn test_timeline_config_serde() {
 }
 
 #[test]
+fn test_timeline_execute() {
+    let yaml = r#"
+        execute:
+          private-key: committee.0.private
+          program: credits.aleo
+          function: transfer_public
+          target: validator/1
+          inputs:
+            - 0u64
+            - committee.1.public
+          priority-fee: 13
+          fee-record: "fee_record_json"
+          duration: 1m
+    "#;
+    assert!(serde_yaml::from_str::<TimelineEvent>(yaml).is_ok());
+
+    let yaml = r#"
+        execute:
+          tx: txdetails
+          cannon: cannonfoo
+    "#;
+    assert!(serde_yaml::from_str::<TimelineEvent>(yaml).is_ok());
+}
+
+#[test]
 fn test_reconfig_serde() {
     let reconfig = Reconfig {
         height: Some(DocHeightRequest::Absolute(42)),

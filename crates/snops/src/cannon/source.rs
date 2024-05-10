@@ -236,13 +236,14 @@ impl TxSource {
                             private_key: sample_pk()?,
                             recipient: sample_addr()?,
                             amount: 1,
-                            priority_fee: 0,
                         },
                         CreditsTxMode::TransferPublicToPrivate => todo!(),
                         CreditsTxMode::TransferPrivate => todo!(),
                         CreditsTxMode::TransferPrivateToPublic => todo!(),
                     },
                 };
+
+                // TODO this no longer does the fee as well
 
                 Ok(auth)
             }

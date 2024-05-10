@@ -11,7 +11,12 @@ pub enum Authorize {
         private_key: String,
         recipient: String,
         amount: u64,
-        priority_fee: u64,
+    },
+    Other {
+        private_key: String,
+        program_id: String,
+        function_name: String,
+        inputs: Vec<String>,
     },
 }
 
@@ -21,6 +26,7 @@ impl Authorize {
         command
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
+            .arg("program")
             .arg("authorize");
 
         match self {
@@ -28,22 +34,37 @@ impl Authorize {
                 private_key,
                 recipient,
                 amount,
-                priority_fee,
             } => {
                 command
-                    .arg("transfer-public")
                     .arg("--private-key")
                     .arg(private_key)
-                    .arg("--recipient")
-                    .arg(recipient)
-                    .arg("--amount")
-                    .arg(amount.to_string())
-                    .arg("--priority-fee")
-                    .arg(priority_fee.to_string());
+                    .arg("--program-id")
+                    .arg("credits.aleo")
+                    .arg("--function-name")
+                    .arg("transfer-public")
+                    .arg("--inputs")
+                    .args([recipient, format!("{amount}u64")]);
+            }
+            Self::Other {
+                private_key,
+                program_id,
+                function_name,
+                inputs,
+            } => {
+                command
+                    .arg("other")
+                    .arg("--private-key")
+                    .arg(private_key)
+                    .arg("--program-id")
+                    .arg(program_id)
+                    .arg("--function-name")
+                    .arg(function_name)
+                    .arg("--inputs")
+                    .args(inputs);
             }
         }
 
-        command.arg("--broadcast");
+        // command.arg("--broadcast");
 
         let res = command.output().await.map_err(|e| {
             AuthorizeError::Command(CommandError::action("output", "aot authorize", e))
@@ -60,16 +81,10 @@ impl Authorize {
         let blob: serde_json::Value =
             serde_json::from_slice(&res.stdout).map_err(AuthorizeError::Json)?;
 
-        // TODO consider making a type for this json object
+        dbg!(&blob);
+
         if !blob.is_object() {
             Err(AuthorizeError::JsonNotObject)?;
-        }
-
-        if blob.get("function").is_none()
-            || blob.get("broadcast").is_none()
-            || blob.get("fee").is_none()
-        {
-            Err(AuthorizeError::InvalidJson)?;
         }
 
         Ok(blob)

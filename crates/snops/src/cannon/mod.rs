@@ -494,6 +494,7 @@ impl ExecutionContext {
                 };
                 trace!("cannon {}.{} generating authorization...", env.id, self.id);
 
+                // TODO this is only the function auth rn.
                 let auth = self.source.get_auth(&env)?.run(&env.aot_bin).await?;
                 self.auth_sender
                     .send(auth)
