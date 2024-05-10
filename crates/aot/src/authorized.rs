@@ -1,59 +1,118 @@
 use std::str::FromStr;
 
-use anyhow::{bail, Result};
-use clap::Args;
+use anyhow::{bail, Ok, Result};
+use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
+use serde_json::json;
 use snarkvm::{
     console::program::Network as NetworkTrait,
     ledger::{
         query::Query,
         store::{helpers::memory::ConsensusMemory, ConsensusStore},
     },
-    prelude::{
-        de, Deserialize, DeserializeExt, Deserializer, Serialize, SerializeStruct, Serializer,
-    },
+    prelude::{Deserialize, Serialize},
     synthesizer::process::cost_in_microcredits,
     utilities::ToBytes,
 };
 use tracing::error;
 
+// use tracing::error;
 use crate::{
-    credits::PROCESS, Aleo, Authorization, DbLedger, MemVM, Network, PrivateKey, Transaction, Value,
+    credits::PROCESS, Aleo, Authorization, DbLedger, MemVM, Network, PTRecord, PrivateKey,
+    Transaction, Value,
 };
 
-#[derive(Clone, Debug)]
+// TODO: This doesn't really need to be it's own struct anymore
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Authorized {
     /// The authorization for the main function execution.
     function: Authorization,
-    /// The authorization for the fee execution.
-    fee: Option<Authorization>,
-    /// Whether to broadcast the transaction.
-    broadcast: bool,
 }
 
-pub enum ExecutionMode<'a> {
-    Local(Option<&'a DbLedger>, Option<String>),
-    Remote(String),
+#[derive(Debug, Clone, ValueEnum)]
+pub enum FeeMode {
+    Public,
+    Private,
+}
+
+#[derive(Debug, Args)]
+pub struct AuthorizeFee {
+    #[arg(short, long)]
+    pub private_key: PrivateKey,
+    /// The Authorization for the function.
+    #[arg(short, long)]
+    pub authorization: Authorized,
+    /// The fee mode: Public or Privete,
+    #[arg(short, long, value_enum, default_value_t = FeeMode::Public)]
+    pub fee_mode: FeeMode,
+    /// The priority fee in microcredits.
+    #[clap(long, default_value_t = 0)]
+    pub priority_fee: u64,
+    /// The record for a private fee.
+    #[clap(long)]
+    pub record: Option<PTRecord>,
+}
+
+impl AuthorizeFee {
+    pub fn parse(self) -> Result<Option<Authorization>> {
+        let fee = match self.fee_mode {
+            FeeMode::Public => self.authorization.fee_public(
+                &self.private_key,
+                self.priority_fee,
+                &mut rand::thread_rng(),
+            )?,
+            FeeMode::Private if self.record.is_some() => self.authorization.fee_private(
+                &self.private_key,
+                self.record.unwrap(),
+                self.priority_fee,
+                &mut rand::thread_rng(),
+            )?,
+            FeeMode::Private => {
+                bail!("A private fee requires a record")
+            }
+        };
+
+        Ok(fee)
+    }
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum ExecMode {
+    Local,
+    Remote,
 }
 
 #[derive(Debug, Args)]
 pub struct Execute {
+    /// The Authorization for the function.
+    #[arg(short, long)]
     pub authorization: Authorized,
+    #[arg(short, long, value_enum, default_value_t = ExecMode::Local)]
+    pub exec_mode: ExecMode,
     #[arg(short, long)]
     pub query: String,
+    /// The authorization for the fee execution.
+    #[arg(short, long)]
+    pub fee: Option<Authorization>,
+    /// Whether to broadcast the transaction.
+    #[arg(short, long, default_value_t = false)]
+    pub broadcast: bool,
 }
 
 impl Execute {
     pub fn parse(self) -> Result<()> {
-        let broadcast = self.authorization.broadcast;
         // execute the transaction
-        let tx = self.authorization.execute_local(
-            None,
-            &mut rand::thread_rng(),
-            Some(self.query.to_owned()),
-        )?;
+        let tx = match self.exec_mode {
+            ExecMode::Local => self.authorization.execute_local(
+                None,
+                &mut rand::thread_rng(),
+                Some(self.query.to_owned()),
+                self.fee,
+            ),
+            ExecMode::Remote => self.authorization.execute_remote(&self.query, self.fee),
+        }?;
 
-        if !broadcast {
+        if !self.broadcast {
             println!("{}", serde_json::to_string(&tx)?);
             return Ok(());
         }
@@ -72,8 +131,8 @@ impl Execute {
             // Return the transaction.
             println!("{}", response.text()?);
             Ok(())
-            // Return the error.
         } else {
+            // Return the error.
             let status = response.status();
             let err = response.text()?;
             error!("broadcast failed with code {}: {}", status, err);
@@ -84,23 +143,17 @@ impl Execute {
 
 impl Authorized {
     /// Initializes a new authorization.
-    const fn new(function: Authorization, fee: Option<Authorization>, broadcast: bool) -> Self {
-        Self {
-            function,
-            fee,
-            broadcast,
-        }
+    const fn new(function: Authorization) -> Self {
+        Self { function }
     }
 
-    /// An internal method that authorizes a function call with a corresponding
+    /// A method that authorizes a function call with a corresponding
     /// fee.
     pub fn authorize(
         private_key: &PrivateKey,
         program_id: &str,
         function_name: &str,
         inputs: Vec<Value>,
-        priority_fee_in_microcredits: u64,
-        broadcast: bool,
         rng: &mut (impl Rng + CryptoRng),
     ) -> Result<Authorized> {
         // Authorize the main function.
@@ -111,10 +164,21 @@ impl Authorized {
             inputs.into_iter(),
             rng,
         )?;
+
+        // Construct the authorization.
+        Ok(Self::new(function))
+    }
+
+    pub fn fee_public(
+        &self,
+        private_key: &PrivateKey,
+        priority_fee_in_microcredits: u64,
+        rng: &mut (impl Rng + CryptoRng),
+    ) -> Result<Option<Authorization>> {
         // Retrieve the execution ID.
-        let execution_id: snarkvm::prelude::Field<Network> = function.to_execution_id()?;
+        let execution_id: snarkvm::prelude::Field<Network> = self.function.to_execution_id()?;
         // Determine the base fee in microcredits.
-        let base_fee_in_microcredits = estimate_cost(&function)?;
+        let base_fee_in_microcredits = estimate_cost(&self.function)?;
 
         // Authorize the fee.
         let fee = match base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
@@ -127,17 +191,49 @@ impl Authorized {
                 rng,
             )?),
         };
-        // Construct the authorization.
-        Ok(Self::new(function, fee, broadcast))
+
+        Ok(fee)
+    }
+
+    pub fn fee_private(
+        &self,
+        private_key: &PrivateKey,
+        credits: PTRecord,
+        priority_fee_in_microcredits: u64,
+        rng: &mut (impl Rng + CryptoRng),
+    ) -> Result<Option<Authorization>> {
+        // Retrieve the execution ID.
+        let execution_id: snarkvm::prelude::Field<Network> = self.function.to_execution_id()?;
+        // Determine the base fee in microcredits.
+        let base_fee_in_microcredits = estimate_cost(&self.function)?;
+
+        // Authorize the fee.
+        let fee = match base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
+            true => None,
+            false => Some(PROCESS.authorize_fee_private::<Aleo, _>(
+                private_key,
+                credits,
+                base_fee_in_microcredits,
+                priority_fee_in_microcredits,
+                execution_id,
+                rng,
+            )?),
+        };
+
+        Ok(fee)
     }
 
     /// Executes the authorization, returning the resulting transaction.
-    pub fn execute_remote(self, api_url: &str) -> Result<Transaction> {
+    pub fn execute_remote(self, api_url: &str, fee: Option<Authorization>) -> Result<Transaction> {
         // Execute the authorization.
         let response = reqwest::blocking::Client::new()
             .post(format!("{api_url}/execute"))
             .header("Content-Type", "application/json")
-            .json(&self)
+            // not actually sure this is how we send the fee?
+            .json(&json!({
+                "authorization": self.function,
+                "fee": fee,
+            }))
             .send()?;
 
         // Ensure the response is successful.
@@ -155,6 +251,7 @@ impl Authorized {
         ledger: Option<&DbLedger>,
         rng: &mut R,
         query: Option<String>,
+        fee: Option<Authorization>,
     ) -> Result<Transaction> {
         // Execute the transaction.
         if let Some(ledger) = ledger {
@@ -162,24 +259,12 @@ impl Authorized {
 
             ledger
                 .vm()
-                .execute_authorization(self.function, self.fee, query, rng)
+                .execute_authorization(self.function, fee, query, rng)
         } else {
             let query = query.map(Query::REST);
 
             let store = ConsensusStore::<crate::Network, ConsensusMemory<_>>::open(None)?;
-            MemVM::from(store)?.execute_authorization(self.function, self.fee, query, rng)
-        }
-    }
-
-    pub fn execute<R: Rng + CryptoRng>(
-        self,
-        rng: &mut R,
-        mode: ExecutionMode<'_>,
-    ) -> Result<Transaction> {
-        // Execute the transaction.
-        match mode {
-            ExecutionMode::Local(ledger, query) => self.execute_local(ledger, rng, query),
-            ExecutionMode::Remote(ref api_url) => self.execute_remote(api_url),
+            MemVM::from(store)?.execute_authorization(self.function, fee, query, rng)
         }
     }
 }
@@ -242,46 +327,6 @@ fn estimate_cost(func: &Authorization) -> Result<u64> {
         };
     }
     Ok(storage_cost + finalize_cost)
-}
-
-impl Serialize for Authorized {
-    /// Serializes the authorization into string or bytes.
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut authorization = serializer.serialize_struct("Authorized", 3)?;
-        authorization.serialize_field("function", &self.function)?;
-        if let Some(fee) = &self.fee {
-            authorization.serialize_field("fee", fee)?;
-        }
-        authorization.serialize_field("broadcast", &self.broadcast)?;
-        authorization.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for Authorized {
-    /// Deserializes the authorization from a string or bytes.
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // Parse the authorization from a string into a value.
-        let mut authorization = serde_json::Value::deserialize(deserializer)?;
-        // Retrieve the function authorization.
-        let function: Authorization =
-            DeserializeExt::take_from_value::<D>(&mut authorization, "function")?;
-        // Retrieve the fee authorization, if it exists.
-        let fee = serde_json::from_value(
-            authorization
-                .get_mut("fee")
-                .unwrap_or(&mut serde_json::Value::Null)
-                .take(),
-        )
-        .map_err(de::Error::custom)?;
-        // Retrieve the broadcast flag.
-        let broadcast = DeserializeExt::take_from_value::<D>(&mut authorization, "broadcast")?;
-        // Recover the authorization.
-        Ok(Self {
-            function,
-            fee,
-            broadcast,
-        })
-    }
 }
 
 impl FromStr for Authorized {

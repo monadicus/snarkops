@@ -151,6 +151,7 @@ impl Ledger {
                     Some(&ledger),
                     &mut rand::thread_rng(),
                     None,
+                    None,
                 )?;
                 println!("{}", serde_json::to_string(&tx)?);
                 Ok(())

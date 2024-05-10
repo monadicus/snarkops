@@ -16,7 +16,10 @@ use tracing_subscriber::{layer::SubscriberExt, Layer};
 #[cfg(feature = "node")]
 use crate::runner::Runner;
 use crate::{
-    accounts::GenAccounts, authorized::Execute, credits::Authorize, genesis::Genesis,
+    accounts::GenAccounts,
+    authorized::{AuthorizeFee, Execute},
+    credits::Authorize,
+    genesis::Genesis,
     ledger::Ledger,
 };
 
@@ -46,8 +49,8 @@ pub enum Command {
     #[cfg(feature = "node")]
     Run(Runner),
     Execute(Execute),
-    #[command(subcommand)]
     Authorize(Authorize),
+    AuthorizeFee(AuthorizeFee),
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
     #[cfg(feature = "clipages")]
@@ -249,6 +252,10 @@ impl Cli {
             Command::Run(command) => command.parse(),
             Command::Execute(command) => command.parse(),
             Command::Authorize(command) => {
+                println!("{}", serde_json::to_string(&command.parse()?)?);
+                Ok(())
+            }
+            Command::AuthorizeFee(command) => {
                 println!("{}", serde_json::to_string(&command.parse()?)?);
                 Ok(())
             }
