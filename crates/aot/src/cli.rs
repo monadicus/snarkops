@@ -15,13 +15,7 @@ use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
-use crate::{
-    accounts::GenAccounts,
-    authorized::{AuthorizeFee, Execute},
-    credits::Authorize,
-    genesis::Genesis,
-    ledger::Ledger,
-};
+use crate::{accounts::GenAccounts, genesis::Genesis, ledger::Ledger, program::Program};
 
 #[derive(Debug, Parser)]
 #[clap(author = "MONADIC.US")]
@@ -48,9 +42,8 @@ pub enum Command {
     Ledger(Ledger),
     #[cfg(feature = "node")]
     Run(Runner),
-    Execute(Execute),
-    Authorize(Authorize),
-    AuthorizeFee(AuthorizeFee),
+    #[clap(subcommand)]
+    Program(Program),
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
     #[cfg(feature = "clipages")]
@@ -250,15 +243,7 @@ impl Cli {
             Command::Ledger(command) => command.parse(),
             #[cfg(feature = "node")]
             Command::Run(command) => command.parse(),
-            Command::Execute(command) => command.parse(),
-            Command::Authorize(command) => {
-                println!("{}", serde_json::to_string(&command.parse()?)?);
-                Ok(())
-            }
-            Command::AuthorizeFee(command) => {
-                println!("{}", serde_json::to_string(&command.parse()?)?);
-                Ok(())
-            }
+            Command::Program(command) => command.parse(),
             #[cfg(feature = "mangen")]
             Command::Man(mangen) => mangen.run(
                 Cli::command(),

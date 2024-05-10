@@ -1,9 +1,8 @@
 pub mod accounts;
-pub mod authorized;
 pub mod cli;
-pub mod credits;
 pub mod genesis;
 pub mod ledger;
+pub mod program;
 
 #[cfg(feature = "node")]
 pub mod runner;

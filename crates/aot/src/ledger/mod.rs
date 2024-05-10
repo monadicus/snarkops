@@ -6,7 +6,10 @@ use rand::{CryptoRng, Rng};
 use tracing::warn;
 
 use self::checkpoint::CheckpointCommand;
-use crate::{authorized::Execute, Address, PrivateKey};
+use crate::{
+    program::execute::{execute_local, Execute},
+    Address, PrivateKey,
+};
 
 pub mod checkpoint;
 pub mod distribute;
@@ -118,7 +121,8 @@ impl Ledger {
             Commands::Truncate(truncate) => truncate.parse(genesis, ledger),
             Commands::Execute(execute) => {
                 let ledger = util::open_ledger(genesis, ledger)?;
-                let tx = execute.authorization.execute_local(
+                let tx = execute_local(
+                    execute.authorization,
                     Some(&ledger),
                     &mut rand::thread_rng(),
                     None,
