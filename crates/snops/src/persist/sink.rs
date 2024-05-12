@@ -1,4 +1,6 @@
-use snops_common::format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader};
+use snops_common::format::{
+    read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataHeaderOf,
+};
 
 use crate::{
     cannon::sink::{FireRate, TxSink},
@@ -8,8 +10,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct TxSinkFormatHeader {
     pub version: u8,
-    pub node_targets: <NodeTargets as DataFormat>::Header,
-    pub fire_rate: <FireRate as DataFormat>::Header,
+    pub node_targets: DataHeaderOf<NodeTargets>,
+    pub fire_rate: DataHeaderOf<FireRate>,
 }
 
 impl DataFormat for TxSinkFormatHeader {

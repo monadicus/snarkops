@@ -1,5 +1,5 @@
 use snops_common::{
-    format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader},
+    format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataHeaderOf},
     state::{AgentMode, AgentState, NodeState, PortConfig},
 };
 
@@ -11,10 +11,10 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct AgentFormatHeader {
     pub version: u8,
-    pub addrs: <AgentAddrs as DataFormat>::Header,
-    pub node: <NodeState as DataFormat>::Header,
-    pub flags: <AgentFlags as DataFormat>::Header,
-    pub ports: <PortConfig as DataFormat>::Header,
+    pub addrs: DataHeaderOf<AgentAddrs>,
+    pub node: DataHeaderOf<NodeState>,
+    pub flags: DataHeaderOf<AgentFlags>,
+    pub ports: DataHeaderOf<PortConfig>,
 }
 
 impl DataFormat for AgentFormatHeader {

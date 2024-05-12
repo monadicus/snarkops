@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use snops_common::{
-    format::{DataFormat, DataFormatReader},
+    format::{DataFormat, DataFormatReader, DataHeaderOf},
     state::NodeKey,
 };
 
@@ -13,8 +13,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct TxSourceFormatHeader {
     pub version: u8,
-    pub node_key: <NodeKey as DataFormat>::Header,
-    pub key_source: <KeySource as DataFormat>::Header,
+    pub node_key: DataHeaderOf<NodeKey>,
+    pub key_source: DataHeaderOf<KeySource>,
 }
 
 impl DataFormat for TxSourceFormatHeader {

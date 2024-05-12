@@ -1,7 +1,7 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use super::{AgentId, HeightRequest, NodeKey};
-use crate::format::{DataFormat, DataFormatReader, PackedUint};
+use crate::format::{DataFormat, DataFormatReader, DataHeaderOf, PackedUint};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NodeState {
@@ -19,10 +19,10 @@ pub struct NodeState {
 #[derive(Debug, Clone)]
 pub struct NodeStateFormatHeader {
     version: u8,
-    node_key: <NodeKey as DataFormat>::Header,
-    key_state: <KeyState as DataFormat>::Header,
-    height: <HeightRequest as DataFormat>::Header,
-    peer: <AgentPeer as DataFormat>::Header,
+    node_key: DataHeaderOf<NodeKey>,
+    key_state: DataHeaderOf<KeyState>,
+    height: DataHeaderOf<HeightRequest>,
+    peer: DataHeaderOf<AgentPeer>,
 }
 
 impl DataFormat for NodeStateFormatHeader {

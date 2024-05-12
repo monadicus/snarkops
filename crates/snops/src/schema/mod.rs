@@ -8,7 +8,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use snops_common::{
-    format::{DataFormat, DataFormatReader},
+    format::{DataFormat, DataFormatReader, DataHeaderOf},
     state::{NodeKey, NodeType},
 };
 use wildmatch::WildMatch;
@@ -65,7 +65,7 @@ pub enum NodeTargets {
 }
 
 impl DataFormat for NodeTargets {
-    type Header = <NodeTarget as DataFormat>::Header;
+    type Header = DataHeaderOf<NodeTarget>;
     const LATEST_HEADER: Self::Header = NodeTarget::LATEST_HEADER;
 
     fn write_data<W: std::io::prelude::Write>(
@@ -262,7 +262,7 @@ impl<'de> Deserialize<'de> for NodeTarget {
 }
 
 impl DataFormat for NodeTarget {
-    type Header = (u8, <NodeType as DataFormat>::Header);
+    type Header = (u8, DataHeaderOf<NodeType>);
     const LATEST_HEADER: Self::Header = (1, NodeType::LATEST_HEADER);
 
     fn write_data<W: std::io::prelude::Write>(

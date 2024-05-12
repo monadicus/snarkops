@@ -3,7 +3,7 @@ use std::{fmt::Write, str::FromStr};
 use serde::de::Error;
 
 use super::{NodeType, NODE_KEY_REGEX};
-use crate::format::{DataFormat, DataFormatReader, DataFormatWriter};
+use crate::format::{DataFormat, DataFormatReader, DataFormatWriter, DataHeaderOf};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct NodeKey {
@@ -73,8 +73,8 @@ impl serde::Serialize for NodeKey {
 }
 
 impl DataFormat for NodeKey {
-    type Header = (u8, <NodeType as DataFormat>::Header);
-    const LATEST_HEADER: Self::Header = (1, <NodeType as DataFormat>::LATEST_HEADER);
+    type Header = (u8, DataHeaderOf<NodeType>);
+    const LATEST_HEADER: Self::Header = (1, NodeType::LATEST_HEADER);
 
     fn write_data<W: std::io::Write>(
         &self,

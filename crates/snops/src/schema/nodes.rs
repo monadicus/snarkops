@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snops_common::{
-    format::{DataFormat, DataFormatReader, DataFormatWriter, DataReadError},
+    format::{DataFormat, DataFormatReader, DataFormatWriter, DataHeaderOf, DataReadError},
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
     state::{AgentId, DocHeightRequest, InternedId, NodeState},
@@ -247,9 +247,9 @@ impl Node {
 
 #[derive(Debug, Clone)]
 pub struct NodeFormatHeader {
-    pub(crate) key_source: <KeySource as DataFormat>::Header,
-    pub(crate) height_request: <DocHeightRequest as DataFormat>::Header,
-    pub(crate) node_targets: <NodeTargets as DataFormat>::Header,
+    pub(crate) key_source: DataHeaderOf<KeySource>,
+    pub(crate) height_request: DataHeaderOf<DocHeightRequest>,
+    pub(crate) node_targets: DataHeaderOf<NodeTargets>,
 }
 
 impl DataFormat for NodeFormatHeader {

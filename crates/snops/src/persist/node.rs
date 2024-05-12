@@ -1,5 +1,8 @@
 use snops_common::{
-    format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter},
+    format::{
+        read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter,
+        DataHeaderOf,
+    },
     state::AgentId,
 };
 
@@ -8,7 +11,7 @@ use crate::schema::nodes::{ExternalNode, Node, NodeFormatHeader};
 #[derive(Debug, Clone)]
 pub struct PersistNodeFormatHeader {
     pub(crate) node: NodeFormatHeader,
-    pub(crate) external_node: <ExternalNode as DataFormat>::Header,
+    pub(crate) external_node: DataHeaderOf<ExternalNode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

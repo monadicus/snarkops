@@ -64,11 +64,13 @@ pub fn read_dataformat<R: Read, F: DataFormat>(reader: &mut R) -> Result<F, Data
     F::read_data(reader, &header)
 }
 
+pub type DataHeaderOf<T> = <T as DataFormat>::Header;
+
 /// `DataFormat` is a trait for serializing and deserializing binary data.
 ///
 /// A header is read/written containing the versions of the desired data
 pub trait DataFormat: Sized {
-    type Header: DataFormat + Clone + Sized;
+    type Header: DataFormat + Clone;
     const LATEST_HEADER: Self::Header;
 
     fn write_header<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {

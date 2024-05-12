@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use checkpoint::{RetentionPolicy, RetentionRule, RetentionSpan};
 
-use super::{DataFormat, DataFormatReader, DataReadError, DataWriteError};
+use super::{DataFormat, DataFormatReader, DataHeaderOf, DataReadError, DataWriteError};
 
 impl DataFormat for RetentionSpan {
     type Header = u8;
@@ -62,7 +62,7 @@ impl DataFormat for RetentionSpan {
 }
 
 impl DataFormat for RetentionPolicy {
-    type Header = (u8, <RetentionSpan as DataFormat>::Header);
+    type Header = (u8, DataHeaderOf<RetentionSpan>);
 
     const LATEST_HEADER: Self::Header = (1, RetentionSpan::LATEST_HEADER);
 

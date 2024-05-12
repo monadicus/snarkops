@@ -1,6 +1,6 @@
 use checkpoint::RetentionSpan;
 
-use crate::format::{DataFormat, DataFormatReader, DataReadError};
+use crate::format::{DataFormat, DataFormatReader, DataHeaderOf, DataReadError};
 
 /// for some reason bincode does not allow deserialize_any so if i want to allow
 /// end users to type "top", 42, or "persist" i need to do have to copies of
@@ -25,7 +25,7 @@ pub enum DocHeightRequest {
 }
 
 impl DataFormat for DocHeightRequest {
-    type Header = (u8, <RetentionSpan as DataFormat>::Header);
+    type Header = (u8, DataHeaderOf<RetentionSpan>);
     const LATEST_HEADER: Self::Header = (1, RetentionSpan::LATEST_HEADER);
 
     fn write_data<W: std::io::prelude::Write>(
@@ -84,7 +84,7 @@ pub enum HeightRequest {
 // TODO: now that we don't use bincode for storage format, we should be able to
 // make remove HeightRequest and rename DocHeightRequest to HeightRequest
 impl DataFormat for HeightRequest {
-    type Header = (u8, <RetentionSpan as DataFormat>::Header);
+    type Header = (u8, DataHeaderOf<RetentionSpan>);
     const LATEST_HEADER: Self::Header = (1, RetentionSpan::LATEST_HEADER);
 
     fn write_data<W: std::io::prelude::Write>(

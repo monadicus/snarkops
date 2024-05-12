@@ -1,7 +1,7 @@
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     constant::LEDGER_BASE_DIR,
-    format::{DataFormat, DataFormatReader},
+    format::{DataFormat, DataFormatReader, DataHeaderOf},
     state::{InternedId, StorageId},
 };
 use tracing::info;
@@ -26,7 +26,7 @@ pub struct PersistStorage {
 #[derive(Debug, Clone)]
 pub struct PersistStorageFormatHeader {
     pub version: u8,
-    pub retention_policy: <RetentionPolicy as DataFormat>::Header,
+    pub retention_policy: DataHeaderOf<RetentionPolicy>,
 }
 
 impl DataFormat for PersistStorageFormatHeader {

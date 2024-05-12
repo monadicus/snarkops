@@ -1,3 +1,5 @@
+use std::ffi::OsStr;
+
 use crate::{format::DataFormat, prelude::MaskBit};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -6,6 +8,27 @@ pub enum NodeType {
     Client,
     Validator,
     Prover,
+}
+
+impl AsRef<str> for NodeType {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Client => "client",
+            Self::Validator => "validator",
+            Self::Prover => "prover",
+        }
+    }
+}
+
+impl AsRef<OsStr> for NodeType {
+    fn as_ref(&self) -> &OsStr {
+        match self {
+            Self::Client => "client",
+            Self::Validator => "validator",
+            Self::Prover => "prover",
+        }
+        .as_ref()
+    }
 }
 
 impl NodeType {
@@ -28,11 +51,7 @@ impl NodeType {
 
 impl std::fmt::Display for NodeType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Client => f.write_str("client"),
-            Self::Validator => f.write_str("validator"),
-            Self::Prover => f.write_str("prover"),
-        }
+        f.write_str(self.as_ref())
     }
 }
 
