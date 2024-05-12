@@ -5,26 +5,26 @@ use clap::{error::ErrorKind, CommandFactory, Parser, ValueHint};
 use reqwest::blocking::{Client, Response};
 use snops_common::state::TimelineId;
 
-use crate::{cli::Cli, commands::DUMMY_ID};
+use crate::{Cli, DUMMY_ID};
 
-/// For interacting with snop environments.
+/// For interacting with snop environment timelines.
 #[derive(Debug, Parser)]
 pub struct Timeline {
     /// The timeline id.
     #[clap(value_hint = ValueHint::Other, default_value = DUMMY_ID)]
     id: TimelineId,
     #[clap(subcommand)]
-    command: Commands,
+    command: TimelineCommands,
 }
 
-/// Env commands
+/// Timeline commands
 #[derive(Debug, Parser)]
-enum Commands {
+enum TimelineCommands {
     /// Apply a timeline to an environment.
     #[clap(alias = "a")]
     Apply,
 
-    /// Delete a timeline from an environment.zs
+    /// Delete a timeline from an environment.
     #[clap(alias = "d")]
     Delete,
 
@@ -36,11 +36,17 @@ enum Commands {
     /// Timeline id is ignored.
     #[clap(alias = "ls")]
     List,
+
+    /// Start an environment's timeline (a test).
+    Start,
+
+    /// Stop an environment's timeline.
+    Stop,
 }
 
 impl Timeline {
     pub fn run(self, url: &str, env_id: &str, client: Client) -> Result<Response> {
-        use Commands::*;
+        use TimelineCommands::*;
         Ok(match self.command {
             List => {
                 let ep = format!("{url}/api/v1/env/{env_id}/timelines");
@@ -69,6 +75,16 @@ impl Timeline {
                 let ep = format!("{url}/api/v1/env/{env_id}/timelines/{}/steps", self.id);
 
                 client.get(ep).send()?
+            }
+            Start => {
+                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{}", self.id);
+
+                client.post(ep).send()?
+            }
+            Stop => {
+                let ep = format!("{url}/api/v1/env/{env_id}/timelines/{}", self.id);
+
+                client.delete(ep).send()?
             }
         })
     }

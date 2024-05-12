@@ -9,13 +9,17 @@ version = "0.1.0"
 default = ["node"]
 flame = ["tracing-flame"]
 node = [
-  "snarkos-node",
-  "crossterm",
-  "snarkos-node/metrics",
-  "metrics-exporter-prometheus",
-  "num_cpus",
-  "rayon",
+	"snarkos-node",
+	"crossterm",
+	"snarkos-node/metrics",
+	"snarkos-node-metrics",
+	"metrics-exporter-prometheus",
+	"num_cpus",
+	"rayon",
 ]
+docpages = ["clipages", "mangen"]
+clipages = ["snops-common/clipages"]
+mangen = ["snops-common/mangen"]
 
 [dependencies]
 aleo-std.workspace = true
@@ -41,6 +45,7 @@ serde.workspace = true
 serde_json.workspace = true
 snarkos-account.workspace = true
 snarkos-node = { workspace = true, optional = true }
+snarkos-node-metrics = { workspace = true, optional = true }
 snarkvm.workspace = true
 snops-common.workspace = true
 tokio.workspace = true
@@ -51,9 +56,10 @@ tracing-loki = "0.2.4"
 tracing-subscriber.workspace = true
 rocksdb = { workspace = true, features = ["lz4"] }
 
+
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 tikv-jemallocator = "0.5"
 
-[dependencies.metrics]
-package = "snarkos-node-metrics"
-path = "../../../snarkos/node/metrics"
+# [dependencies.metrics]
+# package = "snarkos-node-metrics"
+# path = "../../../snarkos/node/metrics"

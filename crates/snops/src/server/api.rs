@@ -1,7 +1,10 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use axum::{
-    extract::{Path, Request, State},
+    extract::{self, Path, Request, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
@@ -11,15 +14,19 @@ use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
+    lasso::Spur,
     rpc::agent::AgentMetric,
-    state::{id_or_none, AgentState, EnvId, NodeKey},
+    state::{id_or_none, AgentMode, AgentState, EnvId, NodeKey},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
 
 use super::{error::ServerError, models::AgentStatusResponse, AppState};
-use crate::env::{EnvPeer, Environment};
 use crate::{cannon::router::redirect_cannon_routes, schema::storage::DEFAULT_AOT_BIN};
+use crate::{
+    env::{EnvPeer, Environment},
+    state::AgentFlags,
+};
 
 #[macro_export]
 macro_rules! unwrap_or_not_found {
@@ -36,6 +43,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents", get(get_agents))
         .route("/agents/:id", get(get_agent))
         .route("/agents/:id/tps", get(get_agent_tps))
+        .route("/agents/find", post(find_agents))
         .route("/env/list", get(get_env_list))
         .route("/env/:env_id/topology", get(get_env_topology))
         .route(
@@ -137,6 +145,62 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Respon
         Ok(tps) => tps.to_string().into_response(),
         Err(_e) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct FindAgents {
+    mode: AgentMode,
+    env: Option<EnvId>,
+    #[serde(default, deserialize_with = "crate::schema::nodes::deser_label")]
+    labels: HashSet<Spur>,
+    all: bool,
+    include_offline: bool,
+    local_pk: bool,
+}
+
+async fn find_agents(
+    State(state): State<AppState>,
+    extract::Json(payload): extract::Json<FindAgents>,
+) -> Response {
+    dbg!(&payload);
+    let labels_vec = payload.labels.iter().copied().collect::<Vec<_>>();
+    let mask = AgentFlags {
+        mode: payload.mode,
+        labels: payload.labels,
+        local_pk: payload.local_pk,
+    }
+    .mask(&labels_vec);
+    let agents = state
+        .pool
+        .iter()
+        .inspect(|a| {
+            dbg!(a.value().env());
+        })
+        .filter(|agent| {
+            // This checks the mode, labels, and local_pk.
+            let mask_matches = mask.is_subset(&agent.mask(&labels_vec));
+
+            let env_matches = if payload.all {
+                // if we ask for all env we just say true
+                true
+            } else if let Some(env) = payload.env {
+                // otherwise if the env is specified we check it matches
+                agent.env().map_or(false, |a_env| env == a_env)
+            } else {
+                // if no env is specified
+                agent.state() == &AgentState::Inventory
+            };
+
+            // if all is specified we don't care about whether an agent's connection
+            // if include_offline is true we also get both online and offline agents.
+            let connected_match = payload.all || payload.include_offline || agent.is_connected();
+
+            mask_matches && env_matches && connected_match
+        })
+        .map(|a| AgentStatusResponse::from(a.value()))
+        .collect::<Vec<_>>();
+
+    Json(agents).into_response()
 }
 
 async fn get_env_list(State(state): State<AppState>) -> Response {

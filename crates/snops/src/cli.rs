@@ -1,5 +1,7 @@
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 
+#[cfg(any(feature = "clipages", feature = "mangen"))]
+use clap::CommandFactory;
 use clap::Parser;
 use url::Url;
 
@@ -11,7 +13,7 @@ pub struct Cli {
 
     // TODO: store services in a file config or something?
     /// Optional URL referencing a Prometheus server
-    #[arg(long)]
+    #[arg(long, env = "PROMETHEUS_URL")]
     pub prometheus: Option<Url>,
 
     // TODO: clarify that this needs to be an IP that agents can reach (handle external/internal?)
@@ -33,6 +35,43 @@ pub struct Cli {
     ///
     /// must contain http:// or https://
     pub hostname: Option<String>,
+
+    #[cfg(any(feature = "clipages", feature = "mangen"))]
+    #[clap(subcommand)]
+    pub command: Commands,
+}
+
+#[cfg(any(feature = "clipages", feature = "mangen"))]
+#[derive(Debug, Parser)]
+pub enum Commands {
+    #[cfg(feature = "mangen")]
+    Man(snops_common::mangen::Mangen),
+    #[cfg(feature = "clipages")]
+    Md(snops_common::clipages::Clipages),
+}
+
+impl Cli {
+    #[cfg(any(feature = "clipages", feature = "mangen"))]
+    pub fn run(self) {
+        match self.command {
+            #[cfg(feature = "mangen")]
+            Commands::Man(mangen) => {
+                mangen
+                    .run(
+                        Cli::command(),
+                        env!("CARGO_PKG_VERSION"),
+                        env!("CARGO_PKG_NAME"),
+                    )
+                    .unwrap();
+            }
+            #[cfg(feature = "clipages")]
+            Commands::Md(clipages) => {
+                clipages.run::<Cli>(env!("CARGO_PKG_NAME")).unwrap();
+            }
+        }
+
+        std::process::exit(0);
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]

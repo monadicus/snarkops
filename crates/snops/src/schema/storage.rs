@@ -281,6 +281,10 @@ impl Document {
                             .await
                             .map_err(err)?;
 
+                        tokio::fs::create_dir(base.join(LEDGER_BASE_DIR))
+                            .await
+                            .map_err(|e| StorageError::FailedToCreateLedgerDir(id, e))?;
+
                         tokio::fs::write(&output, res)
                             .await
                             .map_err(|e| StorageError::FailedToWriteGenesis(id, e))?;

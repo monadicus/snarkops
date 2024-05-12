@@ -6,6 +6,12 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Cancel in progress workflows on pull_requests.
+# https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-a-fallback-value
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   # TODO move to a release ci
   # build:
@@ -40,11 +46,9 @@ jobs:
 
   #     - uses: Swatinem/rust-cache@v2
   #       with:
-  #         workspaces: snarkos-test
   #         key: cache-v1
 
   #     - name: Build
-  #       working-directory: ./snarkos-test
   #       env:
   #         RUSTFLAGS: -Zcodegen-backend=cranelift -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
   #       run: cargo +nightly-2024-04-01 build --verbose
@@ -55,24 +59,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
-        with:
-          path: snarkos-test
-
-      - name: 📥 Checkout snarkOS
-        uses: actions/checkout@v4
-        with:
-          repository: AleoHQ/snarkOS
-          fetch-depth: 0
-          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
-          path: snarkos
-
-      - name: 📥 Checkout snarkVM
-        uses: actions/checkout@v4
-        with:
-          repository: AleoHQ/snarkVM
-          fetch-depth: 0
-          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
-          path: snarkvm
 
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -80,33 +66,17 @@ jobs:
           components: rustfmt
 
       - name: 📋 Format Check
-        working-directory: ./snarkos-test
         run: cargo +nightly fmt -- --check
 
   test:
     runs-on: ubuntu-latest
+    permissions: read-all
+    env:
+      RUSTFLAGS: -Zcodegen-backend=cranelift
 
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
-        with:
-          path: snarkos-test
-
-      - name: 📥 Checkout snarkOS
-        uses: actions/checkout@v4
-        with:
-          repository: AleoHQ/snarkOS
-          fetch-depth: 0
-          ref: dde9e176123130355a4686cf8241f111e04094b3 # latest canarynet
-          path: snarkos
-
-      - name: 📥 Checkout snarkVM
-        uses: actions/checkout@v4
-        with:
-          repository: AleoHQ/snarkVM
-          fetch-depth: 0
-          ref: da3d78a5726ce5b07581203a9aaff3fe39fc3057 # latest canarynet
-          path: snarkvm
 
       - name: 🥬 Use Mold Linker
         uses: rui314/setup-mold@v1
@@ -120,7 +90,6 @@ jobs:
       - name: 🫙 Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: snarkos-test
           key: cache-v1
           cache-on-failure: true
 
@@ -131,21 +100,60 @@ jobs:
       # run: cargo install cargo-machete
 
       # - name: 📋 Clippy Check
-      #   working-directory: ./snarkos-test
       #   env:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo +nightly-2024-04-01 clippy --all --all-targets -- -D warnings
 
       # - name: 📋 Check Unused Deps
       #   if: always()
-      #   working-directory: ./snarkos-test
       #   env:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
       #   run: cargo machete
 
-      - name: 🧪 Test
-        if: always()
-        working-directory: ./snarkos-test
-        env:
-          RUSTFLAGS: -Zcodegen-backend=cranelift
-        run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          base:  ${{ github.ref_name }}
+          filters: |
+            top_toml:
+              - 'Cargo.toml'
+            aot:
+              - 'crates/aot/**/*'
+            checkpoint:
+              - 'crates/checkpoint/**/*'
+            control_plane:
+              - 'crates/snops/**/*'
+            agent:
+              - 'crates/snops-agent/**/*'
+            scli:
+              - 'crates/snops-cli/**/*'
+            common:
+              - 'crates/snops-common/**/*'
+
+      - name: 🧪 Test All
+        if:  steps.changes.outputs.top_toml == 'true'
+        run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Aot
+        if:  steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +nightly-2024-04-01 nextest run -p snarkos-aot --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Checkpoint
+        if:  steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +nightly-2024-04-01 nextest run -p snarkos-aot --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Common
+        if:  steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +nightly-2024-04-01 nextest run -p snops-common --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Control Plane
+        if:  (steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +nightly-2024-04-01 nextest run -p snops --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Agent
+        if:  (steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +nightly-2024-04-01 nextest run -p snops-agent --verbose --fail-fast --all-features
+
+      - name: 🧪 Test Scli
+        if:  (steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +nightly-2024-04-01 nextest run -p snops-cli --verbose --fail-fast --all-features

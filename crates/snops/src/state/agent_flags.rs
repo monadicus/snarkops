@@ -12,11 +12,11 @@ use snops_common::{
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentFlags {
     #[serde(deserialize_with = "deser_mode", serialize_with = "ser_mode")]
-    pub(crate) mode: AgentMode,
+    pub mode: AgentMode,
     #[serde(deserialize_with = "deser_labels", serialize_with = "ser_labels")]
-    pub(crate) labels: HashSet<Spur>,
+    pub labels: HashSet<Spur>,
     #[serde(deserialize_with = "deser_pk", default, serialize_with = "ser_pk")]
-    pub(crate) local_pk: bool,
+    pub local_pk: bool,
 }
 
 fn deser_mode<'de, D>(deser: D) -> Result<AgentMode, D::Error>

@@ -2,10 +2,10 @@ use anyhow::Result;
 use clap::{CommandFactory, Parser};
 use serde_json::Value;
 
-use crate::cli::Cli;
+use crate::Cli;
 
 /// The dummy value for the ids to hack around the missing required argument.
-static DUMMY_ID: &str = "dummy_value___";
+pub(crate) static DUMMY_ID: &str = "dummy_value___";
 
 mod agent;
 mod env;
@@ -22,6 +22,10 @@ pub enum Commands {
     Agent(agent::Agent),
     #[clap(alias = "e")]
     Env(env::Env),
+    #[cfg(feature = "mangen")]
+    Man(snops_common::mangen::Mangen),
+    #[cfg(feature = "clipages")]
+    Md(snops_common::clipages::Clipages),
 }
 
 impl Commands {
@@ -39,6 +43,20 @@ impl Commands {
             Commands::Agent(agent) => agent.run(url, client),
 
             Commands::Env(env) => env.run(url, client),
+            #[cfg(feature = "mangen")]
+            Commands::Man(mangen) => {
+                mangen.run(
+                    Cli::command(),
+                    env!("CARGO_PKG_VERSION"),
+                    env!("CARGO_PKG_NAME"),
+                )?;
+                return Ok(());
+            }
+            #[cfg(feature = "clipages")]
+            Commands::Md(clipages) => {
+                clipages.run::<Cli>(env!("CARGO_PKG_NAME"))?;
+                return Ok(());
+            }
         }?;
 
         if !response.status().is_success() {
