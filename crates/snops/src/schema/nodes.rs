@@ -127,7 +127,7 @@ fn please_be_online() -> bool {
 }
 
 /// Parse the labels as strings, but intern them on load
-fn deser_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
+pub fn deser_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {

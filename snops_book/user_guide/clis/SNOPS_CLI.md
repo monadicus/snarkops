@@ -7,6 +7,7 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli`↴](#snops-cli)
 * [`snops-cli autocomplete`↴](#snops-cli-autocomplete)
 * [`snops-cli agent`↴](#snops-cli-agent)
+* [`snops-cli agent find`↴](#snops-cli-agent-find)
 * [`snops-cli agent info`↴](#snops-cli-agent-info)
 * [`snops-cli agent list`↴](#snops-cli-agent-list)
 * [`snops-cli agent tps`↴](#snops-cli-agent-tps)
@@ -72,6 +73,7 @@ For interacting with snop agents
 
 ###### **Subcommands:**
 
+* `find` — Find agents by set criteria. If all of client/compute/prover/validator are not specified it can be any one of them
 * `info` — Get the specific agent
 * `list` — List all agents. Ignores the agent id
 * `tps` — Get the specific agent's TPS
@@ -81,6 +83,47 @@ For interacting with snop agents
 * `<ID>` — Show a specific agent's info
 
   Default value: `dummy_value___`
+
+
+
+## `snops-cli agent find`
+
+Find agents by set criteria. If all of client/compute/prover/validator are not specified it can be any one of them
+
+**Usage:** `snops-cli agent find [OPTIONS]`
+
+###### **Options:**
+
+* `--client` — Whether the agent can be a client
+
+  Possible values: `true`, `false`
+
+* `--compute` — Whether the agent can be a compute
+
+  Possible values: `true`, `false`
+
+* `--prover` — Whether the agent can be a prover
+
+  Possible values: `true`, `false`
+
+* `--validator` — Whether the agent can be a validator
+
+  Possible values: `true`, `false`
+
+* `--env <ENV>` — Which env you are finding the agens from. Not specifing a env, means only inventoried agents are found
+* `--all` — Means regardless of connection status, and state we find them
+
+  Possible values: `true`, `false`
+
+* `--labels <LABELS>` — The labels an agent should have
+* `--local-pk` — If the agent has a local private key or not
+
+  Possible values: `true`, `false`
+
+* `--include-offline` — Wether to include offline agents as well
+
+  Possible values: `true`, `false`
+
 
 
 
@@ -179,7 +222,7 @@ List all steps for a specific timeline
 ###### **Subcommands:**
 
 * `apply` — Apply a timeline to an environment
-* `delete` — Delete a timeline from an environment.zs
+* `delete` — Delete a timeline from an environment
 * `info` — List all steps for a specific timeline
 * `list` — List all timelines for a specific environment. Timeline id is ignored
 * `start` — Start an environment's timeline (a test)
@@ -203,7 +246,7 @@ Apply a timeline to an environment
 
 ## `snops-cli env timeline delete`
 
-Delete a timeline from an environment.zs
+Delete a timeline from an environment
 
 **Usage:** `snops-cli env timeline delete`
 
