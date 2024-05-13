@@ -96,14 +96,13 @@ args = ["-rf", "./target/*-compressed"]
 description = "Build the AOT binary"
 toolchain = "nightly"
 dependencies = ["install-rust-src"]
-env = { RUSTFLAGS = "-C panic=abort -Zlocation-detail=none" }
+env = { RUSTFLAGS = "-Zlocation-detail=none" }
 command = "cargo"
 args = [
 	"build",
 	"-p",
 	"snarkos-aot",
-	"-Zbuild-std=std,panic_abort",
-	"-Zbuild-std-features=panic_immediate_abort",
+	"-Zbuild-std=std",
 	"--profile",
 	"release-small",
 	"--target",
@@ -135,7 +134,7 @@ args = [
 	"-Zbuild-std=std,panic_abort",
 	"-Zbuild-std-features=panic_immediate_abort",
 	"--profile",
-	"release",
+	"release-big",
 	"--target",
 	"x86_64-unknown-linux-gnu",
 ]
@@ -194,7 +193,7 @@ args = [
 	"snops-cli",
 	"-Zbuild-std=std,panic_abort",
 	"-Zbuild-std-features=panic_immediate_abort",
-	"--profile",
+	"--profile-big",
 	"release",
 	"--target",
 	"x86_64-unknown-linux-gnu",
