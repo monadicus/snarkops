@@ -27,22 +27,22 @@ pub struct Busy;
 /// An active agent, known by the control plane.
 #[derive(Debug)]
 pub struct Agent {
-    id: AgentId,
-    claims: Claims,
-    connection: AgentConnection,
-    state: AgentState,
+    pub(crate) id: AgentId,
+    pub(crate) claims: Claims,
+    pub(crate) connection: AgentConnection,
+    pub(crate) state: AgentState,
 
     /// CLI provided information (mode, labels, local private key)
-    pub(super) flags: AgentFlags,
+    pub(crate) flags: AgentFlags,
 
     /// Count of how many executions this agent is currently working on
-    compute_claim: Arc<Busy>,
+    pub(crate) compute_claim: Arc<Busy>,
     /// Count of how many environments this agent is pending for
-    env_claim: Arc<Busy>,
+    pub(crate) env_claim: Arc<Busy>,
 
     /// The external address of the agent, along with its local addresses.
-    pub(super) ports: Option<PortConfig>,
-    pub(super) addrs: Option<AgentAddrs>,
+    pub(crate) ports: Option<PortConfig>,
+    pub(crate) addrs: Option<AgentAddrs>,
 }
 
 impl Agent {

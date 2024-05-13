@@ -199,7 +199,7 @@ impl AgentService for AgentRpcServer {
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
                         .arg("--type")
-                        .arg(node.ty.to_string())
+                        .arg(node.node_key.ty)
                         // storage configuration
                         .arg("--genesis")
                         .arg(storage_path.join(SNARKOS_GENESIS_FILE))
@@ -466,7 +466,7 @@ impl AgentService for AgentRpcServer {
             AgentError::ProcessFailed
         })?;
 
-        let res = Command::new(dbg!(self.state.cli.path.join(SNARKOS_FILE)))
+        let res = Command::new(self.state.cli.path.join(SNARKOS_FILE))
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
             .arg("execute")

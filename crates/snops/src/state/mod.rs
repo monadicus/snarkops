@@ -6,11 +6,7 @@ use snops_common::state::{AgentId, EnvId, StorageId};
 mod agent;
 mod agent_flags;
 mod global;
-pub mod persist;
 mod rpc;
-
-#[cfg(test)]
-mod test_bincode;
 
 pub use agent::*;
 pub use agent_flags::*;

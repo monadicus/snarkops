@@ -7,11 +7,13 @@ use serde::{
     ser::SerializeSeq,
     Deserialize, Serialize,
 };
-use snops_common::state::{NodeKey, NodeType};
+use snops_common::{
+    format::{DataFormat, DataFormatReader, DataHeaderOf},
+    state::{NodeKey, NodeType},
+};
 use wildmatch::WildMatch;
 
 use self::error::{NodeTargetError, SchemaError};
-use crate::db::document::BEncDec;
 
 pub mod cannon;
 pub mod error;
@@ -62,17 +64,27 @@ pub enum NodeTargets {
     Many(Vec<NodeTarget>),
 }
 
-impl BEncDec for NodeTargets {
-    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
-        bincode::serialize(&match self {
+impl DataFormat for NodeTargets {
+    type Header = DataHeaderOf<NodeTarget>;
+    const LATEST_HEADER: Self::Header = NodeTarget::LATEST_HEADER;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        match self {
             NodeTargets::None => vec![],
             NodeTargets::One(target) => vec![target.clone()],
             NodeTargets::Many(targets) => targets.clone(),
-        })
+        }
+        .write_data(writer)
     }
 
-    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
-        let targets = bincode::deserialize::<Vec<NodeTarget>>(bytes)?;
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, snops_common::format::DataReadError> {
+        let targets = Vec::<NodeTarget>::read_data(reader, header)?;
         Ok(match targets.len() {
             0 => NodeTargets::None,
             // unwrap safety: length is guaranteed to be 1
@@ -246,6 +258,86 @@ impl<'de> Deserialize<'de> for NodeTarget {
     {
         let s = String::deserialize(deserializer)?;
         NodeTarget::from_str(&s).map_err(D::Error::custom)
+    }
+}
+
+impl DataFormat for NodeTarget {
+    type Header = (u8, DataHeaderOf<NodeType>);
+    const LATEST_HEADER: Self::Header = (1, NodeType::LATEST_HEADER);
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+        written += match self.ty {
+            NodeTargetType::All => 0u8.write_data(writer)?,
+            NodeTargetType::One(ty) => 1u8.write_data(writer)? + ty.write_data(writer)?,
+        };
+        written += match &self.id {
+            NodeTargetId::All => 0u8.write_data(writer)?,
+            NodeTargetId::WildcardPattern(pattern) => {
+                1u8.write_data(writer)? + pattern.to_string().write_data(writer)?
+            }
+            NodeTargetId::Literal(id) => 2u8.write_data(writer)? + id.write_data(writer)?,
+        };
+        written += match &self.ns {
+            NodeTargetNamespace::All => 0u8.write_data(writer)?,
+            NodeTargetNamespace::Local => 1u8.write_data(writer)?,
+            NodeTargetNamespace::Literal(ns) => 2u8.write_data(writer)? + ns.write_data(writer)?,
+        };
+
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, snops_common::format::DataReadError> {
+        if header.0 != Self::LATEST_HEADER.0 {
+            return Err(snops_common::format::DataReadError::unsupported(
+                "NodeTarget",
+                Self::LATEST_HEADER.0,
+                header.0,
+            ));
+        }
+
+        let ty = match reader.read_data(&())? {
+            0u8 => NodeTargetType::All,
+            1u8 => NodeTargetType::One(NodeType::read_data(reader, &header.1)?),
+            n => {
+                return Err(snops_common::format::DataReadError::Custom(format!(
+                    "invalid NodeTarget type discriminant: {n}"
+                )))
+            }
+        };
+
+        let id = match reader.read_data(&())? {
+            0u8 => NodeTargetId::All,
+            1u8 => {
+                let pattern = String::read_data(reader, &())?;
+                NodeTargetId::WildcardPattern(WildMatch::new(&pattern))
+            }
+            2u8 => NodeTargetId::Literal(reader.read_data(&())?),
+            n => {
+                return Err(snops_common::format::DataReadError::Custom(format!(
+                    "invalid NodeTarget ID discriminant: {n}"
+                )))
+            }
+        };
+
+        let ns = match reader.read_data(&())? {
+            0u8 => NodeTargetNamespace::All,
+            1u8 => NodeTargetNamespace::Local,
+            2u8 => NodeTargetNamespace::Literal(reader.read_data(&())?),
+            n => {
+                return Err(snops_common::format::DataReadError::Custom(format!(
+                    "invalid NodeTarget namespace discriminant: {n}"
+                )))
+            }
+        };
+
+        Ok(Self { ty, id, ns })
     }
 }
 

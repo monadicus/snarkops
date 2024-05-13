@@ -22,7 +22,6 @@ use crate::{
         source::{QueryTarget, TxSource},
         CannonInstance,
     },
-    db::document::DbDocument,
     env::PortType,
     schema::{
         outcomes::PromQuery,
@@ -53,7 +52,7 @@ where
             // reconnect
         } else if let Some(mut agent) = state.pool.get_mut(&id) {
             agent.set_state(target);
-            if let Err(e) = agent.save(&state.db, id) {
+            if let Err(e) = state.db.agents.save(&id, &agent) {
                 error!("failed to save agent {id} to the database: {e}");
             }
         }
@@ -78,7 +77,7 @@ where
         match result {
             Ok(Ok(Ok(agent_state))) => {
                 agent.set_state(agent_state);
-                if let Err(e) = agent.save(&state.db, agent_id) {
+                if let Err(e) = state.db.agents.save(&agent_id, &agent) {
                     error!("failed to save agent {agent_id} to the database: {e}");
                 }
 
