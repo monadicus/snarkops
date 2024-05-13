@@ -11,8 +11,7 @@ use tracing::debug;
 use super::{error::CannonError, ExecutionContext};
 use crate::{
     cannon::error::{TransactionDrainError, TransactionSinkError},
-    db::document::DbDocument,
-    env::persist::PersistDrainCount,
+    persist::PersistDrainCount,
 };
 
 #[derive(Debug)]
@@ -94,7 +93,12 @@ impl TransactionDrain {
         let key = (env.id, self.id);
         let count = self.line.load(std::sync::atomic::Ordering::Relaxed);
 
-        if let Err(e) = (PersistDrainCount { count }).save(&ctx.state.db, key) {
+        if let Err(e) = ctx
+            .state
+            .db
+            .tx_drain_counts
+            .save(&key, &PersistDrainCount { count })
+        {
             tracing::error!(
                 "Error saving drain count for env {}, drain {}: {e}",
                 env.id,

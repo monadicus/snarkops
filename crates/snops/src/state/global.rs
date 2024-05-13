@@ -1,5 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
+use dashmap::DashMap;
 use prometheus_http_query::Client as PrometheusClient;
 use snops_common::{
     constant::ENV_AGENT_KEY,
@@ -8,11 +9,11 @@ use snops_common::{
 use tokio::sync::Mutex;
 use tracing::info;
 
-use super::{persist::PersistStorage, AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
+use super::{AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
     cli::Cli,
-    db::{document::DbDocument, Database},
-    env::{persist::PersistEnv, Environment},
+    db::Database,
+    env::Environment,
     error::StateError,
     server::{error::StartError, prometheus::HttpsdResponse},
     util::OpaqueDebug,
@@ -21,7 +22,7 @@ use crate::{
 /// The global state for the control plane.
 #[derive(Debug)]
 pub struct GlobalState {
-    pub db: Database,
+    pub db: OpaqueDebug<Database>,
     pub cli: Cli,
     pub agent_key: Option<String>,
     pub pool: AgentPool,
@@ -39,10 +40,9 @@ impl GlobalState {
         prometheus: Option<PrometheusClient>,
     ) -> Result<Self, StartError> {
         // Load storage meta from persistence, then read the storage data from FS
-        let storage_meta = db.load::<Vec<PersistStorage>>()?;
+        let storage_meta = db.storage.read_all();
         let storage = StorageMap::default();
-        for meta in storage_meta {
-            let id = meta.id;
+        for (id, meta) in storage_meta {
             let loaded = match meta.load(&cli).await {
                 Ok(l) => l,
                 Err(e) => {
@@ -53,10 +53,9 @@ impl GlobalState {
             storage.insert(id, Arc::new(loaded));
         }
 
-        let env_meta = db.load::<Vec<PersistEnv>>()?;
+        let env_meta = db.envs.read_all();
         let envs = EnvMap::default();
-        for meta in env_meta {
-            let id = meta.id;
+        for (id, meta) in env_meta {
             let loaded = match meta.load(&db, &storage, &cli).await {
                 Ok(l) => l,
                 Err(e) => {
@@ -68,7 +67,7 @@ impl GlobalState {
             envs.insert(id, Arc::new(loaded));
         }
 
-        let pool = db.load::<AgentPool>()?;
+        let pool: DashMap<_, _> = db.agents.read_all().collect();
 
         // For all agents not in envs, set their state to Inventory
         for mut entry in pool.iter_mut() {
@@ -85,7 +84,7 @@ impl GlobalState {
                 entry.key()
             );
             entry.set_state(AgentState::Inventory);
-            let _ = entry.value().save(&db, *entry.key());
+            let _ = db.agents.save(entry.key(), entry.value());
         }
 
         Ok(Self {
@@ -96,7 +95,7 @@ impl GlobalState {
             envs,
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
-            db,
+            db: OpaqueDebug(db),
         })
     }
 

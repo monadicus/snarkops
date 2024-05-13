@@ -26,12 +26,7 @@ use super::{
     error::{SchemaError, StorageError},
     nodes::{KeySource, ACCOUNTS_KEY_ID},
 };
-use crate::{
-    cli::Cli,
-    db::document::DbDocument,
-    error::CommandError,
-    state::{persist::PersistStorage, GlobalState},
-};
+use crate::{cli::Cli, error::CommandError, persist::PersistStorage, state::GlobalState};
 
 pub const STORAGE_DIR: &str = "storage";
 
@@ -550,7 +545,11 @@ impl Document {
             checkpoints,
             persist: self.persist,
         });
-        if let Err(e) = PersistStorage::from(storage.deref()).save(&state.db, id) {
+        if let Err(e) = state
+            .db
+            .storage
+            .save(&id, &PersistStorage::from(storage.deref()))
+        {
             error!("failed to save storage meta: {e}");
         }
         state.storage.insert(id, storage.clone());

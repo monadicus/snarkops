@@ -4703,6 +4703,7 @@ dependencies = [
  "http 1.1.0",
  "lasso",
  "lazy_static",
+ "paste",
  "rand",
  "regex",
  "serde",

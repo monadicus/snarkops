@@ -214,7 +214,7 @@ pub enum RetentionSpan {
     Unlimited,
     /// 1m
     Minute(NonZeroU8),
-    /// 1H
+    /// 1h
     Hour(NonZeroU8),
     /// 1D
     Day(NonZeroU8),

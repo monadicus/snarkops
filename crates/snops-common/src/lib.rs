@@ -4,6 +4,7 @@ pub mod state;
 pub use lasso;
 pub mod api;
 pub mod constant;
+pub mod format;
 
 #[cfg(feature = "clipages")]
 pub mod clipages;

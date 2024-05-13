@@ -1,7 +1,7 @@
 use std::{future, time::Duration};
 
 use serde::{Deserialize, Serialize};
-use snops_common::state::TxPipeId;
+use snops_common::{format::DataFormat, state::TxPipeId};
 use tokio::time::Instant;
 
 use crate::schema::NodeTargets;
@@ -61,6 +61,59 @@ pub enum FireRate {
     Repeat {
         tx_delay_ms: u32,
     },
+}
+
+impl DataFormat for FireRate {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        match self {
+            FireRate::Never => 0u8.write_data(writer),
+            FireRate::Burst {
+                burst_delay_ms,
+                tx_per_burst,
+                tx_delay_ms,
+            } => Ok(1u8.write_data(writer)?
+                + burst_delay_ms.write_data(writer)?
+                + tx_per_burst.write_data(writer)?
+                + tx_delay_ms.write_data(writer)?),
+            FireRate::Repeat { tx_delay_ms } => {
+                Ok(2u8.write_data(writer)? + tx_delay_ms.write_data(writer)?)
+            }
+        }
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, snops_common::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(snops_common::format::DataReadError::unsupported(
+                "FireRate",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        match u8::read_data(reader, &())? {
+            0 => Ok(FireRate::Never),
+            1 => Ok(FireRate::Burst {
+                burst_delay_ms: u32::read_data(reader, &())?,
+                tx_per_burst: u32::read_data(reader, &())?,
+                tx_delay_ms: u32::read_data(reader, &())?,
+            }),
+            2 => Ok(FireRate::Repeat {
+                tx_delay_ms: u32::read_data(reader, &())?,
+            }),
+            n => Err(snops_common::format::DataReadError::Custom(format!(
+                "invalid FireRate discriminant: {n}"
+            ))),
+        }
+    }
 }
 
 impl FireRate {

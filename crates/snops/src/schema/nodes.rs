@@ -5,12 +5,12 @@ use std::{
     str::FromStr,
 };
 
-use bytes::{Buf, BufMut};
 use fixedbitset::FixedBitSet;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snops_common::{
+    format::{DataFormat, DataFormatReader, DataFormatWriter, DataHeaderOf, DataReadError},
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
     state::{AgentId, DocHeightRequest, InternedId, NodeState},
@@ -21,7 +21,6 @@ use super::{
     error::{KeySourceError, SchemaError},
     NodeKey, NodeTargets,
 };
-use crate::db::document::BEncDec;
 
 /// A document describing the node infrastructure for a test.
 #[derive(Deserialize, Debug, Clone)]
@@ -46,14 +45,34 @@ pub struct ExternalNode {
     pub rest: Option<SocketAddr>,
 }
 
-impl BEncDec for ExternalNode {
-    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
-        bincode::serialize(&(self.bft.as_ref(), self.node.as_ref(), self.rest.as_ref()))
+impl DataFormat for ExternalNode {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+        written += writer.write_data(&self.bft)?;
+        written += writer.write_data(&self.node)?;
+        written += writer.write_data(&self.rest)?;
+        Ok(written)
     }
 
-    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
-        let (bft, node, rest) = bincode::deserialize(bytes)?;
-        Ok(ExternalNode { bft, node, rest })
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        match header {
+            1 => {
+                let bft = reader.read_data(&())?;
+                let node = reader.read_data(&())?;
+                let rest = reader.read_data(&())?;
+                Ok(ExternalNode { bft, node, rest })
+            }
+            _ => Err(DataReadError::Custom("unsupported version".to_owned())),
+        }
     }
 }
 
@@ -193,7 +212,6 @@ pub struct Node {
 impl Node {
     pub fn into_state(&self, node_key: NodeKey) -> NodeState {
         NodeState {
-            ty: node_key.ty,
             node_key,
             private_key: Default::default(),
             height: (0, self.height.into()),
@@ -227,99 +245,101 @@ impl Node {
     }
 }
 
-impl BEncDec for DocHeightRequest {
-    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
-        let mut buf = Vec::new();
-        match self {
-            DocHeightRequest::Top => {
-                buf.put_u8(0);
-            }
-            DocHeightRequest::Absolute(h) => {
-                buf.put_u8(1);
-                buf.put_u32(*h);
-            }
-            DocHeightRequest::Checkpoint(span) => {
-                buf.put_u8(2);
-                let span_str = span.to_string();
-                let span_bytes = span_str.as_bytes();
-                buf.put_u8(span_bytes.len() as u8);
-                buf.extend_from_slice(span_bytes);
-            }
-        }
-        Ok(buf)
+#[derive(Debug, Clone)]
+pub struct NodeFormatHeader {
+    pub(crate) key_source: DataHeaderOf<KeySource>,
+    pub(crate) height_request: DataHeaderOf<DocHeightRequest>,
+    pub(crate) node_targets: DataHeaderOf<NodeTargets>,
+}
+
+impl DataFormat for NodeFormatHeader {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+        written += self.key_source.write_data(writer)?;
+        written += self.height_request.write_data(writer)?;
+        written += self.node_targets.write_data(writer)?;
+        Ok(written)
     }
 
-    fn from_bytes(bytes: &[u8]) -> bincode::Result<Self> {
-        let mut bytes = bytes;
-        let ty = bytes.get_u8();
-        match ty {
-            0 => Ok(DocHeightRequest::Top),
-            1 => Ok(DocHeightRequest::Absolute(bytes.get_u32())),
-            2 => {
-                let len = bytes.get_u8() as usize;
-                let span_str = std::str::from_utf8(&bytes[..len]).map_err(|_| {
-                    bincode::ErrorKind::Custom("invalid retention span utf8 str".to_owned())
-                })?;
-                let span = checkpoint::RetentionSpan::from_str(span_str)
-                    .map_err(|_| bincode::ErrorKind::Custom("invalid retention span".to_owned()))?;
-                Ok(DocHeightRequest::Checkpoint(span))
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        match header {
+            1 => {
+                let key_source = KeySource::read_header(reader)?;
+                let height_request = DocHeightRequest::read_header(reader)?;
+                let node_targets = NodeTargets::read_header(reader)?;
+                Ok(NodeFormatHeader {
+                    key_source,
+                    height_request,
+                    node_targets,
+                })
             }
-            _ => Err(bincode::ErrorKind::Custom("invalid height request type".to_owned()).into()),
+            _ => Err(DataReadError::unsupported(
+                "NodeFormatHeader",
+                Self::LATEST_HEADER,
+                *header,
+            )),
         }
     }
 }
 
-impl BEncDec for Node {
-    fn as_bytes(&self) -> bincode::Result<Vec<u8>> {
-        let mut buf = Vec::new();
-        buf.push(1); // version
-        let body = bincode::serialize(&(
-            self.online,
-            &self.replicas,
-            &self.key,
-            self.labels
-                .iter()
-                .map(|label| INTERN.resolve(label))
-                .collect::<Vec<_>>(),
-            &self.agent,
-            &self.env,
-        ))?;
-        buf.put_u32(body.len() as u32);
-        buf.extend_from_slice(&body);
-        self.height.write_bytes(&mut buf)?;
-        self.peers.write_bytes(&mut buf)?;
-        self.validators.write_bytes(&mut buf)?;
-        Ok(buf)
+impl DataFormat for Node {
+    type Header = NodeFormatHeader;
+    const LATEST_HEADER: Self::Header = NodeFormatHeader {
+        key_source: KeySource::LATEST_HEADER,
+        height_request: DocHeightRequest::LATEST_HEADER,
+        node_targets: NodeTargets::LATEST_HEADER,
+    };
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        let mut written = 0;
+        written += self.online.write_data(writer)?;
+        written += self.replicas.write_data(writer)?;
+        written += self.key.write_data(writer)?;
+        written += self.height.write_data(writer)?;
+        written += self.labels.write_data(writer)?;
+        written += self.agent.write_data(writer)?;
+        written += self.validators.write_data(writer)?;
+        written += self.peers.write_data(writer)?;
+        written += self.env.write_data(writer)?;
+        Ok(written)
     }
 
-    fn from_bytes(mut bytes: &[u8]) -> bincode::Result<Self> {
-        let version = bytes.get_u8();
-        if version != 1 {
-            return Err(bincode::ErrorKind::Custom("unsupported version".to_owned()).into());
-        }
-
-        let len = bytes.get_u32() as usize;
-        let (online, replicas, key, labels, agent, env): (_, _, _, Vec<String>, _, _) =
-            bincode::deserialize(&bytes[..len])?;
-        bytes.advance(len);
-
-        let height = DocHeightRequest::read_bytes(&mut bytes)?;
-        let peers = NodeTargets::read_bytes(&mut bytes)?;
-        let validators = NodeTargets::read_bytes(&mut bytes)?;
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        let online = reader.read_data(&())?;
+        let replicas = reader.read_data(&())?;
+        let key = reader.read_data(&header.key_source)?;
+        let height = reader.read_data(&header.height_request)?;
+        let labels = Vec::<Spur>::read_data(reader, &())?;
+        let agent = reader.read_data(&())?;
+        let validators = reader.read_data(&header.node_targets)?;
+        let peers = reader.read_data(&header.node_targets)?;
+        let env = Vec::<(String, String)>::read_data(reader, &((), ()))?;
 
         Ok(Node {
             online,
             replicas,
             key,
             height,
-            labels: labels
-                .into_iter()
-                .map(|label| INTERN.get_or_intern(label))
-                .collect(),
+            labels: labels.into_iter().collect(),
             agent,
-            env,
-            peers,
             validators,
+            peers,
+            env: env.into_iter().collect(),
         })
     }
 }
@@ -439,6 +459,57 @@ impl Display for KeySource {
                 }
             }
         )
+    }
+}
+
+impl DataFormat for KeySource {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1u8;
+
+    fn write_data<W: std::io::prelude::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        Ok(match self {
+            KeySource::Local => writer.write_data(&0u8)?,
+            KeySource::Literal(key) => writer.write_data(&1u8)? + writer.write_data(key)?,
+            KeySource::Committee(None) => writer.write_data(&2u8)?,
+            KeySource::Committee(Some(idx)) => {
+                // save a byte by making this a separate case
+                writer.write_data(&3u8)? + writer.write_data(idx)?
+            }
+            KeySource::Named(name, None) => writer.write_data(&4u8)? + writer.write_data(name)?,
+            KeySource::Named(name, Some(idx)) => {
+                // save a byte by making this a separate case
+                writer.write_data(&5u8)? + writer.write_data(name)? + writer.write_data(idx)?
+            }
+        })
+    }
+
+    fn read_data<R: std::io::prelude::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(DataReadError::unsupported(
+                "KeySource",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        match reader.read_data(&())? {
+            0u8 => Ok(KeySource::Local),
+            1u8 => Ok(KeySource::Literal(reader.read_data(&())?)),
+            2u8 => Ok(KeySource::Committee(None)),
+            3u8 => Ok(KeySource::Committee(Some(reader.read_data(&())?))),
+            4u8 => Ok(KeySource::Named(reader.read_data(&())?, None)),
+            5u8 => Ok(KeySource::Named(
+                reader.read_data(&())?,
+                Some(reader.read_data(&())?),
+            )),
+            n => Err(DataReadError::Custom(format!("invalid KeySource tag {n}"))),
+        }
     }
 }
 
