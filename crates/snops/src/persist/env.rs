@@ -21,7 +21,7 @@ use crate::{
         EnvNodeState, EnvPeer, Environment, TxPipes,
     },
     persist::{TxSinkFormatHeader, TxSourceFormatHeader},
-    schema::storage::DEFAULT_AOT_BIN,
+    schema::{outcomes::MetricQueries, storage::DEFAULT_AOT_BIN},
     state::StorageMap,
 };
 
@@ -36,6 +36,7 @@ pub struct PersistEnvFormatHeader {
 pub struct PersistEnv {
     pub id: EnvId,
     pub storage_id: StorageId,
+    pub metric_queries: MetricQueries,
     /// List of nodes and their states or external node info
     pub nodes: Vec<(NodeKey, PersistNode)>,
     /// List of drains and the number of consumed lines
@@ -77,6 +78,7 @@ impl From<&Environment> for PersistEnv {
         PersistEnv {
             id: value.id,
             storage_id: value.storage.id,
+            metric_queries: value.metric_queries.clone(),
             nodes,
             tx_pipe_drains: value.tx_pipe.drains.keys().cloned().collect(),
             tx_pipe_sinks: value.tx_pipe.sinks.keys().cloned().collect(),
@@ -150,6 +152,7 @@ impl PersistEnv {
         Ok(Environment {
             id: self.id,
             storage: storage.clone(),
+            metric_queries: self.metric_queries,
             node_peers: node_map,
             node_states: initial_nodes,
             tx_pipe,
@@ -158,9 +161,7 @@ impl PersistEnv {
             cannons: Default::default(), // TODO: load cannons first
 
             // TODO: create persistence for these documents or move out of env
-            outcomes: Default::default(),
             timelines: Default::default(),
-            timeline_handle: Default::default(),
         })
     }
 }
@@ -211,7 +212,7 @@ impl DataFormat for PersistEnv {
     type Header = PersistEnvFormatHeader;
     const LATEST_HEADER: Self::Header = PersistEnvFormatHeader {
         version: 1,
-        nodes: PersistNode::LATEST_HEADER, // TODO: use PersistNode::LATEST_HEADER
+        nodes: PersistNode::LATEST_HEADER,
         tx_source: TxSource::LATEST_HEADER,
         tx_sink: TxSink::LATEST_HEADER,
     };
@@ -224,6 +225,7 @@ impl DataFormat for PersistEnv {
 
         written += writer.write_data(&self.id)?;
         written += writer.write_data(&self.storage_id)?;
+        written += writer.write_data(&self.metric_queries)?;
         written += writer.write_data(&self.nodes)?;
         written += writer.write_data(&self.tx_pipe_drains)?;
         written += writer.write_data(&self.tx_pipe_sinks)?;
@@ -246,6 +248,7 @@ impl DataFormat for PersistEnv {
 
         let id = reader.read_data(&())?;
         let storage_id = reader.read_data(&())?;
+        let metric_queries = reader.read_data(&((), ()))?;
         let nodes = reader.read_data(&(header.tx_source.node_key, header.nodes.clone()))?;
         let tx_pipe_drains = reader.read_data(&())?;
         let tx_pipe_sinks = reader.read_data(&())?;
@@ -255,6 +258,7 @@ impl DataFormat for PersistEnv {
         Ok(PersistEnv {
             id,
             storage_id,
+            metric_queries,
             nodes,
             tx_pipe_drains,
             tx_pipe_sinks,
@@ -324,6 +328,7 @@ mod tests {
         PersistEnv {
             id: InternedId::from_str("foo")?,
             storage_id: InternedId::from_str("bar")?,
+            metric_queries: Default::default(),
             nodes: Default::default(),
             tx_pipe_drains: Default::default(),
             tx_pipe_sinks: Default::default(),

@@ -34,6 +34,8 @@ pub enum ExecutionError {
     TimelineNotFound(EnvId, TimelineId),
     #[error("env timeline is already being executed")]
     TimelineAlreadyStarted,
+    #[error("timeline does not contain a step at index {0}")]
+    TimelineEndReached(usize),
     #[error("unknown cannon: `{0}`")]
     UnknownCannon(CannonId),
 }

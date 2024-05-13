@@ -1,21 +1,30 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    io::{Read, Write},
+};
 
-use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use promql_parser::{label::Matcher, parser::ast::Expr as PromExpr};
-use serde::{de::Visitor, Deserialize};
+use serde::{de::Visitor, Deserialize, Serialize};
+use snops_common::{
+    format::{DataFormat, DataReadError, DataWriteError},
+    state::MetricId,
+};
 
 use super::error::SchemaError;
 
-/// A document describing a test's expected outcomes.
+/// A document associating a metric name with a PromQL query that can be used
+/// later in the same environment.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Document {
     pub name: String,
     pub description: Option<String>,
-    pub metrics: OutcomeMetrics,
+    #[serde(default)]
+    pub metrics: MetricQueries,
 }
 
-pub type OutcomeMetrics = IndexMap<String, OutcomeExpectation>;
+pub type MetricQueries = HashMap<MetricId, PromQuery>;
 
 /// An outcome expectation; a metric/query, and a way to validate its value
 /// after a timeline ends.
@@ -24,7 +33,7 @@ pub struct OutcomeExpectation {
     /// A PromQL query that will be used to verify the outcome.
     ///
     /// If unspecified, the metric outcome name used may refer to a built-in
-    /// PromQL, which will be used instead.
+    /// PromQL or a query defined in an `outcomes` document, if one exists.
     pub query: Option<PromQuery>,
     #[serde(flatten)]
     pub validation: OutcomeValidation,
@@ -78,12 +87,16 @@ impl OutcomeValidation {
         }
     }
 
-    pub fn show_validation(&self, value: f64) -> String {
-        if self.validate(value) {
-            format!("✅ pass, {value} is {self}")
-        } else {
-            format!("⚠️ expected {value} to be {self}")
-        }
+    pub fn show_validation(&self, value: f64) -> (bool, String) {
+        let success = self.validate(value);
+        (
+            success,
+            if success {
+                format!("✅ pass, {value} is {self}")
+            } else {
+                format!("⚠️ expected {value} to be {self}")
+            },
+        )
     }
 }
 
@@ -117,7 +130,7 @@ impl PromQuery {
             .map_err(SchemaError::QueryParse)
     }
 
-    pub fn builtin(name: &str) -> Option<&Self> {
+    pub fn builtin(name: &str) -> Option<&'static Self> {
         macro_rules! builtins {
             { $($name:literal : $query:literal),+ , } => {
                 lazy_static! {
@@ -215,9 +228,25 @@ impl<'de> Deserialize<'de> for PromQuery {
     }
 }
 
-pub type OutcomeResults<'a> = Vec<OutcomeResult<'a>>;
+impl Serialize for PromQuery {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        format!("{}", self.0).serialize(serializer)
+    }
+}
 
-pub struct OutcomeResult<'a> {
-    pub name: &'a str,
-    pub pass: bool, // TODO: need more states than pass/fail?
+impl DataFormat for PromQuery {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        format!("{}", self.0).write_data(writer)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _: &Self::Header) -> Result<Self, DataReadError> {
+        let buf = String::read_data(reader, &())?;
+        PromQuery::new(&buf).map_err(DataReadError::custom)
+    }
 }

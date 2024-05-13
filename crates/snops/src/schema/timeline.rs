@@ -1,4 +1,4 @@
-use std::{fmt, time::Duration};
+use std::{collections::HashMap, fmt, time::Duration};
 
 use indexmap::IndexMap;
 use serde::{
@@ -7,14 +7,19 @@ use serde::{
 };
 use snops_common::state::{CannonId, DocHeightRequest, InternedId, NodeKey};
 
-use super::NodeTargets;
+use super::{outcomes::OutcomeExpectation, NodeTargets};
+
+pub type OutcomeMetrics = HashMap<String, OutcomeExpectation>;
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Document {
     pub name: InternedId,
     pub description: Option<String>,
+    #[serde(default)]
     pub timeline: Vec<TimelineEvent>,
+    #[serde(default)]
+    pub outcomes: OutcomeMetrics,
 }
 
 /// An event in the test timeline.

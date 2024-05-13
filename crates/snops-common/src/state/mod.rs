@@ -35,3 +35,4 @@ pub type CannonId = InternedId;
 pub type StorageId = InternedId;
 pub type TimelineId = InternedId;
 pub type TxPipeId = InternedId;
+pub type MetricId = InternedId;

@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
+    sync::atomic::Ordering,
 };
 
 use axum::{
@@ -217,7 +218,8 @@ async fn get_timeline(
     let timeline = unwrap_or_not_found!(env.timelines.get(&timeline_id));
 
     Json(json!({
-        "steps": timeline.len(),
+        "steps": timeline.events.len(),
+        "step": timeline.step.load(Ordering::Acquire),
     }))
     .into_response()
 }
@@ -341,7 +343,7 @@ async fn post_timeline(
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
     let timeline_id = unwrap_or_not_found!(id_or_none(&timeline_id));
 
-    match Environment::execute(state, env_id, timeline_id).await {
+    match Environment::execute_timeline(state, env_id, timeline_id).await {
         Ok(()) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }
