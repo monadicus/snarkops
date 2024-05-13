@@ -5,9 +5,9 @@ use crate::format::DataFormat;
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NodeType {
-    Client,
-    Validator,
-    Prover,
+    Client = 0,
+    Validator = 1,
+    Prover = 2,
 }
 
 impl AsRef<str> for NodeType {
