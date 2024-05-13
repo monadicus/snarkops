@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 
-use crate::{format::DataFormat, prelude::MaskBit};
+use crate::format::DataFormat;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -22,12 +22,7 @@ impl AsRef<str> for NodeType {
 
 impl AsRef<OsStr> for NodeType {
     fn as_ref(&self) -> &OsStr {
-        match self {
-            Self::Client => "client",
-            Self::Validator => "validator",
-            Self::Prover => "prover",
-        }
-        .as_ref()
+        OsStr::new(self)
     }
 }
 
@@ -41,11 +36,7 @@ impl NodeType {
     }
 
     pub fn bit(self) -> usize {
-        (match self {
-            Self::Validator => MaskBit::Validator,
-            Self::Prover => MaskBit::Prover,
-            Self::Client => MaskBit::Client,
-        }) as usize
+        self as usize
     }
 }
 
