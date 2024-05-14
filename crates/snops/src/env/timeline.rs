@@ -310,13 +310,7 @@ impl Environment {
                                 }
                             }
                         }
-                        Action::Execute(execute) => match execute {
-                            // TODO
-                            crate::schema::timeline::Execute::Program { .. } => todo!(),
-                            crate::schema::timeline::Execute::Transaction { .. } => {
-                                todo!()
-                            }
-                        },
+                        Action::Execute(action) => action.execute(&env.aot_bin).await?,
                     };
                 }
 

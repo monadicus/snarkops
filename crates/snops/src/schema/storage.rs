@@ -15,6 +15,7 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use snops_common::{
+    aot_cmds::error::CommandError,
     api::{CheckpointMeta, StorageInfo},
     constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE},
     state::{InternedId, KeyState, StorageId},
@@ -26,7 +27,7 @@ use super::{
     error::{SchemaError, StorageError},
     nodes::{KeySource, ACCOUNTS_KEY_ID},
 };
-use crate::{cli::Cli, error::CommandError, persist::PersistStorage, state::GlobalState};
+use crate::{cli::Cli, persist::PersistStorage, state::GlobalState};
 
 pub const STORAGE_DIR: &str = "storage";
 

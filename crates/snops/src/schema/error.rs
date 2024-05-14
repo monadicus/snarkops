@@ -2,12 +2,12 @@ use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use snops_common::{impl_into_status_code, impl_into_type_str, state::StorageId};
+use snops_common::{
+    aot_cmds::error::CommandError, impl_into_status_code, impl_into_type_str, state::StorageId,
+};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 use url::Url;
-
-use crate::error::CommandError;
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum StorageError {

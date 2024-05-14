@@ -1,13 +1,21 @@
-use std::{fmt, time::Duration};
+use std::{
+    fmt::{self},
+    path::Path,
+    time::Duration,
+};
 
 use indexmap::IndexMap;
 use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-use snops_common::state::{CannonId, DocHeightRequest, InternedId, NodeKey};
+use snops_common::{
+    aot_cmds::AotCmd,
+    state::{CannonId, DocHeightRequest, InternedId, NodeKey},
+};
 
 use super::{NodeTarget, NodeTargets};
+use crate::env::error::ExecutionError;
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
@@ -82,6 +90,37 @@ pub enum Execute {
         /// The target node defaults to the source node
         target: Option<NodeTarget>,
     },
+}
+
+impl Execute {
+    pub async fn execute(&self, bin: &Path) -> Result<(), ExecutionError> {
+        match self {
+            Execute::Program {
+                private_key,
+                program,
+                function,
+                target: _target,
+                inputs,
+                priority_fee,
+                fee_record,
+            } => {
+                let aot = AotCmd::new(bin.to_path_buf());
+
+                let _func_auth = aot
+                    .authorize(private_key, program, function, inputs)
+                    .await?;
+
+                let _fee_auth = aot
+                    .authorize_fee(private_key, *priority_fee, fee_record.as_ref())
+                    .await?;
+
+                todo!(" grab the target and have it execute the transaction")
+            }
+            Execute::Transaction { .. } => {
+                todo!(" grab the target and have it execute the transaction")
+            }
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for Actions {

@@ -1,3 +1,4 @@
+pub mod aot_cmds;
 pub mod rpc;
 pub mod set;
 pub mod state;

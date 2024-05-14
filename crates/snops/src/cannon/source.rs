@@ -232,18 +232,19 @@ impl TxSource {
                     TxMode::Credits(credit) => match credit {
                         CreditsTxMode::BondPublic => todo!(),
                         CreditsTxMode::UnbondPublic => todo!(),
-                        CreditsTxMode::TransferPublic => Authorize::TransferPublic {
+                        CreditsTxMode::TransferPublic => Authorize {
+                            program_id: "aleo.credits".to_string(),
+                            function_name: "transfer_public".to_string(),
                             private_key: sample_pk()?,
-                            recipient: sample_addr()?,
-                            amount: 1,
+                            inputs: vec![sample_addr()?, "1u64".to_string()],
+                            priority_fee: None,
+                            fee_record: None,
                         },
                         CreditsTxMode::TransferPublicToPrivate => todo!(),
                         CreditsTxMode::TransferPrivate => todo!(),
                         CreditsTxMode::TransferPrivateToPublic => todo!(),
                     },
                 };
-
-                // TODO this no longer does the fee as well
 
                 Ok(auth)
             }

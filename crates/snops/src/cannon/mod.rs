@@ -15,6 +15,7 @@ use std::{
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use rand::seq::IteratorRandom;
 use snops_common::{
+    aot_cmds::error::CommandError,
     constant::{LEDGER_BASE_DIR, SNARKOS_GENESIS_FILE},
     state::{AgentPeer, CannonId, EnvId, StorageId},
 };
@@ -37,7 +38,6 @@ use crate::{
         source::{ComputeTarget, QueryTarget},
     },
     env::PortType,
-    error::CommandError,
     schema::storage::STORAGE_DIR,
     state::GlobalState,
 };
@@ -493,10 +493,9 @@ impl ExecutionContext {
                 };
                 trace!("cannon {}.{} generating authorization...", env.id, self.id);
 
-                // TODO this is only the function auth rn.
-                let auth = self.source.get_auth(&env)?.run(&env.aot_bin).await?;
+                let auths = self.source.get_auth(&env)?.run(&env.aot_bin).await?;
                 self.auth_sender
-                    .send(auth)
+                    .send(auths)
                     .map_err(|e| CannonError::SendAuthError(self.id, e))?;
                 Ok(true)
             }

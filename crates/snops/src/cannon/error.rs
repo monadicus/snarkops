@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
+    aot_cmds::{error::CommandError, AotCmdError},
     impl_into_status_code, impl_into_type_str,
     state::{CannonId, EnvId, NodeKey, TxPipeId},
 };
@@ -10,19 +11,16 @@ use strum_macros::AsRefStr;
 use thiserror::Error;
 
 use super::Authorization;
-use crate::error::{CommandError, StateError};
+use crate::error::StateError;
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum AuthorizeError {
     /// For when a bad AOT command is run
     #[error(transparent)]
-    Command(#[from] CommandError),
+    Command(#[from] AotCmdError),
     /// For if invalid JSON is returned from the AOT command
     #[error("{0}")]
     Json(#[source] serde_json::Error),
-    /// For if invalid JSON is returned from the AOT command
-    #[error("expected JSON object in response")]
-    JsonNotObject,
 }
 
 impl_into_status_code!(AuthorizeError, |value| match value {

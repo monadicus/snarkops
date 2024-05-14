@@ -442,6 +442,7 @@ impl AgentService for AgentRpcServer {
         }
     }
 
+    // TODO update this to match new AOT cmd
     async fn execute_authorization(
         self,
         _: context::Context,
@@ -469,6 +470,7 @@ impl AgentService for AgentRpcServer {
         let res = Command::new(self.state.cli.path.join(SNARKOS_FILE))
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
+            .arg("program")
             .arg("execute")
             .arg("--query")
             .arg(&format!("{}{query}", self.state.endpoint))

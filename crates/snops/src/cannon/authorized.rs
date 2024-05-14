@@ -1,92 +1,45 @@
-use std::path::PathBuf;
+use std::path::Path;
 
-use tokio::process::Command;
+use serde_json::json;
+use snops_common::aot_cmds::AotCmd;
 
 use super::error::{AuthorizeError, CannonError};
-use crate::error::CommandError;
 
 #[derive(Clone, Debug)]
-pub enum Authorize {
-    TransferPublic {
-        private_key: String,
-        recipient: String,
-        amount: u64,
-    },
-    Other {
-        private_key: String,
-        program_id: String,
-        function_name: String,
-        inputs: Vec<String>,
-    },
+pub struct Authorize {
+    pub private_key: String,
+    pub program_id: String,
+    pub function_name: String,
+    pub inputs: Vec<String>,
+    pub priority_fee: Option<u64>,
+    pub fee_record: Option<String>,
 }
 
 impl Authorize {
-    pub async fn run(self, bin: &PathBuf) -> Result<serde_json::Value, CannonError> {
-        let mut command = Command::new(bin);
-        command
-            .stdout(std::io::stdout())
-            .stderr(std::io::stderr())
-            .arg("program")
-            .arg("authorize");
+    pub async fn run(self, bin: &Path) -> Result<serde_json::Value, CannonError> {
+        let aot = AotCmd::new(bin.to_path_buf());
+        let func_auth = aot
+            .authorize(
+                &self.private_key,
+                &self.program_id,
+                &self.function_name,
+                &self.inputs,
+            )
+            .await
+            .map_err(AuthorizeError::from)?;
 
-        match self {
-            Self::TransferPublic {
-                private_key,
-                recipient,
-                amount,
-            } => {
-                command
-                    .arg("--private-key")
-                    .arg(private_key)
-                    .arg("--program-id")
-                    .arg("credits.aleo")
-                    .arg("--function-name")
-                    .arg("transfer-public")
-                    .arg("--inputs")
-                    .args([recipient, format!("{amount}u64")]);
-            }
-            Self::Other {
-                private_key,
-                program_id,
-                function_name,
-                inputs,
-            } => {
-                command
-                    .arg("other")
-                    .arg("--private-key")
-                    .arg(private_key)
-                    .arg("--program-id")
-                    .arg(program_id)
-                    .arg("--function-name")
-                    .arg(function_name)
-                    .arg("--inputs")
-                    .args(inputs);
-            }
-        }
+        let fee_auth = aot
+            .authorize_fee(
+                &self.private_key,
+                self.priority_fee,
+                self.fee_record.as_ref(),
+            )
+            .await
+            .map_err(AuthorizeError::from)?;
 
-        // command.arg("--broadcast");
-
-        let res = command.output().await.map_err(|e| {
-            AuthorizeError::Command(CommandError::action("output", "aot authorize", e))
-        })?;
-
-        if !res.status.success() {
-            Err(AuthorizeError::Command(CommandError::status(
-                "aot authorize",
-                res.status,
-                String::from_utf8_lossy(&res.stderr).to_string(),
-            )))?;
-        }
-
-        let blob: serde_json::Value =
-            serde_json::from_slice(&res.stdout).map_err(AuthorizeError::Json)?;
-
-        dbg!(&blob);
-
-        if !blob.is_object() {
-            Err(AuthorizeError::JsonNotObject)?;
-        }
-
-        Ok(blob)
+        Ok(json!( {
+            "func": func_auth,
+            "fee": fee_auth,
+        }))
     }
 }
