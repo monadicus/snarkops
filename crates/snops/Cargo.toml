@@ -44,7 +44,7 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 sha2.workspace = true
 sled.workspace = true
-snops-common.workspace = true
+snops-common = { workspace = true, features = ["aot_cmds"] }
 strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true

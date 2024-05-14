@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 default = []
+aot_cmds = []
 clipages = ["anyhow", "clap-markdown"]
 mangen = ["anyhow", "clap_mangen"]
 
