@@ -5,6 +5,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
+    time::SystemTime,
 };
 
 use futures_util::future::join_all;
@@ -53,7 +54,12 @@ pub struct TimelineInstance {
     pub step: AtomicUsize,
     /// Semaphore to prevent multiple step executions from occurring
     /// simultaneously.
-    pub step_mutex: Mutex<()>,
+    ///
+    /// Also doubles as a tracker for when the step's duration is expected to
+    /// expire. This is used in persistence; if a step is terminated
+    /// unexpectedly and must persist, a specified time will indicate how long
+    /// to wait before starting the next step.
+    pub step_mutex: Mutex<Option<SystemTime>>,
 }
 
 impl TimelineInstance {
@@ -77,13 +83,37 @@ impl TimelineInstance {
             return Err(ExecutionError::TimelineAlreadyStarted);
         }
 
-        let Ok(_guard) = self.step_mutex.try_lock() else {
+        let Ok(mut step_guard) = self.step_mutex.try_lock() else {
             return Err(ExecutionError::TimelineAlreadyStarted);
         };
+
+        // wait out the old step duration if necessary
+        'wait_prev_duration: {
+            if let Some(end_time) = *step_guard {
+                // determine time until expected end time
+                let Ok(diff) = end_time.duration_since(SystemTime::now()) else {
+                    // this occurs when the system time is *greater* than the end time, and thus we
+                    // cannot wait
+                    break 'wait_prev_duration;
+                };
+
+                // wait the remaining time
+                info!("resuming from previously halted step; waiting {diff:?}");
+                tokio::time::sleep(diff).await;
+            }
+        }
 
         let step_index = self.step.load(Ordering::Acquire);
         let Some(event) = self.events.get(step_index) else {
             return Err(ExecutionError::TimelineEndReached(step_index));
+        };
+
+        // set the new step duration
+        *step_guard = match &event.duration {
+            Some(EventDuration::Time(duration)) => Some(SystemTime::now() + *duration),
+
+            // TODO
+            _ => None,
         };
 
         debug!("next event in timeline {event:?}");
@@ -294,6 +324,7 @@ impl TimelineInstance {
             None => handles_fut.await,
         };
 
+        // coalesce handle results
         for result in handles_result.into_iter() {
             match result {
                 Ok(Ok(())) => (),
@@ -302,6 +333,8 @@ impl TimelineInstance {
             }
         }
 
+        // update state
+        *step_guard = None;
         self.step.fetch_add(1, Ordering::Release);
 
         Ok(())
