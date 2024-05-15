@@ -28,3 +28,6 @@ tarpc.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["process"] }
