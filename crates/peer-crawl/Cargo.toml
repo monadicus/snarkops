@@ -1,0 +1,13 @@
+[package]
+name = "peer-crawl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+dashmap = { workspace = true, features = ["serde"] }
+reqwest = { workspace = true, features = ["blocking", "json"] }
+serde = { workspace = true, features = ["rc"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
