@@ -2,12 +2,11 @@ use std::sync::Arc;
 
 use bimap::BiMap;
 use dashmap::DashMap;
-use snops_common::{
-    format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter},
-    state::{CannonId, EnvId, NodeKey, StorageId, TxPipeId},
-};
+use snops_common::state::{CannonId, EnvId, NodeKey, StorageId, TxPipeId};
 
-use super::{PersistNode, PersistNodeFormatHeader};
+use super::prelude::*;
+use super::{PersistNode, PersistTimelineInstance};
+use crate::env::timeline::TimelineInstance;
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -20,7 +19,6 @@ use crate::{
         error::{EnvError, PrepareError},
         EnvNodeState, EnvPeer, Environment, TxPipes,
     },
-    persist::{TxSinkFormatHeader, TxSourceFormatHeader},
     schema::{outcomes::MetricQueries, storage::DEFAULT_AOT_BIN},
     state::StorageMap,
 };
@@ -28,9 +26,10 @@ use crate::{
 #[derive(Clone)]
 pub struct PersistEnvFormatHeader {
     version: u8,
-    nodes: PersistNodeFormatHeader,
-    tx_source: TxSourceFormatHeader,
-    tx_sink: TxSinkFormatHeader,
+    nodes: DataHeaderOf<PersistNode>,
+    tx_source: DataHeaderOf<TxSource>,
+    tx_sink: DataHeaderOf<TxSink>,
+    timelines: DataHeaderOf<PersistTimelineInstance>,
 }
 
 pub struct PersistEnv {
@@ -45,6 +44,8 @@ pub struct PersistEnv {
     pub tx_pipe_sinks: Vec<TxPipeId>,
     /// Loaded cannon configs in this env
     pub cannon_configs: Vec<(CannonId, TxSource, TxSink)>,
+    /// Active timeline instances in this env
+    pub timelines: Vec<PersistTimelineInstance>,
 }
 
 impl From<&Environment> for PersistEnv {
@@ -86,6 +87,11 @@ impl From<&Environment> for PersistEnv {
                 .cannon_configs
                 .iter()
                 .map(|v| (*v.key(), v.0.clone(), v.1.clone()))
+                .collect(),
+            timelines: value
+                .timelines
+                .iter()
+                .map(|entry| PersistTimelineInstance::from_instance(entry.value()))
                 .collect(),
         }
     }
@@ -159,9 +165,12 @@ impl PersistEnv {
             cannon_configs,
             aot_bin: DEFAULT_AOT_BIN.clone(),
             cannons: Default::default(), // TODO: load cannons first
-
-            // TODO: create persistence for these documents or move out of env
-            timelines: Default::default(),
+            timelines: self
+                .timelines
+                .into_iter()
+                .map(Into::<TimelineInstance>::into)
+                .map(|timeline| (timeline.id, Arc::new(timeline)))
+                .collect(),
         })
     }
 }
@@ -170,7 +179,7 @@ impl DataFormat for PersistEnvFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
@@ -179,10 +188,11 @@ impl DataFormat for PersistEnvFormatHeader {
         written += write_dataformat(writer, &self.nodes)?;
         written += write_dataformat(writer, &self.tx_source)?;
         written += write_dataformat(writer, &self.tx_sink)?;
+        written += write_dataformat(writer, &self.timelines)?;
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
@@ -198,12 +208,14 @@ impl DataFormat for PersistEnvFormatHeader {
         let nodes = read_dataformat(reader)?;
         let tx_source = read_dataformat(reader)?;
         let tx_sink = read_dataformat(reader)?;
+        let timelines = read_dataformat(reader)?;
 
         Ok(PersistEnvFormatHeader {
             version,
             nodes,
             tx_source,
             tx_sink,
+            timelines,
         })
     }
 }
@@ -215,9 +227,10 @@ impl DataFormat for PersistEnv {
         nodes: PersistNode::LATEST_HEADER,
         tx_source: TxSource::LATEST_HEADER,
         tx_sink: TxSink::LATEST_HEADER,
+        timelines: PersistTimelineInstance::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
@@ -230,11 +243,12 @@ impl DataFormat for PersistEnv {
         written += writer.write_data(&self.tx_pipe_drains)?;
         written += writer.write_data(&self.tx_pipe_sinks)?;
         written += writer.write_data(&self.cannon_configs)?;
+        written += writer.write_data(&self.timelines)?;
 
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
@@ -254,6 +268,7 @@ impl DataFormat for PersistEnv {
         let tx_pipe_sinks = reader.read_data(&())?;
         let cannon_configs =
             reader.read_data(&((), header.tx_source.clone(), header.tx_sink.clone()))?;
+        let timelines = reader.read_data(&header.timelines)?;
 
         Ok(PersistEnv {
             id,
@@ -263,6 +278,7 @@ impl DataFormat for PersistEnv {
             tx_pipe_drains,
             tx_pipe_sinks,
             cannon_configs,
+            timelines,
         })
     }
 }
@@ -270,7 +286,7 @@ impl DataFormat for PersistEnv {
 #[cfg(test)]
 mod tests {
 
-    use std::str::FromStr;
+    use std::{collections::HashMap, str::FromStr};
 
     use snops_common::{
         format::{read_dataformat, write_dataformat, DataFormat},
@@ -281,8 +297,10 @@ mod tests {
         cannon::{sink::TxSink, source::TxSource},
         persist::{
             PersistEnv, PersistEnvFormatHeader, PersistNode, PersistNodeFormatHeader,
-            TxSinkFormatHeader, TxSourceFormatHeader,
+            PersistTimelineInstance, PersistTimelineInstanceFormatHeader, TxSinkFormatHeader,
+            TxSourceFormatHeader,
         },
+        schema::outcomes::PromQuery,
     };
 
     macro_rules! case {
@@ -318,6 +336,8 @@ mod tests {
             TxSource::LATEST_HEADER.to_byte_vec()?,
             TxSinkFormatHeader::LATEST_HEADER.to_byte_vec()?,
             TxSink::LATEST_HEADER.to_byte_vec()?,
+            PersistTimelineInstanceFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            PersistTimelineInstance::LATEST_HEADER.to_byte_vec()?,
         ]
         .concat()
     );
@@ -332,17 +352,20 @@ mod tests {
             nodes: Default::default(),
             tx_pipe_drains: Default::default(),
             tx_pipe_sinks: Default::default(),
-            cannon_configs: Default::default()
+            cannon_configs: Default::default(),
+            timelines: Default::default()
         },
         [
             PersistEnvFormatHeader::LATEST_HEADER.to_byte_vec()?,
             PersistEnv::LATEST_HEADER.to_byte_vec()?,
             InternedId::from_str("foo")?.to_byte_vec()?,
             InternedId::from_str("bar")?.to_byte_vec()?,
+            HashMap::<InternedId, PromQuery>::new().to_byte_vec()?,
             Vec::<(String, PersistNode)>::new().to_byte_vec()?,
             Vec::<InternedId>::new().to_byte_vec()?,
             Vec::<InternedId>::new().to_byte_vec()?,
             Vec::<(InternedId, TxSource, TxSink)>::new().to_byte_vec()?,
+            Vec::<PersistTimelineInstance>::new().to_byte_vec()?,
         ]
         .concat()
     );

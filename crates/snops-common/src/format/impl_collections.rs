@@ -3,6 +3,8 @@ use std::{
     io::{Read, Write},
 };
 
+use indexmap::IndexMap;
+
 use super::{
     packed_int::PackedUint, DataFormat, DataFormatReader, DataFormatWriter, DataReadError,
     DataWriteError,
@@ -99,6 +101,39 @@ where
     ) -> Result<Self, DataReadError> {
         let len = usize::from(PackedUint::read_data(reader, &())?);
         let mut data = HashMap::with_capacity(len);
+        for _ in 0..len {
+            data.insert(
+                reader.read_data(key_header)?,
+                reader.read_data(value_header)?,
+            );
+        }
+        Ok(data)
+    }
+}
+
+impl<K, V> DataFormat for IndexMap<K, V>
+where
+    K: DataFormat + Eq + std::hash::Hash,
+    V: DataFormat,
+{
+    type Header = (K::Header, V::Header);
+    const LATEST_HEADER: Self::Header = (K::LATEST_HEADER, V::LATEST_HEADER);
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        let mut written = PackedUint::from(self.len()).write_data(writer)?;
+        for (key, value) in self.iter() {
+            written += writer.write_data(key)?;
+            written += writer.write_data(value)?;
+        }
+        Ok(written)
+    }
+
+    fn read_data<R: Read>(
+        reader: &mut R,
+        (key_header, value_header): &Self::Header,
+    ) -> Result<Self, DataReadError> {
+        let len = usize::from(PackedUint::read_data(reader, &())?);
+        let mut data = IndexMap::with_capacity(len);
         for _ in 0..len {
             data.insert(
                 reader.read_data(key_header)?,

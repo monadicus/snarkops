@@ -43,6 +43,7 @@ panic = "unwind"
 
 [workspace.dependencies]
 aleo-std = "=0.1.24"
+atomic-time = "0.1"
 axum = { version = "0.7", default-features = false }
 anyhow = { version = "1", features = ["backtrace"] }
 bimap = "0.6"

@@ -8,6 +8,7 @@ use std::{
     time::SystemTime,
 };
 
+use atomic_time::AtomicSystemTime;
 use futures_util::future::join_all;
 use prometheus_http_query::response::Data;
 use promql_parser::label::{MatchOp, Matcher};
@@ -33,6 +34,7 @@ use crate::{
     env::PortType,
     schema::timeline::{Action, ActionInstance, EventDuration, OutcomeMetrics, TimelineEvent},
     state::{AgentClient, GlobalState},
+    util::OpaqueDebug,
 };
 
 #[derive(Debug)]
@@ -54,12 +56,12 @@ pub struct TimelineInstance {
     pub step: AtomicUsize,
     /// Semaphore to prevent multiple step executions from occurring
     /// simultaneously.
-    ///
-    /// Also doubles as a tracker for when the step's duration is expected to
+    pub step_mutex: Mutex<()>,
+    /// A tracker for when the step's duration is expected to
     /// expire. This is used in persistence; if a step is terminated
     /// unexpectedly and must persist, a specified time will indicate how long
     /// to wait before starting the next step.
-    pub step_mutex: Mutex<Option<SystemTime>>,
+    pub step_wait_until: OpaqueDebug<AtomicSystemTime>,
 }
 
 impl TimelineInstance {
@@ -71,6 +73,7 @@ impl TimelineInstance {
             handle: Default::default(),
             step: Default::default(),
             step_mutex: Default::default(),
+            step_wait_until: OpaqueDebug(AtomicSystemTime::new(SystemTime::UNIX_EPOCH)),
         }
     }
 
@@ -83,13 +86,14 @@ impl TimelineInstance {
             return Err(ExecutionError::TimelineAlreadyStarted);
         }
 
-        let Ok(mut step_guard) = self.step_mutex.try_lock() else {
+        let Ok(_step_guard) = self.step_mutex.try_lock() else {
             return Err(ExecutionError::TimelineAlreadyStarted);
         };
 
         // wait out the old step duration if necessary
         'wait_prev_duration: {
-            if let Some(end_time) = *step_guard {
+            let end_time = self.step_wait_until.load(Ordering::AcqRel);
+            if end_time != SystemTime::UNIX_EPOCH {
                 // determine time until expected end time
                 let Ok(diff) = end_time.duration_since(SystemTime::now()) else {
                     // this occurs when the system time is *greater* than the end time, and thus we
@@ -109,12 +113,15 @@ impl TimelineInstance {
         };
 
         // set the new step duration
-        *step_guard = match &event.duration {
-            Some(EventDuration::Time(duration)) => Some(SystemTime::now() + *duration),
+        self.step_wait_until.store(
+            match &event.duration {
+                Some(EventDuration::Time(duration)) => SystemTime::now() + *duration,
 
-            // TODO
-            _ => None,
-        };
+                // TODO
+                _ => SystemTime::UNIX_EPOCH,
+            },
+            Ordering::AcqRel,
+        );
 
         debug!("next event in timeline {event:?}");
         // task handles that must be awaited for this timeline event
@@ -334,7 +341,8 @@ impl TimelineInstance {
         }
 
         // update state
-        *step_guard = None;
+        self.step_wait_until
+            .store(SystemTime::UNIX_EPOCH, Ordering::AcqRel);
         self.step.fetch_add(1, Ordering::Release);
 
         Ok(())

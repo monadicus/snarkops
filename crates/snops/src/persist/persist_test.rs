@@ -1,11 +1,6 @@
 use std::str::FromStr;
 
-use snops_common::{
-    dataformat_test,
-    state::{AgentId, AgentMode, AgentPeer, HeightRequest, NodeKey, NodeState},
-    INTERN,
-};
-
+use super::prelude::*;
 use crate::state::AgentFlags;
 
 dataformat_test!(

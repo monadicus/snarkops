@@ -1,7 +1,4 @@
-use snops_common::format::{
-    read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataHeaderOf,
-};
-
+use super::prelude::*;
 use crate::{
     cannon::sink::{FireRate, TxSink},
     schema::NodeTargets,
@@ -18,7 +15,7 @@ impl DataFormat for TxSinkFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
@@ -27,7 +24,7 @@ impl DataFormat for TxSinkFormatHeader {
             + self.fire_rate.write_data(writer)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
@@ -58,7 +55,7 @@ impl DataFormat for TxSink {
         fire_rate: FireRate::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
@@ -82,7 +79,7 @@ impl DataFormat for TxSink {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {

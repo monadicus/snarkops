@@ -1,11 +1,6 @@
-use snops_common::{
-    format::{
-        read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter,
-        DataHeaderOf,
-    },
-    state::AgentId,
-};
+use snops_common::state::AgentId;
 
+use super::prelude::*;
 use crate::schema::nodes::{ExternalNode, Node, NodeFormatHeader};
 
 #[derive(Debug, Clone)]
@@ -24,14 +19,14 @@ impl DataFormat for PersistNodeFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
         Ok(write_dataformat(writer, &self.node)? + write_dataformat(writer, &self.external_node)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
@@ -60,7 +55,7 @@ impl DataFormat for PersistNode {
         external_node: ExternalNode::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
@@ -79,7 +74,7 @@ impl DataFormat for PersistNode {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {

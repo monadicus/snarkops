@@ -199,6 +199,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic-time"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3424654267706036b8c23c0abadc4e0412416b9d0208d7ebe1e6978c8c31fec0"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4607,6 +4616,7 @@ dependencies = [
 name = "snops"
 version = "0.1.0"
 dependencies = [
+ "atomic-time",
  "axum",
  "bimap",
  "bincode",
@@ -4695,12 +4705,14 @@ name = "snops-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "atomic-time",
  "checkpoint",
  "clap",
  "clap-markdown",
  "clap_mangen",
  "futures",
  "http 1.1.0",
+ "indexmap 2.2.6",
  "lasso",
  "lazy_static",
  "paste",

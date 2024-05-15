@@ -1,10 +1,8 @@
 use std::collections::HashSet;
 
-use snops_common::{
-    format::{DataFormat, DataFormatReader, DataHeaderOf},
-    state::NodeKey,
-};
+use snops_common::state::NodeKey;
 
+use super::prelude::*;
 use crate::{
     cannon::source::{ComputeTarget, CreditsTxMode, LocalService, QueryTarget, TxMode, TxSource},
     schema::nodes::KeySource,
@@ -21,7 +19,7 @@ impl DataFormat for TxSourceFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
@@ -30,7 +28,7 @@ impl DataFormat for TxSourceFormatHeader {
             + self.key_source.write_data(writer)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
@@ -61,7 +59,7 @@ impl DataFormat for TxSource {
         key_source: KeySource::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
@@ -148,7 +146,7 @@ impl DataFormat for TxSource {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {

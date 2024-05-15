@@ -1,11 +1,14 @@
 use std::{
     io::{Read, Write},
     num::NonZeroU8,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use super::{packed_int::PackedUint, DataFormat, DataReadError, DataWriteError};
+use atomic_time::{AtomicSystemTime, Ordering};
 
-macro_rules! impl_integer_dataformat {
+use super::{packed_int::PackedUint, DataFormat, DataFormatReader, DataReadError, DataWriteError};
+
+macro_rules! impl_number_dataformat {
     ($ty:ty) => {
         impl DataFormat for $ty {
             type Header = ();
@@ -27,16 +30,18 @@ macro_rules! impl_integer_dataformat {
     };
 }
 
-impl_integer_dataformat!(u8);
-impl_integer_dataformat!(u16);
-impl_integer_dataformat!(u32);
-impl_integer_dataformat!(u64);
-impl_integer_dataformat!(u128);
-impl_integer_dataformat!(i8);
-impl_integer_dataformat!(i16);
-impl_integer_dataformat!(i32);
-impl_integer_dataformat!(i64);
-impl_integer_dataformat!(i128);
+impl_number_dataformat!(u8);
+impl_number_dataformat!(u16);
+impl_number_dataformat!(u32);
+impl_number_dataformat!(u64);
+impl_number_dataformat!(u128);
+impl_number_dataformat!(i8);
+impl_number_dataformat!(i16);
+impl_number_dataformat!(i32);
+impl_number_dataformat!(i64);
+impl_number_dataformat!(i128);
+impl_number_dataformat!(f32);
+impl_number_dataformat!(f64);
 
 impl DataFormat for usize {
     type Header = ();
@@ -78,6 +83,53 @@ impl DataFormat for NonZeroU8 {
         let mut byte = [0u8; 1];
         reader.read_exact(&mut byte)?;
         NonZeroU8::new(byte[0]).ok_or(DataReadError::Custom("invalid NonZeroU8".to_string()))
+    }
+}
+
+impl DataFormat for Duration {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        // TODO: need subsecond precision?
+        let (secs, nanos) = (self.as_secs(), self.subsec_nanos());
+        Ok(secs.write_data(writer)? + nanos.write_data(writer)?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _: &Self::Header) -> Result<Self, DataReadError> {
+        let (secs, nanos): (u64, u32) = (reader.read_data(&())?, reader.read_data(&())?);
+        Ok(Duration::new(secs, nanos))
+    }
+}
+
+impl DataFormat for SystemTime {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        let Ok(unix) = self.duration_since(UNIX_EPOCH) else {
+            return Err(DataWriteError::custom("time is before unix epoch"));
+        };
+
+        unix.write_data(writer)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _: &Self::Header) -> Result<Self, DataReadError> {
+        Ok(UNIX_EPOCH + reader.read_data::<Duration>(&())?)
+    }
+}
+
+impl DataFormat for AtomicSystemTime {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        let time = self.load(Ordering::Acquire);
+        time.write_data(writer)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _: &Self::Header) -> Result<Self, DataReadError> {
+        Ok(Self::new(reader.read_data::<SystemTime>(&())?))
     }
 }
 

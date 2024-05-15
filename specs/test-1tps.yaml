@@ -40,12 +40,14 @@ timeline:
         count: 20
   - duration: 10s
 
+outcomes:
+  network.tps:
+    min: 0.1
+
 ---
 version: outcomes.snarkos.testing.monadic.us/v1
 
 name: 0.1-tps-outcome
 
 metrics:
-  network/tps:
-    query: avg(rate(snarkos_blocks_transactions_total[10s]))
-    min: 0.1
+  network.tps: avg(rate(snarkos_blocks_transactions_total[10s]))

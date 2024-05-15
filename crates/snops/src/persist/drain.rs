@@ -1,4 +1,4 @@
-use snops_common::format::{DataFormat, DataFormatReader, DataFormatWriter, DataReadError};
+use super::prelude::*;
 
 pub struct PersistDrainCount {
     pub count: u32,
@@ -8,14 +8,14 @@ impl DataFormat for PersistDrainCount {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
+    fn write_data<W: Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
         writer.write_data(&self.count)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
+    fn read_data<R: Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {

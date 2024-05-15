@@ -37,7 +37,6 @@ pub struct OutcomeExpectation {
     pub query: Option<PromQuery>,
     #[serde(flatten)]
     pub validation: OutcomeValidation,
-    // TODO: do we want a way to only check certain agents?
 }
 
 /// An outcome validation method.
