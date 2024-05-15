@@ -1,0 +1,88 @@
+<head>
+  <style>
+    body {
+      margin: 0;
+      background: #131515;
+    }
+  </style>
+
+  <script src="https://unpkg.com/force-graph"></script>
+  <!-- <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script> -->
+</head>
+
+<body>
+  <div id="graph"></div>
+
+  <script>
+    // colors that accurately represent each key
+    const colors = {
+      Client: '#c78604',
+      Prover: '#b059d9',
+      Validator: '#d96159',
+    };
+
+    // (async () => {
+    //   const Graph = ForceGraph()(document.getElementById('graph'))
+    //     .nodeId('id')
+    //     .nodeLabel('label')
+    //     .cooldownTicks(0)
+    //     .linkColor(() => '#666')
+    //     .nodeColor((node) => colors[node.ty]);
+
+    //   const data = await fetch('./graph.json').then((res) => res.json());
+    //   const g = new dagre.graphlib.Graph();
+
+    //   const nodeDiameter = Graph.nodeRelSize() * 2;
+    //   g.setGraph({
+    //     nodeWidth: nodeDiameter,
+    //     nodeHeight: nodeDiameter,
+    //     nodesep: nodeDiameter * 0.5,
+    //     ranksep: nodeDiameter * Math.sqrt(data.nodes.length) * 0.5,
+
+    //     rankDir: 'BT',
+    //     ranker: 'longest-path',
+    //     linkSource: 'target',
+    //     linkTarget: 'source',
+    //   });
+
+    //   data.nodes.forEach((node) =>
+    //     g.setNode(
+    //       node['id'],
+    //       Object.assign({}, node, { width: nodeDiameter, height: nodeDiameter })
+    //     )
+    //   );
+
+    //   data.links.forEach((link) =>
+    //     g.setEdge(link.source, link.target, Object.assign({}, link))
+    //   );
+
+    //   dagre.layout(g);
+
+    //   Graph.graphData({
+    //     nodes: g.nodes().map((n) => {
+    //       const node = g.node(n);
+    //       delete node.width;
+    //       delete node.height;
+    //       node.fx = node.x;
+    //       node.fy = node.y;
+    //       return node;
+    //     }),
+    //     links: g.edges().map((e) => g.edge(e)),
+    //   });
+    // })();
+
+    fetch('./graph.json')
+      .then((res) => res.json())
+      .then((data) => {
+        const Graph = ForceGraph()(document.getElementById('graph'))
+          .graphData(data)
+          .linkColor(() => '#666')
+          .nodeLabel('label')
+          .nodeColor((node) => colors[node.ty]);
+
+        // Graph.d3Force('center', null);
+
+        Graph.onEngineStop(() => Graph.zoomToFit(400));
+      });
+  </script>
+</body>
