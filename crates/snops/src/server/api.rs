@@ -162,7 +162,6 @@ async fn find_agents(
     State(state): State<AppState>,
     extract::Json(payload): extract::Json<FindAgents>,
 ) -> Response {
-    dbg!(&payload);
     let labels_vec = payload.labels.iter().copied().collect::<Vec<_>>();
     let mask = AgentFlags {
         mode: payload.mode,
@@ -173,9 +172,6 @@ async fn find_agents(
     let agents = state
         .pool
         .iter()
-        .inspect(|a| {
-            dbg!(a.value().env());
-        })
         .filter(|agent| {
             // This checks the mode, labels, and local_pk.
             let mask_matches = mask.is_subset(&agent.mask(&labels_vec));
