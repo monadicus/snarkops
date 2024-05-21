@@ -1,5 +1,3 @@
-use std::ffi::OsStr;
-
 use crate::{format::DataFormat, prelude::MaskBit};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -17,12 +15,6 @@ impl AsRef<str> for NodeType {
             Self::Validator => "validator",
             Self::Prover => "prover",
         }
-    }
-}
-
-impl AsRef<OsStr> for NodeType {
-    fn as_ref(&self) -> &OsStr {
-        OsStr::new(self)
     }
 }
 
