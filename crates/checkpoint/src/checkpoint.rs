@@ -8,12 +8,12 @@ use crate::{
     ledger, CheckpointContent, CheckpointHeader, ROUND_KEY,
 };
 
-pub struct Checkpoint {
+pub struct Checkpoint<N: Network> {
     pub header: CheckpointHeader,
-    pub content: CheckpointContent,
+    pub content: CheckpointContent<N>,
 }
 
-impl ToBytes for Checkpoint {
+impl<N: Network> ToBytes for Checkpoint<N> {
     fn write_le<W: std::io::Write>(&self, mut writer: W) -> std::io::Result<()>
     where
         Self: Sized,
@@ -36,7 +36,7 @@ impl ToBytes for Checkpoint {
     }
 }
 
-impl FromBytes for Checkpoint {
+impl<N: Network> FromBytes for Checkpoint<N> {
     fn read_le<R: std::io::Read>(mut reader: R) -> std::io::Result<Self>
     where
         Self: Sized,
@@ -48,7 +48,7 @@ impl FromBytes for Checkpoint {
     }
 }
 
-impl Checkpoint {
+impl<N: Network> Checkpoint<N> {
     pub fn new_from_header(
         path: PathBuf,
         header: CheckpointHeader,
@@ -58,7 +58,7 @@ impl Checkpoint {
     }
 
     pub fn new(path: PathBuf) -> Result<Self, CheckpointReadError> {
-        let header = CheckpointHeader::read_ledger(path.clone())?;
+        let header = CheckpointHeader::read_ledger::<N>(path.clone())?;
         let content = CheckpointContent::read_ledger(path)?;
 
         Ok(Self { header, content })
@@ -67,22 +67,24 @@ impl Checkpoint {
     pub fn check(&self, storage_mode: StorageMode) -> Result<(), CheckpointCheckError> {
         use CheckpointCheckError::*;
 
-        let blocks = BlockDB::open(storage_mode.clone()).map_err(StorageOpenError)?;
-        let committee = CommitteeDB::open(storage_mode.clone()).map_err(StorageOpenError)?;
+        let blocks = BlockDB::<N>::open(storage_mode.clone()).map_err(StorageOpenError)?;
+        let committee = CommitteeDB::<N>::open(storage_mode.clone()).map_err(StorageOpenError)?;
         let height = committee.current_height().map_err(ReadLedger)?;
 
         if height <= self.height() {
             return Err(HeightMismatch(self.height(), height));
         }
 
-        let Some(hash) = blocks.get_block_hash(self.height()).map_err(ReadLedger)? else {
+        let Some(hash): Option<BlockHash<N>> =
+            blocks.get_block_hash(self.height()).map_err(ReadLedger)?
+        else {
             return Err(BlockNotFound(self.height()));
         };
-        if hash.bytes() != self.header.block_hash {
+        if block_bytes::<N>(&hash) != self.header.block_hash {
             return Err(HashMismatch(
                 self.height(),
                 hash.to_string(),
-                BlockHash::from_bytes_le(&self.header.block_hash)
+                BlockHash::<N>::from_bytes_le(&self.header.block_hash)
                     .map(|h| h.to_string())
                     .unwrap_or_else(|_| "invalid hash".to_string()),
             ));
@@ -93,7 +95,7 @@ impl Checkpoint {
 
     pub fn rewind(
         self,
-        ledger: &DbLedger,
+        ledger: &DbLedger<N>,
         storage_mode: StorageMode,
     ) -> Result<(), CheckpointRewindError> {
         use CheckpointRewindError::*;

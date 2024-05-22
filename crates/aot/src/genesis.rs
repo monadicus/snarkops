@@ -7,51 +7,46 @@ use colored::Colorize;
 use indexmap::IndexMap;
 use rand::{CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-use serde::{Deserialize, Serialize};
-use serde_clap_deserialize::serde_clap_default;
+use serde::Serialize;
 use snarkvm::{
+    console::program::Network,
     ledger::{
         committee::MIN_VALIDATOR_STAKE,
         store::{helpers::memory::ConsensusMemory, ConsensusStore},
         Header, Ratify, Solutions,
     },
-    prelude::Network as _,
-    synthesizer::program::FinalizeGlobalState,
+    synthesizer::{cast_ref, program::FinalizeGlobalState},
     utilities::ToBytes,
 };
 
 use crate::{
-    ledger::util::public_transaction, Address, Aleo, Block, CTRecord, Committee, DbLedger, MemVM,
-    Network, PTRecord, PrivateKey, Transaction, ViewKey,
+    ledger::util::public_transaction, mux_aleo, Address, Block, CTRecord, Committee, DbLedger,
+    MemVM, PTRecord, PrivateKey, Transaction, ViewKey,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Balances(IndexMap<Address, u64>);
-impl FromStr for Balances {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Balances<N: Network>(IndexMap<Address<N>, u64>);
+impl<N: Network> FromStr for Balances<N> {
     type Err = serde_json::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_str(s)
+        Ok(Balances(serde_json::from_str(s)?))
     }
 }
 
-#[serde_clap_default]
-#[derive(Debug, Clone, Parser, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct Genesis {
+#[derive(Debug, Clone, Parser)]
+pub struct Genesis<N: Network> {
     /// The private key to use when generating the genesis block. Generates one
     /// randomly if not passed.
     #[clap(name = "genesis-key", short, long)]
-    #[serde(rename = "key")]
-    pub genesis_key: Option<PrivateKey>,
+    pub genesis_key: Option<PrivateKey<N>>,
 
     /// Where to write the genesis block to.
     #[clap(name = "output", short, long, default_value = "genesis.block")]
     pub output: PathBuf,
 
     /// The committee size. Not used if --bonded-balances is set.
-    #[clap(name = "committee-size", long)]
-    #[serde_clap_default(4)]
+    #[clap(name = "committee-size", long, default_value_t = 4)]
     pub committee_size: u16,
 
     /// A place to optionally write out the generated committee private keys
@@ -60,14 +55,16 @@ pub struct Genesis {
     pub committee_output: Option<PathBuf>,
 
     /// Additional number of accounts that aren't validators to add balances to.
-    #[clap(name = "additional-accounts", long)]
-    #[serde_clap_default(0)]
+    #[clap(name = "additional-accounts", long, default_value_t = 0)]
     pub additional_accounts: u16,
 
     /// The balance to add to the number of accounts specified by
     /// additional-accounts.
-    #[clap(name = "additional-accounts-balance", long)]
-    #[serde_clap_default(100000000)] // 100_000_000
+    #[clap(
+        name = "additional-accounts-balance",
+        long,
+        default_value_t = 100_000_000
+    )]
     pub additional_accounts_balance: u64,
 
     /// If --additional-accounts is passed you can additionally add an amount to
@@ -87,31 +84,29 @@ pub struct Genesis {
 
     /// The bonded balance each bonded address receives. Not used if
     /// `--bonded-balances` is passed.
-    #[clap(name = "bonded-balance", long)]
-    #[serde_clap_default(10000000000000)] // 10_000_000_000_000
+    #[clap(name = "bonded-balance", long, default_value_t = 10_000_000_000_000)]
     pub bonded_balance: u64,
 
     /// An optional map from address to bonded balance. Overrides
     /// `--bonded-balance` and `--committee-size`.
     #[clap(name = "bonded-balances", long)]
-    pub bonded_balances: Option<Balances>,
+    pub bonded_balances: Option<Balances<N>>,
 
     /// Optionally initialize a ledger as well.
     #[clap(name = "ledger", long)]
-    #[serde(skip)]
     pub ledger: Option<PathBuf>,
 }
 
 /// Returns a new genesis block for a quorum chain.
-pub fn genesis_quorum<R: Rng + CryptoRng>(
-    vm: &MemVM,
-    private_key: &PrivateKey,
-    committee: Committee,
-    public_balances: IndexMap<Address, u64>,
-    bonded_balances: IndexMap<Address, (Address, Address, u64)>,
-    transactions: Vec<Transaction>,
+pub fn genesis_quorum<R: Rng + CryptoRng, N: Network>(
+    vm: &MemVM<N>,
+    private_key: &PrivateKey<N>,
+    committee: Committee<N>,
+    public_balances: IndexMap<Address<N>, u64>,
+    bonded_balances: IndexMap<Address<N>, (Address<N>, Address<N>, u64)>,
+    transactions: Vec<Transaction<N>>,
     rng: &mut R,
-) -> Result<Block> {
+) -> Result<Block<N>> {
     // Retrieve the total stake.
     let total_stake = committee.total_stake();
     // Compute the account supply.
@@ -124,9 +119,9 @@ pub fn genesis_quorum<R: Rng + CryptoRng>(
         .ok_or_else(|| anyhow!("Invalid total supply"))?;
     // Ensure the total supply matches.
     ensure!(
-        total_supply == Network::STARTING_SUPPLY,
+        total_supply == N::STARTING_SUPPLY,
         "Invalid total supply. Found {total_supply}, expected {}",
-        Network::STARTING_SUPPLY
+        N::STARTING_SUPPLY
     );
 
     // Prepare the ratifications.
@@ -142,7 +137,7 @@ pub fn genesis_quorum<R: Rng + CryptoRng>(
     let aborted_solution_ids = vec![];
 
     // Construct the finalize state.
-    let state = FinalizeGlobalState::new_genesis::<Network>()?;
+    let state = FinalizeGlobalState::new_genesis::<N>()?;
     // Speculate on the ratifications, solutions, and transactions.
     let (ratifications, transactions, aborted_transaction_ids, ratified_finalize_operations) = vm
         .speculate(
@@ -160,7 +155,7 @@ pub fn genesis_quorum<R: Rng + CryptoRng>(
 
     // Prepare the block header.
     let header = Header::genesis(&ratifications, &transactions, ratified_finalize_operations)?; // Prepare the previous block hash.
-    let previous_hash = <Network as snarkvm::prelude::Network>::BlockHash::default();
+    let previous_hash = N::BlockHash::default();
 
     // Construct the block.
     let block = Block::new_beacon(
@@ -178,7 +173,7 @@ pub fn genesis_quorum<R: Rng + CryptoRng>(
     Ok(block)
 }
 
-impl Genesis {
+impl<N: Network> Genesis<N> {
     pub fn parse(self) -> Result<()> {
         let mut rng = ChaChaRng::seed_from_u64(self.seed.unwrap_or(1234567890u64));
 
@@ -257,8 +252,8 @@ impl Genesis {
         let committee = Committee::new(0u64, members)?;
 
         // Add additional accounts to the public balances
-        let mut accounts: IndexMap<Address, (PrivateKey, u64, Option<PTRecord>)> = (0..self
-            .additional_accounts)
+        type Accounts<N> = IndexMap<Address<N>, (PrivateKey<N>, u64, Option<PTRecord<N>>)>;
+        let mut accounts: Accounts<N> = (0..self.additional_accounts)
             .map(|_| {
                 // Repeatedly regenerate key/addresses, ensuring they are not in
                 // `bonded_balances`.
@@ -279,7 +274,7 @@ impl Genesis {
             .collect::<Result<IndexMap<_, _>>>()?;
 
         // Calculate the public balance per validator.
-        let remaining_balance = Network::STARTING_SUPPLY
+        let remaining_balance = N::STARTING_SUPPLY
             .saturating_sub(committee.total_stake())
             .saturating_sub(public_balances.values().sum());
 
@@ -296,12 +291,12 @@ impl Genesis {
         // Check if the sum of committee stakes and public balances equals the total
         // starting supply.
         let public_balances_sum: u64 = public_balances.values().sum();
-        if committee.total_stake() + public_balances_sum != Network::STARTING_SUPPLY {
+        if committee.total_stake() + public_balances_sum != N::STARTING_SUPPLY {
             println!(
                 "Sum of committee stakes and public balances does not equal total starting supply:
                                 {} + {public_balances_sum} != {}",
                 committee.total_stake(),
-                Network::STARTING_SUPPLY
+                N::STARTING_SUPPLY
             );
         }
 
@@ -309,9 +304,9 @@ impl Genesis {
         let compute_span = tracing::span!(tracing::Level::ERROR, "compute span").entered();
 
         // Initialize a new VM.
-        let vm = snarkvm::synthesizer::VM::from(
-            ConsensusStore::<Network, ConsensusMemory<_>>::open(Some(0))?,
-        )?;
+        let vm = snarkvm::synthesizer::VM::from(ConsensusStore::<N, ConsensusMemory<_>>::open(
+            Some(0),
+        )?)?;
 
         // region: Genesis Records
         let mut txs = Vec::with_capacity(accounts.len());
@@ -319,17 +314,21 @@ impl Genesis {
             accounts = accounts
                 .into_iter()
                 .map(|(addr, (key, balance, _))| {
-                    let record_tx = public_transaction::<_, _, Aleo>(
-                        "transfer_public_to_private",
-                        &vm,
-                        addr,
-                        record_balance,
-                        key,
-                        None,
-                    )?;
+                    let record_tx: Transaction<N> = mux_aleo!(
+                        A,
+                        N,
+                        public_transaction::<_, _, A>(
+                            "transfer_public_to_private",
+                            cast_ref!(vm as MemVM<N>),
+                            *cast_ref!(addr as Address<N>),
+                            record_balance,
+                            *cast_ref!(key as PrivateKey<N>),
+                            None,
+                        )?
+                    );
                     // Cannot fail because transfer_public_to_private always emits a
                     // record.
-                    let record_enc: CTRecord = record_tx.records().next().unwrap().1.clone();
+                    let record_enc: CTRecord<N> = record_tx.records().next().unwrap().1.clone();
                     // Decrypt the record.
                     let record = record_enc.decrypt(&ViewKey::try_from(key)?)?;
 

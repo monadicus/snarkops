@@ -3,7 +3,7 @@ use std::str::FromStr;
 use anyhow::Result;
 use clap::Subcommand;
 use snarkvm::{
-    console::program::{Entry, Identifier, Literal, Plaintext},
+    console::program::{Entry, Identifier, Literal, Network, Plaintext},
     ledger::RecordsFilter,
     prelude::Zero,
 };
@@ -11,15 +11,15 @@ use snarkvm::{
 use crate::{ledger::util, Address, DbLedger, PrivateKey, ViewKey};
 
 #[derive(Debug, Subcommand)]
-pub enum View {
+pub enum View<N: Network> {
     Top,
     Block { block_height: u32 },
     Balance { address: String },
-    Records { private_key: PrivateKey },
+    Records { private_key: PrivateKey<N> },
 }
 
-impl View {
-    pub fn parse(self, ledger: &DbLedger) -> Result<()> {
+impl<N: Network> View<N> {
+    pub fn parse(self, ledger: &DbLedger<N>) -> Result<()> {
         match self {
             View::Block { block_height } => {
                 // Print information about the ledger

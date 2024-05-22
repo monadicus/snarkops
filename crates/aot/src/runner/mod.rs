@@ -8,8 +8,6 @@ use aleo_std::StorageMode;
 use anyhow::{bail, Result};
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use clap::Args;
-use serde::{Deserialize, Serialize};
-use serde_clap_deserialize::serde_clap_default;
 use snarkos_node::Node;
 use snarkvm::{
     ledger::store::{helpers::rocksdb::CommitteeDB, CommitteeStorage},
@@ -18,23 +16,23 @@ use snarkvm::{
 };
 use snops_common::state::NodeType;
 
-use crate::{ledger::Addrs, Account, DbLedger, Network, PrivateKey};
+use crate::{Account, DbLedger, Network, PrivateKey};
 
 mod metrics;
 
-#[derive(Debug, Args, Serialize, Deserialize)]
+#[derive(Debug, Args)]
 #[group(required = true, multiple = false)]
-pub struct Key {
+pub struct Key<N: Network> {
     /// Specify the account private key of the node
     #[clap(long = "private-key")]
-    pub private_key: Option<PrivateKey>,
+    pub private_key: Option<PrivateKey<N>>,
     /// Specify the account private key of the node
     #[clap(long = "private-key-file")]
     pub private_key_file: Option<PathBuf>,
 }
 
-impl Key {
-    pub fn try_get(self) -> Result<PrivateKey> {
+impl<N: Network> Key<N> {
+    pub fn try_get(self) -> Result<PrivateKey<N>> {
         match (self.private_key, self.private_key_file) {
             (Some(key), None) => Ok(key),
             (None, Some(file)) => {
@@ -47,9 +45,8 @@ impl Key {
     }
 }
 
-#[serde_clap_default]
-#[derive(Debug, Args, Serialize, Deserialize)]
-pub struct Runner {
+#[derive(Debug, Args)]
+pub struct Runner<N: Network> {
     /// A path to the genesis block to initialize the ledger from.
     #[arg(required = true, short, long, default_value = "genesis.block")]
     pub genesis: PathBuf,
@@ -62,7 +59,7 @@ pub struct Runner {
     pub node_type: NodeType,
 
     #[clap(flatten)]
-    pub key: Key,
+    pub key: Key<N>,
 
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
@@ -80,11 +77,21 @@ pub struct Runner {
     pub metrics: u16,
 
     /// Specify the IP address and port of the peer(s) to connect to
-    #[clap(long = "peers", default_value = "")]
-    pub peers: Addrs,
+    #[clap(
+        long = "peers",
+        default_value = "",
+        num_args = 1,
+        value_delimiter = ','
+    )]
+    pub peers: Vec<SocketAddr>,
     /// Specify the IP address and port of the validator(s) to connect to
-    #[clap(long = "validators", default_value = "")]
-    pub validators: Addrs,
+    #[clap(
+        long = "validators",
+        default_value = "",
+        num_args = 1,
+        value_delimiter = ','
+    )]
+    pub validators: Vec<SocketAddr>,
     /// Specify the requests per second (RPS) rate limit per IP for the REST
     /// server
     #[clap(long = "rest-rps", default_value_t = 1000)]
@@ -94,7 +101,7 @@ pub struct Runner {
     pub retention_policy: Option<RetentionPolicy>,
 }
 
-impl Runner {
+impl<N: Network> Runner<N> {
     pub fn parse(self) -> Result<()> {
         if std::env::var("DEFAULT_RUNTIME").ok().is_some() {
             self.start_without_runtime()
@@ -128,7 +135,7 @@ impl Runner {
 
         let storage_mode = StorageMode::Custom(self.ledger.clone());
 
-        if let Err(e) = DbLedger::load(genesis.clone(), storage_mode.clone()) {
+        if let Err(e) = DbLedger::<N>::load(genesis.clone(), storage_mode.clone()) {
             tracing::error!("aot failed to load ledger: {e}");
             // L in binary = 01001100 = 76
             std::process::exit(76);
@@ -200,9 +207,9 @@ impl Runner {
         // if we have a checkpoint manager, start the backup loop
         if let Some(mut manager) = manager.take() {
             // cull incompatible checkpoints
-            manager.cull_incompatible()?;
+            manager.cull_incompatible::<N>()?;
 
-            let committee = CommitteeDB::<Network>::open(storage_mode.clone())?;
+            let committee = CommitteeDB::<N>::open(storage_mode.clone())?;
 
             // check for height changes and poll the manager when a new block comes in
             let mut last_height = committee.current_height()?;
@@ -215,7 +222,7 @@ impl Runner {
                     if last_height != height {
                         last_height = height;
 
-                        if let Err(e) = manager.poll() {
+                        if let Err(e) = manager.poll::<N>() {
                             tracing::error!("backup loop error: {e:?}");
                         }
                     }

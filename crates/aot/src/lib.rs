@@ -7,62 +7,108 @@ pub mod program;
 #[cfg(feature = "node")]
 pub mod runner;
 
+use std::str::FromStr;
+
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use snarkvm::{
-    console::network::MainnetV0,
+    console::{
+        network::{MainnetV0, TestnetV0},
+        program::Network,
+    },
     ledger::{
         store::helpers::{memory::ConsensusMemory, rocksdb::ConsensusDB},
         Ledger,
     },
 };
 
-// The current network.
-pub type Aleo = snarkvm::circuit::AleoV0;
-pub type Network = MainnetV0;
+pub enum NetworkId {
+    Mainnet,
+    Testnet,
+}
+
+impl FromStr for NetworkId {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> anyhow::Result<Self> {
+        match s {
+            "mainnet" => Ok(Self::Mainnet),
+            "testnet" => Ok(Self::Testnet),
+            _ => Err(anyhow::anyhow!("Invalid network ID")),
+        }
+    }
+}
+
+impl std::fmt::Display for NetworkId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Mainnet => write!(f, "mainnet"),
+            Self::Testnet => write!(f, "testnet"),
+        }
+    }
+}
+
+impl From<NetworkId> for u16 {
+    fn from(id: NetworkId) -> Self {
+        match id {
+            NetworkId::Mainnet => <MainnetV0 as Network>::ID,
+            NetworkId::Testnet => <TestnetV0 as Network>::ID,
+        }
+    }
+}
+
+impl NetworkId {
+    pub fn from_network<N: Network>() -> Self {
+        match N::ID {
+            <MainnetV0 as Network>::ID => Self::Mainnet,
+            <TestnetV0 as Network>::ID => Self::Testnet,
+            _ => unreachable!(),
+        }
+    }
+}
 
 // The db.
-pub type Db = ConsensusDB<Network>;
+pub type Db<N> = ConsensusDB<N>;
 
 // Ledger types.
-pub type DbLedger = Ledger<Network, Db>;
-pub type MemoryLedger = Ledger<Network, ConsensusMemory<Network>>;
+pub type DbLedger<N> = Ledger<N, Db<N>>;
+pub type MemoryLedger<N> = Ledger<N, ConsensusMemory<N>>;
 
 // The vm types.
-pub type MemVM = snarkvm::synthesizer::VM<Network, ConsensusMemory<Network>>;
-pub type VM = snarkvm::synthesizer::VM<Network, Db>;
+pub type MemVM<N> = snarkvm::synthesizer::VM<N, ConsensusMemory<N>>;
+pub type VM<N> = snarkvm::synthesizer::VM<N, Db<N>>;
 
 // Tx types.
-pub type TransactionID = <Network as snarkvm::prelude::Network>::TransactionID;
-pub type Transaction = snarkvm::ledger::Transaction<Network>;
+pub type TransactionID<N> = <N as Network>::TransactionID;
+pub type Transaction<N> = snarkvm::ledger::Transaction<N>;
 
 // Account types.
-pub type Account = snarkos_account::Account<Network>;
+pub type Account<N> = snarkos_account::Account<N>;
 
 // User types.
-pub type Address = snarkvm::console::types::Address<Network>;
-pub type PrivateKey = snarkvm::console::account::PrivateKey<Network>;
-pub type ViewKey = snarkvm::console::account::ViewKey<Network>;
+pub type Address<N> = snarkvm::console::types::Address<N>;
+pub type PrivateKey<N> = snarkvm::console::account::PrivateKey<N>;
+pub type ViewKey<N> = snarkvm::console::account::ViewKey<N>;
 
 // Value types.
 // Text types.
-pub type Ciphertext = snarkvm::console::program::Ciphertext<Network>;
-pub type Plaintext = snarkvm::console::program::Plaintext<Network>;
+pub type Ciphertext<N> = snarkvm::console::program::Ciphertext<N>;
+pub type Plaintext<N> = snarkvm::console::program::Plaintext<N>;
 
 // Record types.
-pub type CTRecord = snarkvm::console::program::Record<Network, Ciphertext>;
-pub type PTRecord = snarkvm::console::program::Record<Network, Plaintext>;
+pub type CTRecord<N> = snarkvm::console::program::Record<N, Ciphertext<N>>;
+pub type PTRecord<N> = snarkvm::console::program::Record<N, Plaintext<N>>;
 
 // Other types.
-pub type Value = snarkvm::console::program::Value<Network>;
-pub type Literal = snarkvm::console::program::Literal<Network>;
+pub type Value<N> = snarkvm::console::program::Value<N>;
+pub type Literal<N> = snarkvm::console::program::Literal<N>;
 
 // Program types.
-pub type Authorization = snarkvm::synthesizer::Authorization<Network>;
-pub type Block = snarkvm::ledger::Block<Network>;
-pub type Committee = snarkvm::ledger::committee::Committee<Network>;
+pub type Authorization<N> = snarkvm::synthesizer::Authorization<N>;
+pub type Block<N> = snarkvm::ledger::Block<N>;
+pub type Committee<N> = snarkvm::ledger::committee::Committee<N>;
 
-pub fn gen_private_key() -> anyhow::Result<PrivateKey> {
+pub fn gen_private_key<N: Network>() -> anyhow::Result<PrivateKey<N>> {
     let mut rng = ChaChaRng::from_entropy();
     PrivateKey::new(&mut rng)
 }

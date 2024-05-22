@@ -72,24 +72,28 @@ impl CheckpointManager {
 
     /// Cull checkpoints that are incompatible with the current block database
     #[cfg(feature = "write")]
-    pub fn cull_incompatible(&mut self) -> Result<usize, ManagerCullError> {
+    pub fn cull_incompatible<N: crate::aleo::Network>(
+        &mut self,
+    ) -> Result<usize, ManagerCullError> {
         use ManagerCullError::*;
 
         use crate::aleo::*;
 
-        let blocks = BlockDB::open(StorageMode::Custom(self.storage_path.clone()))
+        let blocks = BlockDB::<N>::open(StorageMode::Custom(self.storage_path.clone()))
             .map_err(StorageOpenError)?;
 
         let mut rejected = vec![];
 
         for (time, (header, path)) in self.checkpoints.iter() {
             let height = header.block_height;
-            let Some(block_hash) = blocks.get_block_hash(height).map_err(ReadLedger)? else {
+            let Some(block_hash): Option<BlockHash<N>> =
+                blocks.get_block_hash(height).map_err(ReadLedger)?
+            else {
                 trace!("checkpoint {path:?} at height {height} is taller than the ledger");
                 rejected.push(*time);
                 continue;
             };
-            if block_hash.bytes() != header.block_hash {
+            if block_bytes::<N>(&block_hash) != header.block_hash {
                 trace!("checkpoint {path:?} is incompatible with block at height {height}");
                 rejected.push(*time);
             }
@@ -120,8 +124,8 @@ impl CheckpointManager {
     /// Poll the ledger for a new checkpoint and write it to disk
     /// Also reject old checkpoints that are no longer needed
     #[cfg(feature = "write")]
-    pub fn poll(&mut self) -> Result<bool, ManagerPollError> {
-        let header = CheckpointHeader::read_ledger(self.storage_path.clone())?;
+    pub fn poll<N: crate::aleo::Network>(&mut self) -> Result<bool, ManagerPollError> {
+        let header = CheckpointHeader::read_ledger::<N>(self.storage_path.clone())?;
         let time = header.time();
 
         if !self.is_ready(&time) || header.block_height == 0 {
@@ -129,7 +133,8 @@ impl CheckpointManager {
         }
 
         trace!("creating checkpoint @ {}...", header.block_height);
-        let checkpoint = crate::Checkpoint::new_from_header(self.storage_path.clone(), header)?;
+        let checkpoint =
+            crate::Checkpoint::<N>::new_from_header(self.storage_path.clone(), header)?;
         self.write_and_insert(checkpoint)?;
         self.cull_timestamp(time);
         Ok(true)
@@ -148,9 +153,9 @@ impl CheckpointManager {
 
     /// Write a checkpoint to disk and insert it into the manager
     #[cfg(feature = "write")]
-    pub fn write_and_insert(
+    pub fn write_and_insert<N: crate::aleo::Network>(
         &mut self,
-        checkpoint: crate::Checkpoint,
+        checkpoint: crate::Checkpoint<N>,
     ) -> Result<(), ManagerInsertError> {
         use ManagerInsertError::*;
 

@@ -2,9 +2,12 @@ use anyhow::{bail, Result};
 use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
 use serde_json::json;
-use snarkvm::ledger::{
-    query::Query,
-    store::{helpers::memory::ConsensusMemory, ConsensusStore},
+use snarkvm::{
+    console::program::Network,
+    ledger::{
+        query::Query,
+        store::{helpers::memory::ConsensusMemory, ConsensusStore},
+    },
 };
 use tracing::error;
 
@@ -17,28 +20,28 @@ pub enum ExecMode {
 }
 
 #[derive(Debug, Args)]
-pub struct Execute {
+pub struct Execute<N: Network> {
     /// The Authorization for the function.
     #[arg(short, long)]
-    pub authorization: Authorization,
+    pub authorization: Authorization<N>,
     #[arg(short, long, value_enum, default_value_t = ExecMode::Local)]
     pub exec_mode: ExecMode,
     #[arg(short, long)]
     pub query: String,
     /// The authorization for the fee execution.
     #[arg(short, long)]
-    pub fee: Option<Authorization>,
+    pub fee: Option<Authorization<N>>,
     /// Whether to broadcast the transaction.
     #[arg(short, long, default_value_t = false)]
     pub broadcast: bool,
 }
 
 /// Executes the authorization, returning the resulting transaction.
-pub fn execute_remote(
-    auth: Authorization,
+pub fn execute_remote<N: Network>(
+    auth: Authorization<N>,
     api_url: &str,
-    fee: Option<Authorization>,
-) -> Result<Transaction> {
+    fee: Option<Authorization<N>>,
+) -> Result<Transaction<N>> {
     // Execute the authorization.
     let response = reqwest::blocking::Client::new()
         .post(format!("{api_url}/execute"))
@@ -60,13 +63,13 @@ pub fn execute_remote(
 }
 
 /// Executes the authorization locally, returning the resulting transaction.
-pub fn execute_local<R: Rng + CryptoRng>(
-    auth: Authorization,
-    ledger: Option<&DbLedger>,
+pub fn execute_local<R: Rng + CryptoRng, N: Network>(
+    auth: Authorization<N>,
+    ledger: Option<&DbLedger<N>>,
     rng: &mut R,
     query: Option<String>,
-    fee: Option<Authorization>,
-) -> Result<Transaction> {
+    fee: Option<Authorization<N>>,
+) -> Result<Transaction<N>> {
     // Execute the transaction.
     if let Some(ledger) = ledger {
         let query = query.map(Query::REST);
@@ -75,12 +78,12 @@ pub fn execute_local<R: Rng + CryptoRng>(
     } else {
         let query = query.map(Query::REST);
 
-        let store = ConsensusStore::<crate::Network, ConsensusMemory<_>>::open(None)?;
+        let store = ConsensusStore::<N, ConsensusMemory<_>>::open(None)?;
         MemVM::from(store)?.execute_authorization(auth, fee, query, rng)
     }
 }
 
-impl Execute {
+impl<N: Network> Execute<N> {
     pub fn parse(self) -> Result<()> {
         // execute the transaction
         let tx = match self.exec_mode {

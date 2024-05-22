@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Args;
+use snarkvm::console::program::Network;
 
 use crate::DbLedger;
 
@@ -7,7 +8,7 @@ use crate::DbLedger;
 pub struct Init;
 
 impl Init {
-    pub fn parse(self, ledger: &DbLedger) -> Result<()> {
+    pub fn parse<N: Network>(self, ledger: &DbLedger<N>) -> Result<()> {
         let genesis_block = ledger.get_block(0)?;
 
         println!(
