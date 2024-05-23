@@ -2,6 +2,7 @@ use core::str::FromStr;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use aleo_std::StorageMode;
@@ -166,6 +167,7 @@ impl<N: Network> Runner<N> {
                 ::snarkos_node_metrics::register_histogram(name);
             }
         }
+        let shutdown = Arc::new(AtomicBool::new(false));
 
         match self.node_type {
             NodeType::Validator => {
@@ -182,12 +184,20 @@ impl<N: Network> Runner<N> {
                     storage_mode.clone(),
                     false,
                     false,
+                    shutdown,
                 )
                 .await?
             }
             NodeType::Prover => {
-                Node::new_prover(node_ip, account, &self.peers, genesis, storage_mode.clone())
-                    .await?
+                Node::new_prover(
+                    node_ip,
+                    account,
+                    &self.peers,
+                    genesis,
+                    storage_mode.clone(),
+                    shutdown,
+                )
+                .await?
             }
             NodeType::Client => {
                 Node::new_client(
@@ -199,6 +209,7 @@ impl<N: Network> Runner<N> {
                     genesis,
                     None,
                     storage_mode.clone(),
+                    shutdown,
                 )
                 .await?
             }

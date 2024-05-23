@@ -244,7 +244,7 @@ pub async fn load_ledger(
         .await?;
 
     // apply the checkpoint to the ledger
-    let res = Command::new(dbg!(state.cli.path.join(SNARKOS_FILE)))
+    let res = Command::new(state.cli.path.join(SNARKOS_FILE))
         .stdout(std::io::stdout())
         .stderr(std::io::stderr())
         .arg("ledger")

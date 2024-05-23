@@ -115,6 +115,7 @@ dependencies = ["build-aot"]
 command = "upx"
 args = [
 	"--best",
+	"-f",
 	"--lzma",
 	"-o",
 	"./target/snarkos-aot-compressed",
@@ -145,6 +146,7 @@ dependencies = ["build-snops"]
 command = "upx"
 args = [
 	"--best",
+	"-f",
 	"--lzma",
 	"-o",
 	"./target/snops-compressed",
@@ -175,6 +177,7 @@ dependencies = ["build-snops-agent"]
 command = "upx"
 args = [
 	"--best",
+	"-f",
 	"--lzma",
 	"-o",
 	"./target/snops-agent-compressed",
@@ -193,8 +196,8 @@ args = [
 	"snops-cli",
 	"-Zbuild-std=std,panic_abort",
 	"-Zbuild-std-features=panic_immediate_abort",
-	"--profile-big",
-	"release",
+	"--profile",
+	"release-big",
 	"--target",
 	"x86_64-unknown-linux-gnu",
 ]
@@ -205,6 +208,7 @@ dependencies = ["build-snops-cli"]
 command = "upx"
 args = [
 	"--best",
+	"-f",
 	"--lzma",
 	"-o",
 	"./target/snops-cli-compressed",
