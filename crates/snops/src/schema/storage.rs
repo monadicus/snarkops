@@ -18,7 +18,7 @@ use snops_common::{
     aot_cmds::error::CommandError,
     api::{CheckpointMeta, StorageInfo},
     constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE},
-    state::{InternedId, KeyState, StorageId},
+    state::{InternedId, KeyState, NetworkId, StorageId},
 };
 use tokio::process::Command;
 use tracing::{error, info, warn};
@@ -191,6 +191,8 @@ pub type AleoAddrMap = IndexMap<String, String>;
 pub struct LoadedStorage {
     /// Storage ID
     pub id: StorageId,
+    /// Network ID
+    pub network: NetworkId,
     /// Version counter for this storage - incrementing will invalidate old
     /// saved ledgers
     pub version: u16,
@@ -217,7 +219,11 @@ lazy_static! {
 }
 
 impl Document {
-    pub async fn prepare(self, state: &GlobalState) -> Result<Arc<LoadedStorage>, SchemaError> {
+    pub async fn prepare(
+        self,
+        state: &GlobalState,
+        network: NetworkId,
+    ) -> Result<Arc<LoadedStorage>, SchemaError> {
         let id = self.id;
 
         // todo: maybe update the loaded storage in global state if the hash
@@ -226,13 +232,13 @@ impl Document {
 
         // add the prepared storage to the storage map
 
-        if state.storage.contains_key(&id) {
+        if state.storage.contains_key(&(network, id)) {
             // TODO: we probably don't want to warn here. instead, it would be nice to
             // hash/checksum the storage to compare it with the conflicting storage
             warn!("a storage with the id {id} has already been prepared");
         }
 
-        let base = state.cli.path.join(STORAGE_DIR).join(id.to_string());
+        let base = state.storage_path(network, id);
         let version_file = base.join(VERSION_FILE);
 
         // TODO: The dir can be made by a previous run and the aot stuff can fail
@@ -295,6 +301,7 @@ impl Document {
                         command
                             .stdout(Stdio::inherit())
                             .stderr(Stdio::inherit())
+                            .env("NETWORK", network.to_string())
                             .arg("genesis")
                             .arg("--output")
                             .arg(&output)
@@ -450,6 +457,7 @@ impl Document {
                     command
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
+                        .env("NETWORK", network.to_string())
                         .arg("accounts")
                         .arg(account.count.to_string())
                         .arg("--output")
@@ -541,6 +549,7 @@ impl Document {
         let storage = Arc::new(LoadedStorage {
             version: self.regen,
             id,
+            network,
             committee,
             accounts,
             checkpoints,
@@ -549,11 +558,11 @@ impl Document {
         if let Err(e) = state
             .db
             .storage
-            .save(&id, &PersistStorage::from(storage.deref()))
+            .save(&(network, id), &PersistStorage::from(storage.deref()))
         {
             error!("failed to save storage meta: {e}");
         }
-        state.storage.insert(id, storage.clone());
+        state.storage.insert((network, id), storage.clone());
 
         Ok(storage)
     }
@@ -716,6 +725,7 @@ impl LoadedStorage {
 
     pub fn path_cli(&self, cli: &Cli) -> PathBuf {
         let mut path = cli.path.join(STORAGE_DIR);
+        path.push(self.network.to_string());
         path.push(self.id.to_string());
         path
     }

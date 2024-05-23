@@ -1,0 +1,26 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: base
+name: base-ledger
+
+generate: {}
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+name: 4-validators
+
+network: testnet
+
+nodes:
+  validator/test:
+    replicas: 4
+    key: committee.$
+    height: 0
+    validators: [validator/*]
+    peers: []
+
+  # validator/4:
+  #   key: committee.3
+  #   validators: [validator/*]
+  #   peers: []

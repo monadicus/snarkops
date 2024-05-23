@@ -134,7 +134,7 @@ impl Environment {
 
         let prev_env = state.get_env(env_id);
 
-        let mut storage = None;
+        let mut storage_doc = None;
 
         let (mut node_peers, mut node_states, cannons, mut tx_pipe) =
             if let Some(ref env) = prev_env {
@@ -175,8 +175,8 @@ impl Environment {
         for document in documents {
             match document {
                 ItemDocument::Storage(doc) => {
-                    if storage.is_none() {
-                        storage = Some(doc.prepare(&state).await?);
+                    if storage_doc.is_none() {
+                        storage_doc = Some(doc);
                         // TODO: ensure storage does not change from prev_env
                     } else {
                         Err(PrepareError::MultipleStorage)?;
@@ -373,7 +373,13 @@ impl Environment {
             }
         }
 
-        let storage = storage.ok_or(PrepareError::MissingStorage)?;
+        // prepare the storage after all the other documents
+        // as it depends on the network id
+        let storage = storage_doc
+            .ok_or(PrepareError::MissingStorage)?
+            .prepare(&state, network)
+            .await?;
+
         let storage_id = storage.id;
         let outcomes = outcomes.unwrap_or_default();
 

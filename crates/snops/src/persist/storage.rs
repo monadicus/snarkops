@@ -2,7 +2,7 @@ use checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     constant::LEDGER_BASE_DIR,
     format::{DataFormat, DataFormatReader, DataHeaderOf},
-    state::{InternedId, StorageId},
+    state::{InternedId, NetworkId, StorageId},
 };
 use tracing::info;
 
@@ -17,6 +17,7 @@ use crate::{
 /// Metadata for storage that can be used to restore a loaded storage
 pub struct PersistStorage {
     pub id: StorageId,
+    pub network: NetworkId,
     pub version: u16,
     pub persist: bool,
     pub accounts: Vec<InternedId>,
@@ -27,27 +28,30 @@ pub struct PersistStorage {
 pub struct PersistStorageFormatHeader {
     pub version: u8,
     pub retention_policy: DataHeaderOf<RetentionPolicy>,
+    pub network: DataHeaderOf<NetworkId>,
 }
 
 impl DataFormat for PersistStorageFormatHeader {
     type Header = u8;
-    const LATEST_HEADER: Self::Header = 1;
+    const LATEST_HEADER: Self::Header = 2;
 
     fn write_data<W: std::io::prelude::Write>(
         &self,
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
-        Ok(self.version.write_data(writer)? + self.retention_policy.write_data(writer)?)
+        Ok(self.version.write_data(writer)?
+            + self.retention_policy.write_data(writer)?
+            + self.network.write_data(writer)?)
     }
 
     fn read_data<R: std::io::prelude::Read>(
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
-        if *header != Self::LATEST_HEADER {
+        if *header > Self::LATEST_HEADER || *header < 1 {
             return Err(snops_common::format::DataReadError::unsupported(
                 "PersistStorageFormatHeader",
-                Self::LATEST_HEADER,
+                format!("1 or {}", Self::LATEST_HEADER),
                 *header,
             ));
         }
@@ -55,6 +59,11 @@ impl DataFormat for PersistStorageFormatHeader {
         Ok(PersistStorageFormatHeader {
             version: reader.read_data(&())?,
             retention_policy: reader.read_data(&((), ()))?,
+            network: if *header >= 2 {
+                reader.read_data(&())?
+            } else {
+                0
+            },
         })
     }
 }
@@ -63,6 +72,7 @@ impl From<&LoadedStorage> for PersistStorage {
     fn from(storage: &LoadedStorage) -> Self {
         Self {
             id: storage.id,
+            network: storage.network,
             version: storage.version,
             persist: storage.persist,
             accounts: storage.accounts.keys().cloned().collect(),
@@ -75,6 +85,7 @@ impl PersistStorage {
     pub async fn load(self, cli: &Cli) -> Result<LoadedStorage, StorageError> {
         let id = self.id;
         let mut storage_path = cli.path.join(STORAGE_DIR);
+        storage_path.push(self.network.to_string());
         storage_path.push(id.to_string());
         let committee_file = storage_path.join("committee.json");
 
@@ -94,6 +105,7 @@ impl PersistStorage {
 
         Ok(LoadedStorage {
             id,
+            network: self.network,
             version: self.version,
             persist: self.persist,
             committee: read_to_addrs(pick_commitee_addr, &committee_file).await?,
@@ -109,6 +121,7 @@ impl DataFormat for PersistStorage {
     const LATEST_HEADER: Self::Header = PersistStorageFormatHeader {
         version: 1,
         retention_policy: RetentionPolicy::LATEST_HEADER,
+        network: NetworkId::LATEST_HEADER,
     };
 
     fn write_data<W: std::io::prelude::Write>(
@@ -118,6 +131,7 @@ impl DataFormat for PersistStorage {
         let mut written = 0;
 
         written += self.id.write_data(writer)?;
+        written += self.network.write_data(writer)?;
         written += self.version.write_data(writer)?;
         written += self.persist.write_data(writer)?;
         written += self.accounts.write_data(writer)?;
@@ -140,6 +154,11 @@ impl DataFormat for PersistStorage {
 
         Ok(PersistStorage {
             id: reader.read_data(&())?,
+            network: if header.network > 0 {
+                reader.read_data(&header.network)?
+            } else {
+                Default::default()
+            },
             version: reader.read_data(&())?,
             persist: reader.read_data(&())?,
             accounts: reader.read_data(&())?,
@@ -156,7 +175,7 @@ mod tests {
     use checkpoint::RetentionPolicy;
     use snops_common::{
         format::{read_dataformat, write_dataformat, DataFormat},
-        state::InternedId,
+        state::{InternedId, NetworkId},
     };
 
     use crate::persist::{PersistStorage, PersistStorageFormatHeader};
@@ -198,6 +217,7 @@ mod tests {
         PersistStorage,
         PersistStorage {
             id: InternedId::from_str("id")?,
+            network: NetworkId::default(),
             version: 1,
             persist: true,
             accounts: vec![],
@@ -207,6 +227,7 @@ mod tests {
             PersistStorageFormatHeader::LATEST_HEADER.to_byte_vec()?,
             PersistStorage::LATEST_HEADER.to_byte_vec()?,
             InternedId::from_str("id")?.to_byte_vec()?,
+            NetworkId::default().to_byte_vec()?,
             1u16.to_byte_vec()?,
             true.to_byte_vec()?,
             Vec::<InternedId>::new().to_byte_vec()?,
@@ -220,14 +241,15 @@ mod tests {
         PersistStorage,
         PersistStorage {
             id: InternedId::from_str("base")?,
+            network: NetworkId::default(),
             version: 0,
             persist: false,
             accounts: vec![InternedId::from_str("accounts")?],
             retention_policy: None,
         },
         [
-            1, 1, 1, 1, 1, 4, 98, 97, 115, 101, 0, 0, 0, 1, 1, 1, 8, 97, 99, 99, 111, 117, 110,
-            116, 115, 0
+            2, 1, 1, 1, 1, 1, 4, 98, 97, 115, 101, 0, 0, 0, 0, 1, 1, 1, 8, 97, 99, 99, 111, 117,
+            110, 116, 115, 0
         ]
     );
 }

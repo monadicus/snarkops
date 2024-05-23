@@ -11,7 +11,7 @@ use snops_common::{
         SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
     rpc::error::ReconcileError,
-    state::{EnvId, HeightRequest, StorageId},
+    state::{EnvId, HeightRequest, NetworkId, StorageId},
 };
 use tokio::process::Command;
 use tracing::{debug, error, info, trace};
@@ -27,7 +27,11 @@ pub async fn check_files(
 ) -> Result<(), ReconcileError> {
     let base_path = &state.cli.path;
     let storage_id = &info.storage.id;
-    let storage_path = base_path.join("storage").join(storage_id.to_string());
+    let network = info.network;
+    let storage_path = base_path
+        .join("storage")
+        .join(network.to_string())
+        .join(storage_id.to_string());
 
     // create the directory containing the storage files
     tokio::fs::create_dir_all(&storage_path)
@@ -56,12 +60,12 @@ pub async fn check_files(
 
     let genesis_path = storage_path.join(SNARKOS_GENESIS_FILE);
     let genesis_url = format!(
-        "{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
+        "{}/content/storage/{network}/{storage_id}/{SNARKOS_GENESIS_FILE}",
         &state.endpoint
     );
     let ledger_path = storage_path.join(LEDGER_STORAGE_FILE);
     let ledger_url = format!(
-        "{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
+        "{}/content/storage/{network}/{storage_id}/{LEDGER_STORAGE_FILE}",
         &state.endpoint
     );
 
@@ -107,7 +111,10 @@ pub async fn load_ledger(
 ) -> Result<bool, ReconcileError> {
     let base_path = &state.cli.path;
     let storage_id = &info.storage.id;
-    let storage_path = base_path.join("storage").join(storage_id.to_string());
+    let storage_path = base_path
+        .join("storage")
+        .join(info.network.to_string())
+        .join(storage_id.to_string());
 
     // use a persisted directory for the untar when configured
     let (untar_base, untar_dir) = if info.storage.persist {
@@ -240,7 +247,7 @@ pub async fn load_ledger(
 
     // download checkpoint if necessary, and get the path
     let path = checkpoint
-        .acquire(state, &storage_path, *storage_id)
+        .acquire(state, &storage_path, *storage_id, info.network)
         .await?;
 
     // apply the checkpoint to the ledger
@@ -287,6 +294,7 @@ impl<'a> CheckpointSource<'a> {
         state: &GlobalState,
         storage_path: &Path,
         storage_id: StorageId,
+        network: NetworkId,
     ) -> Result<PathBuf, ReconcileError> {
         Ok(match self {
             CheckpointSource::Meta(meta) => {
@@ -295,7 +303,7 @@ impl<'a> CheckpointSource<'a> {
                     meta.height, meta.timestamp
                 );
                 let checkpoint_url = format!(
-                    "{}/content/storage/{storage_id}/{}",
+                    "{}/content/storage/{network}/{storage_id}/{}",
                     &state.endpoint, meta.filename
                 );
                 let path = storage_path.join(&meta.filename);

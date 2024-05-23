@@ -103,7 +103,7 @@ impl PersistEnv {
         cli: &Cli,
     ) -> Result<Environment, EnvError> {
         let storage = storage
-            .get(&self.storage_id)
+            .get(&(self.network, self.storage_id))
             .ok_or(PrepareError::MissingStorage)?;
 
         let mut node_map = BiMap::default();

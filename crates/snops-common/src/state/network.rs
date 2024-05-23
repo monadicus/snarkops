@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::format::DataFormat;
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkId {
     #[default]

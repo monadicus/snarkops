@@ -37,10 +37,10 @@ $AGENT_BIN \
   --id "local-$INDEX" \
   --path "$DATA_PATH" \
   --bind "0.0.0.0" \
-  --bft "500$INDEX" \
-  --rest "303$INDEX" \
-  --metrics "900$INDEX" \
-  --node "413$INDEX" \
+  --bft "$((5000 + $INDEX))" \
+  --rest "$((3030 + $INDEX))" \
+  --metrics "$((9000 + $INDEX))" \
+  --node "$((4130 + $INDEX))" \
   --labels "local,local-$INDEX" \
   --client --validator --compute \
   $@

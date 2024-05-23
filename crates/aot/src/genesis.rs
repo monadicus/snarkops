@@ -21,7 +21,7 @@ use snarkvm::{
 
 use crate::{
     ledger::util::public_transaction, mux_aleo, Address, Block, CTRecord, Committee, DbLedger,
-    MemVM, PTRecord, PrivateKey, Transaction, ViewKey,
+    MemVM, NetworkId, PTRecord, PrivateKey, Transaction, ViewKey,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -176,6 +176,11 @@ pub fn genesis_quorum<R: Rng + CryptoRng, N: Network>(
 impl<N: Network> Genesis<N> {
     pub fn parse(self) -> Result<()> {
         let mut rng = ChaChaRng::seed_from_u64(self.seed.unwrap_or(1234567890u64));
+
+        tracing::trace!(
+            "Generating genesis block for network {}",
+            NetworkId::from_network::<N>()
+        );
 
         // Generate a genesis key if one was not passed.
         let genesis_key = match self.genesis_key {

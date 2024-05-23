@@ -78,20 +78,10 @@ pub struct Runner<N: Network> {
     pub metrics: u16,
 
     /// Specify the IP address and port of the peer(s) to connect to
-    #[clap(
-        long = "peers",
-        default_value = "",
-        num_args = 1,
-        value_delimiter = ','
-    )]
+    #[clap(long = "peers", num_args = 1, value_delimiter = ',')]
     pub peers: Vec<SocketAddr>,
     /// Specify the IP address and port of the validator(s) to connect to
-    #[clap(
-        long = "validators",
-        default_value = "",
-        num_args = 1,
-        value_delimiter = ','
-    )]
+    #[clap(long = "validators", num_args = 1, value_delimiter = ',')]
     pub validators: Vec<SocketAddr>,
     /// Specify the requests per second (RPS) rate limit per IP for the REST
     /// server
