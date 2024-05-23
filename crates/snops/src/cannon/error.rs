@@ -131,12 +131,8 @@ pub enum ExecutionContextError {
     Broadcast(CannonId, String),
     #[error("broadcast error for exec ctx `{0}`: {1}")]
     BroadcastRequest(CannonId, #[source] reqwest::Error),
-    #[
-			error("env dropped{}{}`",
-			.0.map(|id| format!(" for cannon `{id}`")).unwrap_or_default(),
-			.1.map(|id| format!(" for exec ctx `{id}`")).unwrap_or_default()
-		)]
-    EnvDropped(Option<CannonId>, Option<CannonId>),
+    #[error("env {0} dropped for cannon {1}`")]
+    EnvDropped(EnvId, CannonId),
     #[error("no available agents `{0}` for exec ctx `{1}`")]
     NoAvailableAgents(&'static str, CannonId),
     #[error("no --hostname configured for demox based cannon")]

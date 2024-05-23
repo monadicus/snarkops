@@ -7,8 +7,6 @@ pub mod program;
 #[cfg(feature = "node")]
 pub mod runner;
 
-use std::str::FromStr;
-
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use snarkvm::{
@@ -27,14 +25,14 @@ pub enum NetworkId {
     Testnet,
 }
 
-impl FromStr for NetworkId {
-    type Err = anyhow::Error;
+impl std::str::FromStr for NetworkId {
+    type Err = &'static str;
 
-    fn from_str(s: &str) -> anyhow::Result<Self> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "mainnet" => Ok(Self::Mainnet),
             "testnet" => Ok(Self::Testnet),
-            _ => Err(anyhow::anyhow!("Invalid network ID")),
+            _ => Err("Invalid network ID"),
         }
     }
 }

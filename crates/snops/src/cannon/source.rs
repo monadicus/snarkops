@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snops_common::{
     lasso::Spur,
-    state::{NodeKey, TxPipeId},
+    state::{NetworkId, NodeKey, TxPipeId},
     INTERN,
 };
 
@@ -47,8 +47,12 @@ impl LocalService {
     // TODO: cache this when sync_from is false
     /// Fetch the state root from the local query service
     /// (non-cached)
-    pub async fn get_state_root(&self, port: u16) -> Result<String, CannonError> {
-        let url = format!("http://127.0.0.1:{}/mainnet/latest/stateRoot", port);
+    pub async fn get_state_root(
+        &self,
+        network: NetworkId,
+        port: u16,
+    ) -> Result<String, CannonError> {
+        let url = format!("http://127.0.0.1:{port}/{network}/latest/stateRoot");
         let response = reqwest::get(&url)
             .await
             .map_err(|e| SourceError::FailedToGetStateRoot(url, e))?;
@@ -60,8 +64,8 @@ impl LocalService {
 }
 
 /// Used to determine the redirection for the following paths:
-/// /cannon/<id>/mainnet/latest/stateRoot
-/// /cannon/<id>/mainnet/transaction/broadcast
+/// /cannon/<id>/<network>/latest/stateRoot
+/// /cannon/<id>/<network>/transaction/broadcast
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "mode")]
 pub enum QueryTarget {
@@ -272,6 +276,7 @@ impl ComputeTarget {
                 client
                     .execute_authorization(
                         env.id,
+                        env.network,
                         query_path,
                         serde_json::to_string(&auth)
                             .map_err(|e| SourceError::Json("authorize", e))?,

@@ -52,14 +52,14 @@ cannon transaction source: (GEN OR PLAYBACK)
 
 STEP 2
 cannon query source:
-/cannon/<id>/mainnet/latest/stateRoot forwards to one of the following:
+/cannon/<id>/<network>/latest/stateRoot forwards to one of the following:
 - REALTIME-(GEN|PLAYBACK): (test_id, node-key) with a rest ports Client/Validator only
 - AOT-GEN: ledger service locally (file mode)
 - AOT-PLAYBACK: n/a
 
 STEP 3
 cannon broadcast ALWAYS HITS control plane at
-/cannon/<id>/mainnet/transaction/broadcast
+/cannon/<id>/<network>/transaction/broadcast
 cannon TX OUTPUT pointing at
 - REALTIME: (test_id, node-key)
 - AOT: file
@@ -135,11 +135,16 @@ impl CannonInstance {
         let mut storage_path = global_state.cli.path.join(STORAGE_DIR);
         storage_path.push(storage_id.to_string());
 
+        let env = global_state
+            .get_env(env_id)
+            .ok_or_else(|| ExecutionContextError::EnvDropped(env_id, id))?;
+
         // spawn child process for ledger service if the source is local
         let child = if let Some(port) = query_port {
             // TODO: make a copy of this ledger dir to prevent locks
             let child = Command::new(aot_bin)
                 .kill_on_drop(true)
+                .env("NETWORK", env.network.to_string())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .arg("ledger")
@@ -213,14 +218,19 @@ impl CannonInstance {
         self.ctx()?.spawn(rx).await
     }
 
-    /// Called by axum to forward /cannon/<id>/mainnet/latest/stateRoot
-    /// to the ledger query service's /mainnet/latest/stateRoot
+    /// Called by axum to forward /cannon/<id>/<network>/latest/stateRoot
+    /// to the ledger query service's /<network>/latest/stateRoot
     pub async fn proxy_state_root(&self) -> Result<String, CannonError> {
         match &self.source {
             TxSource::RealTime { query, .. } | TxSource::Listen { query, .. } => match query {
                 QueryTarget::Local(qs) => {
                     if let Some(port) = self.query_port {
-                        qs.get_state_root(port).await
+                        let network = self
+                            .global_state
+                            .get_env(self.env_id)
+                            .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?
+                            .network;
+                        qs.get_state_root(network, port).await
                     } else {
                         Err(CannonInstanceError::MissingQueryPort(self.id).into())
                     }
@@ -256,7 +266,7 @@ impl CannonInstance {
         }
     }
 
-    /// Called by axum to forward /cannon/<id>/mainnet/transaction/broadcast
+    /// Called by axum to forward /cannon/<id>/<network>/transaction/broadcast
     /// to the desired sink
     pub fn proxy_broadcast(&self, body: String) -> Result<(), CannonError> {
         match &self.source {
@@ -331,7 +341,7 @@ impl ExecutionContext {
         let env = state
             .envs
             .get(env_id)
-            .ok_or_else(|| ExecutionContextError::EnvDropped(Some(*cannon_id), Some(self.id)))?;
+            .ok_or_else(|| ExecutionContextError::EnvDropped(*env_id, *cannon_id))?;
         let env_id = *env_id;
 
         trace!("cannon {env_id}.{cannon_id} spawned");
@@ -489,11 +499,15 @@ impl ExecutionContext {
             }
             TxSource::RealTime { .. } => {
                 let Some(env) = self.state.get_env(self.env_id) else {
-                    return Err(ExecutionContextError::EnvDropped(None, Some(self.id)).into());
+                    return Err(ExecutionContextError::EnvDropped(self.env_id, self.id).into());
                 };
                 trace!("cannon {}.{} generating authorization...", env.id, self.id);
 
-                let auths = self.source.get_auth(&env)?.run(&env.aot_bin).await?;
+                let auths = self
+                    .source
+                    .get_auth(&env)?
+                    .run(&env.aot_bin, env.network)
+                    .await?;
                 self.auth_sender
                     .send(auths)
                     .map_err(|e| CannonError::SendAuthError(self.id, e))?;
@@ -519,7 +533,7 @@ impl ExecutionContext {
                 let env = self
                     .state
                     .get_env(self.env_id)
-                    .ok_or_else(|| ExecutionContextError::EnvDropped(None, Some(self.id)))?;
+                    .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?;
                 compute.execute(&self.state, &env, query_path, auth).await
             }
         }
@@ -539,7 +553,7 @@ impl ExecutionContext {
                 let nodes = self
                     .state
                     .get_env(self.env_id)
-                    .ok_or_else(|| ExecutionContextError::EnvDropped(None, Some(self.id)))?
+                    .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?
                     .matching_nodes(target, &self.state.pool, PortType::Rest)
                     .collect::<Vec<_>>();
 
@@ -571,7 +585,12 @@ impl ExecutionContext {
                         client.broadcast_tx(tx).await?;
                     }
                     AgentPeer::External(addr) => {
-                        let url = format!("http://{addr}/mainnet/transaction/broadcast");
+                        let network = self
+                            .state
+                            .get_env(self.env_id)
+                            .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?
+                            .network;
+                        let url = format!("http://{addr}/{network}/transaction/broadcast");
                         let req = reqwest::Client::new()
                             .post(url)
                             .header("Content-Type", "application/json")

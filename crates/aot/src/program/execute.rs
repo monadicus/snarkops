@@ -11,7 +11,7 @@ use snarkvm::{
 };
 use tracing::error;
 
-use crate::{Authorization, DbLedger, MemVM, Transaction};
+use crate::{Authorization, DbLedger, MemVM, NetworkId, Transaction};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum ExecMode {
@@ -102,11 +102,13 @@ impl<N: Network> Execute<N> {
             return Ok(());
         }
 
+        let network = NetworkId::from_network::<N>();
+
         // Broadcast the transaction.
         tracing::info!("broadcasting transaction...");
         tracing::debug!("{}", serde_json::to_string(&tx)?);
         let response = reqwest::blocking::Client::new()
-            .post(format!("{}/mainnet/transaction/broadcast", self.query))
+            .post(format!("{}/{network}/transaction/broadcast", self.query))
             .header("Content-Type", "application/json")
             .json(&tx)
             .send()?;

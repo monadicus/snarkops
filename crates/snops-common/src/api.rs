@@ -1,7 +1,7 @@
 use checkpoint::RetentionPolicy;
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::StorageId;
+use crate::{prelude::StorageId, state::NetworkId};
 
 /// Metadata about a checkpoint file
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -9,6 +9,12 @@ pub struct CheckpointMeta {
     pub height: u32,
     pub timestamp: i64,
     pub filename: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EnvInfo {
+    pub network: NetworkId,
+    pub storage: StorageInfo,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

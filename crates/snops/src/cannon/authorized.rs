@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use serde_json::json;
-use snops_common::aot_cmds::AotCmd;
+use snops_common::{aot_cmds::AotCmd, state::NetworkId};
 
 use super::error::{AuthorizeError, CannonError};
 
@@ -16,8 +16,12 @@ pub struct Authorize {
 }
 
 impl Authorize {
-    pub async fn run(self, bin: &Path) -> Result<serde_json::Value, CannonError> {
-        let aot = AotCmd::new(bin.to_path_buf());
+    pub async fn run(
+        self,
+        bin: &Path,
+        network: NetworkId,
+    ) -> Result<serde_json::Value, CannonError> {
+        let aot = AotCmd::new(bin.to_path_buf(), network);
         let func_auth = aot
             .authorize(
                 &self.private_key,

@@ -56,7 +56,7 @@ pub(super) fn routes() -> Router<AppState> {
             get(get_env_agent_key),
         )
         .route("/env/:env_id/prepare", post(post_env_prepare))
-        .route("/env/:env_id/storage", get(get_storage_info))
+        .route("/env/:env_id/info", get(get_env_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
@@ -77,11 +77,11 @@ enum StorageType {
     Binary,
 }
 
-async fn get_storage_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
+async fn get_env_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
     let env = unwrap_or_not_found!(state.envs.get(&env_id));
 
-    Json(env.storage.info()).into_response()
+    Json(env.info()).into_response()
 }
 
 async fn redirect_storage(

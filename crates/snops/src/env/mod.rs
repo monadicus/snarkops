@@ -13,8 +13,11 @@ use bimap::BiMap;
 use dashmap::DashMap;
 use indexmap::{map::Entry, IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
-use snops_common::state::{
-    AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TimelineId, TxPipeId,
+use snops_common::{
+    api::EnvInfo,
+    state::{
+        AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, TimelineId, TxPipeId,
+    },
 };
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{error, info, trace, warn};
@@ -44,6 +47,7 @@ use crate::{
 pub struct Environment {
     pub id: EnvId,
     pub storage: Arc<LoadedStorage>,
+    pub network: NetworkId,
 
     pub outcomes: OutcomeMetrics,
     // TODO: pub outcome_results: RwLock<OutcomeResults>,
@@ -163,6 +167,7 @@ impl Environment {
         let cannon_configs = DashMap::default();
         let timelines = DashMap::default();
         let mut outcomes: Option<OutcomeMetrics> = None;
+        let mut network = NetworkId::default();
 
         let mut immediate_cannons = vec![];
         let mut agents_to_inventory = IndexSet::<AgentId>::default();
@@ -186,6 +191,10 @@ impl Environment {
                 }
 
                 ItemDocument::Nodes(nodes) => {
+                    if let Some(n) = nodes.network {
+                        network = n;
+                    }
+
                     // maps of states and peers that are new to this environment
                     let mut incoming_states = IndexMap::default();
                     let mut incoming_peers = BiMap::default();
@@ -404,6 +413,7 @@ impl Environment {
             id: env_id,
             storage,
             outcomes,
+            network,
             // TODO: outcome_results: Default::default(),
             node_peers,
             node_states,
@@ -617,6 +627,13 @@ impl Environment {
 
     pub fn get_cannon(&self, id: CannonId) -> Option<Arc<CannonInstance>> {
         Some(Arc::clone(self.cannons.get(&id)?.value()))
+    }
+
+    pub fn info(&self) -> EnvInfo {
+        EnvInfo {
+            network: self.network,
+            storage: self.storage.info(),
+        }
     }
 }
 

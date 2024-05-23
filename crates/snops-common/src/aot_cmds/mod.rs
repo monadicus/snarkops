@@ -6,15 +6,17 @@ pub mod error;
 pub use error::AotCmdError;
 
 use self::error::CommandError;
+use crate::state::NetworkId;
 
 pub struct AotCmd {
     bin: PathBuf,
+    network: NetworkId,
 }
 
 type Output = io::Result<std::process::Output>;
 impl AotCmd {
-    pub fn new(bin: PathBuf) -> Self {
-        Self { bin }
+    pub fn new(bin: PathBuf, network: NetworkId) -> Self {
+        Self { bin, network }
     }
 
     fn handle_output<T, F>(
@@ -64,6 +66,7 @@ impl AotCmd {
         command
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
+            .env("NETWORK", self.network.to_string())
             .arg("program")
             .arg("authorize")
             .arg("--private-key")
@@ -93,6 +96,7 @@ impl AotCmd {
         command
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
+            .env("NETWORK", self.network.to_string())
             .arg("program")
             .arg("authorize-fee")
             .arg("--private-key")
@@ -122,6 +126,7 @@ impl AotCmd {
         command
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
+            .env("NETWORK", self.network.to_string())
             .arg("program")
             .arg("execute")
             .arg("--authorization")

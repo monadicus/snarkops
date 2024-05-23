@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use snops_common::{
     rpc::{agent::AgentServiceClient, error::ReconcileError},
-    state::{AgentState, EnvId},
+    state::{AgentState, EnvId, NetworkId},
 };
 use tarpc::{client::RpcError, context};
 
@@ -31,12 +31,13 @@ impl AgentClient {
     pub async fn execute_authorization(
         &self,
         env_id: EnvId,
+        network: NetworkId,
         query: String,
         auth: String,
     ) -> Result<(), StateError> {
         Ok(self
             .0
-            .execute_authorization(context::current(), env_id, query, auth)
+            .execute_authorization(context::current(), env_id, network, query, auth)
             .await??)
     }
 

@@ -11,7 +11,7 @@ use serde::{
 };
 use snops_common::{
     aot_cmds::AotCmd,
-    state::{CannonId, DocHeightRequest, InternedId, NodeKey},
+    state::{CannonId, DocHeightRequest, InternedId, NetworkId, NodeKey},
 };
 
 use super::{NodeTarget, NodeTargets};
@@ -93,7 +93,7 @@ pub enum Execute {
 }
 
 impl Execute {
-    pub async fn execute(&self, bin: &Path) -> Result<(), ExecutionError> {
+    pub async fn execute(&self, bin: &Path, network: NetworkId) -> Result<(), ExecutionError> {
         match self {
             Execute::Program {
                 private_key,
@@ -104,7 +104,7 @@ impl Execute {
                 priority_fee,
                 fee_record,
             } => {
-                let aot = AotCmd::new(bin.to_path_buf());
+                let aot = AotCmd::new(bin.to_path_buf(), network);
 
                 let _func_auth = aot
                     .authorize(private_key, program, function, inputs)

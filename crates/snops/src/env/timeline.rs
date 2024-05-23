@@ -310,7 +310,9 @@ impl Environment {
                                 }
                             }
                         }
-                        Action::Execute(action) => action.execute(&env.aot_bin).await?,
+                        Action::Execute(action) => {
+                            action.execute(&env.aot_bin, env.network).await?
+                        }
                     };
                 }
 

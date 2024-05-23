@@ -13,7 +13,7 @@ use snops_common::{
     format::{DataFormat, DataFormatReader, DataFormatWriter, DataHeaderOf, DataReadError},
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, DocHeightRequest, InternedId, NodeState},
+    state::{AgentId, DocHeightRequest, InternedId, NetworkId, NodeState},
     INTERN,
 };
 
@@ -27,6 +27,12 @@ use super::{
 pub struct Document {
     pub name: String,
     pub description: Option<String>,
+    /// The network to use for all nodes.
+    ///
+    /// Determines if /mainnet/ or /testnet/ are used in routes.
+    ///
+    /// Also determines which parameters/genesis block to use
+    pub network: Option<NetworkId>,
 
     #[serde(default)]
     pub external: IndexMap<NodeKey, ExternalNode>,

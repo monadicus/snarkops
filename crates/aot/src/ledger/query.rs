@@ -23,7 +23,7 @@ use tracing_appender::non_blocking::NonBlocking;
 use crate::{Block, DbLedger, NetworkId, Transaction};
 
 #[derive(Debug, Args, Clone)]
-/// Receive inquiries on /mainnet/latest/stateRoot
+/// Receive inquiries on /<network>/latest/stateRoot
 pub struct LedgerQuery<N: Network> {
     #[arg(long, default_value = "3030")]
     /// Port to listen on for incoming messages
@@ -38,8 +38,8 @@ pub struct LedgerQuery<N: Network> {
     pub readonly: bool,
 
     #[arg(long)]
-    /// Receive messages from /mainnet/transaction/broadcast and record them to
-    /// the output
+    /// Receive messages from /<network>/transaction/broadcast and record them
+    /// to the output
     pub record: bool,
 
     #[arg(long, short, default_value = "transactions.json")]
