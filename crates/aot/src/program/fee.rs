@@ -2,19 +2,20 @@ use anyhow::{bail, Ok, Result};
 use clap::Args;
 use rand::{CryptoRng, Rng};
 use snarkvm::{
-    console::types::Field,
-    ledger::Transition,
+    console::{program::Identifier, types::Field},
     synthesizer::{cast_ref, process::cost_in_microcredits},
     utilities::ToBytes,
 };
 
 // use tracing::error;
-use crate::{mux_process, Authorization, Network, PTRecord, PrivateKey};
+use crate::{
+    runner::Key, use_process, use_process_downcast, Authorization, Network, PTRecord, PrivateKey,
+};
 
 #[derive(Debug, Args)]
 pub struct AuthorizeFee<N: Network> {
-    #[arg(short, long)]
-    pub private_key: PrivateKey<N>,
+    #[clap(flatten)]
+    pub key: Key<N>,
     /// The Authorization for the function.
     #[arg(short, long)]
     pub authorization: Authorization<N>,
@@ -30,7 +31,7 @@ impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
         let fee = fee(
             self.authorization,
-            self.private_key,
+            self.key.try_get()?,
             self.priority_fee,
             &mut rand::thread_rng(),
             self.record,
@@ -52,10 +53,13 @@ pub fn fee<N: Network>(
     // Determine the base fee in microcredits.
     let base_fee_in_microcredits = estimate_cost(&auth)?;
 
+    if base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
+        return Ok(None);
+    }
+
     // Authorize the fee.
-    let fee = match base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
-        true => None,
-        false if record.is_some() => Some(mux_process!(A, N, |process| {
+    let fee = if record.is_some() {
+        use_process_downcast!(A, N, |process| {
             process.authorize_fee_private::<A, _>(
                 cast_ref!(private_key as PrivateKey<N>),
                 cast_ref!((record.unwrap()) as PTRecord<N>).clone(),
@@ -64,8 +68,9 @@ pub fn fee<N: Network>(
                 *cast_ref!(execution_id as Field<N>),
                 rng,
             )?
-        })),
-        false => Some(mux_process!(A, N, |process| {
+        })
+    } else {
+        use_process_downcast!(A, N, |process| {
             process.authorize_fee_public::<A, _>(
                 cast_ref!(private_key as PrivateKey<N>),
                 base_fee_in_microcredits,
@@ -73,10 +78,10 @@ pub fn fee<N: Network>(
                 *cast_ref!(execution_id as Field<N>),
                 rng,
             )?
-        })),
+        })
     };
 
-    Ok(fee)
+    Ok(Some(fee))
 }
 
 pub fn fee_private<N: Network>(
@@ -94,7 +99,7 @@ pub fn fee_private<N: Network>(
     // Authorize the fee.
     let fee = match base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
         true => None,
-        false => Some(mux_process!(A, N, |process| {
+        false => Some(use_process_downcast!(A, N, |process| {
             process.authorize_fee_private::<A, _>(
                 cast_ref!(private_key as PrivateKey<N>),
                 cast_ref!(credits as PTRecord<N>).clone(),
@@ -153,11 +158,11 @@ fn estimate_cost<N: Network>(func: &Authorization<N>) -> Result<u64> {
     // Iterate over the transitions to accumulate the finalize cost.
     for (_key, transition) in transitions {
         // Retrieve the function name, program id, and program.
-        let function_name = transition.function_name();
-        let stack = mux_process!(_A, N, |process| {
-            process.get_stack(cast_ref!(transition as Transition<N>).program_id())?
+        let function_name = *transition.function_name();
+        let cost = use_process!(_A, N, |process| {
+            let stack = process.get_stack(transition.program_id().to_string())?;
+            cost_in_microcredits(stack, cast_ref!(function_name as Identifier<N>))?
         });
-        let cost = cost_in_microcredits(stack, function_name)?;
 
         // Accumulate the finalize cost.
         if let Some(cost) = finalize_cost.checked_add(cost) {

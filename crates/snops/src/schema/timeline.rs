@@ -14,7 +14,7 @@ use snops_common::{
     state::{CannonId, DocHeightRequest, InternedId, NetworkId, NodeKey},
 };
 
-use super::{NodeTarget, NodeTargets};
+use super::NodeTargets;
 use crate::env::error::ExecutionError;
 
 /// A document describing a test's event timeline.
@@ -73,8 +73,8 @@ pub enum Execute {
         program: String,
         /// The function to call
         function: String,
-        /// The target node defaults to the source node
-        target: Option<NodeTarget>,
+        /// The cannon id of who to execute the transaction
+        cannon: CannonId,
         /// The inputs to the function
         inputs: Vec<String>,
         /// The optional priority fee
@@ -87,8 +87,6 @@ pub enum Execute {
         tx: String,
         /// The cannon id of who to execute the transaction
         cannon: CannonId,
-        /// The target node defaults to the source node
-        target: Option<NodeTarget>,
     },
 }
 
@@ -96,28 +94,31 @@ impl Execute {
     pub async fn execute(&self, bin: &Path, network: NetworkId) -> Result<(), ExecutionError> {
         match self {
             Execute::Program {
+                cannon,
                 private_key,
                 program,
                 function,
-                target: _target,
                 inputs,
                 priority_fee,
                 fee_record,
             } => {
                 let aot = AotCmd::new(bin.to_path_buf(), network);
 
-                let _func_auth = aot
-                    .authorize(private_key, program, function, inputs)
-                    .await?;
-
-                let _fee_auth = aot
-                    .authorize_fee(private_key, *priority_fee, fee_record.as_ref())
+                let auth = aot
+                    .authorize(
+                        private_key,
+                        program,
+                        function,
+                        inputs,
+                        *priority_fee,
+                        fee_record.as_ref(),
+                    )
                     .await?;
 
                 todo!(" grab the target and have it execute the transaction")
             }
             Execute::Transaction { .. } => {
-                todo!(" grab the target and have it execute the transaction")
+                todo!("locate the transaction id from some kind of database, then broadcast it to the cannon")
             }
         }
     }

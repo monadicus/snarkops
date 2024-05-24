@@ -21,7 +21,7 @@ use crate::{Account, DbLedger, Network, PrivateKey};
 
 mod metrics;
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Clone)]
 #[group(required = true, multiple = false)]
 pub struct Key<N: Network> {
     /// Specify the account private key of the node

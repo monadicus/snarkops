@@ -19,6 +19,8 @@ lazy_static! {
     static ref PROCESS_TESTNET: OnceLock<Process<TestnetV0>> = Default::default();
 }
 
+/// Provide an Aleo and Network type based on the network ID, then return a
+/// downcasted value back to the generic network...
 #[macro_export]
 macro_rules! mux_aleo {
     ($a:ident, $n:ident, $e:expr) => {
@@ -42,8 +44,10 @@ macro_rules! mux_aleo {
     };
 }
 
+/// Use the process for the network, then return a downcasted value back to the
+/// generic network...
 #[macro_export]
-macro_rules! mux_process {
+macro_rules! use_process_downcast {
     ($a:ident, $n:ident, |$process:ident| $e:expr) => {
 
         *(match N::ID {
@@ -67,6 +71,32 @@ macro_rules! mux_process {
         })
         .downcast::<_>()
         .expect("Failed to downcast")
+    };
+}
+
+/// Use the process for the network and return a non-network related value
+#[macro_export]
+macro_rules! use_process {
+    ($a:ident, $n:ident, |$process:ident| $e:expr) => {
+        match N::ID {
+            <snarkvm::console::network::MainnetV0 as Network>::ID => {
+                use anyhow::anyhow;
+                type $a = snarkvm::circuit::AleoV0;
+                type $n = snarkvm::console::network::MainnetV0;
+                let $process =
+                $crate::program::PROCESS_MAINNET.get_or_init(|| snarkvm::synthesizer::Process::load().unwrap());
+                $e
+            }
+            <snarkvm::console::network::TestnetV0 as Network>::ID => {
+                use anyhow::anyhow;
+                type $a = snarkvm::circuit::AleoTestnetV0;
+                type $n = snarkvm::console::network::TestnetV0;
+                let $process =
+                    $crate::program::PROCESS_TESTNET.get_or_init(|| snarkvm::synthesizer::Process::load().unwrap());
+                $e
+            }
+            _ => unreachable!(),
+        }
     };
 }
 

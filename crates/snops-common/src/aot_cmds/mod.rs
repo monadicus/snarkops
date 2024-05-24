@@ -61,6 +61,45 @@ impl AotCmd {
         program_id: &str,
         function_name: &str,
         inputs: &[String],
+        priority_fee: Option<u64>,
+        fee_record: Option<&String>,
+    ) -> Result<String, AotCmdError> {
+        let mut command = Command::new(&self.bin);
+        command
+            .stdout(std::io::stdout())
+            .stderr(std::io::stderr())
+            .env("NETWORK", self.network.to_string())
+            .arg("program")
+            .arg("authorize")
+            .arg("--private-key")
+            .arg(private_key);
+
+        if let Some(priority_fee) = priority_fee {
+            command.arg("--priority-fee").arg(priority_fee.to_string());
+        }
+
+        if let Some(fee_record) = fee_record {
+            command.arg("--record").arg(fee_record);
+        }
+
+        command
+            .arg(format!("{program_id}/{function_name}"))
+            .args(inputs);
+
+        Self::handle_output(
+            command.output().await,
+            "output",
+            "aot program authorize",
+            Self::parse_string,
+        )
+    }
+
+    pub async fn authorize_program(
+        &self,
+        private_key: &str,
+        program_id: &str,
+        function_name: &str,
+        inputs: &[String],
     ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
@@ -71,11 +110,7 @@ impl AotCmd {
             .arg("authorize")
             .arg("--private-key")
             .arg(private_key)
-            .arg("--program-id")
-            .arg(program_id)
-            .arg("--function-name")
-            .arg(function_name)
-            .arg("--inputs")
+            .arg(format!("{program_id}/{function_name}"))
             .args(inputs);
 
         Self::handle_output(
@@ -89,6 +124,7 @@ impl AotCmd {
     pub async fn authorize_fee(
         &self,
         private_key: &str,
+        authorization: String,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
     ) -> Result<Option<String>, AotCmdError> {
@@ -99,13 +135,15 @@ impl AotCmd {
             .env("NETWORK", self.network.to_string())
             .arg("program")
             .arg("authorize-fee")
+            .arg("--authorization")
+            .arg(authorization)
             .arg("--private-key")
             .arg(private_key)
             .arg("--priority-fee")
             .arg(priority_fee.unwrap_or_default().to_string());
 
         if let Some(fee_record) = fee_record {
-            command.arg("--fee-record").arg(fee_record);
+            command.arg("--record").arg(fee_record);
         }
 
         Self::handle_output(
