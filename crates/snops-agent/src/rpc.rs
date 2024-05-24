@@ -470,6 +470,7 @@ impl AgentService for AgentRpcServer {
         network: NetworkId,
         query: String,
         auth: String,
+        fee_auth: Option<String>,
     ) -> Result<(), AgentError> {
         info!("executing authorization...");
 
@@ -487,16 +488,24 @@ impl AgentService for AgentRpcServer {
             error!("failed obtain runner binary: {e}");
             AgentError::ProcessFailed
         })?;
-
-        let res = Command::new(self.state.cli.path.join(SNARKOS_FILE))
+        let mut command = Command::new(self.state.cli.path.join(SNARKOS_FILE));
+        command
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
             .env("NETWORK", network.to_string())
             .arg("program")
             .arg("execute")
+            .arg("--broadcast")
             .arg("--query")
             .arg(&format!("{}{query}", self.state.endpoint))
-            .arg(auth)
+            .arg("--authorization")
+            .arg(auth);
+
+        if let Some(fee_auth) = fee_auth {
+            command.arg("--fee").arg(fee_auth);
+        }
+
+        let res = command
             .spawn()
             .map_err(|e| {
                 error!("failed to spawn auth exec process: {e}");

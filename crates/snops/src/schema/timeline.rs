@@ -1,8 +1,4 @@
-use std::{
-    fmt::{self},
-    path::Path,
-    time::Duration,
-};
+use std::{fmt, time::Duration};
 
 use indexmap::IndexMap;
 use serde::{
@@ -11,11 +7,14 @@ use serde::{
 };
 use snops_common::{
     aot_cmds::AotCmd,
-    state::{CannonId, DocHeightRequest, InternedId, NetworkId, NodeKey},
+    state::{CannonId, DocHeightRequest, InternedId, NodeKey},
 };
 
 use super::NodeTargets;
-use crate::env::error::ExecutionError;
+use crate::{
+    cannon::{error::AuthorizeError, Authorization},
+    env::{error::ExecutionError, Environment},
+};
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
@@ -78,8 +77,10 @@ pub enum Execute {
         /// The inputs to the function
         inputs: Vec<String>,
         /// The optional priority fee
+        #[serde(default)]
         priority_fee: Option<u64>,
         /// The optional fee record for a private fee
+        #[serde(default)]
         fee_record: Option<String>,
     },
     Transaction {
@@ -91,31 +92,41 @@ pub enum Execute {
 }
 
 impl Execute {
-    pub async fn execute(&self, bin: &Path, network: NetworkId) -> Result<(), ExecutionError> {
+    pub async fn execute(&self, env: &Environment) -> Result<(), ExecutionError> {
         match self {
             Execute::Program {
-                cannon,
+                cannon: cannon_id,
                 private_key,
                 program,
                 function,
+                // TODO: parse the inputs as values like `key/committee.0`
                 inputs,
                 priority_fee,
                 fee_record,
             } => {
-                let aot = AotCmd::new(bin.to_path_buf(), network);
+                let Some(cannon) = env.cannons.get(cannon_id) else {
+                    return Err(ExecutionError::UnknownCannon(*cannon_id));
+                };
 
-                let auth = aot
-                    .authorize(
-                        private_key,
-                        program,
-                        function,
-                        inputs,
-                        *priority_fee,
-                        fee_record.as_ref(),
-                    )
+                // authorize the transaction
+                let auth = AotCmd::new(env.aot_bin.clone(), env.network)
+                    .authorize_program(private_key, program, function, inputs)
                     .await?;
 
-                todo!(" grab the target and have it execute the transaction")
+                // authorize the transaction
+                let fee_auth = AotCmd::new(env.aot_bin.clone(), env.network)
+                    .authorize_fee(private_key, &auth, *priority_fee, fee_record.as_ref())
+                    .await?;
+
+                // parse the json and bundle it up
+                let authorization = Authorization {
+                    auth: serde_json::from_str(&auth).map_err(AuthorizeError::Json)?,
+                    fee_auth: Some(serde_json::from_str(&fee_auth).map_err(AuthorizeError::Json)?),
+                };
+
+                // proxy it to a listen cannon
+                cannon.proxy_auth(authorization)?;
+                Ok(())
             }
             Execute::Transaction { .. } => {
                 todo!("locate the transaction id from some kind of database, then broadcast it to the cannon")

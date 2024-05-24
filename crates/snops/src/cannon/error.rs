@@ -92,7 +92,7 @@ pub enum SourceError {
     #[error("error parsing state root JSON: {0}")]
     StateRootInvalidJson(#[source] reqwest::Error),
     #[error("could not get an available port")]
-    TxSouceUnavailablePort,
+    TxSourceUnavailablePort,
 }
 
 impl_into_status_code!(SourceError);

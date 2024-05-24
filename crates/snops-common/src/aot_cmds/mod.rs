@@ -46,52 +46,13 @@ impl AotCmd {
         Ok(unsafe { String::from_utf8_unchecked(bytes) })
     }
 
-    fn parse_string_option(bytes: Vec<u8>) -> Result<Option<String>, AotCmdError> {
+    fn _parse_string_option(bytes: Vec<u8>) -> Result<Option<String>, AotCmdError> {
         let string = unsafe { String::from_utf8_unchecked(bytes) };
         Ok(if string.is_empty() {
             None
         } else {
             Some(string)
         })
-    }
-
-    pub async fn authorize(
-        &self,
-        private_key: &str,
-        program_id: &str,
-        function_name: &str,
-        inputs: &[String],
-        priority_fee: Option<u64>,
-        fee_record: Option<&String>,
-    ) -> Result<String, AotCmdError> {
-        let mut command = Command::new(&self.bin);
-        command
-            .stdout(std::io::stdout())
-            .stderr(std::io::stderr())
-            .env("NETWORK", self.network.to_string())
-            .arg("program")
-            .arg("authorize")
-            .arg("--private-key")
-            .arg(private_key);
-
-        if let Some(priority_fee) = priority_fee {
-            command.arg("--priority-fee").arg(priority_fee.to_string());
-        }
-
-        if let Some(fee_record) = fee_record {
-            command.arg("--record").arg(fee_record);
-        }
-
-        command
-            .arg(format!("{program_id}/{function_name}"))
-            .args(inputs);
-
-        Self::handle_output(
-            command.output().await,
-            "output",
-            "aot program authorize",
-            Self::parse_string,
-        )
     }
 
     pub async fn authorize_program(
@@ -124,10 +85,10 @@ impl AotCmd {
     pub async fn authorize_fee(
         &self,
         private_key: &str,
-        authorization: String,
+        authorization: &str,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
-    ) -> Result<Option<String>, AotCmdError> {
+    ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
             .stdout(std::io::stdout())
@@ -150,7 +111,7 @@ impl AotCmd {
             command.output().await,
             "output",
             "aot program authorize-fee",
-            Self::parse_string_option,
+            Self::parse_string,
         )
     }
 

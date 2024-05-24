@@ -71,10 +71,10 @@ impl<N: Network> Ledger<N> {
                 let ledger = util::open_ledger(genesis, ledger)?;
                 let tx = execute_local(
                     execute.authorization,
+                    execute.fee,
                     Some(&ledger),
+                    None,
                     &mut rand::thread_rng(),
-                    None,
-                    None,
                 )?;
                 println!("{}", serde_json::to_string(&tx)?);
                 Ok(())

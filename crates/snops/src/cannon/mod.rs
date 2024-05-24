@@ -14,6 +14,7 @@ use std::{
 
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use rand::seq::IteratorRandom;
+use serde::{Deserialize, Serialize};
 use snops_common::{
     aot_cmds::error::CommandError,
     constant::{LEDGER_BASE_DIR, SNARKOS_GENESIS_FILE},
@@ -70,7 +71,11 @@ burst mode??
 
 */
 
-pub type Authorization = serde_json::Value;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Authorization {
+    pub auth: serde_json::Value,
+    pub fee_auth: Option<serde_json::Value>,
+}
 
 /// Transaction cannon state
 /// using the `TxSource` and `TxSink` for configuration.
@@ -532,7 +537,9 @@ impl ExecutionContext {
                     .state
                     .get_env(self.env_id)
                     .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?;
-                compute.execute(&self.state, &env, query_path, auth).await
+                compute
+                    .execute(&self.state, &env, query_path, auth.auth, auth.fee_auth)
+                    .await
             }
         }
     }

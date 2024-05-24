@@ -26,6 +26,7 @@ pub struct Execute<N: Network> {
     pub authorization: Authorization<N>,
     #[arg(short, long, value_enum, default_value_t = ExecMode::Local)]
     pub exec_mode: ExecMode,
+    /// Query endpoint
     #[arg(short, long)]
     pub query: String,
     /// The authorization for the fee execution.
@@ -36,27 +37,30 @@ pub struct Execute<N: Network> {
     pub broadcast: bool,
 }
 
-/// Executes the authorization, returning the resulting transaction.
+/// Executes the authorization remotely
 pub fn execute_remote<N: Network>(
-    auth: Authorization<N>,
     api_url: &str,
+    auth: Authorization<N>,
     fee: Option<Authorization<N>>,
-) -> Result<Transaction<N>> {
+) -> Result<()> {
     // Execute the authorization.
     let response = reqwest::blocking::Client::new()
-        .post(format!("{api_url}/execute"))
+        .post(format!("{api_url}/auth"))
         .header("Content-Type", "application/json")
         // not actually sure this is how we send the fee?
         .json(&json!({
-                "authorization": auth,
-                "fee": fee,
+                "auth": auth,
+                "fee_auth": fee,
         }))
         .send()?;
+
+    // TODO: this can properly return the transaction once snops auth proxy monitors
+    // tx ids
 
     // Ensure the response is successful.
     match response.status().is_success() {
         // Return the transaction.
-        true => Ok(response.json()?),
+        true => Ok(()),
         // Return the error.
         false => bail!(response.text()?),
     }
@@ -65,10 +69,10 @@ pub fn execute_remote<N: Network>(
 /// Executes the authorization locally, returning the resulting transaction.
 pub fn execute_local<R: Rng + CryptoRng, N: Network>(
     auth: Authorization<N>,
-    ledger: Option<&DbLedger<N>>,
-    rng: &mut R,
-    query: Option<String>,
     fee: Option<Authorization<N>>,
+    ledger: Option<&DbLedger<N>>,
+    query: Option<String>,
+    rng: &mut R,
 ) -> Result<Transaction<N>> {
     // Execute the transaction.
     if let Some(ledger) = ledger {
@@ -89,13 +93,13 @@ impl<N: Network> Execute<N> {
         let tx = match self.exec_mode {
             ExecMode::Local => execute_local(
                 self.authorization,
-                None,
-                &mut rand::thread_rng(),
-                Some(self.query.to_owned()),
                 self.fee,
-            ),
-            ExecMode::Remote => execute_remote(self.authorization, &self.query, self.fee),
-        }?;
+                None,
+                Some(self.query.to_owned()),
+                &mut rand::thread_rng(),
+            )?,
+            ExecMode::Remote => return execute_remote(&self.query, self.authorization, self.fee),
+        };
 
         if !self.broadcast {
             println!("{}", serde_json::to_string(&tx)?);

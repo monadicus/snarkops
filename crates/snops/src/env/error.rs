@@ -9,7 +9,10 @@ use strum_macros::AsRefStr;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::{cannon::error::CannonError, schema::error::SchemaError};
+use crate::{
+    cannon::error::{AuthorizeError, CannonError},
+    schema::error::SchemaError,
+};
 
 #[derive(Debug, Error)]
 #[error("batch reconciliation failed with `{failures}` failed reconciliations")]
@@ -39,6 +42,8 @@ pub enum ExecutionError {
     TimelineAlreadyStarted,
     #[error("unknown cannon: `{0}`")]
     UnknownCannon(CannonId),
+    #[error(transparent)]
+    AuthorizeError(#[from] AuthorizeError),
 }
 
 impl_into_status_code!(ExecutionError, |value| match value {

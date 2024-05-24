@@ -3,8 +3,11 @@ version: storage.snarkos.testing.monadic.us/v1
 
 id: base
 name: base-ledger
+regen: 2
 
-generate: {}
+generate:
+  genesis:
+    seed: 1
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
@@ -24,3 +27,27 @@ nodes:
   #   key: committee.3
   #   validators: [validator/*]
   #   peers: []
+
+---
+version: cannon.snarkos.testing.monadic.us/v1
+name: listen
+source: {}
+sink:
+  target: validator/*
+  tx-delay-ms: 0
+instance: true
+
+---
+version: timeline.snarkos.testing.monadic.us/v1
+
+name: transfer
+
+timeline:
+  - execute:
+      private-key: APrivateKey1zkpGNLuKVkw5DWbbj3jw54LBYVERbcf6wjiCL5hmwAdk7EZ
+      cannon: listen
+      program: credits.aleo
+      function: transfer_public
+      inputs:
+        - aleo1ekc03f2vwemtpksckhrcl7mv4t7sm6ykldwldvvlysqt2my9zygqfhndya
+        - 1u64

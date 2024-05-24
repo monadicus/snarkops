@@ -185,7 +185,9 @@ pub enum TxSource {
     /// /api/v1/env/:env_id/cannons/:id/auth
     #[serde(rename_all = "kebab-case")]
     Listen {
+        #[serde(default)]
         query: QueryTarget,
+        #[serde(default)]
         compute: ComputeTarget,
     },
 }
@@ -198,9 +200,12 @@ impl TxSource {
             TxSource::RealTime {
                 query: QueryTarget::Local(_),
                 ..
+            } | TxSource::Listen {
+                query: QueryTarget::Local(_),
+                ..
             }
         )
-        .then(|| get_available_port().ok_or(SourceError::TxSouceUnavailablePort.into()))
+        .then(|| get_available_port().ok_or(SourceError::TxSourceUnavailablePort.into()))
         .transpose()
     }
 
@@ -264,6 +269,7 @@ impl ComputeTarget {
         env: &Environment,
         query_path: String,
         auth: serde_json::Value,
+        fee_auth: Option<serde_json::Value>,
     ) -> Result<(), CannonError> {
         match self {
             ComputeTarget::Agent { labels } => {
@@ -279,7 +285,13 @@ impl ComputeTarget {
                         env.network,
                         query_path,
                         serde_json::to_string(&auth)
-                            .map_err(|e| SourceError::Json("authorize", e))?,
+                            .map_err(|e| SourceError::Json("authorize tx", e))?,
+                        fee_auth
+                            .map(|f| {
+                                serde_json::to_string(&f)
+                                    .map_err(|e| SourceError::Json("authorize fee", e))
+                            })
+                            .transpose()?,
                     )
                     .await?;
 

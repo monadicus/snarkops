@@ -34,10 +34,11 @@ impl AgentClient {
         network: NetworkId,
         query: String,
         auth: String,
+        fee_auth: Option<String>,
     ) -> Result<(), StateError> {
         Ok(self
             .0
-            .execute_authorization(context::current(), env_id, network, query, auth)
+            .execute_authorization(context::current(), env_id, network, query, auth, fee_auth)
             .await??)
     }
 
