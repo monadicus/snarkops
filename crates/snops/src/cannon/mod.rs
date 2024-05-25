@@ -69,6 +69,10 @@ burst mode??
 
 */
 
+lazy_static::lazy_static! {
+    static ref CLIENT: reqwest::Client = reqwest::Client::new();
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Authorization {
     pub auth: serde_json::Value,
@@ -262,7 +266,7 @@ impl CannonInstance {
 
                         // attempt to get the state root from the internal or external node via REST
                         let url = format!("http://{addr}/{network}/latest/stateRoot");
-                        match reqwest::Client::new().get(url).send().await {
+                        match CLIENT.get(url).send().await {
                             Ok(res) => {
                                 if let Ok(e) = res.json().await {
                                     e
@@ -646,7 +650,7 @@ impl ExecutionContext {
                         }
                         AgentPeer::External(addr) => {
                             let url = format!("http://{addr}/{network}/transaction/broadcast");
-                            match reqwest::Client::new()
+                            match CLIENT
                                 .post(url)
                                 .header("Content-Type", "application/json")
                                 .body(tx.clone())

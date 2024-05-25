@@ -174,7 +174,7 @@ impl AotCmd {
             .arg("--query")
             .arg(query)
             .arg("--authorization")
-            .arg(&func);
+            .arg(func);
 
         if let Some(fee) = fee {
             command.arg("--fee").arg(fee);
