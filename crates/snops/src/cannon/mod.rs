@@ -12,6 +12,7 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 
+use error::SourceError;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
@@ -537,9 +538,31 @@ impl ExecutionContext {
                     .state
                     .get_env(self.env_id)
                     .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?;
-                compute
-                    .execute(&self.state, &env, query_path, auth.auth, auth.fee_auth)
+
+                match compute
+                    .execute(
+                        &self.state,
+                        &env,
+                        query_path,
+                        &auth.auth,
+                        auth.fee_auth.as_ref(),
+                    )
                     .await
+                {
+                    // requeue the auth if no agents are available
+                    Err(CannonError::Source(SourceError::NoAvailableAgents(_))) => {
+                        warn!(
+                            "cannon {}.{} no available agents to execute auth, retrying in a second...",
+                            self.env_id, self.id
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        if let Some(cannon) = env.get_cannon(self.id) {
+                            cannon.proxy_auth(auth)?
+                        }
+                        Ok(())
+                    }
+                    res => res,
+                }
             }
         }
     }
