@@ -7,7 +7,7 @@ use serde::{
 };
 use snops_common::{
     aot_cmds::AotCmd,
-    state::{CannonId, DocHeightRequest, InternedId, KeyState, NodeKey},
+    state::{CannonId, DocHeightRequest, InternedId, KeyState},
 };
 
 use super::{nodes::KeySource, NodeTargets};
@@ -259,7 +259,7 @@ pub struct SpawnCannon {
     pub count: Option<usize>,
     /// overwrite the query's source node
     #[serde(default)]
-    pub query: Option<NodeKey>,
+    pub query: Option<NodeTargets>,
     /// overwrite the cannon sink target
     #[serde(default)]
     pub target: Option<NodeTargets>,

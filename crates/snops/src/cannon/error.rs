@@ -5,13 +5,13 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     aot_cmds::{error::CommandError, AotCmdError},
     impl_into_status_code, impl_into_type_str,
-    state::{CannonId, EnvId, NodeKey, TxPipeId},
+    state::{CannonId, EnvId, TxPipeId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
 use super::Authorization;
-use crate::error::StateError;
+use crate::{error::StateError, schema::NodeTargets};
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum AuthorizeError {
@@ -107,13 +107,13 @@ pub enum CannonInstanceError {
     MissingQueryPort(CannonId),
     #[error("cannon `{0}` is not configured to playback txs")]
     NotConfiguredToPlayback(CannonId),
-    #[error("no target agent found for cannon `{0}`: {1}")]
-    TargetAgentNotFound(CannonId, NodeKey),
+    #[error("no target node found for cannon `{0}`: {1}")]
+    TargetNodeNotFound(CannonId, NodeTargets),
 }
 
 impl_into_status_code!(CannonInstanceError, |value| match value {
     MissingQueryPort(_) | NotConfiguredToPlayback(_) => StatusCode::BAD_REQUEST,
-    TargetAgentNotFound(_, _) => StatusCode::NOT_FOUND,
+    TargetNodeNotFound(_, _) => StatusCode::NOT_FOUND,
 });
 
 impl Serialize for CannonInstanceError {
@@ -138,7 +138,7 @@ pub enum ExecutionContextError {
     #[error("env {0} dropped for cannon {1}`")]
     EnvDropped(EnvId, CannonId),
     #[error("no available agents `{0}` for exec ctx `{1}`")]
-    NoAvailableAgents(&'static str, CannonId),
+    NoAvailableAgents(EnvId, CannonId, &'static str),
     #[error("no --hostname configured for demox based cannon")]
     NoHostnameConfigured,
     #[error("tx drain `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
@@ -149,7 +149,7 @@ pub enum ExecutionContextError {
 
 impl_into_status_code!(ExecutionContextError, |value| match value {
     Broadcast(_, _) | BroadcastRequest(_, _) => StatusCode::MISDIRECTED_REQUEST,
-    NoAvailableAgents(_, _) | NoHostnameConfigured => StatusCode::SERVICE_UNAVAILABLE,
+    NoAvailableAgents(_, _, _) | NoHostnameConfigured => StatusCode::SERVICE_UNAVAILABLE,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 

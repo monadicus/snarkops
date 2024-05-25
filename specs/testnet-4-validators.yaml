@@ -31,7 +31,8 @@ nodes:
 ---
 version: cannon.snarkos.testing.monadic.us/v1
 name: listen
-source: {}
+source:
+  query: validator/*
 sink:
   target: validator/*
   tx-delay-ms: 0

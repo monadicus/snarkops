@@ -16,20 +16,13 @@ use super::{
 };
 use crate::{
     env::{set::find_compute_agent, Environment},
-    schema::nodes::KeySource,
+    schema::{nodes::KeySource, NodeTargets},
     state::GlobalState,
 };
 
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalService {
-    /// Ledger & genesis block to use
-    // pub storage_id: usize,
-    /// port to host the service on (needs to be unused by other cannons and
-    /// services) this port will be use when forwarding requests to the
-    /// local query service
-    // pub port: u16,
-
     // TODO debate this
     /// An optional node to sync blocks from...
     /// necessary for private tx mode in realtime mode as this will have to
@@ -67,14 +60,14 @@ impl LocalService {
 /// /cannon/<id>/<network>/latest/stateRoot
 /// /cannon/<id>/<network>/transaction/broadcast
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", tag = "mode")]
+#[serde(rename_all = "kebab-case", untagged)]
 pub enum QueryTarget {
-    /// Use the local ledger query service
-    Local(LocalService),
     /// Target a specific node (probably over rpc instead of reqwest lol...)
     ///
     /// Requires cannon to have an associated env_id
-    Node(NodeKey),
+    Node(NodeTargets),
+    /// Use the local ledger query service
+    Local(LocalService),
 }
 
 impl Default for QueryTarget {

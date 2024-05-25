@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use dashmap::DashMap;
 use prometheus_http_query::Client as PrometheusClient;
@@ -130,7 +130,12 @@ impl GlobalState {
     /// Lookup an rpc client by agent id.
     /// Locks pools for reading
     pub fn get_client(&self, id: AgentId) -> Option<AgentClient> {
-        self.pool.get(&id).and_then(|a| a.client_owned())
+        self.pool.get(&id)?.client_owned()
+    }
+
+    pub fn get_agent_rest(&self, id: AgentId) -> Option<SocketAddr> {
+        let agent = self.pool.get(&id)?;
+        Some(SocketAddr::new(agent.addrs()?.usable()?, agent.rest_port()))
     }
 
     pub fn get_env(&self, id: EnvId) -> Option<Arc<Environment>> {

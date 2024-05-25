@@ -8,20 +8,19 @@ pub mod source;
 
 use std::{
     path::PathBuf,
-    process::Stdio,
     sync::{atomic::AtomicUsize, Arc},
 };
 
 use error::SourceError;
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use rand::seq::IteratorRandom;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use snops_common::{
     aot_cmds::AotCmd,
     state::{AgentPeer, CannonId, EnvId, StorageId},
 };
 use tokio::{
-    process::Command,
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::AbortHandle,
 };
 use tracing::{info, trace, warn};
@@ -201,43 +200,91 @@ impl CannonInstance {
     /// Called by axum to forward /cannon/<id>/<network>/latest/stateRoot
     /// to the ledger query service's /<network>/latest/stateRoot
     pub async fn proxy_state_root(&self) -> Result<String, CannonError> {
+        let cannon_id = self.id;
+        let env_id = self.env_id;
+        let network = self
+            .global_state
+            .get_env(self.env_id)
+            .ok_or_else(|| ExecutionContextError::EnvDropped(env_id, cannon_id))?
+            .network;
+
         match &self.source {
             TxSource::RealTime { query, .. } | TxSource::Listen { query, .. } => match query {
                 QueryTarget::Local(qs) => {
                     if let Some(port) = self.query_port {
-                        let network = self
-                            .global_state
-                            .get_env(self.env_id)
-                            .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?
-                            .network;
                         qs.get_state_root(network, port).await
                     } else {
-                        Err(CannonInstanceError::MissingQueryPort(self.id).into())
+                        Err(CannonInstanceError::MissingQueryPort(cannon_id).into())
                     }
                 }
-                QueryTarget::Node(key) => {
-                    let Some(env) = self.global_state.get_env(self.env_id) else {
+                QueryTarget::Node(target) => {
+                    let Some(env) = self.global_state.get_env(env_id) else {
                         unreachable!("called from a place where env is present")
                     };
 
-                    // env_id must be Some because LedgerQueryService::Node requires it
-                    let Some(agent_id) = env.get_agent_by_key(key) else {
-                        return Err(
-                            CannonInstanceError::TargetAgentNotFound(self.id, key.clone()).into(),
-                        );
-                    };
+                    let mut query_nodes = env
+                        .matching_nodes(target, &self.global_state.pool, PortType::Rest)
+                        // collecting here is required to avoid a long lived borrow on the agent
+                        // pool if this collect is removed, the iterator
+                        // will not be Send, and axum will be sad
+                        .collect::<Vec<_>>();
 
-                    let Some(client) = self.global_state.get_client(agent_id) else {
-                        return Err(CannonError::TargetAgentOffline(
-                            "cannon",
-                            self.id,
-                            key.to_string(),
-                        ));
-                    };
+                    // select nodes in a random order
+                    query_nodes.shuffle(&mut rand::thread_rng());
 
-                    // call client's rpc method to get the state root
-                    // this will fail if the client is not running a node
-                    Ok(client.get_state_root().await?)
+                    // walk through the nodes until we find one that responds
+                    for peer in query_nodes {
+                        let addr = match peer {
+                            AgentPeer::Internal(agent_id, _) => {
+                                // attempt to get the state root from the client via RPC
+                                if let Some(client) = self.global_state.get_client(agent_id) {
+                                    match client.get_state_root().await {
+                                        Ok(state_root) => return Ok(state_root),
+                                        Err(e) => {
+                                            warn!(
+                                                "cannon {env_id}.{cannon_id} failed to get state root from agent {agent_id}: {e}"
+                                            );
+                                            continue;
+                                        }
+                                    }
+                                }
+
+                                // get the agent's rest address as a fallback for the client
+                                if let Some(sock_addr) = self.global_state.get_agent_rest(agent_id)
+                                {
+                                    sock_addr
+                                } else {
+                                    continue;
+                                }
+                            }
+                            AgentPeer::External(addr) => addr,
+                        };
+
+                        // attempt to get the state root from the internal or external node via REST
+                        let url = format!("http://{addr}/{network}/latest/stateRoot");
+                        match reqwest::Client::new().get(url).send().await {
+                            Ok(res) => {
+                                if let Ok(e) = res.json().await {
+                                    e
+                                } else {
+                                    warn!(
+                                    "cannon {env_id}.{cannon_id} failed to parse state root from {peer:?}"
+                                );
+                                    continue;
+                                }
+                            }
+                            Err(e) => {
+                                warn!("cannon {env_id}.{cannon_id} failed to get state root from {peer:?}: {e}");
+                                continue;
+                            }
+                        }
+                    }
+
+                    // if no nodes were found, return an error
+                    Err(CannonInstanceError::TargetNodeNotFound(
+                        cannon_id,
+                        target.clone(),
+                    ))?
                 }
             },
             TxSource::Playback { .. } => {
@@ -553,63 +600,86 @@ impl ExecutionContext {
                 sink_pipe.unwrap().write(&tx)?;
             }
             TxSink::RealTime { target, .. } => {
-                let nodes = self
+                let cannon_id = self.id;
+                let env_id = self.env_id;
+
+                let mut broadcast_nodes = self
                     .state
-                    .get_env(self.env_id)
-                    .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?
+                    .get_env(env_id)
+                    .ok_or_else(|| ExecutionContextError::EnvDropped(env_id, cannon_id))?
                     .matching_nodes(target, &self.state.pool, PortType::Rest)
                     .collect::<Vec<_>>();
 
-                if nodes.is_empty() {
+                if broadcast_nodes.is_empty() {
                     return Err(ExecutionContextError::NoAvailableAgents(
+                        env_id,
+                        cannon_id,
                         "to broadcast transactions",
-                        self.id,
                     )
                     .into());
                 }
 
-                let Some(node) = nodes.iter().choose(&mut rand::thread_rng()) else {
-                    return Err(ExecutionContextError::NoAvailableAgents(
-                        "to broadcast transactions",
-                        self.id,
-                    )
-                    .into());
-                };
-                match node {
-                    AgentPeer::Internal(id, _) => {
-                        let Some(client) = self.state.get_client(*id) else {
-                            return Err(CannonError::TargetAgentOffline(
-                                "exec ctx",
-                                self.id,
-                                id.to_string(),
-                            ));
-                        };
+                // select nodes in a random order
+                broadcast_nodes.shuffle(&mut rand::thread_rng());
 
-                        client.broadcast_tx(tx).await?;
-                    }
-                    AgentPeer::External(addr) => {
-                        let network = self
-                            .state
-                            .get_env(self.env_id)
-                            .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?
-                            .network;
-                        let url = format!("http://{addr}/{network}/transaction/broadcast");
-                        let req = reqwest::Client::new()
-                            .post(url)
-                            .header("Content-Type", "application/json")
-                            .body(tx)
-                            .send()
-                            .await
-                            .map_err(|e| ExecutionContextError::BroadcastRequest(self.id, e))?;
-                        if !req.status().is_success() {
-                            // TODO maybe get response text?
-                            Err(ExecutionContextError::Broadcast(
-                                self.id,
-                                req.status().to_string(),
-                            ))?;
+                let network = self
+                    .state
+                    .get_env(env_id)
+                    .ok_or_else(|| ExecutionContextError::EnvDropped(env_id, cannon_id))?
+                    .network;
+
+                // broadcast to the first responding node
+                for node in broadcast_nodes {
+                    match node {
+                        AgentPeer::Internal(id, _) => {
+                            let Some(client) = self.state.get_client(id) else {
+                                continue;
+                            };
+
+                            if let Err(e) = client.broadcast_tx(tx.clone()).await {
+                                warn!(
+                                    "cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}"
+                                );
+                                continue;
+                            }
+                            return Ok(());
+                        }
+                        AgentPeer::External(addr) => {
+                            let url = format!("http://{addr}/{network}/transaction/broadcast");
+                            match reqwest::Client::new()
+                                .post(url)
+                                .header("Content-Type", "application/json")
+                                .body(tx.clone())
+                                .send()
+                                .await
+                            {
+                                Err(e) => {
+                                    warn!(
+                                            "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}"
+                                        );
+                                    continue;
+                                }
+                                Ok(req) => {
+                                    if !req.status().is_success() {
+                                        warn!(
+                                                "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}",
+                                                req.status(),
+                                            );
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            return Ok(());
                         }
                     }
                 }
+
+                Err(ExecutionContextError::NoAvailableAgents(
+                    env_id,
+                    cannon_id,
+                    "to broadcast transactions",
+                ))?
             }
         }
         Ok(())

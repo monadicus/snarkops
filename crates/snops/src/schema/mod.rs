@@ -166,6 +166,25 @@ impl Serialize for NodeTargets {
     }
 }
 
+impl Display for NodeTargets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeTargets::None => write!(f, ""),
+            NodeTargets::One(target) => write!(f, "{}", target),
+            NodeTargets::Many(targets) => {
+                let mut iter = targets.iter();
+                if let Some(target) = iter.next() {
+                    write!(f, "{}", target)?;
+                    for target in iter {
+                        write!(f, ", {}", target)?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 /// A **single** matched node target. Use [`NodeTargets`] when deserializing
 /// from documents.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
