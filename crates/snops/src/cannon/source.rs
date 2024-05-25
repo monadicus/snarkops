@@ -303,8 +303,8 @@ impl ComputeTarget {
                     "id": 1,
                     "method": "generateTransaction",
                     "params": {
-                        "authorization": serde_json::to_string(&auth["authorization"]).map_err(|e| SourceError::Json("auth[authorize]", e))?,
-                        "fee": serde_json::to_string(&auth["fee"]).map_err(|e| SourceError::Json("auth[fee]", e))?,
+                        "authorization": serde_json::to_string(&auth).map_err(|e| SourceError::Json("authorize tx", e))?,
+                        "fee": serde_json::to_string(&fee_auth).map_err(|e| SourceError::Json("authorize fee", e))?,
                         "url": query_path,
                         "broadcast": true,
                     }

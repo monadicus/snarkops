@@ -208,6 +208,7 @@ mod tests {
             PersistStorageFormatHeader::LATEST_HEADER.to_byte_vec()?,
             PersistStorage::LATEST_HEADER.version.to_byte_vec()?,
             RetentionPolicy::LATEST_HEADER.to_byte_vec()?,
+            NetworkId::LATEST_HEADER.to_byte_vec()?,
         ]
         .concat()
     );

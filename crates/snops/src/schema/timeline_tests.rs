@@ -43,16 +43,15 @@ fn test_timeline_config_serde() {
 fn test_timeline_execute() {
     let yaml = r#"
         execute:
-          private-key: committee.0.private
+          cannon: foo
           program: credits.aleo
+          private-key: PRIVATE KEY
           function: transfer_public
-          target: validator/1
           inputs:
             - 0u64
-            - committee.1.public
+            - ADDRESS
           priority-fee: 13
           fee-record: "fee_record_json"
-          duration: 1m
     "#;
     assert!(serde_yaml::from_str::<TimelineEvent>(yaml).is_ok());
 
