@@ -45,7 +45,7 @@ fn test_timeline_execute() {
         execute:
           cannon: foo
           program: credits.aleo
-          private-key: PRIVATE KEY
+          private-key: local
           function: transfer_public
           inputs:
             - 0u64
@@ -53,14 +53,20 @@ fn test_timeline_execute() {
           priority-fee: 13
           fee-record: "fee_record_json"
     "#;
-    assert!(serde_yaml::from_str::<TimelineEvent>(yaml).is_ok());
+    assert!(matches!(
+        serde_yaml::from_str::<TimelineEvent>(yaml).unwrap(),
+        TimelineEvent { .. }
+    ),);
 
     let yaml = r#"
         execute:
           tx: txdetails
           cannon: cannonfoo
     "#;
-    assert!(serde_yaml::from_str::<TimelineEvent>(yaml).is_ok());
+    assert!(matches!(
+        serde_yaml::from_str::<TimelineEvent>(yaml).unwrap(),
+        TimelineEvent { .. }
+    ));
 }
 
 #[test]
