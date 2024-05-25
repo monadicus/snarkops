@@ -2,6 +2,7 @@ use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::A
 
 use futures::future;
 use snops_common::{
+    aot_cmds::AotCmd,
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
@@ -462,7 +463,6 @@ impl AgentService for AgentRpcServer {
         }
     }
 
-    // TODO update this to match new AOT cmd
     async fn execute_authorization(
         self,
         _: context::Context,
@@ -477,51 +477,32 @@ impl AgentService for AgentRpcServer {
         // TODO: maybe in the env config store a branch label for the binary so it won't
         // be put in storage and won't overwrite itself
 
+        let aot_bin = self.state.cli.path.join(SNARKOS_FILE);
+
         // download the snarkOS binary
-        api::check_binary(
-            env_id,
-            &self.state.endpoint,
-            &self.state.cli.path.join(SNARKOS_FILE),
-        ) // TODO: http(s)?
-        .await
-        .map_err(|e| {
-            error!("failed obtain runner binary: {e}");
-            AgentError::ProcessFailed
-        })?;
-        let mut command = Command::new(self.state.cli.path.join(SNARKOS_FILE));
-        command
-            .stdout(std::io::stdout())
-            .stderr(std::io::stderr())
-            .env("NETWORK", network.to_string())
-            .arg("program")
-            .arg("execute")
-            .arg("--broadcast")
-            .arg("--query")
-            .arg(&format!("{}{query}", self.state.endpoint))
-            .arg("--authorization")
-            .arg(auth);
-
-        if let Some(fee_auth) = fee_auth {
-            command.arg("--fee").arg(fee_auth);
-        }
-
-        let res = command
-            .spawn()
-            .map_err(|e| {
-                error!("failed to spawn auth exec process: {e}");
-                AgentError::FailedToSpawnProcess
-            })?
-            .wait()
+        api::check_binary(env_id, &self.state.endpoint, &aot_bin) // TODO: http(s)?
             .await
             .map_err(|e| {
-                error!("auth exec process failed: {e}");
+                error!("failed obtain runner binary: {e}");
                 AgentError::ProcessFailed
             })?;
 
-        if !res.success() {
-            error!("auth exec process exited with status: {res}");
-            return Err(AgentError::ProcessFailed);
+        let start = std::time::Instant::now();
+        match AotCmd::new(aot_bin, network)
+            .execute(auth, fee_auth, format!("{}{query}", self.state.endpoint))
+            .await
+        {
+            Ok(exec) => {
+                let elapsed = start.elapsed().as_millis();
+                info!("authorization executed in {elapsed}ms");
+                trace!("authorization output: {exec}");
+            }
+            Err(e) => {
+                error!("failed to execute: {e}");
+                return Err(AgentError::ProcessFailed);
+            }
         }
+
         Ok(())
     }
 }

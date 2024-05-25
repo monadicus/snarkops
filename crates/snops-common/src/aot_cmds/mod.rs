@@ -170,16 +170,11 @@ impl AotCmd {
             .env("NETWORK", self.network.to_string())
             .arg("program")
             .arg("execute")
-            .arg("--authorization")
-            .arg(&func)
-            .arg("--exec-mode")
-            // hard coded for now since this is all we used
-            .arg("local")
+            .arg("--broadcast")
             .arg("--query")
             .arg(query)
-            .arg("--brodcast")
-            // hard coded for now since this is all we used
-            .arg(true.to_string());
+            .arg("--authorization")
+            .arg(&func);
 
         if let Some(fee) = fee {
             command.arg("--fee").arg(fee);
