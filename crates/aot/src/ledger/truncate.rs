@@ -40,7 +40,7 @@ pub enum Truncate {
 }
 
 impl Truncate {
-    pub fn parse<N: Network>(self, genesis: PathBuf, ledger: PathBuf) -> Result<()> {
+    pub fn parse<N: Network>(self, genesis: Block<N>, ledger: PathBuf) -> Result<()> {
         match self {
             Truncate::Rewind { checkpoint } => Self::rewind::<N>(genesis, ledger, checkpoint),
             Truncate::Replay(replay) => replay.parse::<N>(genesis, ledger),
@@ -48,11 +48,10 @@ impl Truncate {
     }
 
     pub fn rewind<N: Network>(
-        genesis: PathBuf,
+        genesis: Block<N>,
         ledger_path: PathBuf,
         checkpoint_path: PathBuf,
     ) -> Result<()> {
-        let genesis = Block::from_bytes_le(&std::fs::read(genesis)?)?;
         let storage_mode = StorageMode::Custom(ledger_path.clone());
 
         // open the ledger
@@ -72,7 +71,7 @@ impl Truncate {
 }
 
 impl Replay {
-    fn parse<N: Network>(self, genesis: PathBuf, mut ledger: PathBuf) -> Result<()> {
+    fn parse<N: Network>(self, genesis: Block<N>, mut ledger: PathBuf) -> Result<()> {
         let (read_fd, write_fd) = unistd::pipe()?;
 
         match unsafe { unistd::fork() }? {

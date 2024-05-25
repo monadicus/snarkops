@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use checkpoint::{path_from_height, Checkpoint, CheckpointManager, RetentionPolicy};
 use clap::Parser;
-use snarkvm::{console::program::Network, utilities::ToBytes};
+use snarkvm::{console::program::Network, ledger::Block, utilities::ToBytes};
 use tracing::{info, trace};
 
 use super::truncate::Truncate;
@@ -29,7 +29,7 @@ pub enum CheckpointCommand {
 }
 
 impl CheckpointCommand {
-    pub fn parse<N: Network>(self, genesis: PathBuf, ledger: PathBuf) -> Result<()> {
+    pub fn parse<N: Network>(self, genesis: Block<N>, ledger: PathBuf) -> Result<()> {
         match self {
             CheckpointCommand::Create => open_and_checkpoint::<N>(genesis, ledger),
             CheckpointCommand::Apply { checkpoint, clean } => {
@@ -60,7 +60,7 @@ impl CheckpointCommand {
     }
 }
 
-pub fn open_and_checkpoint<N: Network>(genesis: PathBuf, ledger_path: PathBuf) -> Result<()> {
+pub fn open_and_checkpoint<N: Network>(genesis: Block<N>, ledger_path: PathBuf) -> Result<()> {
     let ledger: DbLedger<N> = util::open_ledger(genesis, ledger_path.clone())?;
     let height = ledger.latest_height();
 

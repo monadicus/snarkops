@@ -1,5 +1,3 @@
-use std::fs;
-
 use aleo_std::StorageMode;
 use anyhow::bail;
 use rand::{thread_rng, SeedableRng};
@@ -14,18 +12,14 @@ use snarkvm::{
     ledger::{query::Query, store::ConsensusStorage, Block, Execution, Fee, Ledger, Transaction},
     prelude::{execution_cost, Network},
     synthesizer::VM,
-    utilities::FromBytes,
 };
 
 use super::*;
 
-#[tracing::instrument]
 pub fn open_ledger<N: Network, C: ConsensusStorage<N>>(
-    genesis_path: PathBuf,
+    genesis_block: Block<N>,
     ledger_path: PathBuf,
 ) -> Result<Ledger<N, C>> {
-    let genesis_block = Block::read_le(fs::File::open(genesis_path)?)?;
-
     Ledger::load(genesis_block, StorageMode::Custom(ledger_path))
 }
 
