@@ -43,11 +43,13 @@ version: timeline.snarkos.testing.monadic.us/v1
 name: transfer
 
 timeline:
+  # transfer credits from the first committee member to
+  # any other member
   - execute:
-      private-key: APrivateKey1zkpGNLuKVkw5DWbbj3jw54LBYVERbcf6wjiCL5hmwAdk7EZ
+      private-key: committee.0
       cannon: listen
       program: credits.aleo
       function: transfer_public
       inputs:
-        - aleo1ekc03f2vwemtpksckhrcl7mv4t7sm6ykldwldvvlysqt2my9zygqfhndya
+        - committee.$
         - 1u64

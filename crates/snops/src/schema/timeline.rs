@@ -7,10 +7,10 @@ use serde::{
 };
 use snops_common::{
     aot_cmds::AotCmd,
-    state::{CannonId, DocHeightRequest, InternedId, NodeKey},
+    state::{CannonId, DocHeightRequest, InternedId, KeyState, NodeKey},
 };
 
-use super::NodeTargets;
+use super::{nodes::KeySource, NodeTargets};
 use crate::{
     cannon::{error::AuthorizeError, Authorization},
     env::{error::ExecutionError, Environment},
@@ -67,7 +67,7 @@ pub enum Execute {
     /// Execute a program
     #[serde(rename_all = "kebab-case")]
     Program {
-        private_key: String,
+        private_key: KeySource,
         /// The program to execute
         program: String,
         /// The function to call
@@ -75,7 +75,7 @@ pub enum Execute {
         /// The cannon id of who to execute the transaction
         cannon: CannonId,
         /// The inputs to the function
-        inputs: Vec<String>,
+        inputs: Vec<AleoValue>,
         /// The optional priority fee
         #[serde(default)]
         priority_fee: Option<u64>,
@@ -89,6 +89,15 @@ pub enum Execute {
         /// The cannon id of who to execute the transaction
         cannon: CannonId,
     },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum AleoValue {
+    // Public keys
+    Key(KeySource),
+    // Other values (u8, fields, etc.)
+    Other(String),
 }
 
 impl Execute {
@@ -108,13 +117,36 @@ impl Execute {
                     return Err(ExecutionError::UnknownCannon(*cannon_id));
                 };
 
+                let KeyState::Literal(resolved_pk) = env.storage.sample_keysource_pk(private_key)
+                else {
+                    return Err(AuthorizeError::MissingPrivateKey(
+                        format!("{}.{cannon_id} {program}/{function}", env.id),
+                        private_key.to_string(),
+                    )
+                    .into());
+                };
+
+                let resolved_inputs = inputs
+                    .iter()
+                    .map(|input| match input {
+                        AleoValue::Key(key) => match env.storage.sample_keysource_addr(key) {
+                            KeyState::Literal(key) => Ok(key),
+                            _ => Err(AuthorizeError::InvalidProgramInputs(
+                                format!("{program}/{function}"),
+                                format!("key {key} does not resolve a valid addr"),
+                            )),
+                        },
+                        AleoValue::Other(value) => Ok(value.clone()),
+                    })
+                    .collect::<Result<Vec<String>, AuthorizeError>>()?;
+
                 // authorize the transaction
                 let auth_str = AotCmd::new(env.aot_bin.clone(), env.network)
                     .authorize(
-                        private_key,
+                        &resolved_pk,
                         program,
                         function,
-                        inputs,
+                        &resolved_inputs,
                         *priority_fee,
                         fee_record.as_ref(),
                     )

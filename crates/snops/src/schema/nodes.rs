@@ -355,7 +355,9 @@ pub enum KeySource {
     /// Private key owned by the agent
     Local,
     /// APrivateKey1zkp...
-    Literal(String),
+    PrivateKeyLiteral(String),
+    /// aleo1...
+    PublicKeyLiteral(String),
     /// committee.0 or committee.$ (for replicas)
     Committee(Option<usize>),
     /// accounts.0 or accounts.$ (for replicas)
@@ -374,7 +376,7 @@ impl<'de> Deserialize<'de> for KeySource {
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str(
-                    "a string that represents an aleo private key, or a file from storage",
+                    "a string that represents an aleo private/public key, or a file from storage",
                 )
             }
 
@@ -412,10 +414,12 @@ impl FromStr for KeySource {
 
         if s == "local" {
             return Ok(KeySource::Local);
-        }
         // aleo private key
-        else if s.len() == 59 && s.starts_with("APrivateKey1") {
-            return Ok(KeySource::Literal(s.to_string()));
+        } else if s.len() == 59 && s.starts_with("APrivateKey1") {
+            return Ok(KeySource::PrivateKeyLiteral(s.to_string()));
+        // aleo public key
+        } else if s.len() == 63 && s.starts_with("aleo1") {
+            return Ok(KeySource::PublicKeyLiteral(s.to_string()));
 
         // committee key
         } else if let Some(index) = s.strip_prefix("committee.") {
@@ -454,7 +458,8 @@ impl Display for KeySource {
             "{}",
             match self {
                 KeySource::Local => "local".to_owned(),
-                KeySource::Literal(key) => key.to_owned(),
+                KeySource::PrivateKeyLiteral(key) => key.to_owned(),
+                KeySource::PublicKeyLiteral(key) => key.to_owned(),
                 KeySource::Committee(None) => "committee.$".to_owned(),
                 KeySource::Committee(Some(idx)) => {
                     format!("committee.{}", idx)
@@ -478,7 +483,9 @@ impl DataFormat for KeySource {
     ) -> Result<usize, snops_common::format::DataWriteError> {
         Ok(match self {
             KeySource::Local => writer.write_data(&0u8)?,
-            KeySource::Literal(key) => writer.write_data(&1u8)? + writer.write_data(key)?,
+            KeySource::PrivateKeyLiteral(key) => {
+                writer.write_data(&1u8)? + writer.write_data(key)?
+            }
             KeySource::Committee(None) => writer.write_data(&2u8)?,
             KeySource::Committee(Some(idx)) => {
                 // save a byte by making this a separate case
@@ -488,6 +495,9 @@ impl DataFormat for KeySource {
             KeySource::Named(name, Some(idx)) => {
                 // save a byte by making this a separate case
                 writer.write_data(&5u8)? + writer.write_data(name)? + writer.write_data(idx)?
+            }
+            KeySource::PublicKeyLiteral(key) => {
+                writer.write_data(&6u8)? + writer.write_data(key)?
             }
         })
     }
@@ -506,7 +516,7 @@ impl DataFormat for KeySource {
 
         match reader.read_data(&())? {
             0u8 => Ok(KeySource::Local),
-            1u8 => Ok(KeySource::Literal(reader.read_data(&())?)),
+            1u8 => Ok(KeySource::PrivateKeyLiteral(reader.read_data(&())?)),
             2u8 => Ok(KeySource::Committee(None)),
             3u8 => Ok(KeySource::Committee(Some(reader.read_data(&())?))),
             4u8 => Ok(KeySource::Named(reader.read_data(&())?, None)),
@@ -514,6 +524,7 @@ impl DataFormat for KeySource {
                 reader.read_data(&())?,
                 Some(reader.read_data(&())?),
             )),
+            6u8 => Ok(KeySource::PublicKeyLiteral(reader.read_data(&())?)),
             n => Err(DataReadError::Custom(format!("invalid KeySource tag {n}"))),
         }
     }
@@ -537,24 +548,24 @@ mod tests {
     #[test]
     fn test_key_source_deserialization() {
         assert_eq!(
-            serde_yaml::from_str::<KeySource>("committee.0").expect("foo"),
+            serde_yaml::from_str::<KeySource>("committee.0").unwrap(),
             KeySource::Committee(Some(0))
         );
         assert_eq!(
-            serde_yaml::from_str::<KeySource>("committee.100").expect("foo"),
+            serde_yaml::from_str::<KeySource>("committee.100").unwrap(),
             KeySource::Committee(Some(100))
         );
         assert_eq!(
-            serde_yaml::from_str::<KeySource>("committee.$").expect("foo"),
+            serde_yaml::from_str::<KeySource>("committee.$").unwrap(),
             KeySource::Committee(None)
         );
 
         assert_eq!(
-            serde_yaml::from_str::<KeySource>("accounts.0").expect("foo"),
+            serde_yaml::from_str::<KeySource>("accounts.0").unwrap(),
             KeySource::Named(*ACCOUNTS_KEY_ID, Some(0))
         );
         assert_eq!(
-            serde_yaml::from_str::<KeySource>("accounts.$").expect("foo"),
+            serde_yaml::from_str::<KeySource>("accounts.$").unwrap(),
             KeySource::Named(*ACCOUNTS_KEY_ID, None)
         );
 
@@ -562,9 +573,19 @@ mod tests {
             serde_yaml::from_str::<KeySource>(
                 "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH"
             )
-            .expect("foo"),
-            KeySource::Literal(
+            .unwrap(),
+            KeySource::PrivateKeyLiteral(
                 "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH".to_string()
+            )
+        );
+
+        assert_eq!(
+            serde_yaml::from_str::<KeySource>(
+                "aleo1ekc03f2vwemtpksckhrcl7mv4t7sm6ykldwldvvlysqt2my9zygqfhndya"
+            )
+            .unwrap(),
+            KeySource::PublicKeyLiteral(
+                "aleo1ekc03f2vwemtpksckhrcl7mv4t7sm6ykldwldvvlysqt2my9zygqfhndya".to_string()
             )
         );
 

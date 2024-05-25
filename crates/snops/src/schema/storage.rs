@@ -601,7 +601,8 @@ impl LoadedStorage {
     pub fn lookup_keysource_pk(&self, key: &KeySource) -> KeyState {
         match key {
             KeySource::Local => KeyState::Local,
-            KeySource::Literal(pk) => KeyState::Literal(pk.clone()),
+            KeySource::PrivateKeyLiteral(pk) => KeyState::Literal(pk.clone()),
+            KeySource::PublicKeyLiteral(_) => KeyState::None,
             KeySource::Committee(Some(i)) => self
                 .committee
                 .get_index(*i)
@@ -620,7 +621,8 @@ impl LoadedStorage {
     pub fn lookup_keysource_addr(&self, key: &KeySource) -> KeyState {
         match key {
             KeySource::Local => KeyState::Local,
-            KeySource::Literal(addr) => KeyState::Literal(addr.clone()),
+            KeySource::PrivateKeyLiteral(_) => KeyState::None,
+            KeySource::PublicKeyLiteral(addr) => KeyState::Literal(addr.clone()),
             KeySource::Committee(Some(i)) => self
                 .committee
                 .get_index(*i)
@@ -639,7 +641,8 @@ impl LoadedStorage {
     pub fn sample_keysource_pk(&self, key: &KeySource) -> KeyState {
         match key {
             KeySource::Local => KeyState::Local,
-            KeySource::Literal(pk) => KeyState::Literal(pk.clone()),
+            KeySource::PrivateKeyLiteral(pk) => KeyState::Literal(pk.clone()),
+            KeySource::PublicKeyLiteral(_) => KeyState::None,
             KeySource::Committee(Some(i)) => self
                 .committee
                 .get_index(*i)
@@ -667,7 +670,8 @@ impl LoadedStorage {
     pub fn sample_keysource_addr(&self, key: &KeySource) -> KeyState {
         match key {
             KeySource::Local => KeyState::Local,
-            KeySource::Literal(addr) => KeyState::Literal(addr.clone()),
+            KeySource::PrivateKeyLiteral(_) => KeyState::None,
+            KeySource::PublicKeyLiteral(addr) => KeyState::Literal(addr.clone()),
             KeySource::Committee(Some(i)) => self
                 .committee
                 .get_index(*i)

@@ -21,6 +21,10 @@ pub enum AuthorizeError {
     /// For if invalid JSON is returned from the AOT command
     #[error("{0}")]
     Json(#[source] serde_json::Error),
+    #[error("program {0} has invalid inputs {1}")]
+    InvalidProgramInputs(String, String),
+    #[error("execution {0} requires a valid private key: {1}")]
+    MissingPrivateKey(String, String),
 }
 
 impl_into_status_code!(AuthorizeError, |value| match value {
