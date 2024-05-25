@@ -79,7 +79,7 @@ enum StorageType {
 
 async fn get_env_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
 
     Json(env.info()).into_response()
 }
@@ -90,7 +90,7 @@ async fn redirect_storage(
     req: Request,
 ) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
 
     let real_id = &env.storage.id;
 
@@ -209,7 +209,7 @@ async fn get_timeline(
 ) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
     let timeline_id = unwrap_or_not_found!(id_or_none(&timeline_id));
-    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
     let timeline = unwrap_or_not_found!(env.timelines.get(&timeline_id));
 
     Json(json!({
@@ -220,14 +220,14 @@ async fn get_timeline(
 
 async fn get_timelines(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
 
     Json(&env.timelines.iter().map(|t| *t.key()).collect::<Vec<_>>()).into_response()
 }
 
 async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
 
     let mut internal = HashMap::new();
     let mut external = HashMap::new();
@@ -256,7 +256,7 @@ async fn get_env_topology_resolved(
     State(state): State<AppState>,
 ) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
 
     let mut resolved = HashMap::new();
 
@@ -279,7 +279,7 @@ async fn get_env_topology_resolved(
 /// Get a map of node keys to agent ids
 async fn get_env_agents(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
 
     Json(
         env.node_peers
@@ -300,7 +300,7 @@ async fn get_env_agent_key(
 ) -> Response {
     let node_key = unwrap_or_not_found!(NodeKey::from_str(&format!("{node_type}/{node_key}")).ok());
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.envs.get(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
     let agent_id = unwrap_or_not_found!(env.get_agent_by_key(&node_key));
     let agent = unwrap_or_not_found!(state.pool.get(&agent_id));
 

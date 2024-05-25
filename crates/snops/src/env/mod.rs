@@ -446,13 +446,9 @@ impl Environment {
             // reconcile agents that are freed up from the delta between environments
             if let Err(e) = reconcile_agents(
                 &state,
-                agents_to_inventory.into_iter().map(|id| {
-                    (
-                        id,
-                        state.pool.get(&id).and_then(|a| a.client_owned()),
-                        AgentState::Inventory,
-                    )
-                }),
+                agents_to_inventory
+                    .into_iter()
+                    .map(|id| (id, state.get_client(id), AgentState::Inventory)),
             )
             .await
             {
@@ -517,14 +513,15 @@ impl Environment {
 
     pub async fn cleanup(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
         // clear the env state
-        info!("clearing env {id} state...");
+        info!("[env {id}] deleting persistence...");
 
         let (_, env) = state
             .envs
             .remove(&id)
             .ok_or(CleanupError::EnvNotFound(id))?;
+
         if let Err(e) = state.db.envs.delete(&id) {
-            error!("failed to save delete {id} to persistence: {e}");
+            error!("[env {id}] failed to delete persistence: {e}");
         }
 
         match state.db.tx_drain_counts.delete_with_prefix(&id) {
@@ -536,12 +533,15 @@ impl Environment {
             }
         }
 
+        trace!("[env {id}] marking prom as dirty");
         state.prom_httpsd.lock().await.set_dirty();
 
         // stop the timeline if it's running
         if let Some(handle) = &*env.timeline_handle.lock().await {
             handle.abort();
         }
+
+        trace!("[env {id}] inventorying agents...");
 
         if let Err(e) = reconcile_agents(
             state,
@@ -557,13 +557,7 @@ impl Environment {
                 // to the env.node_peers.right_values(), which is NOT Send
                 .collect::<Vec<_>>()
                 .into_iter()
-                .map(|id| {
-                    (
-                        id,
-                        state.pool.get(&id).and_then(|a| a.client_owned()),
-                        AgentState::Inventory,
-                    )
-                }),
+                .map(|id| (id, state.get_client(id), AgentState::Inventory)),
         )
         .await
         {

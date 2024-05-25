@@ -342,11 +342,10 @@ impl ExecutionContext {
             ..
         } = &self;
 
-        let env = state
-            .envs
-            .get(env_id)
-            .ok_or_else(|| ExecutionContextError::EnvDropped(*env_id, *cannon_id))?;
         let env_id = *env_id;
+        let env = state
+            .get_env(env_id)
+            .ok_or_else(|| ExecutionContextError::EnvDropped(env_id, *cannon_id))?;
 
         trace!("cannon {env_id}.{cannon_id} spawned");
 
