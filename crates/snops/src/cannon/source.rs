@@ -268,8 +268,8 @@ impl ComputeTarget {
         state: &GlobalState,
         env: &Environment,
         query_path: String,
-        auth: serde_json::Value,
-        fee_auth: Option<serde_json::Value>,
+        auth: &serde_json::Value,
+        fee_auth: Option<&serde_json::Value>,
     ) -> Result<(), CannonError> {
         match self {
             ComputeTarget::Agent { labels } => {

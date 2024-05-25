@@ -1,18 +1,19 @@
 use std::sync::OnceLock;
 
 use anyhow::Result;
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 use lazy_static::lazy_static;
+use serde_json::json;
 use snarkvm::{
     console::network::{MainnetV0, TestnetV0},
     synthesizer::Process,
 };
 
-use crate::Network;
+use crate::{runner::Key, Network};
 
-pub mod authorize;
+pub mod auth_fee;
+pub mod auth_program;
 pub mod execute;
-pub mod fee;
 
 lazy_static! {
     static ref PROCESS_MAINNET: OnceLock<Process<MainnetV0>> = Default::default();
@@ -103,14 +104,53 @@ macro_rules! use_process {
 #[derive(Debug, Subcommand)]
 pub enum Program<N: Network> {
     Execute(execute::Execute<N>),
-    Authorize(authorize::Authorize<N>),
-    AuthorizeFee(fee::AuthorizeFee<N>),
+    AuthorizeProgram(auth_program::AuthorizeProgram<N>),
+    AuthorizeFee(auth_fee::AuthorizeFee<N>),
+    Authorize(Authorize<N>),
 }
+
+#[derive(Debug, Args)]
+pub struct Authorize<N: Network> {
+    #[clap(flatten)]
+    pub key: Key<N>,
+    #[clap(flatten)]
+    pub fee_opts: auth_fee::AuthFeeOptions<N>,
+    #[clap(flatten)]
+    pub program_opts: auth_program::AuthProgramOptions<N>,
+}
+
 impl<N: Network> Program<N> {
     pub(crate) fn parse(self) -> Result<()> {
         match self {
             Program::Execute(command) => command.parse(),
-            Program::Authorize(command) => {
+            Program::Authorize(Authorize {
+                key,
+                program_opts,
+                fee_opts,
+            }) => {
+                let auth = auth_program::AuthorizeProgram {
+                    key: key.clone(),
+                    options: program_opts,
+                }
+                .parse()?;
+
+                let fee_auth = auth_fee::AuthorizeFee {
+                    key,
+                    authorization: auth.clone(),
+                    options: fee_opts,
+                }
+                .parse()?;
+
+                println!(
+                    "{}",
+                    serde_json::to_string(&json!({
+                        "auth": auth,
+                        "fee_auth": fee_auth,
+                    }))?
+                );
+                Ok(())
+            }
+            Program::AuthorizeProgram(command) => {
                 println!("{}", serde_json::to_string(&command.parse()?)?);
                 Ok(())
             }

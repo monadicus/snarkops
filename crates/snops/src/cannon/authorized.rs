@@ -19,30 +19,19 @@ pub struct Authorize {
 
 impl Authorize {
     pub async fn run(self, bin: &Path, network: NetworkId) -> Result<Authorization, CannonError> {
-        let aot = AotCmd::new(bin.to_path_buf(), network);
-        let auth = aot
-            .authorize_program(
+        let auth_str = AotCmd::new(bin.to_path_buf(), network)
+            .authorize(
                 &self.private_key,
                 &self.program_id,
                 &self.function_name,
                 &self.inputs,
-            )
-            .await
-            .map_err(AuthorizeError::from)?;
-
-        let fee_auth = aot
-            .authorize_fee(
-                &self.private_key,
-                &auth,
                 self.priority_fee,
                 self.fee_record.as_ref(),
             )
             .await
             .map_err(AuthorizeError::from)?;
 
-        Ok(Authorization {
-            auth: serde_json::from_str(&auth).map_err(AuthorizeError::Json)?,
-            fee_auth: Some(serde_json::from_str(&fee_auth).map_err(AuthorizeError::Json)?),
-        })
+        // parse the json and bundle it up
+        Ok(serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?)
     }
 }

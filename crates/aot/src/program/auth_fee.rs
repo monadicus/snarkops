@@ -13,12 +13,7 @@ use crate::{
 };
 
 #[derive(Debug, Args)]
-pub struct AuthorizeFee<N: Network> {
-    #[clap(flatten)]
-    pub key: Key<N>,
-    /// The Authorization for the function.
-    #[arg(short, long)]
-    pub authorization: Authorization<N>,
+pub struct AuthFeeOptions<N: Network> {
     /// The priority fee in microcredits.
     #[clap(long, default_value_t = 0)]
     pub priority_fee: u64,
@@ -27,14 +22,25 @@ pub struct AuthorizeFee<N: Network> {
     pub record: Option<PTRecord<N>>,
 }
 
+#[derive(Debug, Args)]
+pub struct AuthorizeFee<N: Network> {
+    #[clap(flatten)]
+    pub key: Key<N>,
+    #[clap(flatten)]
+    pub options: AuthFeeOptions<N>,
+    /// The Authorization for the function.
+    #[arg(short, long)]
+    pub authorization: Authorization<N>,
+}
+
 impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
         let fee = fee(
             self.authorization,
             self.key.try_get()?,
-            self.priority_fee,
+            self.options.priority_fee,
             &mut rand::thread_rng(),
-            self.record,
+            self.options.record,
         )?;
 
         Ok(fee)

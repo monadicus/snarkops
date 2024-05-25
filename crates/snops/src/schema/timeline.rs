@@ -109,20 +109,20 @@ impl Execute {
                 };
 
                 // authorize the transaction
-                let auth = AotCmd::new(env.aot_bin.clone(), env.network)
-                    .authorize_program(private_key, program, function, inputs)
-                    .await?;
-
-                // authorize the transaction
-                let fee_auth = AotCmd::new(env.aot_bin.clone(), env.network)
-                    .authorize_fee(private_key, &auth, *priority_fee, fee_record.as_ref())
+                let auth_str = AotCmd::new(env.aot_bin.clone(), env.network)
+                    .authorize(
+                        private_key,
+                        program,
+                        function,
+                        inputs,
+                        *priority_fee,
+                        fee_record.as_ref(),
+                    )
                     .await?;
 
                 // parse the json and bundle it up
-                let authorization = Authorization {
-                    auth: serde_json::from_str(&auth).map_err(AuthorizeError::Json)?,
-                    fee_auth: Some(serde_json::from_str(&fee_auth).map_err(AuthorizeError::Json)?),
-                };
+                let authorization: Authorization =
+                    serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
 
                 // proxy it to a listen cannon
                 cannon.proxy_auth(authorization)?;
