@@ -1,12 +1,15 @@
 use std::{io, path::PathBuf};
 
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 
 pub mod error;
 pub use error::AotCmdError;
 
 use self::error::CommandError;
-use crate::state::NetworkId;
+use crate::{
+    constant::{LEDGER_BASE_DIR, SNARKOS_GENESIS_FILE},
+    state::NetworkId,
+};
 
 pub struct AotCmd {
     bin: PathBuf,
@@ -38,8 +41,8 @@ impl AotCmd {
             )))?;
         }
 
-        let pasred_output = parse(res.stdout)?;
-        Ok(pasred_output)
+        let parsed_output = parse(res.stdout)?;
+        Ok(parsed_output)
     }
 
     fn parse_string(bytes: Vec<u8>) -> Result<String, AotCmdError> {
@@ -188,5 +191,30 @@ impl AotCmd {
             "aot program execute",
             Self::parse_string,
         )
+    }
+
+    pub fn ledger_query(&self, storage_path: PathBuf, port: u16) -> Result<Child, CommandError> {
+        let mut command = Command::new(&self.bin);
+        command
+            .kill_on_drop(true)
+            .stdout(std::io::stdout())
+            .stderr(std::io::stderr())
+            .env("NETWORK", self.network.to_string())
+            .arg("ledger")
+            .arg("-l")
+            .arg(storage_path.join(LEDGER_BASE_DIR))
+            .arg("-g")
+            .arg(storage_path.join(SNARKOS_GENESIS_FILE))
+            .arg("query")
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--bind")
+            .arg("127.0.0.1") // only bind to localhost as this is a private process
+            .arg("--readonly");
+
+        let child = command
+            .spawn()
+            .map_err(|e| CommandError::action("spawning", "aot ledger", e))?;
+        Ok(child)
     }
 }

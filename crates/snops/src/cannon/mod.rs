@@ -17,13 +17,11 @@ use futures_util::{stream::FuturesUnordered, StreamExt};
 use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
 use snops_common::{
-    aot_cmds::error::CommandError,
-    constant::{LEDGER_BASE_DIR, SNARKOS_GENESIS_FILE},
+    aot_cmds::AotCmd,
     state::{AgentPeer, CannonId, EnvId, StorageId},
 };
 use tokio::{
     process::Command,
-    sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::AbortHandle,
 };
 use tracing::{info, trace, warn};
@@ -144,32 +142,10 @@ impl CannonInstance {
         let storage_path = global_state.storage_path(env.network, storage_id);
 
         // spawn child process for ledger service if the source is local
-        let child = if let Some(port) = query_port {
-            // TODO: make a copy of this ledger dir to prevent locks
-            let child = Command::new(aot_bin)
-                .kill_on_drop(true)
-                .env("NETWORK", env.network.to_string())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .arg("ledger")
-                .arg("-l")
-                .arg(storage_path.join(LEDGER_BASE_DIR))
-                .arg("-g")
-                .arg(storage_path.join(SNARKOS_GENESIS_FILE))
-                .arg("query")
-                .arg("--port")
-                .arg(port.to_string())
-                .arg("--bind")
-                .arg("127.0.0.1") // only bind to localhost as this is a private process
-                .arg("--readonly")
-                .spawn()
-                .map_err(|e| {
-                    CannonError::Command(id, CommandError::action("spawning", "aot ledger", e))
-                })?;
-            Some(child)
-        } else {
-            None
-        };
+        let child = query_port
+            .map(|port| AotCmd::new(aot_bin.clone(), env.network).ledger_query(storage_path, port))
+            .transpose()
+            .map_err(|e| CannonError::Command(id, e))?;
 
         let (auth_sender, auth_receiver) = tokio::sync::mpsc::unbounded_channel();
 
