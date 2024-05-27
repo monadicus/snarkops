@@ -8,20 +8,20 @@ use axum::{
 };
 use reqwest::StatusCode;
 use serde_json::json;
-use snops_common::state::id_or_none;
+use snops_common::state::{id_or_none, NetworkId};
 
 use super::Authorization;
 use crate::state::AppState;
 
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
-        .route("/:cannon/mainnet/latest/stateRoot", get(state_root))
-        .route("/:cannon/mainnet/transaction/broadcast", post(transaction))
+        .route("/:cannon/:network/latest/stateRoot", get(state_root))
+        .route("/:cannon/:network/transaction/broadcast", post(transaction))
         .route("/:cannon/auth", post(authorization))
 }
 
 async fn state_root(
-    Path((env_id, cannon_id)): Path<(String, String)>,
+    Path((env_id, cannon_id, network)): Path<(String, String, NetworkId)>,
     state: State<AppState>,
 ) -> Response {
     let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
@@ -39,6 +39,14 @@ async fn state_root(
         )
             .into_response();
     };
+
+    if env.network != network {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "error": "network mismatch" })),
+        )
+            .into_response();
+    }
 
     let Some(cannon) = env.get_cannon(cannon_id) else {
         return (
@@ -81,7 +89,7 @@ async fn state_root(
 }
 
 async fn transaction(
-    Path((env_id, cannon_id)): Path<(String, String)>,
+    Path((env_id, cannon_id, network)): Path<(String, String, NetworkId)>,
     state: State<AppState>,
     body: String,
 ) -> Response {
@@ -100,6 +108,14 @@ async fn transaction(
         )
             .into_response();
     };
+
+    if env.network != network {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "error": "network mismatch" })),
+        )
+            .into_response();
+    }
 
     let Some(cannon) = env.get_cannon(cannon_id) else {
         return (

@@ -310,6 +310,7 @@ impl Environment {
                                 }
                             }
                         }
+                        Action::Execute(action) => action.execute(&env).await?,
                     };
                 }
 

@@ -1,10 +1,10 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use dashmap::DashMap;
 use prometheus_http_query::Client as PrometheusClient;
 use snops_common::{
     constant::ENV_AGENT_KEY,
-    state::{AgentId, AgentState, EnvId},
+    state::{AgentId, AgentState, EnvId, NetworkId, StorageId},
 };
 use tokio::sync::Mutex;
 use tracing::info;
@@ -15,6 +15,7 @@ use crate::{
     db::Database,
     env::Environment,
     error::StateError,
+    schema::storage::STORAGE_DIR,
     server::{error::StartError, prometheus::HttpsdResponse},
     util::OpaqueDebug,
 };
@@ -42,15 +43,15 @@ impl GlobalState {
         // Load storage meta from persistence, then read the storage data from FS
         let storage_meta = db.storage.read_all();
         let storage = StorageMap::default();
-        for (id, meta) in storage_meta {
+        for ((network, id), meta) in storage_meta {
             let loaded = match meta.load(&cli).await {
                 Ok(l) => l,
                 Err(e) => {
-                    tracing::error!("Error loading storage from persistence {id}: {e}");
+                    tracing::error!("Error loading storage from persistence {network}/{id}: {e}");
                     continue;
                 }
             };
-            storage.insert(id, Arc::new(loaded));
+            storage.insert((network, id), Arc::new(loaded));
         }
 
         let env_meta = db.envs.read_all();
@@ -99,6 +100,14 @@ impl GlobalState {
         })
     }
 
+    pub fn storage_path(&self, network: NetworkId, storage_id: StorageId) -> PathBuf {
+        self.cli
+            .path
+            .join(STORAGE_DIR)
+            .join(network.to_string())
+            .join(storage_id.to_string())
+    }
+
     /// Get a peer-to-addr mapping for a set of agents
     /// Locks pools for reading
     pub async fn get_addr_map(
@@ -121,7 +130,12 @@ impl GlobalState {
     /// Lookup an rpc client by agent id.
     /// Locks pools for reading
     pub fn get_client(&self, id: AgentId) -> Option<AgentClient> {
-        self.pool.get(&id).and_then(|a| a.client_owned())
+        self.pool.get(&id)?.client_owned()
+    }
+
+    pub fn get_agent_rest(&self, id: AgentId) -> Option<SocketAddr> {
+        let agent = self.pool.get(&id)?;
+        Some(SocketAddr::new(agent.addrs()?.usable()?, agent.rest_port()))
     }
 
     pub fn get_env(&self, id: EnvId) -> Option<Arc<Environment>> {

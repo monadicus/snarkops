@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snops_common::{
     lasso::Spur,
-    state::{NodeKey, TxPipeId},
+    state::{NetworkId, NodeKey, TxPipeId},
     INTERN,
 };
 
@@ -16,20 +16,13 @@ use super::{
 };
 use crate::{
     env::{set::find_compute_agent, Environment},
-    schema::nodes::KeySource,
+    schema::{nodes::KeySource, NodeTargets},
     state::GlobalState,
 };
 
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalService {
-    /// Ledger & genesis block to use
-    // pub storage_id: usize,
-    /// port to host the service on (needs to be unused by other cannons and
-    /// services) this port will be use when forwarding requests to the
-    /// local query service
-    // pub port: u16,
-
     // TODO debate this
     /// An optional node to sync blocks from...
     /// necessary for private tx mode in realtime mode as this will have to
@@ -47,8 +40,12 @@ impl LocalService {
     // TODO: cache this when sync_from is false
     /// Fetch the state root from the local query service
     /// (non-cached)
-    pub async fn get_state_root(&self, port: u16) -> Result<String, CannonError> {
-        let url = format!("http://127.0.0.1:{}/mainnet/latest/stateRoot", port);
+    pub async fn get_state_root(
+        &self,
+        network: NetworkId,
+        port: u16,
+    ) -> Result<String, CannonError> {
+        let url = format!("http://127.0.0.1:{port}/{network}/latest/stateRoot");
         let response = reqwest::get(&url)
             .await
             .map_err(|e| SourceError::FailedToGetStateRoot(url, e))?;
@@ -60,17 +57,17 @@ impl LocalService {
 }
 
 /// Used to determine the redirection for the following paths:
-/// /cannon/<id>/mainnet/latest/stateRoot
-/// /cannon/<id>/mainnet/transaction/broadcast
+/// /cannon/<id>/<network>/latest/stateRoot
+/// /cannon/<id>/<network>/transaction/broadcast
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", tag = "mode")]
+#[serde(rename_all = "kebab-case", untagged)]
 pub enum QueryTarget {
-    /// Use the local ledger query service
-    Local(LocalService),
     /// Target a specific node (probably over rpc instead of reqwest lol...)
     ///
     /// Requires cannon to have an associated env_id
-    Node(NodeKey),
+    Node(NodeTargets),
+    /// Use the local ledger query service
+    Local(LocalService),
 }
 
 impl Default for QueryTarget {
@@ -181,7 +178,9 @@ pub enum TxSource {
     /// /api/v1/env/:env_id/cannons/:id/auth
     #[serde(rename_all = "kebab-case")]
     Listen {
+        #[serde(default)]
         query: QueryTarget,
+        #[serde(default)]
         compute: ComputeTarget,
     },
 }
@@ -194,9 +193,12 @@ impl TxSource {
             TxSource::RealTime {
                 query: QueryTarget::Local(_),
                 ..
+            } | TxSource::Listen {
+                query: QueryTarget::Local(_),
+                ..
             }
         )
-        .then(|| get_available_port().ok_or(SourceError::TxSouceUnavailablePort.into()))
+        .then(|| get_available_port().ok_or(SourceError::TxSourceUnavailablePort.into()))
         .transpose()
     }
 
@@ -232,11 +234,13 @@ impl TxSource {
                     TxMode::Credits(credit) => match credit {
                         CreditsTxMode::BondPublic => todo!(),
                         CreditsTxMode::UnbondPublic => todo!(),
-                        CreditsTxMode::TransferPublic => Authorize::TransferPublic {
+                        CreditsTxMode::TransferPublic => Authorize {
+                            program_id: "aleo.credits".to_string(),
+                            function_name: "transfer_public".to_string(),
                             private_key: sample_pk()?,
-                            recipient: sample_addr()?,
-                            amount: 1,
-                            priority_fee: 0,
+                            inputs: vec![sample_addr()?, "1u64".to_string()],
+                            priority_fee: None,
+                            fee_record: None,
                         },
                         CreditsTxMode::TransferPublicToPrivate => todo!(),
                         CreditsTxMode::TransferPrivate => todo!(),
@@ -257,7 +261,8 @@ impl ComputeTarget {
         state: &GlobalState,
         env: &Environment,
         query_path: String,
-        auth: serde_json::Value,
+        auth: &serde_json::Value,
+        fee_auth: Option<&serde_json::Value>,
     ) -> Result<(), CannonError> {
         match self {
             ComputeTarget::Agent { labels } => {
@@ -270,9 +275,16 @@ impl ComputeTarget {
                 client
                     .execute_authorization(
                         env.id,
+                        env.network,
                         query_path,
                         serde_json::to_string(&auth)
-                            .map_err(|e| SourceError::Json("authorize", e))?,
+                            .map_err(|e| SourceError::Json("authorize tx", e))?,
+                        fee_auth
+                            .map(|f| {
+                                serde_json::to_string(&f)
+                                    .map_err(|e| SourceError::Json("authorize fee", e))
+                            })
+                            .transpose()?,
                     )
                     .await?;
 
@@ -284,8 +296,8 @@ impl ComputeTarget {
                     "id": 1,
                     "method": "generateTransaction",
                     "params": {
-                        "authorization": serde_json::to_string(&auth["authorization"]).map_err(|e| SourceError::Json("auth[authorize]", e))?,
-                        "fee": serde_json::to_string(&auth["fee"]).map_err(|e| SourceError::Json("auth[fee]", e))?,
+                        "authorization": serde_json::to_string(&auth).map_err(|e| SourceError::Json("authorize tx", e))?,
+                        "fee": serde_json::to_string(&fee_auth).map_err(|e| SourceError::Json("authorize fee", e))?,
                         "url": query_path,
                         "broadcast": true,
                     }

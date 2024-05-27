@@ -1,23 +1,24 @@
 use std::borrow::Cow;
 
 use anyhow::{bail, Result};
+use snarkvm::console::program::Network;
 
 use crate::aleo::*;
 
-pub struct Stores {
-    pub blocks: BlockDB,
-    pub committee: CommitteeDB,
-    pub transactions: TransactionDB,
-    pub deployments: DeploymentDB,
-    pub executions: ExecutionDB,
-    pub fees: FeeDB,
-    pub transition: TransitionDB,
-    pub finalize: FinalizeDB,
-    pub inputs: InputDB,
-    pub outputs: OutputDB,
+pub struct Stores<N: Network> {
+    pub blocks: BlockDB<N>,
+    pub committee: CommitteeDB<N>,
+    pub transactions: TransactionDB<N>,
+    pub deployments: DeploymentDB<N>,
+    pub executions: ExecutionDB<N>,
+    pub fees: FeeDB<N>,
+    pub transition: TransitionDB<N>,
+    pub finalize: FinalizeDB<N>,
+    pub inputs: InputDB<N>,
+    pub outputs: OutputDB<N>,
 }
 
-impl Stores {
+impl<N: Network> Stores<N> {
     pub fn open(storage_mode: StorageMode) -> Result<Self> {
         let transition_store = TransitionStore::open(storage_mode.clone())?;
         let fee_store = FeeStore::open(transition_store.clone())?;
@@ -181,7 +182,7 @@ impl Stores {
         Ok(())
     }
 
-    fn fast_tx_remove(&self, transaction_id: &TransactionID) -> Result<()> {
+    fn fast_tx_remove(&self, transaction_id: &TransactionID<N>) -> Result<()> {
         let db = &self.transactions;
 
         // Retrieve the transaction type.
@@ -204,7 +205,7 @@ impl Stores {
         Ok(())
     }
 
-    fn fast_deployment_remove(&self, transaction_id: &TransactionID) -> Result<()> {
+    fn fast_deployment_remove(&self, transaction_id: &TransactionID<N>) -> Result<()> {
         let db = &self.deployments;
 
         // Retrieve the program ID.
@@ -253,7 +254,7 @@ impl Stores {
         Ok(())
     }
 
-    fn fast_execution_remove(&self, transaction_id: &TransactionID) -> Result<()> {
+    fn fast_execution_remove(&self, transaction_id: &TransactionID<N>) -> Result<()> {
         let db = &self.executions;
 
         // Retrieve the transition IDs and fee boolean.
@@ -287,7 +288,7 @@ impl Stores {
         Ok(())
     }
 
-    fn fast_fee_remove(&self, transaction_id: &TransactionID) -> Result<()> {
+    fn fast_fee_remove(&self, transaction_id: &TransactionID<N>) -> Result<()> {
         let db = &self.fees;
 
         // Retrieve the fee transition ID.
@@ -308,7 +309,7 @@ impl Stores {
         Ok(())
     }
 
-    fn fast_transition_remove(&self, transition_id: &TransitionID) -> Result<()> {
+    fn fast_transition_remove(&self, transition_id: &TransitionID<N>) -> Result<()> {
         let db = &self.transition;
 
         // Retrieve the `tpk`.
@@ -377,7 +378,7 @@ impl Stores {
         Ok(())
     }
 
-    fn fast_input_remove(&self, transition_id: &TransitionID) -> Result<()> {
+    fn fast_input_remove(&self, transition_id: &TransitionID<N>) -> Result<()> {
         let db = &self.inputs;
 
         // Retrieve the input IDs.
@@ -411,7 +412,7 @@ impl Stores {
         Ok(())
     }
 
-    fn fast_output_remove(&self, transition_id: &TransitionID) -> Result<()> {
+    fn fast_output_remove(&self, transition_id: &TransitionID<N>) -> Result<()> {
         let db = &self.outputs;
 
         // Retrieve the output IDs.

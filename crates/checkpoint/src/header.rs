@@ -35,19 +35,24 @@ impl CheckpointHeader {
     }
 
     #[cfg(feature = "write")]
-    pub fn read_ledger(path: PathBuf) -> Result<Self, Error> {
+    pub fn read_ledger<N: crate::aleo::Network>(path: PathBuf) -> Result<Self, Error> {
         use Error::*;
 
         use crate::aleo::*;
 
-        let commitee = CommitteeDB::open(StorageMode::Custom(path.clone())).map_err(OpenLedger)?;
-        let blocks = BlockDB::open(StorageMode::Custom(path)).map_err(OpenLedger)?;
+        let commitee =
+            CommitteeDB::<N>::open(StorageMode::Custom(path.clone())).map_err(OpenLedger)?;
+        let blocks = BlockDB::<N>::open(StorageMode::Custom(path)).map_err(OpenLedger)?;
 
         let height = commitee.current_height().map_err(ReadLedger)?;
-        let Some(block_hash) = blocks.get_block_hash(height).map_err(ReadLedger)? else {
+        let Some(block_hash): Option<BlockHash<N>> =
+            blocks.get_block_hash(height).map_err(ReadLedger)?
+        else {
             return Err(BlockNotFound(height));
         };
-        let Some(genesis_hash) = blocks.get_block_hash(0).map_err(ReadLedger)? else {
+        let Some(genesis_hash): Option<BlockHash<N>> =
+            blocks.get_block_hash(0).map_err(ReadLedger)?
+        else {
             return Err(HashlessGenesis);
         };
         let Some(block_header) = blocks.get_block_header(&block_hash).map_err(ReadLedger)? else {
@@ -57,8 +62,8 @@ impl CheckpointHeader {
         Ok(Self {
             block_height: height,
             timestamp: block_header.timestamp(),
-            block_hash: block_hash.bytes(),
-            genesis_hash: genesis_hash.bytes(),
+            block_hash: block_bytes::<N>(&block_hash),
+            genesis_hash: block_bytes::<N>(&genesis_hash),
             content_len: 0,
         })
     }

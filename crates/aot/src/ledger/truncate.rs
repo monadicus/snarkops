@@ -9,6 +9,7 @@ use nix::{
     unistd::{self, ForkResult},
 };
 use snarkvm::{
+    console::program::Network,
     ledger::Block,
     utilities::{FromBytes, ToBytes},
 };
@@ -39,19 +40,22 @@ pub enum Truncate {
 }
 
 impl Truncate {
-    pub fn parse(self, genesis: PathBuf, ledger: PathBuf) -> Result<()> {
+    pub fn parse<N: Network>(self, genesis: Block<N>, ledger: PathBuf) -> Result<()> {
         match self {
-            Truncate::Rewind { checkpoint } => Self::rewind(genesis, ledger, checkpoint),
-            Truncate::Replay(replay) => replay.parse(genesis, ledger),
+            Truncate::Rewind { checkpoint } => Self::rewind::<N>(genesis, ledger, checkpoint),
+            Truncate::Replay(replay) => replay.parse::<N>(genesis, ledger),
         }
     }
 
-    pub fn rewind(genesis: PathBuf, ledger_path: PathBuf, checkpoint_path: PathBuf) -> Result<()> {
-        let genesis = Block::from_bytes_le(&std::fs::read(genesis)?)?;
+    pub fn rewind<N: Network>(
+        genesis: Block<N>,
+        ledger_path: PathBuf,
+        checkpoint_path: PathBuf,
+    ) -> Result<()> {
         let storage_mode = StorageMode::Custom(ledger_path.clone());
 
         // open the ledger
-        let ledger = DbLedger::load(genesis.clone(), storage_mode.clone())?;
+        let ledger = DbLedger::<N>::load(genesis.clone(), storage_mode.clone())?;
 
         ensure!(checkpoint_path.exists(), "checkpoint file does not exist");
 
@@ -67,14 +71,14 @@ impl Truncate {
 }
 
 impl Replay {
-    fn parse(self, genesis: PathBuf, mut ledger: PathBuf) -> Result<()> {
+    fn parse<N: Network>(self, genesis: Block<N>, mut ledger: PathBuf) -> Result<()> {
         let (read_fd, write_fd) = unistd::pipe()?;
 
         match unsafe { unistd::fork() }? {
             ForkResult::Parent { child, .. } => {
                 unistd::close(read_fd.as_raw_fd())?;
 
-                let db_ledger: DbLedger = util::open_ledger(genesis, ledger)?;
+                let db_ledger: DbLedger<N> = util::open_ledger(genesis, ledger)?;
 
                 let target_height = match (self.height, self.amount) {
                     (Some(height), _) => height,
@@ -107,11 +111,11 @@ impl Replay {
                     .then(|| CheckpointManager::load(ledger.clone(), RetentionPolicy::default()))
                     .transpose()?;
 
-                let db_ledger: DbLedger = util::open_ledger(genesis, ledger)?;
+                let db_ledger: DbLedger<N> = util::open_ledger(genesis, ledger)?;
 
                 // wipe out existing incompatible checkpoints
                 if let Some(manager) = manager.as_mut() {
-                    manager.cull_incompatible()?;
+                    manager.cull_incompatible::<N>()?;
                 }
 
                 let read_fd = read_fd.as_raw_fd();
@@ -147,7 +151,7 @@ impl Replay {
 
                         // if checkpoints are enabled, check if this block should be added
                         if let Some(manager) = manager.as_mut() {
-                            manager.poll()?;
+                            manager.poll::<N>()?;
                         }
                     }
                 }

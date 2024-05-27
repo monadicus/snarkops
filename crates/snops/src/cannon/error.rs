@@ -3,29 +3,28 @@ use std::path::PathBuf;
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
+    aot_cmds::{error::CommandError, AotCmdError},
     impl_into_status_code, impl_into_type_str,
-    state::{CannonId, EnvId, NodeKey, TxPipeId},
+    state::{CannonId, EnvId, TxPipeId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
 use super::Authorization;
-use crate::error::{CommandError, StateError};
+use crate::{error::StateError, schema::NodeTargets};
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum AuthorizeError {
     /// For when a bad AOT command is run
     #[error(transparent)]
-    Command(#[from] CommandError),
-    /// For if invalid JSON is returned from the AOT command
-    #[error("expected function, fee, and broadcast fields in response")]
-    InvalidJson,
+    Command(#[from] AotCmdError),
     /// For if invalid JSON is returned from the AOT command
     #[error("{0}")]
     Json(#[source] serde_json::Error),
-    /// For if invalid JSON is returned from the AOT command
-    #[error("expected JSON object in response")]
-    JsonNotObject,
+    #[error("program {0} has invalid inputs {1}")]
+    InvalidProgramInputs(String, String),
+    #[error("execution {0} requires a valid private key: {1}")]
+    MissingPrivateKey(String, String),
 }
 
 impl_into_status_code!(AuthorizeError, |value| match value {
@@ -97,7 +96,7 @@ pub enum SourceError {
     #[error("error parsing state root JSON: {0}")]
     StateRootInvalidJson(#[source] reqwest::Error),
     #[error("could not get an available port")]
-    TxSouceUnavailablePort,
+    TxSourceUnavailablePort,
 }
 
 impl_into_status_code!(SourceError);
@@ -108,13 +107,13 @@ pub enum CannonInstanceError {
     MissingQueryPort(CannonId),
     #[error("cannon `{0}` is not configured to playback txs")]
     NotConfiguredToPlayback(CannonId),
-    #[error("no target agent found for cannon `{0}`: {1}")]
-    TargetAgentNotFound(CannonId, NodeKey),
+    #[error("no target node found for cannon `{0}`: {1}")]
+    TargetNodeNotFound(CannonId, NodeTargets),
 }
 
 impl_into_status_code!(CannonInstanceError, |value| match value {
     MissingQueryPort(_) | NotConfiguredToPlayback(_) => StatusCode::BAD_REQUEST,
-    TargetAgentNotFound(_, _) => StatusCode::NOT_FOUND,
+    TargetNodeNotFound(_, _) => StatusCode::NOT_FOUND,
 });
 
 impl Serialize for CannonInstanceError {
@@ -136,14 +135,10 @@ pub enum ExecutionContextError {
     Broadcast(CannonId, String),
     #[error("broadcast error for exec ctx `{0}`: {1}")]
     BroadcastRequest(CannonId, #[source] reqwest::Error),
-    #[
-			error("env dropped{}{}`",
-			.0.map(|id| format!(" for cannon `{id}`")).unwrap_or_default(),
-			.1.map(|id| format!(" for exec ctx `{id}`")).unwrap_or_default()
-		)]
-    EnvDropped(Option<CannonId>, Option<CannonId>),
+    #[error("env {0} dropped for cannon {1}`")]
+    EnvDropped(EnvId, CannonId),
     #[error("no available agents `{0}` for exec ctx `{1}`")]
-    NoAvailableAgents(&'static str, CannonId),
+    NoAvailableAgents(EnvId, CannonId, &'static str),
     #[error("no --hostname configured for demox based cannon")]
     NoHostnameConfigured,
     #[error("tx drain `{2}` not found for exec ctx `{0}` for cannon `{1}`")]
@@ -154,7 +149,7 @@ pub enum ExecutionContextError {
 
 impl_into_status_code!(ExecutionContextError, |value| match value {
     Broadcast(_, _) | BroadcastRequest(_, _) => StatusCode::MISDIRECTED_REQUEST,
-    NoAvailableAgents(_, _) | NoHostnameConfigured => StatusCode::SERVICE_UNAVAILABLE,
+    NoAvailableAgents(_, _, _) | NoHostnameConfigured => StatusCode::SERVICE_UNAVAILABLE,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 

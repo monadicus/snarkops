@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::{
     aleo::{
-        FinalizeDB, FinalizeStorage, FromBytes, Identifier, MapRead, Plaintext, ProgramID,
+        FinalizeDB, FinalizeStorage, FromBytes, Identifier, MapRead, Network, Plaintext, ProgramID,
         StorageMode, ToBytes, Value,
     },
     errors::CheckpointContentError as Error,
@@ -16,12 +16,12 @@ pub const ROUND_KEY: u8 = 0;
 /// Storage of key-value pairs for each program ID and identifier
 /// Note, the structure is this way as ToBytes derives 2 sized tuples, but not 3
 /// sized tuples
-pub struct CheckpointContent {
+pub struct CheckpointContent<N: Network> {
     #[allow(clippy::type_complexity)]
-    pub key_values: Vec<((ProgramID, Identifier), Vec<(Plaintext, Value)>)>,
+    pub key_values: Vec<((ProgramID<N>, Identifier<N>), Vec<(Plaintext<N>, Value<N>)>)>,
 }
 
-impl CheckpointContent {
+impl<N: Network> CheckpointContent<N> {
     pub fn read_ledger(path: PathBuf) -> Result<Self, Error> {
         use Error::*;
 
@@ -56,7 +56,7 @@ impl CheckpointContent {
     }
 }
 
-impl ToBytes for CheckpointContent {
+impl<N: Network> ToBytes for CheckpointContent<N> {
     fn write_le<W: std::io::Write>(&self, mut writer: W) -> std::io::Result<()>
     where
         Self: Sized,
@@ -72,7 +72,7 @@ impl ToBytes for CheckpointContent {
     }
 }
 
-impl FromBytes for CheckpointContent {
+impl<N: Network> FromBytes for CheckpointContent<N> {
     fn read_le<R: std::io::Read>(mut reader: R) -> std::io::Result<Self>
     where
         Self: Sized,
@@ -81,11 +81,11 @@ impl FromBytes for CheckpointContent {
         let mut key_values = Vec::with_capacity(len as usize);
 
         for _ in 0..len {
-            let key = <(ProgramID, Identifier)>::read_le(&mut reader)?;
+            let key = <(ProgramID<N>, Identifier<N>)>::read_le(&mut reader)?;
             let len = u64::read_le(&mut reader)?;
             let mut entries = Vec::with_capacity(len as usize);
             for _ in 0..len {
-                entries.push(<(Plaintext, Value)>::read_le(&mut reader)?);
+                entries.push(<(Plaintext<N>, Value<N>)>::read_le(&mut reader)?);
             }
             key_values.push((key, entries));
         }

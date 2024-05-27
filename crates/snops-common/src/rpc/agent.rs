@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::error::*;
 use crate::{
     prelude::EnvId,
-    state::{AgentState, PortConfig},
+    state::{AgentState, NetworkId, PortConfig},
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -40,8 +40,10 @@ pub trait AgentService {
     /// use
     async fn execute_authorization(
         env_id: EnvId,
+        network: NetworkId,
         query: String,
         auth: String,
+        fee_auth: Option<String>,
     ) -> Result<(), AgentError>;
 
     async fn get_metric(metric: AgentMetric) -> f64;

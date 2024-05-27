@@ -2,10 +2,10 @@ pub use aleo_std::StorageMode;
 pub use snarkos_node::bft::{
     helpers::Storage, ledger_service::CoreLedgerService, storage_service::BFTMemoryService,
 };
+pub use snarkvm::prelude::Network;
 use snarkvm::{
-    console::{network::MainnetV0, program},
+    console::program,
     ledger::{store::helpers::rocksdb, Ledger},
-    prelude::Network,
 };
 pub use snarkvm::{
     ledger::{
@@ -20,41 +20,34 @@ pub use snarkvm::{
     },
     utilities::{FromBytes, ToBytes},
 };
+pub type Db<N> = rocksdb::ConsensusDB<N>;
+pub type DbLedger<N> = Ledger<N, Db<N>>;
 
-pub type N = MainnetV0;
-pub type Db = rocksdb::ConsensusDB<N>;
-pub type DbLedger = Ledger<N, Db>;
+pub type TransitionID<N> = <N as Network>::TransitionID;
+pub type TransactionID<N> = <N as Network>::TransactionID;
+pub type BlockHash<N> = <N as Network>::BlockHash;
 
-pub type TransitionID = <N as Network>::TransitionID;
-pub type TransactionID = <N as Network>::TransactionID;
-pub type BlockHash = <N as Network>::BlockHash;
+pub type ProgramID<N> = program::ProgramID<N>;
+pub type Identifier<N> = program::Identifier<N>;
+pub type Plaintext<N> = program::Plaintext<N>;
+pub type Value<N> = program::Value<N>;
 
-pub type ProgramID = program::ProgramID<N>;
-pub type Identifier = program::Identifier<N>;
-pub type Plaintext = program::Plaintext<N>;
-pub type Value = program::Value<N>;
+pub type BlockDB<N> = rocksdb::BlockDB<N>;
+pub type CommitteeDB<N> = rocksdb::CommitteeDB<N>;
+pub type DeploymentDB<N> = rocksdb::DeploymentDB<N>;
+pub type ExecutionDB<N> = rocksdb::ExecutionDB<N>;
+pub type FeeDB<N> = rocksdb::FeeDB<N>;
+pub type FinalizeDB<N> = rocksdb::FinalizeDB<N>;
+pub type InputDB<N> = rocksdb::InputDB<N>;
+pub type OutputDB<N> = rocksdb::OutputDB<N>;
+pub type TransactionDB<N> = rocksdb::TransactionDB<N>;
+pub type TransitionDB<N> = rocksdb::TransitionDB<N>;
 
-pub type BlockDB = rocksdb::BlockDB<N>;
-pub type CommitteeDB = rocksdb::CommitteeDB<N>;
-pub type DeploymentDB = rocksdb::DeploymentDB<N>;
-pub type ExecutionDB = rocksdb::ExecutionDB<N>;
-pub type FeeDB = rocksdb::FeeDB<N>;
-pub type FinalizeDB = rocksdb::FinalizeDB<N>;
-pub type InputDB = rocksdb::InputDB<N>;
-pub type OutputDB = rocksdb::OutputDB<N>;
-pub type TransactionDB = rocksdb::TransactionDB<N>;
-pub type TransitionDB = rocksdb::TransitionDB<N>;
+pub type TransitionStore<N> = store::TransitionStore<N, TransitionDB<N>>;
+pub type FeeStore<N> = store::FeeStore<N, FeeDB<N>>;
 
-pub type TransitionStore = store::TransitionStore<N, TransitionDB>;
-pub type FeeStore = store::FeeStore<N, FeeDB>;
-
-pub trait LazyBytes {
-    fn bytes(&self) -> [u8; 32];
-}
-impl LazyBytes for BlockHash {
-    fn bytes(&self) -> [u8; 32] {
-        let mut bytes = [0u8; 32];
-        bytes.copy_from_slice(&self.to_bytes_le().unwrap());
-        bytes
-    }
+pub fn block_bytes<N: Network>(block: &BlockHash<N>) -> [u8; 32] {
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&block.to_bytes_le().unwrap());
+    bytes
 }

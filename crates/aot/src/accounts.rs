@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, str::FromStr};
+use std::{fs, path::PathBuf};
 
 use anyhow::Result;
 use clap::Parser;
@@ -6,19 +6,9 @@ use colored::Colorize;
 use indexmap::IndexMap;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
-use serde::{Deserialize, Serialize};
+use snarkvm::console::program::Network;
 
 use crate::{Address, PrivateKey};
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Balances(IndexMap<Address, u64>);
-impl FromStr for Balances {
-    type Err = serde_json::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_str(s)
-    }
-}
 
 #[derive(Debug, Clone, Parser)]
 pub struct GenAccounts {
@@ -36,14 +26,14 @@ pub struct GenAccounts {
 }
 
 impl GenAccounts {
-    pub fn parse(self) -> Result<()> {
+    pub fn parse<N: Network>(self) -> Result<()> {
         let mut rng = self
             .seed
             .map(ChaChaRng::seed_from_u64)
             .unwrap_or_else(ChaChaRng::from_entropy);
 
         // Add additional accounts to the public balances
-        let accounts: IndexMap<Address, PrivateKey> = (0..self.count)
+        let accounts: IndexMap<Address<N>, PrivateKey<N>> = (0..self.count)
             .map(|_| {
                 let key = PrivateKey::new(&mut rng)?;
                 let addr = Address::try_from(&key)?;

@@ -2,6 +2,7 @@ use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::A
 
 use futures::future;
 use snops_common::{
+    aot_cmds::AotCmd,
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
@@ -11,7 +12,7 @@ use snops_common::{
         error::{AgentError, ReconcileError},
         MuxMessage,
     },
-    state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, PortConfig},
+    state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, NetworkId, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::{
@@ -172,9 +173,14 @@ impl AgentService for AgentRpcServer {
                         ReconcileError::StorageAcquireError("storage info".to_owned())
                     })?;
 
-                    let storage_id = &info.id;
-                    let storage_path = state.cli.path.join("storage").join(storage_id.to_string());
-                    let ledger_path = if info.persist {
+                    let storage_id = &info.storage.id;
+                    let storage_path = state
+                        .cli
+                        .path
+                        .join("storage")
+                        .join(info.network.to_string())
+                        .join(storage_id.to_string());
+                    let ledger_path = if info.storage.persist {
                         storage_path.join(LEDGER_PERSIST_DIR)
                     } else {
                         state.cli.path.join(LEDGER_BASE_DIR)
@@ -195,6 +201,7 @@ impl AgentService for AgentRpcServer {
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .envs(&node.env)
+                        .env("NETWORK", info.network.to_string())
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
@@ -234,7 +241,7 @@ impl AgentService for AgentRpcServer {
                     }
 
                     // conditionally add retention policy
-                    if let Some(policy) = &info.retention_policy {
+                    if let Some(policy) = &info.storage.retention_policy {
                         command.arg("--retention-policy").arg(policy.to_string());
                     }
 
@@ -388,15 +395,22 @@ impl AgentService for AgentRpcServer {
     }
 
     async fn get_state_root(self, _: context::Context) -> Result<String, AgentError> {
-        if !matches!(
-            self.state.agent_state.read().await.deref(),
-            AgentState::Node(_, _)
-        ) {
-            return Err(AgentError::InvalidState);
-        }
+        let env_id =
+            if let AgentState::Node(env_id, _) = self.state.agent_state.read().await.deref() {
+                *env_id
+            } else {
+                return Err(AgentError::InvalidState);
+            };
+
+        let network = self
+            .state
+            .get_env_info(env_id)
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?
+            .network;
 
         let url = format!(
-            "http://127.0.0.1:{}/mainnet/latest/stateRoot",
+            "http://127.0.0.1:{}/{network}/latest/stateRoot",
             self.state.cli.ports.rest
         );
         let response = reqwest::get(&url)
@@ -409,15 +423,22 @@ impl AgentService for AgentRpcServer {
     }
 
     async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {
-        if !matches!(
-            self.state.agent_state.read().await.deref(),
-            AgentState::Node(_, _)
-        ) {
-            return Err(AgentError::InvalidState);
-        }
+        let env_id =
+            if let AgentState::Node(env_id, _) = self.state.agent_state.read().await.deref() {
+                *env_id
+            } else {
+                return Err(AgentError::InvalidState);
+            };
+
+        let network = self
+            .state
+            .get_env_info(env_id)
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?
+            .network;
 
         let url = format!(
-            "http://127.0.0.1:{}/mainnet/transaction/broadcast",
+            "http://127.0.0.1:{}/{network}/transaction/broadcast",
             self.state.cli.ports.rest
         );
         let response = reqwest::Client::new()
@@ -446,49 +467,42 @@ impl AgentService for AgentRpcServer {
         self,
         _: context::Context,
         env_id: EnvId,
+        network: NetworkId,
         query: String,
         auth: String,
+        fee_auth: Option<String>,
     ) -> Result<(), AgentError> {
         info!("executing authorization...");
 
         // TODO: maybe in the env config store a branch label for the binary so it won't
         // be put in storage and won't overwrite itself
 
-        // download the snarkOS binary
-        api::check_binary(
-            env_id,
-            &self.state.endpoint,
-            &self.state.cli.path.join(SNARKOS_FILE),
-        ) // TODO: http(s)?
-        .await
-        .map_err(|e| {
-            error!("failed obtain runner binary: {e}");
-            AgentError::ProcessFailed
-        })?;
+        let aot_bin = self.state.cli.path.join(SNARKOS_FILE);
 
-        let res = Command::new(self.state.cli.path.join(SNARKOS_FILE))
-            .stdout(std::io::stdout())
-            .stderr(std::io::stderr())
-            .arg("execute")
-            .arg("--query")
-            .arg(&format!("{}{query}", self.state.endpoint))
-            .arg(auth)
-            .spawn()
-            .map_err(|e| {
-                error!("failed to spawn auth exec process: {e}");
-                AgentError::FailedToSpawnProcess
-            })?
-            .wait()
+        // download the snarkOS binary
+        api::check_binary(env_id, &self.state.endpoint, &aot_bin) // TODO: http(s)?
             .await
             .map_err(|e| {
-                error!("auth exec process failed: {e}");
+                error!("failed obtain runner binary: {e}");
                 AgentError::ProcessFailed
             })?;
 
-        if !res.success() {
-            error!("auth exec process exited with status: {res}");
-            return Err(AgentError::ProcessFailed);
+        let start = std::time::Instant::now();
+        match AotCmd::new(aot_bin, network)
+            .execute(auth, fee_auth, format!("{}{query}", self.state.endpoint))
+            .await
+        {
+            Ok(exec) => {
+                let elapsed = start.elapsed().as_millis();
+                info!("authorization executed in {elapsed}ms");
+                trace!("authorization output: {exec}");
+            }
+            Err(e) => {
+                error!("failed to execute: {e}");
+                return Err(AgentError::ProcessFailed);
+            }
         }
+
         Ok(())
     }
 }

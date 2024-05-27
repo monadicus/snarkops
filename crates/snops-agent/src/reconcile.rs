@@ -5,13 +5,13 @@ use std::{
 
 use checkpoint::{CheckpointHeader, CheckpointManager, RetentionSpan};
 use snops_common::{
-    api::{CheckpointMeta, StorageInfo},
+    api::{CheckpointMeta, EnvInfo},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, LEDGER_STORAGE_FILE, SNARKOS_FILE,
         SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
     rpc::error::ReconcileError,
-    state::{EnvId, HeightRequest, StorageId},
+    state::{EnvId, HeightRequest, NetworkId, StorageId},
 };
 use tokio::process::Command;
 use tracing::{debug, error, info, trace};
@@ -22,12 +22,16 @@ use crate::{api, state::GlobalState};
 pub async fn check_files(
     state: &GlobalState,
     env_id: EnvId,
-    info: &StorageInfo,
+    info: &EnvInfo,
     height: &HeightRequest,
 ) -> Result<(), ReconcileError> {
     let base_path = &state.cli.path;
-    let storage_id = &info.id;
-    let storage_path = base_path.join("storage").join(storage_id.to_string());
+    let storage_id = &info.storage.id;
+    let network = info.network;
+    let storage_path = base_path
+        .join("storage")
+        .join(network.to_string())
+        .join(storage_id.to_string());
 
     // create the directory containing the storage files
     tokio::fs::create_dir_all(&storage_path)
@@ -43,7 +47,9 @@ pub async fn check_files(
     let version_file = storage_path.join(VERSION_FILE);
 
     // wipe old storage when the version changes
-    if get_version_from_path(&version_file).await? != Some(info.version) && storage_path.exists() {
+    if get_version_from_path(&version_file).await? != Some(info.storage.version)
+        && storage_path.exists()
+    {
         let _ = tokio::fs::remove_dir_all(&storage_path).await;
     }
 
@@ -54,12 +60,12 @@ pub async fn check_files(
 
     let genesis_path = storage_path.join(SNARKOS_GENESIS_FILE);
     let genesis_url = format!(
-        "{}/content/storage/{storage_id}/{SNARKOS_GENESIS_FILE}",
+        "{}/content/storage/{network}/{storage_id}/{SNARKOS_GENESIS_FILE}",
         &state.endpoint
     );
     let ledger_path = storage_path.join(LEDGER_STORAGE_FILE);
     let ledger_url = format!(
-        "{}/content/storage/{storage_id}/{LEDGER_STORAGE_FILE}",
+        "{}/content/storage/{network}/{storage_id}/{LEDGER_STORAGE_FILE}",
         &state.endpoint
     );
 
@@ -86,7 +92,7 @@ pub async fn check_files(
         })?;
 
     // write the regen version to a "version" file
-    tokio::fs::write(&version_file, info.version.to_string())
+    tokio::fs::write(&version_file, info.storage.version.to_string())
         .await
         .map_err(|e| {
             error!("failed to write storage version: {e}");
@@ -99,16 +105,19 @@ pub async fn check_files(
 /// Untar the ledger file into the storage directory
 pub async fn load_ledger(
     state: &GlobalState,
-    info: &StorageInfo,
+    info: &EnvInfo,
     height: &HeightRequest,
     is_new_env: bool,
 ) -> Result<bool, ReconcileError> {
     let base_path = &state.cli.path;
-    let storage_id = &info.id;
-    let storage_path = base_path.join("storage").join(storage_id.to_string());
+    let storage_id = &info.storage.id;
+    let storage_path = base_path
+        .join("storage")
+        .join(info.network.to_string())
+        .join(storage_id.to_string());
 
     // use a persisted directory for the untar when configured
-    let (untar_base, untar_dir) = if info.persist {
+    let (untar_base, untar_dir) = if info.storage.persist {
         info!("using persisted ledger for {storage_id}");
         (&storage_path, LEDGER_PERSIST_DIR)
     } else {
@@ -120,7 +129,7 @@ pub async fn load_ledger(
 
     // skip the top request if the persisted ledger already exists
     // this will prevent the ledger from getting wiped in the next step
-    if info.persist && height.is_top() && ledger_dir.exists() {
+    if info.storage.persist && height.is_top() && ledger_dir.exists() {
         info!("persisted ledger already exists for {storage_id}");
         return Ok(false);
     }
@@ -131,6 +140,7 @@ pub async fn load_ledger(
     // this is so we can wipe all leftover checkpoints for non-persisted storage
     // after resets or new environments
     let mut manager = info
+        .storage
         .retention_policy
         .clone()
         .map(|policy| {
@@ -161,7 +171,7 @@ pub async fn load_ledger(
         //
         // this also forces the rewind checkpoints to be fetched from the
         // control plane
-        if !info.persist {
+        if !info.storage.persist {
             if let Some(manager) = manager.as_mut() {
                 info!("wiping old checkpoints for {storage_id}");
                 manager.wipe();
@@ -226,10 +236,10 @@ pub async fn load_ledger(
     // determine which checkpoint to use by the next available height/time
     let checkpoint = match height {
         HeightRequest::Absolute(block_height) => {
-            find_checkpoint_by_height(manager, &info.checkpoints, *block_height)
+            find_checkpoint_by_height(manager, &info.storage.checkpoints, *block_height)
         }
         HeightRequest::Checkpoint(span) => {
-            find_checkpoint_by_span(manager, &info.checkpoints, *span)
+            find_checkpoint_by_span(manager, &info.storage.checkpoints, *span)
         }
         _ => unreachable!("handled by previous match"),
     }
@@ -237,7 +247,7 @@ pub async fn load_ledger(
 
     // download checkpoint if necessary, and get the path
     let path = checkpoint
-        .acquire(state, &storage_path, *storage_id)
+        .acquire(state, &storage_path, *storage_id, info.network)
         .await?;
 
     // apply the checkpoint to the ledger
@@ -284,6 +294,7 @@ impl<'a> CheckpointSource<'a> {
         state: &GlobalState,
         storage_path: &Path,
         storage_id: StorageId,
+        network: NetworkId,
     ) -> Result<PathBuf, ReconcileError> {
         Ok(match self {
             CheckpointSource::Meta(meta) => {
@@ -292,7 +303,7 @@ impl<'a> CheckpointSource<'a> {
                     meta.height, meta.timestamp
                 );
                 let checkpoint_url = format!(
-                    "{}/content/storage/{storage_id}/{}",
+                    "{}/content/storage/{network}/{storage_id}/{}",
                     &state.endpoint, meta.filename
                 );
                 let path = storage_path.join(&meta.filename);

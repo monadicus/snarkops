@@ -135,12 +135,12 @@ jobs:
         run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast --all-features
 
       - name: 🧪 Test Aot
-        if:  steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
+        if:  steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
         run: cargo +nightly-2024-04-01 nextest run -p snarkos-aot --verbose --fail-fast --all-features
 
       - name: 🧪 Test Checkpoint
-        if:  steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly-2024-04-01 nextest run -p snarkos-aot --verbose --fail-fast --all-features
+        if:  steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +nightly-2024-04-01 nextest run -p checkpoint --verbose --fail-fast --all-features
 
       - name: 🧪 Test Common
         if:  steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'

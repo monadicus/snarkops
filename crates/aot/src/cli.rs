@@ -10,19 +10,17 @@ use clap::CommandFactory;
 use clap::Parser;
 use crossterm::tty::IsTty;
 use reqwest::Url;
+use snarkvm::console::program::Network;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
-use crate::{
-    accounts::GenAccounts, authorized::Execute, credits::Authorize, genesis::Genesis,
-    ledger::Ledger,
-};
+use crate::{accounts::GenAccounts, genesis::Genesis, ledger::Ledger, program::Program};
 
 #[derive(Debug, Parser)]
 #[clap(author = "MONADIC.US")]
-pub struct Cli {
+pub struct Cli<N: Network> {
     #[arg(long)]
     pub enable_profiling: bool,
 
@@ -35,19 +33,18 @@ pub struct Cli {
     pub loki: Option<Url>,
 
     #[clap(subcommand)]
-    pub command: Command,
+    pub command: Command<N>,
 }
 
 #[derive(Debug, Parser)]
-pub enum Command {
-    Genesis(Genesis),
+pub enum Command<N: Network> {
+    Genesis(Genesis<N>),
     Accounts(GenAccounts),
-    Ledger(Ledger),
+    Ledger(Ledger<N>),
     #[cfg(feature = "node")]
-    Run(Runner),
-    Execute(Execute),
-    #[command(subcommand)]
-    Authorize(Authorize),
+    Run(Runner<N>),
+    #[clap(subcommand)]
+    Program(Program<N>),
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
     #[cfg(feature = "clipages")]
@@ -74,7 +71,7 @@ type FlameGuard = Box<dyn Flushable>;
 #[cfg(not(feature = "flame"))]
 type FlameGuard = ();
 
-impl Cli {
+impl<N: Network> Cli<N> {
     /// Initializes the logger.
     ///
     /// ```ignore
@@ -242,24 +239,20 @@ impl Cli {
         let _guards = self.init_logger();
 
         match self.command {
-            Command::Accounts(command) => command.parse(),
+            Command::Accounts(command) => command.parse::<N>(),
             Command::Genesis(command) => command.parse(),
             Command::Ledger(command) => command.parse(),
             #[cfg(feature = "node")]
             Command::Run(command) => command.parse(),
-            Command::Execute(command) => command.parse(),
-            Command::Authorize(command) => {
-                println!("{}", serde_json::to_string(&command.parse()?)?);
-                Ok(())
-            }
+            Command::Program(command) => command.parse(),
             #[cfg(feature = "mangen")]
             Command::Man(mangen) => mangen.run(
-                Cli::command(),
+                Cli::<N>::command(),
                 env!("CARGO_PKG_VERSION"),
                 env!("CARGO_PKG_NAME"),
             ),
             #[cfg(feature = "clipages")]
-            Command::Md(clipages) => clipages.run::<Cli>(env!("CARGO_PKG_NAME")),
+            Command::Md(clipages) => clipages.run::<Cli<N>>(env!("CARGO_PKG_NAME")),
         }
     }
 }

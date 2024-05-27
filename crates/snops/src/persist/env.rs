@@ -3,8 +3,11 @@ use std::sync::Arc;
 use bimap::BiMap;
 use dashmap::DashMap;
 use snops_common::{
-    format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter},
-    state::{CannonId, EnvId, NodeKey, StorageId, TxPipeId},
+    format::{
+        read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter,
+        DataHeaderOf,
+    },
+    state::{CannonId, EnvId, NetworkId, NodeKey, StorageId, TxPipeId},
 };
 
 use super::{PersistNode, PersistNodeFormatHeader};
@@ -31,11 +34,13 @@ pub struct PersistEnvFormatHeader {
     nodes: PersistNodeFormatHeader,
     tx_source: TxSourceFormatHeader,
     tx_sink: TxSinkFormatHeader,
+    network: DataHeaderOf<NetworkId>,
 }
 
 pub struct PersistEnv {
     pub id: EnvId,
     pub storage_id: StorageId,
+    pub network: NetworkId,
     /// List of nodes and their states or external node info
     pub nodes: Vec<(NodeKey, PersistNode)>,
     /// List of drains and the number of consumed lines
@@ -77,6 +82,7 @@ impl From<&Environment> for PersistEnv {
         PersistEnv {
             id: value.id,
             storage_id: value.storage.id,
+            network: value.network,
             nodes,
             tx_pipe_drains: value.tx_pipe.drains.keys().cloned().collect(),
             tx_pipe_sinks: value.tx_pipe.sinks.keys().cloned().collect(),
@@ -97,7 +103,7 @@ impl PersistEnv {
         cli: &Cli,
     ) -> Result<Environment, EnvError> {
         let storage = storage
-            .get(&self.storage_id)
+            .get(&(self.network, self.storage_id))
             .ok_or(PrepareError::MissingStorage)?;
 
         let mut node_map = BiMap::default();
@@ -149,6 +155,7 @@ impl PersistEnv {
 
         Ok(Environment {
             id: self.id,
+            network: self.network,
             storage: storage.clone(),
             node_peers: node_map,
             node_states: initial_nodes,
@@ -167,7 +174,7 @@ impl PersistEnv {
 
 impl DataFormat for PersistEnvFormatHeader {
     type Header = u8;
-    const LATEST_HEADER: Self::Header = 1;
+    const LATEST_HEADER: Self::Header = 2;
 
     fn write_data<W: std::io::prelude::Write>(
         &self,
@@ -178,6 +185,7 @@ impl DataFormat for PersistEnvFormatHeader {
         written += write_dataformat(writer, &self.nodes)?;
         written += write_dataformat(writer, &self.tx_source)?;
         written += write_dataformat(writer, &self.tx_sink)?;
+        written += writer.write_data(&self.network)?;
         Ok(written)
     }
 
@@ -185,10 +193,10 @@ impl DataFormat for PersistEnvFormatHeader {
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, snops_common::format::DataReadError> {
-        if *header != Self::LATEST_HEADER {
+        if *header > Self::LATEST_HEADER || *header < 1 {
             return Err(snops_common::format::DataReadError::unsupported(
                 "PersistEnvHeader",
-                Self::LATEST_HEADER,
+                format!("1 or {}", Self::LATEST_HEADER),
                 header,
             ));
         }
@@ -197,12 +205,18 @@ impl DataFormat for PersistEnvFormatHeader {
         let nodes = read_dataformat(reader)?;
         let tx_source = read_dataformat(reader)?;
         let tx_sink = read_dataformat(reader)?;
+        let network = if *header > 1 {
+            reader.read_data(&())?
+        } else {
+            0
+        };
 
         Ok(PersistEnvFormatHeader {
             version,
             nodes,
             tx_source,
             tx_sink,
+            network,
         })
     }
 }
@@ -214,6 +228,7 @@ impl DataFormat for PersistEnv {
         nodes: PersistNode::LATEST_HEADER, // TODO: use PersistNode::LATEST_HEADER
         tx_source: TxSource::LATEST_HEADER,
         tx_sink: TxSink::LATEST_HEADER,
+        network: NetworkId::LATEST_HEADER,
     };
 
     fn write_data<W: std::io::prelude::Write>(
@@ -228,6 +243,7 @@ impl DataFormat for PersistEnv {
         written += writer.write_data(&self.tx_pipe_drains)?;
         written += writer.write_data(&self.tx_pipe_sinks)?;
         written += writer.write_data(&self.cannon_configs)?;
+        written += writer.write_data(&self.network)?;
 
         Ok(written)
     }
@@ -251,10 +267,16 @@ impl DataFormat for PersistEnv {
         let tx_pipe_sinks = reader.read_data(&())?;
         let cannon_configs =
             reader.read_data(&((), header.tx_source.clone(), header.tx_sink.clone()))?;
+        let network = if header.network > 0 {
+            reader.read_data(&header.network)?
+        } else {
+            NetworkId::default()
+        };
 
         Ok(PersistEnv {
             id,
             storage_id,
+            network,
             nodes,
             tx_pipe_drains,
             tx_pipe_sinks,
@@ -270,7 +292,7 @@ mod tests {
 
     use snops_common::{
         format::{read_dataformat, write_dataformat, DataFormat},
-        state::InternedId,
+        state::{InternedId, NetworkId},
     };
 
     use crate::{
@@ -314,6 +336,7 @@ mod tests {
             TxSource::LATEST_HEADER.to_byte_vec()?,
             TxSinkFormatHeader::LATEST_HEADER.to_byte_vec()?,
             TxSink::LATEST_HEADER.to_byte_vec()?,
+            NetworkId::LATEST_HEADER.to_byte_vec()?,
         ]
         .concat()
     );
@@ -324,6 +347,7 @@ mod tests {
         PersistEnv {
             id: InternedId::from_str("foo")?,
             storage_id: InternedId::from_str("bar")?,
+            network: Default::default(),
             nodes: Default::default(),
             tx_pipe_drains: Default::default(),
             tx_pipe_sinks: Default::default(),
@@ -338,6 +362,7 @@ mod tests {
             Vec::<InternedId>::new().to_byte_vec()?,
             Vec::<InternedId>::new().to_byte_vec()?,
             Vec::<(InternedId, TxSource, TxSink)>::new().to_byte_vec()?,
+            NetworkId::default().to_byte_vec()?,
         ]
         .concat()
     );

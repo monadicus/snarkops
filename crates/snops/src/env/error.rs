@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
+    aot_cmds::AotCmdError,
     impl_into_status_code, impl_into_type_str,
     state::{AgentId, CannonId, EnvId, NodeKey, TimelineId},
 };
@@ -8,7 +9,10 @@ use strum_macros::AsRefStr;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::{cannon::error::CannonError, schema::error::SchemaError};
+use crate::{
+    cannon::error::{AuthorizeError, CannonError},
+    schema::error::SchemaError,
+};
 
 #[derive(Debug, Error)]
 #[error("batch reconciliation failed with `{failures}` failed reconciliations")]
@@ -20,13 +24,15 @@ impl_into_status_code!(BatchReconcileError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum ExecutionError {
+    #[error(transparent)]
+    AotCmdError(#[from] AotCmdError),
     #[error("an agent is offline, so the test cannot complete")]
     AgentOffline,
     #[error("env `{0}` not found")]
     EnvNotFound(EnvId),
     #[error(transparent)]
     Cannon(#[from] CannonError),
-    #[error("{0}")]
+    #[error(transparent)]
     Join(#[from] JoinError),
     #[error(transparent)]
     Reconcile(#[from] BatchReconcileError),
@@ -36,6 +42,8 @@ pub enum ExecutionError {
     TimelineAlreadyStarted,
     #[error("unknown cannon: `{0}`")]
     UnknownCannon(CannonId),
+    #[error(transparent)]
+    AuthorizeError(#[from] AuthorizeError),
 }
 
 impl_into_status_code!(ExecutionError, |value| match value {
@@ -45,6 +53,7 @@ impl_into_status_code!(ExecutionError, |value| match value {
 });
 
 impl_into_type_str!(ExecutionError, |value| match value {
+    AotCmdError(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     Cannon(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     _ => value.as_ref().to_string(),
 });
@@ -58,6 +67,7 @@ impl Serialize for ExecutionError {
         state.serialize_field("type", &String::from(self))?;
 
         match self {
+            Self::AotCmdError(e) => state.serialize_field("error", &e.to_string()),
             Self::Cannon(e) => state.serialize_field("error", &e.to_string()),
             _ => state.serialize_field("error", &self.to_string()),
         }?;

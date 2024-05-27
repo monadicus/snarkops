@@ -13,8 +13,11 @@ use bimap::BiMap;
 use dashmap::DashMap;
 use indexmap::{map::Entry, IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
-use snops_common::state::{
-    AgentId, AgentPeer, AgentState, CannonId, EnvId, NodeKey, TimelineId, TxPipeId,
+use snops_common::{
+    api::EnvInfo,
+    state::{
+        AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, TimelineId, TxPipeId,
+    },
 };
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{error, info, trace, warn};
@@ -44,6 +47,7 @@ use crate::{
 pub struct Environment {
     pub id: EnvId,
     pub storage: Arc<LoadedStorage>,
+    pub network: NetworkId,
 
     pub outcomes: OutcomeMetrics,
     // TODO: pub outcome_results: RwLock<OutcomeResults>,
@@ -130,7 +134,7 @@ impl Environment {
 
         let prev_env = state.get_env(env_id);
 
-        let mut storage = None;
+        let mut storage_doc = None;
 
         let (mut node_peers, mut node_states, cannons, mut tx_pipe) =
             if let Some(ref env) = prev_env {
@@ -163,6 +167,7 @@ impl Environment {
         let cannon_configs = DashMap::default();
         let timelines = DashMap::default();
         let mut outcomes: Option<OutcomeMetrics> = None;
+        let mut network = NetworkId::default();
 
         let mut immediate_cannons = vec![];
         let mut agents_to_inventory = IndexSet::<AgentId>::default();
@@ -170,8 +175,8 @@ impl Environment {
         for document in documents {
             match document {
                 ItemDocument::Storage(doc) => {
-                    if storage.is_none() {
-                        storage = Some(doc.prepare(&state).await?);
+                    if storage_doc.is_none() {
+                        storage_doc = Some(doc);
                         // TODO: ensure storage does not change from prev_env
                     } else {
                         Err(PrepareError::MultipleStorage)?;
@@ -186,6 +191,10 @@ impl Environment {
                 }
 
                 ItemDocument::Nodes(nodes) => {
+                    if let Some(n) = nodes.network {
+                        network = n;
+                    }
+
                     // maps of states and peers that are new to this environment
                     let mut incoming_states = IndexMap::default();
                     let mut incoming_peers = BiMap::default();
@@ -364,7 +373,13 @@ impl Environment {
             }
         }
 
-        let storage = storage.ok_or(PrepareError::MissingStorage)?;
+        // prepare the storage after all the other documents
+        // as it depends on the network id
+        let storage = storage_doc
+            .ok_or(PrepareError::MissingStorage)?
+            .prepare(&state, network)
+            .await?;
+
         let storage_id = storage.id;
         let outcomes = outcomes.unwrap_or_default();
 
@@ -404,6 +419,7 @@ impl Environment {
             id: env_id,
             storage,
             outcomes,
+            network,
             // TODO: outcome_results: Default::default(),
             node_peers,
             node_states,
@@ -430,13 +446,9 @@ impl Environment {
             // reconcile agents that are freed up from the delta between environments
             if let Err(e) = reconcile_agents(
                 &state,
-                agents_to_inventory.into_iter().map(|id| {
-                    (
-                        id,
-                        state.pool.get(&id).and_then(|a| a.client_owned()),
-                        AgentState::Inventory,
-                    )
-                }),
+                agents_to_inventory
+                    .into_iter()
+                    .map(|id| (id, state.get_client(id), AgentState::Inventory)),
             )
             .await
             {
@@ -501,14 +513,15 @@ impl Environment {
 
     pub async fn cleanup(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
         // clear the env state
-        info!("clearing env {id} state...");
+        info!("[env {id}] deleting persistence...");
 
         let (_, env) = state
             .envs
             .remove(&id)
             .ok_or(CleanupError::EnvNotFound(id))?;
+
         if let Err(e) = state.db.envs.delete(&id) {
-            error!("failed to save delete {id} to persistence: {e}");
+            error!("[env {id}] failed to delete persistence: {e}");
         }
 
         match state.db.tx_drain_counts.delete_with_prefix(&id) {
@@ -520,12 +533,15 @@ impl Environment {
             }
         }
 
+        trace!("[env {id}] marking prom as dirty");
         state.prom_httpsd.lock().await.set_dirty();
 
         // stop the timeline if it's running
         if let Some(handle) = &*env.timeline_handle.lock().await {
             handle.abort();
         }
+
+        trace!("[env {id}] inventorying agents...");
 
         if let Err(e) = reconcile_agents(
             state,
@@ -541,13 +557,7 @@ impl Environment {
                 // to the env.node_peers.right_values(), which is NOT Send
                 .collect::<Vec<_>>()
                 .into_iter()
-                .map(|id| {
-                    (
-                        id,
-                        state.pool.get(&id).and_then(|a| a.client_owned()),
-                        AgentState::Inventory,
-                    )
-                }),
+                .map(|id| (id, state.get_client(id), AgentState::Inventory)),
         )
         .await
         {
@@ -617,6 +627,13 @@ impl Environment {
 
     pub fn get_cannon(&self, id: CannonId) -> Option<Arc<CannonInstance>> {
         Some(Arc::clone(self.cannons.get(&id)?.value()))
+    }
+
+    pub fn info(&self) -> EnvInfo {
+        EnvInfo {
+            network: self.network,
+            storage: self.storage.info(),
+        }
     }
 }
 

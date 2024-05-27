@@ -22,7 +22,7 @@ local-ip-address.workspace = true
 nix = { workspace = true, features = ["signal"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
 simple_moving_average.workspace = true
-snops-common.workspace = true
+snops-common = { workspace = true, features = ["aot_cmds"] }
 tarpc.workspace = true
 tokio = { workspace = true, features = [
 	"macros",

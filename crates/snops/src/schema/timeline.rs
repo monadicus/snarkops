@@ -5,9 +5,16 @@ use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-use snops_common::state::{CannonId, DocHeightRequest, InternedId, NodeKey};
+use snops_common::{
+    aot_cmds::AotCmd,
+    state::{CannonId, DocHeightRequest, InternedId, KeyState},
+};
 
-use super::NodeTargets;
+use super::{nodes::KeySource, NodeTargets};
+use crate::{
+    cannon::{error::AuthorizeError, Authorization},
+    env::{error::ExecutionError, Environment},
+};
 
 /// A document describing a test's event timeline.
 #[derive(Deserialize, Debug, Clone)]
@@ -50,6 +57,114 @@ pub enum Action {
     Cannon(Vec<SpawnCannon>),
     /// Set the height of some nodes' ledgers
     Config(IndexMap<NodeTargets, Reconfig>),
+    /// Execute
+    Execute(Execute),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum Execute {
+    /// Execute a program
+    #[serde(rename_all = "kebab-case")]
+    Program {
+        private_key: KeySource,
+        /// The program to execute
+        program: String,
+        /// The function to call
+        function: String,
+        /// The cannon id of who to execute the transaction
+        cannon: CannonId,
+        /// The inputs to the function
+        inputs: Vec<AleoValue>,
+        /// The optional priority fee
+        #[serde(default)]
+        priority_fee: Option<u64>,
+        /// The optional fee record for a private fee
+        #[serde(default)]
+        fee_record: Option<String>,
+    },
+    Transaction {
+        /// The transaction to execute
+        tx: String,
+        /// The cannon id of who to execute the transaction
+        cannon: CannonId,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum AleoValue {
+    // Public keys
+    Key(KeySource),
+    // Other values (u8, fields, etc.)
+    Other(String),
+}
+
+impl Execute {
+    pub async fn execute(&self, env: &Environment) -> Result<(), ExecutionError> {
+        match self {
+            Execute::Program {
+                cannon: cannon_id,
+                private_key,
+                program,
+                function,
+                // TODO: parse the inputs as values like `key/committee.0`
+                inputs,
+                priority_fee,
+                fee_record,
+            } => {
+                let Some(cannon) = env.cannons.get(cannon_id) else {
+                    return Err(ExecutionError::UnknownCannon(*cannon_id));
+                };
+
+                let KeyState::Literal(resolved_pk) = env.storage.sample_keysource_pk(private_key)
+                else {
+                    return Err(AuthorizeError::MissingPrivateKey(
+                        format!("{}.{cannon_id} {program}/{function}", env.id),
+                        private_key.to_string(),
+                    )
+                    .into());
+                };
+
+                let resolved_inputs = inputs
+                    .iter()
+                    .map(|input| match input {
+                        AleoValue::Key(key) => match env.storage.sample_keysource_addr(key) {
+                            KeyState::Literal(key) => Ok(key),
+                            _ => Err(AuthorizeError::InvalidProgramInputs(
+                                format!("{program}/{function}"),
+                                format!("key {key} does not resolve a valid addr"),
+                            )),
+                        },
+                        AleoValue::Other(value) => Ok(value.clone()),
+                    })
+                    .collect::<Result<Vec<String>, AuthorizeError>>()?;
+
+                // authorize the transaction
+                let auth_str = AotCmd::new(env.aot_bin.clone(), env.network)
+                    .authorize(
+                        &resolved_pk,
+                        program,
+                        function,
+                        &resolved_inputs,
+                        *priority_fee,
+                        fee_record.as_ref(),
+                    )
+                    .await?;
+
+                // parse the json and bundle it up
+                let authorization: Authorization =
+                    serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
+
+                // proxy it to a listen cannon
+                cannon.proxy_auth(authorization)?;
+                Ok(())
+            }
+            Execute::Transaction { .. } => {
+                todo!("locate the transaction id from some kind of database, then broadcast it to the cannon")
+            }
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for Actions {
@@ -83,6 +198,7 @@ impl<'de> Deserialize<'de> for Actions {
                             "offline" => Action::Offline(map.next_value()?),
                             "cannon" => Action::Cannon(map.next_value()?),
                             "config" => Action::Config(map.next_value()?),
+                            "execute" => Action::Execute(map.next_value()?),
 
                             _ => return Err(A::Error::custom(format!("unsupported action {key}"))),
                         },
@@ -143,7 +259,7 @@ pub struct SpawnCannon {
     pub count: Option<usize>,
     /// overwrite the query's source node
     #[serde(default)]
-    pub query: Option<NodeKey>,
+    pub query: Option<NodeTargets>,
     /// overwrite the cannon sink target
     #[serde(default)]
     pub target: Option<NodeTargets>,

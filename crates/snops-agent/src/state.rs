@@ -7,7 +7,7 @@ use std::{
 
 use reqwest::Url;
 use snops_common::{
-    api::StorageInfo,
+    api::EnvInfo,
     rpc::control::ControlServiceClient,
     state::{AgentId, AgentPeer, AgentState, EnvId},
 };
@@ -36,7 +36,7 @@ pub struct GlobalState {
     pub jwt: Mutex<Option<String>>,
     pub loki: Mutex<Option<Url>>,
     pub agent_state: RwLock<AgentState>,
-    pub env_info: RwLock<Option<(EnvId, StorageInfo)>>,
+    pub env_info: RwLock<Option<(EnvId, EnvInfo)>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,
     pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
                                        * not sure yet */
@@ -62,14 +62,14 @@ impl GlobalState {
             .collect::<Vec<_>>()
     }
 
-    pub async fn get_env_info(&self, env_id: EnvId) -> anyhow::Result<StorageInfo> {
+    pub async fn get_env_info(&self, env_id: EnvId) -> anyhow::Result<EnvInfo> {
         match self.env_info.read().await.as_ref() {
             Some((id, info)) if *id == env_id => return Ok(info.clone()),
             _ => {}
         }
 
-        let info = api::get_storage_info(format!("{}/api/v1/env/{env_id}/storage", &self.endpoint))
-            .await?;
+        let info =
+            api::get_env_info(format!("{}/api/v1/env/{env_id}/info", &self.endpoint)).await?;
 
         *self.env_info.write().await = Some((env_id, info.clone()));
 

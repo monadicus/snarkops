@@ -12,7 +12,7 @@ if [ -z "$INDEX" ]; then
 fi
 
 ENDPOINT="127.0.0.1:1234"
-DATA_PATH="$(pwd)/snops-data/$INDEX"
+DATA_PATH="$(pwd)/snops-data/compute-$INDEX"
 AGENT_BIN="$DATA_PATH/agent"
 
 # create the data path if it doesn't exist
@@ -34,14 +34,9 @@ chmod +x $AGENT_BIN
 
 $AGENT_BIN \
   --endpoint "$ENDPOINT" \
-  --id "local-$INDEX" \
+  --id "compute-local-$INDEX" \
   --path "$DATA_PATH" \
-  --bind "0.0.0.0" \
-  --bft "$((5000 + $INDEX))" \
-  --rest "$((3030 + $INDEX))" \
-  --metrics "$((9000 + $INDEX))" \
-  --node "$((4130 + $INDEX))" \
-  --labels "local,local-$INDEX" \
-  --client --validator --compute \
+  --labels "local,compute" \
+  --compute \
   $@
 

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use snops_common::state::{AgentId, EnvId, TxPipeId};
+use snops_common::state::{AgentId, EnvId, NetworkId, StorageId, TxPipeId};
 
 use self::{error::DatabaseError, tree::DbTree};
 use crate::{
@@ -20,7 +20,7 @@ pub struct Database {
     /// Transaction drain counts, mapped by (env d, source id) to drain count
     pub(crate) tx_drain_counts: DbTree<(EnvId, TxPipeId), PersistDrainCount>,
     /// Storage state, mapped by storage id to storage state
-    pub(crate) storage: DbTree<EnvId, PersistStorage>,
+    pub(crate) storage: DbTree<(NetworkId, StorageId), PersistStorage>,
     /// Last known agent state, mapped by agent id to agent state
     pub(crate) agents: DbTree<AgentId, Agent>,
 }

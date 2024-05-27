@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 default = []
+aot_cmds = []
 clipages = ["anyhow", "clap-markdown"]
 mangen = ["anyhow", "clap_mangen"]
 
@@ -27,3 +28,6 @@ tarpc.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["process"] }
