@@ -12,10 +12,7 @@ use snops_common::state::{AgentId, AgentState, CannonId, EnvId, TimelineId};
 use tokio::{select, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
-use super::{
-    error::{BatchReconcileError, ExecutionError},
-    EnvError, Environment,
-};
+use super::{error::ExecutionError, EnvError, Environment};
 use crate::{
     cannon::{
         sink::TxSink,
@@ -27,87 +24,8 @@ use crate::{
         outcomes::PromQuery,
         timeline::{Action, ActionInstance, EventDuration},
     },
-    state::{AgentClient, GlobalState},
+    state::{GlobalState, PendingAgentReconcile},
 };
-
-/// The tuple to pass into `reconcile_agents`.
-pub type PendingAgentReconcile = (AgentId, Option<AgentClient>, AgentState);
-
-/// Reconcile a bunch of agents at once.
-pub async fn reconcile_agents<I>(state: &GlobalState, iter: I) -> Result<(), BatchReconcileError>
-where
-    I: Iterator<Item = PendingAgentReconcile>,
-{
-    let mut handles = vec![];
-    let mut agent_ids = vec![];
-
-    for (id, client, target) in iter {
-        agent_ids.push(id);
-
-        // if the client is present, queue a reconcile
-        if let Some(client) = client {
-            handles.push(tokio::spawn(async move { client.reconcile(target).await }));
-
-            // otherwise just change the agent state so it'll inventory on
-            // reconnect
-        } else if let Some(mut agent) = state.pool.get_mut(&id) {
-            agent.set_state(target);
-            if let Err(e) = state.db.agents.save(&id, &agent) {
-                error!("failed to save agent {id} to the database: {e}");
-            }
-        }
-    }
-
-    if handles.is_empty() {
-        return Ok(());
-    }
-
-    let num_reconciliations = handles.len();
-
-    info!("beginning reconciliation...");
-    let reconciliations = join_all(handles).await;
-    info!("reconciliation complete, updating agent states...");
-
-    let mut success = 0;
-    for (agent_id, result) in agent_ids.into_iter().zip(reconciliations) {
-        let Some(mut agent) = state.pool.get_mut(&agent_id) else {
-            continue;
-        };
-
-        match result {
-            Ok(Ok(Ok(agent_state))) => {
-                agent.set_state(agent_state);
-                if let Err(e) = state.db.agents.save(&agent_id, &agent) {
-                    error!("failed to save agent {agent_id} to the database: {e}");
-                }
-
-                success += 1;
-            }
-            Ok(Ok(Err(e))) => error!(
-                "agent {} experienced a reconcilation error: {e}",
-                agent.id(),
-            ),
-
-            Ok(Err(e)) => error!("agent {} experienced a rpc error: {e}", agent.id(),),
-            Err(e) => error!("agent {} experienced a join error: {e}", agent.id(),),
-        }
-    }
-
-    info!(
-        "reconciliation result: {success}/{} nodes reconciled",
-        num_reconciliations
-    );
-
-    state.prom_httpsd.lock().await.set_dirty();
-
-    if success == num_reconciliations {
-        Ok(())
-    } else {
-        Err(BatchReconcileError {
-            failures: num_reconciliations - success,
-        })
-    }
-}
 
 impl Environment {
     pub async fn execute(
@@ -319,9 +237,9 @@ impl Environment {
                     // reconcile all nodes
                     let task_state = Arc::clone(&state);
                     let reconcile_handle = tokio::spawn(async move {
-                        if let Err(e) =
-                            reconcile_agents(&task_state, pending_reconciliations.into_values())
-                                .await
+                        if let Err(e) = task_state
+                            .reconcile_agents(pending_reconciliations.into_values())
+                            .await
                         {
                             // TODO: timeline setting to enable cleanup on error
                             // in many cases, maintaining the failure state is easier to

@@ -1,7 +1,3 @@
-pub mod error;
-pub mod set;
-pub mod timeline;
-
 use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
@@ -16,13 +12,14 @@ use serde::{Deserialize, Serialize};
 use snops_common::{
     api::EnvInfo,
     state::{
-        AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, TimelineId, TxPipeId,
+        AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState, TimelineId,
+        TxPipeId,
     },
 };
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{error, info, trace, warn};
 
-use self::{error::*, timeline::reconcile_agents};
+use self::error::*;
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -42,6 +39,13 @@ use crate::{
     },
     state::{Agent, GlobalState},
 };
+
+pub mod error;
+mod reconcile;
+pub mod set;
+pub mod timeline;
+
+pub use reconcile::*;
 
 #[derive(Debug)]
 pub struct Environment {
@@ -444,13 +448,13 @@ impl Environment {
                 agents_to_inventory.len()
             );
             // reconcile agents that are freed up from the delta between environments
-            if let Err(e) = reconcile_agents(
-                &state,
-                agents_to_inventory
-                    .into_iter()
-                    .map(|id| (id, state.get_client(id), AgentState::Inventory)),
-            )
-            .await
+            if let Err(e) = state
+                .reconcile_agents(
+                    agents_to_inventory
+                        .into_iter()
+                        .map(|id| (id, state.get_client(id), AgentState::Inventory)),
+                )
+                .await
             {
                 error!("an error occurred while attempting to inventory newly freed agents: {e}");
             }
@@ -543,23 +547,22 @@ impl Environment {
 
         trace!("[env {id}] inventorying agents...");
 
-        if let Err(e) = reconcile_agents(
-            state,
-            env.node_peers
-                .right_values()
-                // find all agents associated with the env
-                .filter_map(|peer| match peer {
-                    EnvPeer::Internal(id) => Some(*id),
-                    _ => None,
-                })
-                // this collect is necessary because the iter sent to reconcile_agents
-                // must be owned by this thread. Without this, the iter would hold a reference
-                // to the env.node_peers.right_values(), which is NOT Send
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|id| (id, state.get_client(id), AgentState::Inventory)),
-        )
-        .await
+        if let Err(e) = state
+            .reconcile_agents(
+                env.node_peers
+                    .right_values()
+                    // find all agents associated with the env
+                    .filter_map(|peer| match peer {
+                        EnvPeer::Internal(id) => Some(*id),
+                        _ => None,
+                    })
+                    .map(|id| (id, state.get_client(id), AgentState::Inventory))
+                    // this collect is necessary because the iter sent to reconcile_agents
+                    // must be owned by this thread. Without this, the iter would hold a reference
+                    // to the env.node_peers.right_values(), which is NOT Send
+                    .collect::<Vec<_>>(),
+            )
+            .await
         {
             error!("an error occurred while attempting to inventory newly freed agents: {e}");
         }
@@ -635,71 +638,39 @@ impl Environment {
             storage: self.storage.info(),
         }
     }
-}
 
-/// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(
-    env_id: EnvId,
-    state: &GlobalState,
-    is_new_env: bool,
-) -> Result<(), EnvError> {
-    let mut pending_reconciliations = vec![];
-    {
-        let env = state
-            .get_env(env_id)
-            .ok_or(ReconcileError::EnvNotFound(env_id))?
-            .clone();
+    /// Resolve node's agent configuration given the context of the environment.
+    pub fn resolve_node_state(
+        &self,
+        state: &GlobalState,
+        id: AgentId,
+        key: &NodeKey,
+        node: &Node,
+    ) -> NodeState {
+        // base node state
+        let mut node_state = node.into_state(key.to_owned());
 
-        for entry in env.node_states.iter() {
-            let key = entry.key();
-            let node = entry.value();
-            let EnvNodeState::Internal(node) = node else {
-                continue;
-            };
+        // resolve the private key from the storage
+        node_state.private_key = node
+            .key
+            .as_ref()
+            .map(|key| self.storage.lookup_keysource_pk(key))
+            .unwrap_or_default();
 
-            // get the internal agent ID from the node key
-            let id = env
-                .get_agent_by_key(key)
-                .ok_or_else(|| ReconcileError::ExpectedInternalAgentPeer { key: key.clone() })?;
+        // a filter to exclude the current node from the list of peers
+        let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
 
-            // resolve the peers and validators
-            let mut node_state = node.into_state(key.to_owned());
-            node_state.private_key = node
-                .key
-                .as_ref()
-                .map(|key| env.storage.lookup_keysource_pk(key))
-                .unwrap_or_default();
+        // resolve the peers and validators from node targets
+        node_state.peers = self
+            .matching_nodes(&node.peers, &state.pool, PortType::Node)
+            .filter(not_me)
+            .collect();
 
-            let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
+        node_state.validators = self
+            .matching_nodes(&node.validators, &state.pool, PortType::Bft)
+            .filter(not_me)
+            .collect();
 
-            node_state.peers = env
-                .matching_nodes(&node.peers, &state.pool, PortType::Node)
-                .filter(not_me)
-                .collect();
-
-            node_state.validators = env
-                .matching_nodes(&node.validators, &state.pool, PortType::Bft)
-                .filter(not_me)
-                .collect();
-
-            let agent_state = AgentState::Node(env_id, Box::new(node_state));
-            pending_reconciliations.push((id, state.get_client(id), agent_state));
-        }
-    }
-
-    if let Err(e) = reconcile_agents(state, pending_reconciliations.into_iter()).await {
-        // if this is a patch to an existing environment, avoid inventorying the agents
-        if !is_new_env {
-            return Err(ReconcileError::Batch(e).into());
-        }
-
-        error!("an error occurred on initial reconciliation, inventorying all agents: {e}");
-        if let Err(e) = Environment::cleanup(env_id, state).await {
-            error!("an error occurred inventorying agents: {e}");
-        }
-
-        Err(ReconcileError::Batch(e).into())
-    } else {
-        Ok(())
+        node_state
     }
 }

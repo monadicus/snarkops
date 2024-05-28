@@ -12,15 +12,8 @@ use tokio::task::JoinError;
 use crate::{
     cannon::error::{AuthorizeError, CannonError},
     schema::error::SchemaError,
+    state::error::BatchReconcileError,
 };
-
-#[derive(Debug, Error)]
-#[error("batch reconciliation failed with `{failures}` failed reconciliations")]
-pub struct BatchReconcileError {
-    pub failures: usize,
-}
-
-impl_into_status_code!(BatchReconcileError);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum ExecutionError {
