@@ -49,8 +49,8 @@ impl<N: Network> Key<N> {
 #[derive(Debug, Args)]
 pub struct Runner<N: Network> {
     /// A path to the genesis block to initialize the ledger from.
-    #[arg(required = true, short, long, default_value = "genesis.block")]
-    pub genesis: PathBuf,
+    #[arg(short, long)]
+    pub genesis: Option<PathBuf>,
 
     /// The ledger from which to view a block.
     #[arg(required = true, short, long, default_value = "./ledger")]
@@ -115,7 +115,11 @@ impl<N: Network> Runner<N> {
 
         let account = Account::try_from(self.key.try_get()?)?;
 
-        let genesis = Block::from_bytes_le(&std::fs::read(&self.genesis)?)?;
+        let genesis = if let Some(path) = self.genesis.as_ref() {
+            Block::read_le(std::fs::File::open(path)?)?
+        } else {
+            Block::read_le(N::genesis_bytes())?
+        };
 
         // conditionally create a checkpoint manager based on the presence
         // of a retention policy
