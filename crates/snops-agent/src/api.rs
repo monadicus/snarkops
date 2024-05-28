@@ -65,6 +65,12 @@ pub async fn check_binary(env_id: EnvId, base_url: &str, path: &Path) -> anyhow:
         .await
         .unwrap_or(true)
     {
+        // check permissions and ensure 0o755
+        let perms = std::fs::metadata(path)?.permissions();
+        if perms.mode() != 0o755 {
+            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
+        }
+
         return Ok(());
     }
     info!("binary update is available, downloading...");
@@ -77,7 +83,7 @@ pub async fn check_binary(env_id: EnvId, base_url: &str, path: &Path) -> anyhow:
         file.write_all(&chunk?).await?;
     }
 
-    // ensure the permissions are set
+    // ensure the permissions are set for execution
     tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
 
     Ok(())
