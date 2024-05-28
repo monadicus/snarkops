@@ -97,10 +97,19 @@ pub async fn should_download_file(
                 return Ok(true);
             };
 
+            let Some(content_length_header) = res.headers().get(http::header::CONTENT_LENGTH)
+            else {
+                return Ok(true);
+            };
+
             let remote_last_modified = httpdate::parse_http_date(last_modified_header.to_str()?)?;
             let local_last_modified = meta.modified()?;
 
+            let remote_content_length = content_length_header.to_str()?.parse::<u64>()?;
+            let local_content_length = meta.len();
+
             remote_last_modified > local_last_modified
+                || remote_content_length != local_content_length
         }
 
         // no existing file, unconditionally download binary
