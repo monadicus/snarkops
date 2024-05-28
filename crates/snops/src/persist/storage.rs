@@ -1,11 +1,11 @@
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     constant::LEDGER_BASE_DIR,
-    format::{DataFormat, DataFormatReader, DataHeaderOf},
     state::{InternedId, NetworkId, StorageId},
 };
 use tracing::info;
 
+use super::prelude::*;
 use crate::{
     cli::Cli,
     schema::{
@@ -35,21 +35,15 @@ impl DataFormat for PersistStorageFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 2;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(self.version.write_data(writer)?
             + self.retention_policy.write_data(writer)?
             + self.network.write_data(writer)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header > Self::LATEST_HEADER || *header < 1 {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "PersistStorageFormatHeader",
                 format!("1 or {}", Self::LATEST_HEADER),
                 *header,
@@ -124,10 +118,7 @@ impl DataFormat for PersistStorage {
         network: NetworkId::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
 
         written += self.id.write_data(writer)?;
@@ -140,12 +131,9 @@ impl DataFormat for PersistStorage {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if header.version != Self::LATEST_HEADER.version {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "PersistStorage",
                 Self::LATEST_HEADER.version,
                 header.version,

@@ -1,8 +1,6 @@
-use snops_common::{
-    format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataHeaderOf},
-    state::{AgentMode, AgentState, NodeState, PortConfig},
-};
+use snops_common::state::{AgentMode, AgentState, NodeState, PortConfig};
 
+use super::prelude::*;
 use crate::{
     server::jwt::Claims,
     state::{Agent, AgentAddrs, AgentFlags},
@@ -21,10 +19,7 @@ impl DataFormat for AgentFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += self.version.write_data(writer)?;
         written += self.addrs.write_data(writer)?;
@@ -34,12 +29,9 @@ impl DataFormat for AgentFormatHeader {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "AgentFormatHeader",
                 Self::LATEST_HEADER,
                 *header,
@@ -66,10 +58,7 @@ impl DataFormat for Agent {
         ports: PortConfig::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
 
         written += self.id.write_data(writer)?;
@@ -91,12 +80,9 @@ impl DataFormat for Agent {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if header.version != Self::LATEST_HEADER.version {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "Agent",
                 Self::LATEST_HEADER.version,
                 header.version,
@@ -113,7 +99,7 @@ impl DataFormat for Agent {
                 AgentState::Node(env_id, state)
             }
             n => {
-                return Err(snops_common::format::DataReadError::Custom(format!(
+                return Err(DataReadError::Custom(format!(
                     "invalid AgentState discriminant: {n}"
                 )))
             }
@@ -136,10 +122,7 @@ impl DataFormat for AgentFlags {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += u8::from(self.mode).write_data(writer)?;
         written += self.labels.write_data(writer)?;
@@ -147,12 +130,9 @@ impl DataFormat for AgentFlags {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "AgentFlags",
                 Self::LATEST_HEADER,
                 *header,
@@ -171,19 +151,13 @@ impl DataFormat for AgentAddrs {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(self.external.write_data(writer)? + self.internal.write_data(writer)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "AgentAddrs",
                 Self::LATEST_HEADER,
                 *header,

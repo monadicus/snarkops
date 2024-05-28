@@ -1,9 +1,10 @@
 use std::{future, time::Duration};
 
 use serde::{Deserialize, Serialize};
-use snops_common::{format::DataFormat, state::TxPipeId};
+use snops_common::state::TxPipeId;
 use tokio::time::Instant;
 
+use crate::persist::prelude::*;
 use crate::schema::NodeTargets;
 
 fn one_thousand() -> u32 {
@@ -67,10 +68,7 @@ impl DataFormat for FireRate {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         match self {
             FireRate::Never => 0u8.write_data(writer),
             FireRate::Burst {
@@ -87,12 +85,9 @@ impl DataFormat for FireRate {
         }
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "FireRate",
                 Self::LATEST_HEADER,
                 *header,
@@ -109,7 +104,7 @@ impl DataFormat for FireRate {
             2 => Ok(FireRate::Repeat {
                 tx_delay_ms: u32::read_data(reader, &())?,
             }),
-            n => Err(snops_common::format::DataReadError::Custom(format!(
+            n => Err(DataReadError::Custom(format!(
                 "invalid FireRate discriminant: {n}"
             ))),
         }

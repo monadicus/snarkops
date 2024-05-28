@@ -2,15 +2,10 @@ use std::sync::Arc;
 
 use bimap::BiMap;
 use dashmap::DashMap;
-use snops_common::{
-    format::{
-        read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter,
-        DataHeaderOf,
-    },
-    state::{CannonId, EnvId, NetworkId, NodeKey, StorageId, TxPipeId},
-};
+use snops_common::state::{CannonId, EnvId, NetworkId, NodeKey, StorageId, TxPipeId};
 
-use super::{PersistNode, PersistNodeFormatHeader};
+use super::prelude::*;
+use super::PersistNode;
 use crate::{
     cannon::{
         file::{TransactionDrain, TransactionSink},
@@ -23,7 +18,6 @@ use crate::{
         error::{EnvError, PrepareError},
         EnvNodeState, EnvPeer, Environment, TxPipes,
     },
-    persist::{TxSinkFormatHeader, TxSourceFormatHeader},
     schema::storage::DEFAULT_AOT_BIN,
     state::StorageMap,
 };
@@ -31,9 +25,9 @@ use crate::{
 #[derive(Clone)]
 pub struct PersistEnvFormatHeader {
     version: u8,
-    nodes: PersistNodeFormatHeader,
-    tx_source: TxSourceFormatHeader,
-    tx_sink: TxSinkFormatHeader,
+    nodes: DataHeaderOf<PersistNode>,
+    tx_source: DataHeaderOf<TxSource>,
+    tx_sink: DataHeaderOf<TxSink>,
     network: DataHeaderOf<NetworkId>,
 }
 
@@ -176,10 +170,7 @@ impl DataFormat for PersistEnvFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 2;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += writer.write_data(&self.version)?;
         written += write_dataformat(writer, &self.nodes)?;
@@ -189,12 +180,9 @@ impl DataFormat for PersistEnvFormatHeader {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header > Self::LATEST_HEADER || *header < 1 {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "PersistEnvHeader",
                 format!("1 or {}", Self::LATEST_HEADER),
                 header,
@@ -231,10 +219,7 @@ impl DataFormat for PersistEnv {
         network: NetworkId::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
 
         written += writer.write_data(&self.id)?;
@@ -248,12 +233,9 @@ impl DataFormat for PersistEnv {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if header.version != Self::LATEST_HEADER.version {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "PersistEnv",
                 Self::LATEST_HEADER.version,
                 header.version,

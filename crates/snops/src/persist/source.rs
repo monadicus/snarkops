@@ -1,10 +1,8 @@
 use std::collections::HashSet;
 
-use snops_common::{
-    format::{DataFormat, DataFormatReader, DataHeaderOf},
-    state::NodeKey,
-};
+use snops_common::state::NodeKey;
 
+use super::prelude::*;
 use crate::{
     cannon::source::{ComputeTarget, CreditsTxMode, LocalService, QueryTarget, TxMode, TxSource},
     schema::nodes::KeySource,
@@ -21,21 +19,15 @@ impl DataFormat for TxSourceFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(self.version.write_data(writer)?
             + self.node_key.write_data(writer)?
             + self.key_source.write_data(writer)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "LocalServiceFormatHeader",
                 Self::LATEST_HEADER,
                 *header,
@@ -61,10 +53,7 @@ impl DataFormat for TxSource {
         key_source: KeySource::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         match self {
             TxSource::Playback { file_name } => {
@@ -148,12 +137,9 @@ impl DataFormat for TxSource {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if header.version != Self::LATEST_HEADER.version {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "TxSource",
                 Self::LATEST_HEADER.version,
                 header.version,
@@ -172,7 +158,7 @@ impl DataFormat for TxSource {
                     }),
                     1u8 => QueryTarget::Node(reader.read_data(&header.node_key)?),
                     n => {
-                        return Err(snops_common::format::DataReadError::Custom(format!(
+                        return Err(DataReadError::Custom(format!(
                             "invalid QueryTarget discriminant: {n}"
                         )));
                     }
@@ -186,7 +172,7 @@ impl DataFormat for TxSource {
                         demox_api: reader.read_data(&())?,
                     },
                     n => {
-                        return Err(snops_common::format::DataReadError::Custom(format!(
+                        return Err(DataReadError::Custom(format!(
                             "invalid ComputeTarget discriminant: {n}"
                         )));
                     }
@@ -203,7 +189,7 @@ impl DataFormat for TxSource {
                             4u8 => CreditsTxMode::TransferPrivate,
                             5u8 => CreditsTxMode::TransferPrivateToPublic,
                             n => {
-                                return Err(snops_common::format::DataReadError::Custom(format!(
+                                return Err(DataReadError::Custom(format!(
                                     "invalid CreditsTxMode discriminant: {n}"
                                 )));
                             }
@@ -228,7 +214,7 @@ impl DataFormat for TxSource {
                     }),
                     1u8 => QueryTarget::Node(reader.read_data(&header.node_key)?),
                     n => {
-                        return Err(snops_common::format::DataReadError::Custom(format!(
+                        return Err(DataReadError::Custom(format!(
                             "invalid QueryTarget discriminant: {n}"
                         )));
                     }
@@ -242,7 +228,7 @@ impl DataFormat for TxSource {
                         demox_api: reader.read_data(&())?,
                     },
                     n => {
-                        return Err(snops_common::format::DataReadError::Custom(format!(
+                        return Err(DataReadError::Custom(format!(
                             "invalid ComputeTarget discriminant: {n}"
                         )));
                     }
@@ -250,7 +236,7 @@ impl DataFormat for TxSource {
 
                 Ok(TxSource::Listen { query, compute })
             }
-            n => Err(snops_common::format::DataReadError::Custom(format!(
+            n => Err(DataReadError::Custom(format!(
                 "invalid TxSource discriminant: {n}"
             ))),
         }

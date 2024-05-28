@@ -1,7 +1,4 @@
-use snops_common::format::{
-    read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataHeaderOf,
-};
-
+use super::prelude::*;
 use crate::{
     cannon::sink::{FireRate, TxSink},
     schema::NodeTargets,
@@ -18,21 +15,15 @@ impl DataFormat for TxSinkFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(self.version.write_data(writer)?
             + write_dataformat(writer, &self.node_targets)?
             + self.fire_rate.write_data(writer)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "TxSinkFormatHeader",
                 Self::LATEST_HEADER,
                 *header,
@@ -58,10 +49,7 @@ impl DataFormat for TxSink {
         fire_rate: FireRate::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         match self {
             TxSink::Record {
@@ -82,12 +70,9 @@ impl DataFormat for TxSink {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if header.version != Self::LATEST_HEADER.version {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "TxSink",
                 Self::LATEST_HEADER.version,
                 header.version,
@@ -108,7 +93,7 @@ impl DataFormat for TxSink {
                 let rate = reader.read_data(&header.fire_rate)?;
                 Ok(TxSink::RealTime { target, rate })
             }
-            n => Err(snops_common::format::DataReadError::Custom(format!(
+            n => Err(DataReadError::Custom(format!(
                 "invalid TxSink discriminant: {n}"
             ))),
         }

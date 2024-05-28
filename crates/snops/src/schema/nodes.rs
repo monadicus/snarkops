@@ -10,7 +10,6 @@ use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snops_common::{
-    format::{DataFormat, DataFormatReader, DataFormatWriter, DataHeaderOf, DataReadError},
     lasso::Spur,
     set::{MaskBit, MASK_PREFIX_LEN},
     state::{AgentId, DocHeightRequest, InternedId, NetworkId, NodeState},
@@ -21,6 +20,7 @@ use super::{
     error::{KeySourceError, SchemaError},
     NodeKey, NodeTargets,
 };
+use crate::persist::prelude::*;
 
 /// A document describing the node infrastructure for a test.
 #[derive(Deserialize, Debug, Clone)]
@@ -58,7 +58,7 @@ impl DataFormat for ExternalNode {
     fn write_data<W: std::io::prelude::Write>(
         &self,
         writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    ) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += writer.write_data(&self.bft)?;
         written += writer.write_data(&self.node)?;
@@ -265,7 +265,7 @@ impl DataFormat for NodeFormatHeader {
     fn write_data<W: std::io::prelude::Write>(
         &self,
         writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    ) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += self.key_source.write_data(writer)?;
         written += self.height_request.write_data(writer)?;
@@ -308,7 +308,7 @@ impl DataFormat for Node {
     fn write_data<W: std::io::prelude::Write>(
         &self,
         writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    ) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += self.online.write_data(writer)?;
         written += self.replicas.write_data(writer)?;
@@ -480,7 +480,7 @@ impl DataFormat for KeySource {
     fn write_data<W: std::io::prelude::Write>(
         &self,
         writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    ) -> Result<usize, DataWriteError> {
         Ok(match self {
             KeySource::Local => writer.write_data(&0u8)?,
             KeySource::PrivateKeyLiteral(key) => {

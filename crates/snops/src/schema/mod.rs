@@ -7,13 +7,11 @@ use serde::{
     ser::SerializeSeq,
     Deserialize, Serialize,
 };
-use snops_common::{
-    format::{DataFormat, DataFormatReader, DataHeaderOf},
-    state::{NodeKey, NodeType},
-};
+use snops_common::state::{NodeKey, NodeType};
 use wildmatch::WildMatch;
 
 use self::error::{NodeTargetError, SchemaError};
+use crate::persist::prelude::*;
 
 pub mod cannon;
 pub mod error;
@@ -71,7 +69,7 @@ impl DataFormat for NodeTargets {
     fn write_data<W: std::io::prelude::Write>(
         &self,
         writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    ) -> Result<usize, DataWriteError> {
         match self {
             NodeTargets::None => vec![],
             NodeTargets::One(target) => vec![target.clone()],
@@ -83,7 +81,7 @@ impl DataFormat for NodeTargets {
     fn read_data<R: std::io::prelude::Read>(
         reader: &mut R,
         header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    ) -> Result<Self, DataReadError> {
         let targets = Vec::<NodeTarget>::read_data(reader, header)?;
         Ok(match targets.len() {
             0 => NodeTargets::None,
@@ -287,7 +285,7 @@ impl DataFormat for NodeTarget {
     fn write_data<W: std::io::prelude::Write>(
         &self,
         writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    ) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += match self.ty {
             NodeTargetType::All => 0u8.write_data(writer)?,
@@ -312,9 +310,9 @@ impl DataFormat for NodeTarget {
     fn read_data<R: std::io::prelude::Read>(
         reader: &mut R,
         header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    ) -> Result<Self, DataReadError> {
         if header.0 != Self::LATEST_HEADER.0 {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "NodeTarget",
                 Self::LATEST_HEADER.0,
                 header.0,
@@ -325,7 +323,7 @@ impl DataFormat for NodeTarget {
             0u8 => NodeTargetType::All,
             1u8 => NodeTargetType::One(NodeType::read_data(reader, &header.1)?),
             n => {
-                return Err(snops_common::format::DataReadError::Custom(format!(
+                return Err(DataReadError::Custom(format!(
                     "invalid NodeTarget type discriminant: {n}"
                 )))
             }
@@ -339,7 +337,7 @@ impl DataFormat for NodeTarget {
             }
             2u8 => NodeTargetId::Literal(reader.read_data(&())?),
             n => {
-                return Err(snops_common::format::DataReadError::Custom(format!(
+                return Err(DataReadError::Custom(format!(
                     "invalid NodeTarget ID discriminant: {n}"
                 )))
             }
@@ -350,7 +348,7 @@ impl DataFormat for NodeTarget {
             1u8 => NodeTargetNamespace::Local,
             2u8 => NodeTargetNamespace::Literal(reader.read_data(&())?),
             n => {
-                return Err(snops_common::format::DataReadError::Custom(format!(
+                return Err(DataReadError::Custom(format!(
                     "invalid NodeTarget namespace discriminant: {n}"
                 )))
             }
