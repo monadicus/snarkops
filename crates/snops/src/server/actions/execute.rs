@@ -6,7 +6,7 @@ use snops_common::{aot_cmds::AotCmd, state::KeyState};
 
 use super::{
     models::{AleoValue, ExecuteAction},
-    Env, WithTargets,
+    Env,
 };
 use crate::{
     cannon::{error::AuthorizeError, Authorization},
@@ -14,10 +14,7 @@ use crate::{
     server::error::ServerError,
 };
 
-pub async fn execute(
-    Env { env, .. }: Env,
-    Json(WithTargets { data: action, .. }): Json<super::WithTargets<ExecuteAction>>,
-) -> Response {
+pub async fn execute(Env { env, .. }: Env, Json(action): Json<ExecuteAction>) -> Response {
     action
         .execute(&env)
         .await
