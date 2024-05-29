@@ -17,7 +17,7 @@ use snops_common::{
     INTERN,
 };
 
-use super::{AgentClient, AgentFlags};
+use super::{AgentClient, AgentFlags, PendingAgentReconcile};
 use crate::server::jwt::{Claims, JWT_SECRET};
 
 #[derive(Debug)]
@@ -274,18 +274,35 @@ impl Agent {
         self.addrs = Some(AgentAddrs { external, internal });
     }
 
-    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(AgentId, AgentClient, AgentState)>
+    pub fn map_to_reconcile<F>(&self, f: F) -> PendingAgentReconcile
     where
         F: Fn(NodeState) -> NodeState,
     {
-        Some((
+        (
             self.id(),
-            self.client_owned()?,
+            self.client_owned(),
             match &self.state {
                 AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone()))),
-                _ => return None,
+                s => s.clone(),
             },
-        ))
+        )
+    }
+
+    pub fn filter_map_to_reconcile<F>(&self, f: F) -> PendingAgentReconcile
+    where
+        F: Fn(NodeState) -> Option<NodeState>,
+    {
+        (
+            self.id(),
+            self.client_owned(),
+            match &self.state {
+                AgentState::Node(id, state) => match f(*state.clone()) {
+                    Some(state) => AgentState::Node(*id, Box::new(state)),
+                    _ => self.state.clone(),
+                },
+                s => s.clone(),
+            },
+        )
     }
 }
 

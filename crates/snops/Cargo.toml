@@ -16,6 +16,7 @@ axum = { workspace = true, features = [
 	"query",
 	"tokio",
 	"ws",
+	"macros",
 ] }
 bimap = { workspace = true, features = ["serde"] }
 bincode.workspace = true

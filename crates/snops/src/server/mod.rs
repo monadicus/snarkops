@@ -10,7 +10,7 @@ use axum::{
     middleware,
     response::{IntoResponse, Response},
     routing::get,
-    Router,
+    Extension, Router,
 };
 use futures_util::stream::StreamExt;
 use http::StatusCode;
@@ -65,7 +65,8 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
         .nest("/api/v1", api::routes())
         .nest("/prometheus", prometheus::routes())
         .nest("/content", content::init_routes(&state).await)
-        .with_state(state)
+        .with_state(Arc::clone(&state))
+        .layer(Extension(state))
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
 

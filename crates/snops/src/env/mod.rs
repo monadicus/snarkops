@@ -40,8 +40,6 @@ use crate::{
 pub mod error;
 mod reconcile;
 pub mod set;
-pub mod timeline;
-
 pub use reconcile::*;
 
 #[derive(Debug)]
@@ -600,7 +598,7 @@ pub fn prepare_cannons(
         )?;
 
         // instanced cannons receive the fired count from the previous environment
-        if let Some(prev_cannon) = prev_env.and_then(|e| e.cannons.get(&name)) {
+        if let Some(prev_cannon) = prev_env.as_ref().and_then(|e| e.cannons.get(&name)) {
             instance.fired_txs = prev_cannon.fired_txs.clone();
         }
         instance.spawn_local(rx, Arc::clone(&cannons_ready))?;

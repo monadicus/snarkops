@@ -53,7 +53,7 @@ impl DataFormat for TxSource {
         let mut written = 0;
         written += 2u8.write_data(writer)?;
 
-        match self.query {
+        match &self.query {
             QueryTarget::Local(local) => {
                 written += 0u8.write_data(writer)?;
                 written += local.sync_from.write_data(writer)?;
@@ -64,7 +64,7 @@ impl DataFormat for TxSource {
             }
         }
 
-        match self.compute {
+        match &self.compute {
             ComputeTarget::Agent { labels } => {
                 written += 0u8.write_data(writer)?;
                 written += labels.write_data(writer)?;

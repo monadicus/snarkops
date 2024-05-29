@@ -1,10 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snops_common::{
-    lasso::Spur,
-    state::{NetworkId, NodeKey},
-    INTERN,
-};
+use snops_common::{lasso::Spur, state::NetworkId, INTERN};
 
 use super::{
     error::{CannonError, SourceError},
@@ -29,7 +25,7 @@ pub struct LocalService {
     ///
     /// requires cannon to have an associated env_id
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sync_from: Option<NodeKey>,
+    pub sync_from: Option<NodeTargets>,
 }
 
 impl LocalService {

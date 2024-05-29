@@ -21,7 +21,7 @@ use snops_common::{
 use tower::Service;
 use tower_http::services::ServeFile;
 
-use super::{error::ServerError, models::AgentStatusResponse, AppState};
+use super::{actions, error::ServerError, models::AgentStatusResponse, AppState};
 use crate::{cannon::router::redirect_cannon_routes, schema::storage::DEFAULT_AOT_BIN};
 use crate::{
     env::{EnvPeer, Environment},
@@ -55,11 +55,17 @@ pub(super) fn routes() -> Router<AppState> {
             "/env/:env_id/agents/:node_ty/:node_key",
             get(get_env_agent_key),
         )
+        // .route(
+        //     "/env/:env_id/agents/:node_ty/:node_key/action/status",
+        //     get(get_env_agent_key),
+        // )
+        // .route("/env/:env_id/metric/:prom_ql", get())
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/info", get(get_env_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
+        .nest("/env/:env_id/action", actions::routes())
 }
 
 #[derive(Deserialize)]

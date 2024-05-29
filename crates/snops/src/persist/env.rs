@@ -111,7 +111,12 @@ impl PersistEnv {
             storage.value(),
             None,
             cannons_ready,
-            (self.id, self.network, self.storage_id, &DEFAULT_AOT_BIN),
+            (
+                self.id,
+                self.network,
+                self.storage_id,
+                DEFAULT_AOT_BIN.clone(),
+            ),
             self.cannons,
         )?;
 
