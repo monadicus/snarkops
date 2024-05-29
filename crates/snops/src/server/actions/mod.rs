@@ -91,10 +91,5 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/offline", post(power::offline))
         .route("/reboot", post(power::reboot))
         .route("/config", post(config::config))
-        .route("/execute", post(todo))
-    // TODO: program deploy action
-}
-
-async fn todo() -> axum::response::Response {
-    unimplemented!()
+        .route("/execute", post(execute::execute))
 }

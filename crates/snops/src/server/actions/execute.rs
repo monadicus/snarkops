@@ -1,14 +1,31 @@
+use axum::{
+    response::{IntoResponse, Response},
+    Json,
+};
 use snops_common::{aot_cmds::AotCmd, state::KeyState};
 
-use super::models::{AleoValue, ExecuteAction};
+use super::{
+    models::{AleoValue, ExecuteAction},
+    Env, WithTargets,
+};
 use crate::{
     cannon::{error::AuthorizeError, Authorization},
     env::{error::ExecutionError, Environment},
+    server::error::ServerError,
 };
 
+pub async fn execute(
+    Env { env, .. }: Env,
+    Json(WithTargets { data: action, .. }): Json<super::WithTargets<ExecuteAction>>,
+) -> Response {
+    action
+        .execute(&env)
+        .await
+        .map_err(ServerError::from)
+        .into_response()
+}
+
 impl ExecuteAction {
-    // TODO USEME
-    #[allow(dead_code)]
     pub async fn execute(&self, env: &Environment) -> Result<(), ExecutionError> {
         let Self {
             cannon: cannon_id,
