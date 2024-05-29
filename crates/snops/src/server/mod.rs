@@ -41,6 +41,7 @@ use crate::{
     state::{Agent, AgentFlags, AppState, GlobalState},
 };
 
+mod actions;
 mod api;
 mod content;
 pub mod error;
@@ -57,7 +58,7 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
         .as_ref()
         .and_then(|p| PrometheusClient::try_from(p.as_str()).ok());
 
-    let state = Arc::new(GlobalState::load(cli, db, prometheus).await?);
+    let state = GlobalState::load(cli, db, prometheus).await?;
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))

@@ -2,24 +2,20 @@ use std::sync::Arc;
 
 use bimap::BiMap;
 use dashmap::DashMap;
-use snops_common::state::{CannonId, EnvId, NetworkId, NodeKey, StorageId, TxPipeId};
+use snops_common::state::{CannonId, EnvId, NetworkId, NodeKey, StorageId};
+use tokio::sync::Semaphore;
 
 use super::prelude::*;
 use super::PersistNode;
+use crate::env::prepare_cannons;
+use crate::schema::storage::DEFAULT_AOT_BIN;
+use crate::state::GlobalState;
 use crate::{
-    cannon::{
-        file::{TransactionDrain, TransactionSink},
-        sink::TxSink,
-        source::TxSource,
-    },
-    cli::Cli,
-    db::Database,
+    cannon::{sink::TxSink, source::TxSource},
     env::{
         error::{EnvError, PrepareError},
-        EnvNodeState, EnvPeer, Environment, TxPipes,
+        EnvNodeState, EnvPeer, Environment,
     },
-    schema::storage::DEFAULT_AOT_BIN,
-    state::StorageMap,
 };
 
 #[derive(Clone)]
@@ -37,12 +33,9 @@ pub struct PersistEnv {
     pub network: NetworkId,
     /// List of nodes and their states or external node info
     pub nodes: Vec<(NodeKey, PersistNode)>,
-    /// List of drains and the number of consumed lines
-    pub tx_pipe_drains: Vec<TxPipeId>,
-    /// List of sink names
-    pub tx_pipe_sinks: Vec<TxPipeId>,
     /// Loaded cannon configs in this env
-    pub cannon_configs: Vec<(CannonId, TxSource, TxSink)>,
+    /// TODO: persist cannon
+    pub cannons: Vec<(CannonId, TxSource, TxSink)>,
 }
 
 impl From<&Environment> for PersistEnv {
@@ -78,12 +71,10 @@ impl From<&Environment> for PersistEnv {
             storage_id: value.storage.id,
             network: value.network,
             nodes,
-            tx_pipe_drains: value.tx_pipe.drains.keys().cloned().collect(),
-            tx_pipe_sinks: value.tx_pipe.sinks.keys().cloned().collect(),
-            cannon_configs: value
-                .cannon_configs
+            cannons: value
+                .cannons
                 .iter()
-                .map(|v| (*v.key(), v.0.clone(), v.1.clone()))
+                .map(|(id, cannon)| (*id, cannon.source.clone(), cannon.sink.clone()))
                 .collect(),
         }
     }
@@ -92,11 +83,11 @@ impl From<&Environment> for PersistEnv {
 impl PersistEnv {
     pub async fn load(
         self,
-        db: &Database,
-        storage: &StorageMap,
-        cli: &Cli,
+        state: Arc<GlobalState>,
+        cannons_ready: Arc<Semaphore>,
     ) -> Result<Environment, EnvError> {
-        let storage = storage
+        let storage = state
+            .storage
             .get(&(self.network, self.storage_id))
             .ok_or(PrepareError::MissingStorage)?;
 
@@ -115,37 +106,14 @@ impl PersistEnv {
             }
         }
 
-        let mut tx_pipe = TxPipes::default();
-        for drain_id in self.tx_pipe_drains {
-            let count = match db.tx_drain_counts.restore(&(self.id, drain_id)) {
-                Ok(Some(count)) => count.count,
-                Ok(None) => 0,
-                Err(e) => {
-                    tracing::error!("Error loading drain count for {}/{drain_id}: {e}", self.id);
-                    0
-                }
-            };
-
-            tx_pipe.drains.insert(
-                drain_id,
-                Arc::new(TransactionDrain::new(
-                    storage.path_cli(cli),
-                    drain_id,
-                    count,
-                )?),
-            );
-        }
-        for sink_id in self.tx_pipe_sinks {
-            tx_pipe.sinks.insert(
-                sink_id,
-                Arc::new(TransactionSink::new(storage.path_cli(cli), sink_id)?),
-            );
-        }
-
-        let cannon_configs = DashMap::new();
-        for (k, source, sink) in self.cannon_configs {
-            cannon_configs.insert(k, (source, sink));
-        }
+        let (cannons, sinks) = prepare_cannons(
+            Arc::clone(&state),
+            storage.value(),
+            None,
+            cannons_ready,
+            (self.id, self.network, self.storage_id, &DEFAULT_AOT_BIN),
+            self.cannons,
+        )?;
 
         Ok(Environment {
             id: self.id,
@@ -153,15 +121,9 @@ impl PersistEnv {
             storage: storage.clone(),
             node_peers: node_map,
             node_states: initial_nodes,
-            tx_pipe,
-            cannon_configs,
+            sinks,
             aot_bin: DEFAULT_AOT_BIN.clone(),
-            cannons: Default::default(), // TODO: load cannons first
-
-            // TODO: create persistence for these documents or move out of env
-            outcomes: Default::default(),
-            timelines: Default::default(),
-            timeline_handle: Default::default(),
+            cannons,
         })
     }
 }
@@ -225,9 +187,7 @@ impl DataFormat for PersistEnv {
         written += writer.write_data(&self.id)?;
         written += writer.write_data(&self.storage_id)?;
         written += writer.write_data(&self.nodes)?;
-        written += writer.write_data(&self.tx_pipe_drains)?;
-        written += writer.write_data(&self.tx_pipe_sinks)?;
-        written += writer.write_data(&self.cannon_configs)?;
+        written += writer.write_data(&self.cannons)?;
         written += writer.write_data(&self.network)?;
 
         Ok(written)
@@ -244,11 +204,8 @@ impl DataFormat for PersistEnv {
 
         let id = reader.read_data(&())?;
         let storage_id = reader.read_data(&())?;
-        let nodes = reader.read_data(&(header.tx_source.node_key, header.nodes.clone()))?;
-        let tx_pipe_drains = reader.read_data(&())?;
-        let tx_pipe_sinks = reader.read_data(&())?;
-        let cannon_configs =
-            reader.read_data(&((), header.tx_source.clone(), header.tx_sink.clone()))?;
+        let nodes = reader.read_data(&(header.tx_source.node_targets, header.nodes.clone()))?;
+        let cannons = reader.read_data(&((), header.tx_source.clone(), header.tx_sink.clone()))?;
         let network = if header.network > 0 {
             reader.read_data(&header.network)?
         } else {
@@ -260,9 +217,7 @@ impl DataFormat for PersistEnv {
             storage_id,
             network,
             nodes,
-            tx_pipe_drains,
-            tx_pipe_sinks,
-            cannon_configs,
+            cannons,
         })
     }
 }
@@ -331,9 +286,7 @@ mod tests {
             storage_id: InternedId::from_str("bar")?,
             network: Default::default(),
             nodes: Default::default(),
-            tx_pipe_drains: Default::default(),
-            tx_pipe_sinks: Default::default(),
-            cannon_configs: Default::default()
+            cannons: Default::default(),
         },
         [
             PersistEnvFormatHeader::LATEST_HEADER.to_byte_vec()?,
@@ -341,8 +294,6 @@ mod tests {
             InternedId::from_str("foo")?.to_byte_vec()?,
             InternedId::from_str("bar")?.to_byte_vec()?,
             Vec::<(String, PersistNode)>::new().to_byte_vec()?,
-            Vec::<InternedId>::new().to_byte_vec()?,
-            Vec::<InternedId>::new().to_byte_vec()?,
             Vec::<(InternedId, TxSource, TxSink)>::new().to_byte_vec()?,
             NetworkId::default().to_byte_vec()?,
         ]

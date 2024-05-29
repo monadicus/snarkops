@@ -50,21 +50,6 @@ impl Serialize for AuthorizeError {
 }
 
 #[derive(Debug, Error, AsRefStr)]
-pub enum TransactionDrainError {
-    /// For when the tx drain cannot be locked
-    #[error("error locking tx drain")]
-    FailedToLock,
-    /// For when the tx drain source file cannot be opened
-    #[error("error opening tx drain source file: {0:#?}")]
-    FailedToOpenSource(PathBuf, #[source] std::io::Error),
-    /// For when a line cannot be read from the tx drain file
-    #[error("error reading line from tx drain: {0}")]
-    FailedToReadLine(#[source] std::io::Error),
-}
-
-impl_into_status_code!(TransactionDrainError);
-
-#[derive(Debug, Error, AsRefStr)]
 pub enum TransactionSinkError {
     /// For when the tx sink cannot be locked
     #[error("error locking tx sink")]
@@ -179,8 +164,6 @@ pub enum CannonError {
     #[error("target agent offline for {0} `{1}`: {2}")]
     TargetAgentOffline(&'static str, CannonId, String),
     #[error(transparent)]
-    TransactionDrain(#[from] TransactionDrainError),
-    #[error(transparent)]
     TransactionSink(#[from] TransactionSinkError),
     #[error("send `auth` error for cannon `{0}`: {1}")]
     SendAuthError(
@@ -204,7 +187,6 @@ impl_into_status_code!(CannonError, |value| match value {
     Command(_, e) => e.into(),
     ExecutionContext(e) => e.into(),
     TargetAgentOffline(_, _, _) => StatusCode::SERVICE_UNAVAILABLE,
-    TransactionDrain(e) => e.into(),
     TransactionSink(e) => e.into(),
     Source(e) => e.into(),
     State(e) => e.into(),
@@ -216,7 +198,6 @@ impl_into_type_str!(CannonError, |value| match value {
     CannonInstance(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
     Command(_, e) => format!("{}.{}", value.as_ref(), e.as_ref()),
     ExecutionContext(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
-    TransactionDrain(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
     TransactionSink(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
     Source(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
     State(e) => format!("{}.{}", value.as_ref(), String::from(e)),

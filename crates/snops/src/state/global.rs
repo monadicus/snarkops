@@ -6,7 +6,7 @@ use snops_common::{
     constant::ENV_AGENT_KEY,
     state::{AgentId, AgentState, EnvId, NetworkId, StorageId},
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use tracing::info;
 
 use super::{AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
@@ -39,7 +39,7 @@ impl GlobalState {
         cli: Cli,
         db: Database,
         prometheus: Option<PrometheusClient>,
-    ) -> Result<Self, StartError> {
+    ) -> Result<Arc<Self>, StartError> {
         // Load storage meta from persistence, then read the storage data from FS
         let storage_meta = db.storage.read_all();
         let storage = StorageMap::default();
@@ -54,10 +54,37 @@ impl GlobalState {
             storage.insert((network, id), Arc::new(loaded));
         }
 
-        let env_meta = db.envs.read_all();
-        let envs = EnvMap::default();
-        for (id, meta) in env_meta {
-            let loaded = match meta.load(&db, &storage, &cli).await {
+        let pool: DashMap<_, _> = db.agents.read_all().collect();
+
+        let state = Arc::new(Self {
+            cli,
+            agent_key: std::env::var(ENV_AGENT_KEY).ok(),
+            pool,
+            storage,
+            envs: EnvMap::default(),
+            prom_httpsd: Default::default(),
+            prometheus: OpaqueDebug(prometheus),
+            db: OpaqueDebug(db),
+        });
+
+        let env_meta = state.db.envs.read_all().collect::<Vec<_>>();
+
+        let num_cannons = env_meta.iter().map(|(_, e)| e.cannons.len()).sum();
+        // this semaphor prevents cannons from starting until the environment is
+        // created
+        let cannons_ready = Arc::new(Semaphore::const_new(num_cannons));
+        // when this guard is dropped, the semaphore is released
+        let cannons_ready_guard = Arc::clone(&cannons_ready);
+        let _cannons_guard = cannons_ready_guard
+            .acquire_many(num_cannons as u32)
+            .await
+            .unwrap();
+
+        for (id, meta) in env_meta.into_iter() {
+            let loaded = match meta
+                .load(Arc::clone(&state), Arc::clone(&cannons_ready))
+                .await
+            {
                 Ok(l) => l,
                 Err(e) => {
                     tracing::error!("Error loading storage from persistence {id}: {e}");
@@ -65,18 +92,16 @@ impl GlobalState {
                 }
             };
             info!("loaded env {id} from persistence");
-            envs.insert(id, Arc::new(loaded));
+            state.envs.insert(id, Arc::new(loaded));
         }
 
-        let pool: DashMap<_, _> = db.agents.read_all().collect();
-
         // For all agents not in envs, set their state to Inventory
-        for mut entry in pool.iter_mut() {
+        for mut entry in state.pool.iter_mut() {
             let AgentState::Node(env, _) = entry.value().state() else {
                 continue;
             };
 
-            if envs.contains_key(env) {
+            if state.envs.contains_key(env) {
                 continue;
             }
 
@@ -85,19 +110,10 @@ impl GlobalState {
                 entry.key()
             );
             entry.set_state(AgentState::Inventory);
-            let _ = db.agents.save(entry.key(), entry.value());
+            let _ = state.db.agents.save(entry.key(), entry.value());
         }
 
-        Ok(Self {
-            cli,
-            agent_key: std::env::var(ENV_AGENT_KEY).ok(),
-            pool,
-            storage,
-            envs,
-            prom_httpsd: Default::default(),
-            prometheus: OpaqueDebug(prometheus),
-            db: OpaqueDebug(db),
-        })
+        Ok(state)
     }
 
     pub fn storage_path(&self, network: NetworkId, storage_id: StorageId) -> PathBuf {
