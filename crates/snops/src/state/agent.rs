@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
     rpc::agent::AgentServiceClient,
-    state::{AgentId, AgentMode, AgentState, EnvId, NodeState, PortConfig},
+    state::{AgentId, AgentModeOptions, AgentState, EnvId, NodeState, PortConfig},
     INTERN,
 };
 
@@ -184,7 +184,7 @@ impl Agent {
         &self.state
     }
 
-    pub fn modes(&self) -> AgentMode {
+    pub fn modes(&self) -> AgentModeOptions {
         self.flags.mode
     }
 

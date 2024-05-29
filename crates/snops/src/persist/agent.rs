@@ -1,4 +1,4 @@
-use snops_common::state::{AgentMode, AgentState, NodeState, PortConfig};
+use snops_common::state::{AgentModeOptions, AgentState, NodeState, PortConfig};
 
 use super::prelude::*;
 use crate::{
@@ -140,7 +140,7 @@ impl DataFormat for AgentFlags {
         }
 
         Ok(AgentFlags {
-            mode: AgentMode::from(u8::read_data(reader, &())?),
+            mode: AgentModeOptions::from(u8::read_data(reader, &())?),
             labels: reader.read_data(&())?,
             local_pk: reader.read_data(&())?,
         })
@@ -174,7 +174,7 @@ impl DataFormat for AgentAddrs {
 #[cfg(test)]
 #[rustfmt::skip]
 mod test {
-    use snops_common::{format::{read_dataformat, write_dataformat, DataFormat, PackedUint}, state::{AgentMode, AgentState, HeightRequest, KeyState, NodeState, PortConfig}, INTERN};
+    use snops_common::{format::{read_dataformat, write_dataformat, DataFormat, PackedUint}, state::{AgentModeOptions, AgentState, HeightRequest, KeyState, NodeState, PortConfig}, INTERN};
     use crate::{persist::AgentFormatHeader, state::{Agent, AgentAddrs, AgentFlags}};
     use std::net::{IpAddr, Ipv4Addr};
 
@@ -202,7 +202,7 @@ mod test {
     case!(agent_flags_1,
         AgentFlags,
         AgentFlags {
-            mode: AgentMode::from(0u8),
+            mode: AgentModeOptions::from(0u8),
             labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
             local_pk: true,
         },
@@ -250,7 +250,7 @@ mod test {
             },
             AgentState::Inventory,
             AgentFlags {
-                mode: AgentMode::from(0u8),
+                mode: AgentModeOptions::from(0u8),
                 labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
                 local_pk: true,
             },
@@ -267,7 +267,7 @@ mod test {
             2u16.to_byte_vec()?,
             0u8.to_byte_vec()?, // inventory state
             AgentFlags {
-                mode: AgentMode::from(0u8),
+                mode: AgentModeOptions::from(0u8),
                 labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
                 local_pk: true,
             }.to_byte_vec()?,
@@ -296,7 +296,7 @@ mod test {
                 env: Default::default(),
             })),
             AgentFlags {
-                mode: AgentMode::from(5u8),
+                mode: AgentModeOptions::from(5u8),
                 labels: Default::default(),
                 local_pk: true,
             },
@@ -323,7 +323,7 @@ mod test {
                 env: Default::default(),
             }.to_byte_vec()?,
             AgentFlags {
-                mode: AgentMode::from(5u8),
+                mode: AgentModeOptions::from(5u8),
                 labels: Default::default(),
                 local_pk: true,
             }.to_byte_vec()?,

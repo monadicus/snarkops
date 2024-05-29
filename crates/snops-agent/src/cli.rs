@@ -8,7 +8,7 @@ use std::{
 use clap::CommandFactory;
 use clap::Parser;
 use http::Uri;
-use snops_common::state::{AgentId, AgentMode, PortConfig};
+use snops_common::state::{AgentId, AgentModeOptions, PortConfig};
 use tracing::{info, warn};
 
 pub const ENV_ENDPOINT: &str = "SNOPS_ENDPOINT";
@@ -51,7 +51,7 @@ pub struct Cli {
     pub ports: PortConfig,
 
     #[clap(flatten)]
-    pub modes: AgentMode,
+    pub modes: AgentModeOptions,
 
     #[clap(short, long, default_value_t = false)]
     /// Run the agent in quiet mode, suppressing most node output

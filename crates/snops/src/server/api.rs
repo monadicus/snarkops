@@ -16,7 +16,7 @@ use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     lasso::Spur,
     rpc::agent::AgentMetric,
-    state::{id_or_none, AgentMode, AgentState, EnvId, NodeKey},
+    state::{id_or_none, AgentModeOptions, AgentState, EnvId, NodeKey},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
@@ -149,7 +149,7 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Respon
 
 #[derive(Debug, Deserialize)]
 struct FindAgents {
-    mode: AgentMode,
+    mode: AgentModeOptions,
     env: Option<EnvId>,
     #[serde(default, deserialize_with = "crate::schema::nodes::deser_label")]
     labels: HashSet<Spur>,

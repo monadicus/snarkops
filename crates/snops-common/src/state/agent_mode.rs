@@ -3,7 +3,7 @@ use std::fmt::Display;
 #[derive(
     Default, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, clap::Parser, PartialEq, Eq,
 )]
-pub struct AgentMode {
+pub struct AgentModeOptions {
     /// Enable running a validator node
     #[arg(long)]
     pub validator: bool,
@@ -21,8 +21,8 @@ pub struct AgentMode {
     pub compute: bool,
 }
 
-impl From<AgentMode> for u8 {
-    fn from(mode: AgentMode) -> u8 {
+impl From<AgentModeOptions> for u8 {
+    fn from(mode: AgentModeOptions) -> u8 {
         (mode.validator as u8)
             | (mode.prover as u8) << 1
             | (mode.client as u8) << 2
@@ -30,7 +30,7 @@ impl From<AgentMode> for u8 {
     }
 }
 
-impl From<u8> for AgentMode {
+impl From<u8> for AgentModeOptions {
     fn from(mode: u8) -> Self {
         Self {
             validator: mode & 1 != 0,
@@ -41,7 +41,7 @@ impl From<u8> for AgentMode {
     }
 }
 
-impl Display for AgentMode {
+impl Display for AgentModeOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = String::new();
         if self.validator {
