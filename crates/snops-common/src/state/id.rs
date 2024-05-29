@@ -24,6 +24,12 @@ impl InternedId {
     }
 }
 
+impl Default for InternedId {
+    fn default() -> Self {
+        Self(INTERN.get_or_intern("default"))
+    }
+}
+
 /// To prevent the risk of memory leaking agent/env ids that are not used, we
 /// check if the id is interned before from-stringing it
 pub fn id_or_none<T: FromStr>(s: &str) -> Option<T> {

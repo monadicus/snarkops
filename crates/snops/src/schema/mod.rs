@@ -183,6 +183,10 @@ impl Display for NodeTargets {
     }
 }
 
+impl NodeTargets {
+    pub const ALL: Self = Self::One(NodeTarget::ALL);
+}
+
 /// A **single** matched node target. Use [`NodeTargets`] when deserializing
 /// from documents.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
@@ -412,6 +416,12 @@ impl From<NodeKey> for NodeTarget {
 }
 
 impl NodeTarget {
+    pub const ALL: Self = Self {
+        ty: NodeTargetType::All,
+        id: NodeTargetId::All,
+        ns: NodeTargetNamespace::All,
+    };
+
     pub fn matches(&self, key: &NodeKey) -> bool {
         (match self.ty {
             NodeTargetType::All => true,

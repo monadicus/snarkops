@@ -21,7 +21,10 @@ use tracing::{error, info, trace, warn};
 use self::error::*;
 use crate::{
     cannon::{
-        file::TransactionSink, sink::TxSink, source::TxSource, CannonInstance, CannonInstanceMeta,
+        file::TransactionSink,
+        sink::TxSink,
+        source::{ComputeTarget, QueryTarget, TxSource},
+        CannonInstance, CannonInstanceMeta,
     },
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, AgentMapping, BusyMode},
     error::DeserializeError,
@@ -132,8 +135,23 @@ impl Environment {
 
         let mut network = NetworkId::default();
 
-        let mut pending_cannons = vec![];
+        let mut pending_cannons = HashMap::new();
         let mut agents_to_inventory = IndexSet::<AgentId>::default();
+
+        // default cannon will target any node for query and broadcast target
+        // any available compute will be used as well.
+        pending_cannons.insert(
+            CannonId::default(),
+            (
+                TxSource {
+                    query: QueryTarget::Node(NodeTargets::ALL),
+                    compute: ComputeTarget::Agent { labels: None },
+                },
+                TxSink::RealTime {
+                    target: NodeTargets::ALL,
+                },
+            ),
+        );
 
         for document in documents {
             match document {
@@ -147,7 +165,7 @@ impl Environment {
                 }
 
                 ItemDocument::Cannon(cannon) => {
-                    pending_cannons.push((cannon.name, cannon.source, cannon.sink));
+                    pending_cannons.insert(cannon.name, (cannon.source, cannon.sink));
                 }
 
                 ItemDocument::Nodes(nodes) => {
@@ -349,7 +367,10 @@ impl Environment {
             prev_env.as_ref().map(Arc::clone),
             cannons_ready,
             (env_id, network, storage_id, DEFAULT_AOT_BIN.clone()),
-            pending_cannons,
+            pending_cannons
+                .into_iter()
+                .map(|(n, (source, sink))| (n, source, sink))
+                .collect(),
         )?;
 
         let env = Arc::new(Environment {
