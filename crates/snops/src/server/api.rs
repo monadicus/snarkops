@@ -60,13 +60,6 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
-        .route(
-            "/env/:env_id/timelines/:timeline_id/steps",
-            get(get_timeline),
-        )
-        .route("/env/:id/timelines/:timeline_id", post(post_timeline))
-        .route("/env/:id/timelines/:timeline_id", delete(delete_timeline))
-        .route("/env/:env_id/timelines", get(get_timelines))
 }
 
 #[derive(Deserialize)]
@@ -203,28 +196,6 @@ async fn get_env_list(State(state): State<AppState>) -> Response {
     Json(state.envs.iter().map(|e| e.id).collect::<Vec<_>>()).into_response()
 }
 
-async fn get_timeline(
-    Path((env_id, timeline_id)): Path<(String, String)>,
-    State(state): State<AppState>,
-) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let timeline_id = unwrap_or_not_found!(id_or_none(&timeline_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-    let timeline = unwrap_or_not_found!(env.timelines.get(&timeline_id));
-
-    Json(json!({
-        "steps": timeline.len(),
-    }))
-    .into_response()
-}
-
-async fn get_timelines(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-
-    Json(&env.timelines.iter().map(|t| *t.key()).collect::<Vec<_>>()).into_response()
-}
-
 async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
     let env = unwrap_or_not_found!(state.get_env(env_id));
@@ -322,36 +293,8 @@ async fn post_env_prepare(
     // TODO: some live state to report to the calling CLI or something would be
     // really nice
 
-    // TODO: clean up existing test
-
     match Environment::prepare(env_id, documents, state).await {
         Ok(env_id) => (StatusCode::OK, Json(json!({ "id": env_id }))).into_response(),
-        Err(e) => ServerError::from(e).into_response(),
-    }
-}
-
-async fn post_timeline(
-    Path((env_id, timeline_id)): Path<(String, String)>,
-    State(state): State<AppState>,
-) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let timeline_id = unwrap_or_not_found!(id_or_none(&timeline_id));
-
-    match Environment::execute(state, env_id, timeline_id).await {
-        Ok(()) => status_ok(),
-        Err(e) => ServerError::from(e).into_response(),
-    }
-}
-
-async fn delete_timeline(
-    Path((env_id, timeline_id)): Path<(String, String)>,
-    State(state): State<AppState>,
-) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let timeline_id = unwrap_or_not_found!(id_or_none(&timeline_id));
-
-    match Environment::cleanup_timeline(env_id, timeline_id, &state).await {
-        Ok(_) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }

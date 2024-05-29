@@ -19,10 +19,6 @@ pub mod infrastructure;
 pub mod nodes;
 pub mod outcomes;
 pub mod storage;
-pub mod timeline;
-
-#[cfg(test)]
-pub mod timeline_tests;
 
 // TODO: Considerations:
 // TODO: - Generate json schema with https://docs.rs/schemars/latest/schemars/
@@ -41,12 +37,6 @@ pub enum ItemDocument {
 
     #[serde(rename = "infrastructure.snarkos.testing.monadic.us/v1")]
     Infrastructure(Box<infrastructure::Document>),
-
-    #[serde(rename = "timeline.snarkos.testing.monadic.us/v1")]
-    Timeline(Box<timeline::Document>),
-
-    #[serde(rename = "outcomes.snarkos.testing.monadic.us/v1")]
-    Outcomes(Box<outcomes::Document>),
 
     #[serde(rename = "cannon.snarkos.testing.monadic.us/v1")]
     Cannon(Box<cannon::Document>),
