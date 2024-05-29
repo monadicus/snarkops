@@ -11,10 +11,13 @@ use crate::{
     env::error::{EnvError, ExecutionError},
     error::DeserializeError,
     schema::error::SchemaError,
+    state::error::BatchReconcileError,
 };
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum ServerError {
+    #[error(transparent)]
+    BatchReconcile(#[from] BatchReconcileError),
     #[error("Content resource `{0}` not found")]
     ContentNotFound(String),
     #[error(transparent)]
@@ -30,6 +33,7 @@ pub enum ServerError {
 }
 
 impl_into_status_code!(ServerError, |value| match value {
+    BatchReconcile(e) => e.into(),
     ContentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
     Cannon(e) => e.into(),
     Deserialize(e) => e.into(),
@@ -39,6 +43,7 @@ impl_into_status_code!(ServerError, |value| match value {
 });
 
 impl_into_type_str!(ServerError, |value| match value {
+    BatchReconcile(e) => format!("{}.{e}", value.as_ref()),
     Cannon(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Env(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Execute(e) => format!("{}.{}", value.as_ref(), String::from(e)),

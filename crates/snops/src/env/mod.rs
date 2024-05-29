@@ -463,6 +463,11 @@ impl Environment {
         })
     }
 
+    pub fn get_node_key_by_agent(&self, id: AgentId) -> Option<&NodeKey> {
+        let peer = EnvPeer::Internal(id);
+        self.node_peers.get_by_right(&peer)
+    }
+
     pub fn matching_nodes<'a>(
         &'a self,
         targets: &'a NodeTargets,
