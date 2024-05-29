@@ -362,7 +362,7 @@ impl Environment {
         let (cannons, sinks) = prepare_cannons(
             Arc::clone(&state),
             &storage,
-            prev_env.as_ref().map(Arc::clone),
+            prev_env.clone(),
             cannons_ready,
             (env_id, network, storage_id, DEFAULT_AOT_BIN.clone()),
             pending_cannons
@@ -514,7 +514,7 @@ impl Environment {
     }
 
     pub fn get_cannon(&self, id: CannonId) -> Option<Arc<CannonInstance>> {
-        self.cannons.get(&id).map(Arc::clone)
+        self.cannons.get(&id).cloned()
     }
 
     pub fn info(&self) -> EnvInfo {
@@ -560,6 +560,8 @@ impl Environment {
     }
 }
 
+// TODO remove this
+#[allow(clippy::type_complexity)]
 pub fn prepare_cannons(
     state: Arc<GlobalState>,
     storage: &LoadedStorage,

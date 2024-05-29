@@ -26,7 +26,8 @@ impl DataFormat for TxSinkFormatHeader {
 
         let version = reader.read_data(&())?;
         let node_targets = read_dataformat(reader)?;
-        let fire_rate = reader.read_data(&())?;
+        // TODO USEME
+        reader.read_data(&())?;
         Ok(Self {
             version,
             node_targets,
@@ -69,7 +70,8 @@ impl DataFormat for TxSink {
         match reader.read_data(&())? {
             0u8 => {
                 let file_name = reader.read_data(&())?;
-                let tx_request_delay_ms = reader.read_data(&())?;
+                // TODO USEME
+                reader.read_data(&())?;
                 Ok(TxSink::Record { file_name })
             }
             1u8 => {

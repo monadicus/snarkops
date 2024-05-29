@@ -36,6 +36,7 @@ struct CommonParams {
 
 struct Env {
     env: Arc<Environment>,
+    #[allow(dead_code)]
     env_id: EnvId,
     state: AppState,
 }
@@ -88,8 +89,8 @@ pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/online", post(power::online))
         .route("/offline", post(power::offline))
-        .route("/reboot", post(todo))
-        .route("/config", post(todo))
+        .route("/reboot", post(power::reboot))
+        .route("/config", post(config::config))
         .route("/execute", post(todo))
     // TODO: program deploy action
 }

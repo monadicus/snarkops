@@ -334,7 +334,10 @@ pub struct ExecutionContext {
     source: TxSource,
     sink: TxSink,
     fired_txs: Arc<AtomicUsize>,
+    // TODO FIXME UH OH
+    #[allow(dead_code)]
     tx_sender: UnboundedSender<String>,
+    #[allow(dead_code)]
     auth_sender: UnboundedSender<Authorization>,
 }
 

@@ -7,6 +7,8 @@ use crate::{
 };
 
 impl ExecuteAction {
+    // TODO USEME
+    #[allow(dead_code)]
     pub async fn execute(&self, env: &Environment) -> Result<(), ExecutionError> {
         let Self {
             cannon: cannon_id,
@@ -18,7 +20,7 @@ impl ExecuteAction {
             fee_record,
         } = &self;
 
-        let Some(cannon) = env.cannons.get(&cannon_id) else {
+        let Some(cannon) = env.cannons.get(cannon_id) else {
             return Err(ExecutionError::UnknownCannon(*cannon_id));
         };
 
