@@ -69,7 +69,7 @@ impl Env {
     pub fn run(self, url: &str, client: Client) -> Result<Response> {
         use EnvCommands::*;
         Ok(match self.command {
-            Action(action) => action.execute(&self.id, client)?,
+            Action(action) => action.execute(url, &self.id, client)?,
             Agent { key } => {
                 let ep = format!("{url}/api/v1/env/{}/agents/{}", self.id, key);
 

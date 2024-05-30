@@ -48,21 +48,21 @@ pub enum Action {
 }
 
 impl Action {
-    pub fn execute(self, env_id: &str, client: Client) -> Result<Response> {
+    pub fn execute(self, url: &str, env_id: &str, client: Client) -> Result<Response> {
         use Action::*;
         Ok(match self {
             Offline(Nodes { nodes }) => {
-                let ep = format!("/env/{env_id}/action/offline");
+                let ep = format!("{url}/api/v1/env/{env_id}/action/offline");
 
                 client.post(ep).json(&WithTargets::from(nodes)).send()?
             }
             Online(Nodes { nodes }) => {
-                let ep = format!("/env/{env_id}/action/online");
+                let ep = format!("{url}/api/v1/env/{env_id}/action/online");
 
                 client.post(ep).json(&WithTargets::from(nodes)).send()?
             }
             Reboot(Nodes { nodes }) => {
-                let ep = format!("/env/{env_id}/action/reboot");
+                let ep = format!("{url}/api/v1/env/{env_id}/action/reboot");
 
                 client.post(ep).json(&WithTargets::from(nodes)).send()?
             }
@@ -75,7 +75,7 @@ impl Action {
                 locator,
                 inputs,
             } => {
-                let ep = format!("/env/{}/action/reboot", env_id);
+                let ep = format!("{url}/api/v1/env/{}/action/execute", env_id);
 
                 let (program, function) = locator
                     .split_once('/')
@@ -83,8 +83,8 @@ impl Action {
                     .unwrap_or((None, &locator));
 
                 let mut json = json!({
-                        "function": function,
-                        "inputs": inputs,
+                    "function": function,
+                    "inputs": inputs,
                 });
 
                 if let Some(private_key) = private_key {

@@ -4,6 +4,7 @@ use crate::format::DataFormat;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum NetworkId {
     #[default]
     Mainnet,
