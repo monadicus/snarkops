@@ -183,7 +183,7 @@ async fn authorization(
     let (tx, rx) = mpsc::channel(10);
 
     match cannon.proxy_auth(body, TransactionStatusSender::new(tx)) {
-        Ok(_) => execute_status(tx_id, rx).await,
+        Ok(_) => execute_status(tx_id, rx).await.into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("{e}")})),

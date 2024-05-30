@@ -2,6 +2,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use serde_json::json;
 use snops_common::{
     action_models::{AleoValue, ExecuteAction},
     aot_cmds::AotCmd,
@@ -17,11 +18,13 @@ use crate::{
         Authorization,
     },
     env::{error::ExecutionError, Environment},
-    json_response,
-    server::error::ServerError,
+    server::error::{ActionError, ServerError},
 };
 
-pub async fn execute_status(tx_id: String, mut rx: mpsc::Receiver<TransactionStatus>) -> Response {
+pub async fn execute_status(
+    tx_id: String,
+    mut rx: mpsc::Receiver<TransactionStatus>,
+) -> Result<Json<serde_json::Value>, ActionError> {
     use TransactionStatus::*;
 
     let mut timeout = Box::pin(tokio::time::sleep(std::time::Duration::from_secs(10)));
@@ -31,42 +34,28 @@ pub async fn execute_status(tx_id: String, mut rx: mpsc::Receiver<TransactionSta
     loop {
         select! {
             _ = &mut timeout => {
-                return json_response!(REQUEST_TIMEOUT, {
-                    "error": "execution timed out",
-                    "transaction_id": tx_id,
-                    "agent_id": agent_id,
-                    "retries": retries
-                });
+                return Err(ActionError::ExecuteStatusTimeout { tx_id, agent_id, retries });
             },
             Some(msg) = rx.recv() => {
                 match msg {
                     ExecuteAborted => {
-                        return json_response!(INTERNAL_SERVER_ERROR, {
-                            "error": "execution aborted",
-                            "transaction_id": tx_id,
-                            "retries": retries
-                        });
+                        return Err(ActionError::ExecuteStatusAborted { tx_id, retries});
                     },
                     ExecuteFailed(msg) => {
-                        return json_response!(INTERNAL_SERVER_ERROR, {
-                            "error": "execution failed",
-                            "message": msg,
-                            "transaction_id": tx_id,
-                            "retries": retries
-                        });
+                        return Err(ActionError::ExecuteStatusFailed { message: msg, tx_id, retries });
                     },
                     Executing(id) => {
-                        agent_id = Some(id);
+                        agent_id = Some(id.to_string());
                     },
                     ExecuteAwaitingCompute => {
                         retries += 1;
                     },
                     ExecuteComplete => {
-                        return json_response!(OK, {
+                        return Ok(Json(json!({
                             "transaction_id": tx_id,
                             "agent_id": agent_id,
                             "retries": retries
-                        });
+                        })));
                     },
                     _ => (),
                 }
@@ -83,7 +72,7 @@ pub async fn execute(Env { env, .. }: Env, Json(action): Json<ExecuteAction>) ->
         Err(e) => return ServerError::from(e).into_response(),
     };
 
-    execute_status(tx_id, rx).await
+    execute_status(tx_id, rx).await.into_response()
 }
 
 pub async fn execute_inner(

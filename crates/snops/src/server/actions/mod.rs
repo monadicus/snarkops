@@ -6,7 +6,7 @@ use axum::{
     routing::post,
     Router,
 };
-use http::request::Parts;
+use http::{request::Parts, StatusCode};
 use snops_common::state::{id_or_none, EnvId};
 
 use crate::{env::Environment, state::AppState};
@@ -72,12 +72,12 @@ impl FromRequestParts<AppState> for Env {
         let params = CommonParams::from_request_parts(parts, state).await?;
 
         // get environment
-        let env_id = id_or_none(&params.env_id)
-            .ok_or_else(|| axum::http::StatusCode::NOT_FOUND.into_response())?;
+        let env_id =
+            id_or_none(&params.env_id).ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
 
         let env = state
             .get_env(env_id)
-            .ok_or_else(|| axum::http::StatusCode::NOT_FOUND.into_response())?;
+            .ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
 
         Ok(Self {
             env,

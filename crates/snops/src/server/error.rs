@@ -83,3 +83,34 @@ pub enum StartError {
     #[error("failed to bind to tcp: {0}")]
     TcpBind(#[source] std::io::Error),
 }
+
+#[derive(Debug, Error, Serialize)]
+pub enum ActionError {
+    #[error("execution timed out")]
+    ExecuteStatusTimeout {
+        tx_id: String,
+        agent_id: Option<String>,
+        retries: i32,
+    },
+    #[error("execution aborted")]
+    ExecuteStatusAborted { tx_id: String, retries: i32 },
+    #[error("execution failed")]
+    ExecuteStatusFailed {
+        message: String,
+        tx_id: String,
+        retries: i32,
+    },
+}
+
+impl_into_status_code!(ActionError, |value| match value {
+    ExecuteStatusTimeout { .. } => StatusCode::REQUEST_TIMEOUT,
+    ExecuteStatusAborted { .. } | ExecuteStatusFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+});
+
+impl IntoResponse for ActionError {
+    fn into_response(self) -> axum::response::Response {
+        let mut json = json!(self);
+        json["error"] = self.to_string().into();
+        (StatusCode::from(&self), Json(&json)).into_response()
+    }
+}
