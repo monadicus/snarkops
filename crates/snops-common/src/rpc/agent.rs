@@ -44,7 +44,7 @@ pub trait AgentService {
         query: String,
         auth: String,
         fee_auth: Option<String>,
-    ) -> Result<(), AgentError>;
+    ) -> Result<String, AgentError>;
 
     async fn get_metric(metric: AgentMetric) -> f64;
 }

@@ -182,7 +182,7 @@ impl ComputeTarget {
                 events.send(TransactionStatus::Executing(agent_id));
 
                 // execute the authorization
-                client
+                let transaction = client
                     .execute_authorization(
                         env.id,
                         env.network,
@@ -198,7 +198,7 @@ impl ComputeTarget {
                     )
                     .await?;
 
-                events.send(TransactionStatus::ExecuteComplete);
+                events.send(TransactionStatus::ExecuteComplete(transaction));
 
                 Ok(())
             }

@@ -85,6 +85,7 @@ pub enum StartError {
 }
 
 #[derive(Debug, Error, Serialize)]
+#[serde(untagged)]
 pub enum ActionError {
     #[error("execution timed out")]
     ExecuteStatusTimeout {

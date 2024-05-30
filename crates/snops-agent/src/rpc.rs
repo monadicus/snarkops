@@ -471,7 +471,7 @@ impl AgentService for AgentRpcServer {
         query: String,
         auth: String,
         fee_auth: Option<String>,
-    ) -> Result<(), AgentError> {
+    ) -> Result<String, AgentError> {
         info!("executing authorization...");
 
         // TODO: maybe in the env config store a branch label for the binary so it won't
@@ -496,13 +496,12 @@ impl AgentService for AgentRpcServer {
                 let elapsed = start.elapsed().as_millis();
                 info!("authorization executed in {elapsed}ms");
                 trace!("authorization output: {exec}");
+                Ok(exec)
             }
             Err(e) => {
                 error!("failed to execute: {e}");
-                return Err(AgentError::ProcessFailed);
+                Err(AgentError::ProcessFailed)
             }
         }
-
-        Ok(())
     }
 }

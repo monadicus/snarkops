@@ -50,11 +50,14 @@ pub async fn execute_status(
                     ExecuteAwaitingCompute => {
                         retries += 1;
                     },
-                    ExecuteComplete => {
+                    ExecuteComplete(transaction) => {
                         return Ok(Json(json!({
-                            "transaction_id": tx_id,
                             "agent_id": agent_id,
-                            "retries": retries
+                            "retries": retries,
+                            "transaction": serde_json::from_str(&transaction)
+                                .unwrap_or_else(|_|
+                                    json!(transaction)
+                                ),
                         })));
                     },
                     _ => (),

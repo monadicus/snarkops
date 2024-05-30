@@ -31,7 +31,7 @@ pub enum TransactionStatus {
     /// Execute RPC failed
     ExecuteFailed(String),
     /// Agent has completed the execution
-    ExecuteComplete,
+    ExecuteComplete(String),
     // TODO: Implement the following statuses
     // /// API has received the transaction broadcast
     // BroadcastReceived,
