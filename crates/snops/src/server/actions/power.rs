@@ -2,8 +2,9 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use snops_common::action_models::WithTargets;
 
-use super::{Env, WithTargets};
+use super::Env;
 use crate::{
     server::error::ServerError,
     state::{pending_reconcile_node_map, Agent},

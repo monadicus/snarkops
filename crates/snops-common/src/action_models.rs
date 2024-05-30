@@ -1,7 +1,38 @@
 use serde::{Deserialize, Serialize};
-use snops_common::state::{CannonId, DocHeightRequest};
 
-use crate::schema::{nodes::KeySource, NodeTargets};
+use crate::{
+    key_source::KeySource,
+    node_targets::NodeTargets,
+    state::{CannonId, DocHeightRequest},
+};
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct WithTargets<T = ()> {
+    pub nodes: NodeTargets,
+    #[serde(flatten)]
+    pub data: T,
+}
+
+impl From<NodeTargets> for WithTargets {
+    fn from(nodes: NodeTargets) -> Self {
+        Self { nodes, data: () }
+    }
+}
+
+impl<T: Serialize> From<T> for WithTargets<T> {
+    fn from(data: T) -> Self {
+        Self {
+            nodes: NodeTargets::None,
+            data,
+        }
+    }
+}
+
+impl<T: Serialize> From<(NodeTargets, T)> for WithTargets<T> {
+    fn from((nodes, data): (NodeTargets, T)) -> Self {
+        Self { nodes, data }
+    }
+}
 
 fn committee_0_key() -> KeySource {
     KeySource::Committee(Some(0))

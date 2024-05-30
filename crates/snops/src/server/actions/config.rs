@@ -4,9 +4,12 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use snops_common::state::{AgentId, AgentState};
+use snops_common::{
+    action_models::{Reconfig, WithTargets},
+    state::{AgentId, AgentState},
+};
 
-use super::{models::Reconfig, Env, WithTargets};
+use super::Env;
 use crate::{
     env::PortType,
     server::error::ServerError,

@@ -11,6 +11,7 @@ use indexmap::{map::Entry, IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use snops_common::{
     api::EnvInfo,
+    node_targets::NodeTargets,
     state::{
         AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState, TxPipeId,
     },
@@ -32,7 +33,7 @@ use crate::{
     schema::{
         nodes::{ExternalNode, Node},
         storage::{LoadedStorage, DEFAULT_AOT_BIN},
-        ItemDocument, NodeTargets,
+        ItemDocument,
     },
     state::{Agent, GlobalState},
 };

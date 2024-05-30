@@ -1,5 +1,7 @@
+use snops_common::node_targets::NodeTargets;
+
 use super::prelude::*;
-use crate::{cannon::sink::TxSink, schema::NodeTargets};
+use crate::cannon::sink::TxSink;
 
 #[derive(Debug, Clone)]
 pub struct TxSinkFormatHeader {

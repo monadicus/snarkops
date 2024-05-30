@@ -5,13 +5,14 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     aot_cmds::{error::CommandError, AotCmdError},
     impl_into_status_code, impl_into_type_str,
+    node_targets::NodeTargets,
     state::{CannonId, EnvId, TxPipeId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
 use super::{status::TransactionStatusSender, Authorization};
-use crate::{error::StateError, schema::NodeTargets};
+use crate::error::StateError;
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum AuthorizeError {

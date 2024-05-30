@@ -18,15 +18,13 @@ use snops_common::{
     aot_cmds::error::CommandError,
     api::{CheckpointMeta, StorageInfo},
     constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE},
+    key_source::{KeySource, ACCOUNTS_KEY_ID},
     state::{InternedId, KeyState, NetworkId, StorageId},
 };
 use tokio::process::Command;
 use tracing::{error, info, warn};
 
-use super::{
-    error::{SchemaError, StorageError},
-    nodes::{KeySource, ACCOUNTS_KEY_ID},
-};
+use super::error::{SchemaError, StorageError};
 use crate::{cli::Cli, persist::PersistStorage, state::GlobalState};
 
 pub const STORAGE_DIR: &str = "storage";

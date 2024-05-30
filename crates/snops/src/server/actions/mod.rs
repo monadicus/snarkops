@@ -7,14 +7,12 @@ use axum::{
     Router,
 };
 use http::request::Parts;
-use serde::{Deserialize, Serialize};
 use snops_common::state::{id_or_none, EnvId};
 
-use crate::{env::Environment, schema::NodeTargets, state::AppState};
+use crate::{env::Environment, state::AppState};
 
 mod config;
 pub mod execute;
-pub mod models;
 mod power;
 
 #[macro_export]
@@ -25,13 +23,6 @@ macro_rules! json_response {
             ::axum::Json(::serde_json::json!($json)),
         ))
     };
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-struct WithTargets<T = ()> {
-    nodes: NodeTargets,
-    #[serde(flatten)]
-    data: T,
 }
 
 // /env/:env_id/action/<this router>

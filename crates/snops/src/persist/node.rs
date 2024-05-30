@@ -89,15 +89,13 @@ mod tests {
 
     use snops_common::{
         format::DataFormat,
+        node_targets::NodeTargets,
         state::{DocHeightRequest, InternedId},
     };
 
     use crate::{
         persist::{PersistNode, PersistNodeFormatHeader},
-        schema::{
-            nodes::{ExternalNode, Node, NodeFormatHeader},
-            NodeTargets,
-        },
+        schema::nodes::{ExternalNode, Node, NodeFormatHeader},
     };
 
     macro_rules! case {

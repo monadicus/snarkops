@@ -1,8 +1,7 @@
+use snops_common::{key_source::KeySource, node_targets::NodeTargets};
+
 use super::prelude::*;
-use crate::{
-    cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource},
-    schema::{nodes::KeySource, NodeTargets},
-};
+use crate::cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource};
 
 #[derive(Debug, Clone)]
 pub struct TxSourceFormatHeader {

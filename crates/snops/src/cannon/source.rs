@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snops_common::{lasso::Spur, state::NetworkId, INTERN};
+use snops_common::{lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN};
 
 use super::{
     error::{CannonError, SourceError},
@@ -9,7 +9,6 @@ use super::{
 };
 use crate::{
     env::{set::find_compute_agent, Environment},
-    schema::NodeTargets,
     state::GlobalState,
 };
 

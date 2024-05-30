@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
-    aot_cmds::error::CommandError, impl_into_status_code, impl_into_type_str, state::StorageId,
+    aot_cmds::error::CommandError, impl_into_status_code, impl_into_type_str,
+    key_source::KeySourceError, node_targets::NodeTargetError, state::StorageId,
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -55,25 +56,6 @@ impl_into_status_code!(StorageError, |value| match value {
 impl_into_type_str!(StorageError, |value| match value {
     Command(e, _) => format!("{}.{}", value.as_ref(), e.as_ref()),
     _ => value.as_ref().to_string(),
-});
-
-#[derive(Debug, Error)]
-#[error("invalid node target string")]
-pub struct NodeTargetError;
-
-impl_into_status_code!(NodeTargetError, |_| StatusCode::BAD_REQUEST);
-
-#[derive(Debug, Error, AsRefStr)]
-pub enum KeySourceError {
-    #[error("invalid key source string")]
-    InvalidKeySource,
-    #[error("invalid committee index: {0}")]
-    InvalidCommitteeIndex(#[source] std::num::ParseIntError),
-}
-
-impl_into_status_code!(KeySourceError, |value| match value {
-    InvalidKeySource => StatusCode::BAD_REQUEST,
-    InvalidCommitteeIndex(_) => StatusCode::BAD_REQUEST,
 });
 
 #[derive(Debug, Error, AsRefStr)]

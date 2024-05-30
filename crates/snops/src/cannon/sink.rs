@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use snops_common::state::TxPipeId;
 
-use crate::schema::NodeTargets;
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", untagged)]
 pub enum TxSink {
@@ -18,6 +16,6 @@ pub enum TxSink {
         /// The nodes to send transactions to
         ///
         /// Requires cannon to have an associated env_id
-        target: NodeTargets,
+        target: snops_common::node_targets::NodeTargets,
     },
 }
