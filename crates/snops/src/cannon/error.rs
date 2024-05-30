@@ -10,7 +10,7 @@ use snops_common::{
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
-use super::Authorization;
+use super::{status::TransactionStatusSender, Authorization};
 use crate::{error::StateError, schema::NodeTargets};
 
 #[derive(Debug, Error, AsRefStr)]
@@ -168,7 +168,7 @@ pub enum CannonError {
     #[error("send `auth` error for cannon `{0}`: {1}")]
     SendAuthError(
         CannonId,
-        #[source] tokio::sync::mpsc::error::SendError<Authorization>,
+        #[source] tokio::sync::mpsc::error::SendError<(Authorization, TransactionStatusSender)>,
     ),
     #[error("send `tx` error for cannon `{0}`: {1}")]
     SendTxError(

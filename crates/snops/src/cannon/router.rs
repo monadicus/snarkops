@@ -8,10 +8,14 @@ use axum::{
 };
 use reqwest::StatusCode;
 use serde_json::json;
-use snops_common::state::{id_or_none, NetworkId};
+use snops_common::{
+    aot_cmds::AotCmd,
+    state::{id_or_none, NetworkId},
+};
+use tokio::sync::mpsc;
 
-use super::Authorization;
-use crate::state::AppState;
+use super::{status::TransactionStatusSender, Authorization};
+use crate::{server::actions::execute::execute_status, state::AppState};
 
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
@@ -164,8 +168,22 @@ async fn authorization(
             .into_response();
     };
 
-    match cannon.proxy_auth(body) {
-        Ok(_) => StatusCode::OK.into_response(),
+    let aot = AotCmd::new(env.aot_bin.clone(), env.network);
+    let tx_id = match body.get_tx_id(&aot).await {
+        Ok(id) => id,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("{e}")})),
+            )
+                .into_response()
+        }
+    };
+
+    let (tx, rx) = mpsc::channel(10);
+
+    match cannon.proxy_auth(body, TransactionStatusSender::new(tx)) {
+        Ok(_) => execute_status(tx_id, rx).await,
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("{e}")})),

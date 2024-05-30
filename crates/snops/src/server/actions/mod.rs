@@ -13,11 +13,21 @@ use snops_common::state::{id_or_none, EnvId};
 use crate::{env::Environment, schema::NodeTargets, state::AppState};
 
 mod config;
-mod execute;
+pub mod execute;
 pub mod models;
 mod power;
 
-#[derive(Deserialize, Serialize)]
+#[macro_export]
+macro_rules! json_response {
+    ( $code:ident , $json:tt $(,)? ) => {
+        ::axum::response::IntoResponse::into_response((
+            ::http::StatusCode::$code,
+            ::axum::Json(::serde_json::json!($json)),
+        ))
+    };
+}
+
+#[derive(Deserialize, Serialize, Clone)]
 struct WithTargets<T = ()> {
     nodes: NodeTargets,
     #[serde(flatten)]
@@ -34,7 +44,8 @@ struct CommonParams {
     state: AppState,
 }
 
-struct Env {
+#[derive(Clone)]
+pub struct Env {
     env: Arc<Environment>,
     #[allow(dead_code)]
     env_id: EnvId,

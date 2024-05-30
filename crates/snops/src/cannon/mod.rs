@@ -5,13 +5,14 @@ mod net;
 pub mod router;
 pub mod sink;
 pub mod source;
+pub mod status;
 
 use std::{
     path::PathBuf,
     sync::{atomic::AtomicUsize, Arc},
 };
 
-use error::SourceError;
+use error::{AuthorizeError, SourceError};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,7 @@ use snops_common::{
     aot_cmds::AotCmd,
     state::{AgentPeer, CannonId, EnvId, NetworkId, StorageId},
 };
+use status::{TransactionStatus, TransactionStatusSender};
 use tokio::{
     sync::{
         mpsc::{UnboundedReceiver, UnboundedSender},
@@ -79,6 +81,21 @@ pub struct Authorization {
     pub fee_auth: Option<serde_json::Value>,
 }
 
+impl Authorization {
+    pub async fn get_tx_id(&self, aot: &AotCmd) -> Result<String, AuthorizeError> {
+        Ok(aot
+            .get_tx_id(
+                serde_json::to_string(&self.auth).map_err(AuthorizeError::Json)?,
+                self.fee_auth
+                    .as_ref()
+                    .map(|fee_auth| serde_json::to_string(&fee_auth).map_err(AuthorizeError::Json))
+                    .transpose()?,
+            )
+            .await?
+            .trim()
+            .to_owned())
+    }
+}
 /// Transaction cannon state
 /// using the `TxSource` and `TxSink` for configuration.
 #[derive(Debug)]
@@ -112,14 +129,14 @@ pub struct CannonInstance {
     /// channel to send transactions to the the task
     tx_sender: UnboundedSender<String>,
     /// channel to send authorizations to the the task
-    auth_sender: UnboundedSender<Authorization>,
+    auth_sender: UnboundedSender<(Authorization, TransactionStatusSender)>,
 
     pub(crate) fired_txs: Arc<AtomicUsize>,
 }
 
 pub struct CannonReceivers {
     transactions: UnboundedReceiver<String>,
-    authorizations: UnboundedReceiver<Authorization>,
+    authorizations: UnboundedReceiver<(Authorization, TransactionStatusSender)>,
 }
 
 pub type CannonInstanceMeta = (EnvId, NetworkId, StorageId, PathBuf);
@@ -181,8 +198,6 @@ impl CannonInstance {
             sink: self.sink.clone(),
             fired_txs: Arc::clone(&self.fired_txs),
             state: Arc::clone(&self.global_state),
-            tx_sender: self.tx_sender.clone(),
-            auth_sender: self.auth_sender.clone(),
         }
     }
 
@@ -305,9 +320,13 @@ impl CannonInstance {
     }
 
     /// Called by axum to forward /cannon/<id>/auth to a listen source
-    pub fn proxy_auth(&self, body: Authorization) -> Result<(), CannonError> {
+    pub fn proxy_auth(
+        &self,
+        body: Authorization,
+        events: TransactionStatusSender,
+    ) -> Result<(), CannonError> {
         self.auth_sender
-            .send(body)
+            .send((body, events))
             .map_err(|e| CannonError::SendAuthError(self.id, e))?;
 
         Ok(())
@@ -334,11 +353,6 @@ pub struct ExecutionContext {
     source: TxSource,
     sink: TxSink,
     fired_txs: Arc<AtomicUsize>,
-    // TODO FIXME UH OH
-    #[allow(dead_code)]
-    tx_sender: UnboundedSender<String>,
-    #[allow(dead_code)]
-    auth_sender: UnboundedSender<Authorization>,
 }
 
 impl ExecutionContext {
@@ -401,8 +415,8 @@ impl ExecutionContext {
                 // ------------------------
 
                 // receive authorizations and forward the executions to the compute target
-                Some(auth) = rx.authorizations.recv() => {
-                    auth_execs.push(self.execute_auth(auth, &query_path));
+                Some((auth, events)) = rx.authorizations.recv() => {
+                    auth_execs.push(self.execute_auth(auth, &query_path, events));
                 }
                 // receive transactions and forward them to the sink target
                 Some(tx) = rx.transactions.recv() => {
@@ -434,12 +448,18 @@ impl ExecutionContext {
     }
 
     /// Execute an authorization on the source's compute target
-    async fn execute_auth(&self, auth: Authorization, query_path: &str) -> Result<(), CannonError> {
-        let env = self
-            .state
-            .get_env(self.env_id)
-            .ok_or_else(|| ExecutionContextError::EnvDropped(self.env_id, self.id))?;
+    async fn execute_auth(
+        &self,
+        auth: Authorization,
+        query_path: &str,
+        events: TransactionStatusSender,
+    ) -> Result<(), CannonError> {
+        let env = self.state.get_env(self.env_id).ok_or_else(|| {
+            events.send(TransactionStatus::ExecuteAborted);
+            ExecutionContextError::EnvDropped(self.env_id, self.id)
+        })?;
 
+        events.send(TransactionStatus::ExecuteQueued);
         match self
             .source
             .compute
@@ -449,6 +469,7 @@ impl ExecutionContext {
                 query_path,
                 &auth.auth,
                 auth.fee_auth.as_ref(),
+                &events,
             )
             .await
         {
@@ -458,11 +479,16 @@ impl ExecutionContext {
                     "cannon {}.{} no available agents to execute auth, retrying in a second...",
                     self.env_id, self.id
                 );
+                events.send(TransactionStatus::ExecuteAwaitingCompute);
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 if let Some(cannon) = env.get_cannon(self.id) {
-                    cannon.proxy_auth(auth)?
+                    cannon.proxy_auth(auth, events)?
                 }
                 Ok(())
+            }
+            Err(e) => {
+                events.send(TransactionStatus::ExecuteFailed(e.to_string()));
+                Err(e)
             }
             res => res,
         }

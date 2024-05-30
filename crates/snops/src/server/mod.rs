@@ -41,7 +41,7 @@ use crate::{
     state::{Agent, AgentFlags, AppState, GlobalState},
 };
 
-mod actions;
+pub mod actions;
 mod api;
 mod content;
 pub mod error;

@@ -5,6 +5,7 @@ use snops_common::{lasso::Spur, state::NetworkId, INTERN};
 use super::{
     error::{CannonError, SourceError},
     net::get_available_port,
+    status::{TransactionStatus, TransactionStatusSender},
 };
 use crate::{
     env::{set::find_compute_agent, Environment},
@@ -170,13 +171,16 @@ impl ComputeTarget {
         query_path: &str,
         auth: &serde_json::Value,
         fee_auth: Option<&serde_json::Value>,
+        events: &TransactionStatusSender,
     ) -> Result<(), CannonError> {
         match self {
             ComputeTarget::Agent { labels } => {
                 // find a client, mark it as busy
-                let (client, _busy) =
+                let (agent_id, client, _busy) =
                     find_compute_agent(state, &labels.clone().unwrap_or_default())
                         .ok_or(SourceError::NoAvailableAgents("authorization"))?;
+
+                events.send(TransactionStatus::Executing(agent_id));
 
                 // execute the authorization
                 client
@@ -194,6 +198,8 @@ impl ComputeTarget {
                             .transpose()?,
                     )
                     .await?;
+
+                events.send(TransactionStatus::ExecuteComplete);
 
                 Ok(())
             }
