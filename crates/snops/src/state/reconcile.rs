@@ -1,11 +1,25 @@
+use std::collections::HashMap;
+
 use futures_util::future::join_all;
-use snops_common::state::{AgentId, AgentState};
+use snops_common::state::{AgentId, AgentState, NodeKey};
 use tracing::{error, info};
 
 use super::{error::BatchReconcileError, AgentClient, GlobalState};
 
 /// The tuple to pass into `reconcile_agents`.
 pub type PendingAgentReconcile = (AgentId, Option<AgentClient>, AgentState);
+
+/// Get a node map (key => agent ID) from an agent reconciliation iterator.
+pub fn pending_reconcile_node_map<'a>(
+    pending: impl Iterator<Item = &'a PendingAgentReconcile>,
+) -> HashMap<NodeKey, AgentId> {
+    pending
+        .map(|(id, _, state)| match state {
+            AgentState::Node(_, node) => (node.node_key.clone(), *id),
+            _ => unreachable!(),
+        })
+        .collect::<HashMap<_, _>>()
+}
 
 impl GlobalState {
     /// Reconcile a bunch of agents at once.
