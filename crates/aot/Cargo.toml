@@ -46,7 +46,7 @@ serde_json.workspace = true
 snarkos-account.workspace = true
 snarkos-node = { workspace = true, optional = true }
 snarkos-node-metrics = { workspace = true, optional = true }
-snarkvm.workspace = true
+snarkvm = { workspace = true, features = ["ledger"] }
 snops-common.workspace = true
 tokio.workspace = true
 tracing.workspace = true

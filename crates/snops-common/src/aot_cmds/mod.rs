@@ -165,8 +165,6 @@ impl AotCmd {
     ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
-            .stdout(std::io::stdout())
-            .stderr(std::io::stderr())
             .env("NETWORK", self.network.to_string())
             .arg("program")
             .arg("execute")
@@ -184,6 +182,31 @@ impl AotCmd {
             command.output().await,
             "output",
             "aot program execute",
+            Self::parse_string,
+        )
+    }
+
+    pub async fn get_tx_id(
+        &self,
+        auth: String,
+        fee_auth: Option<String>,
+    ) -> Result<String, AotCmdError> {
+        let mut command = Command::new(&self.bin);
+        command
+            .env("NETWORK", self.network.to_string())
+            .arg("program")
+            .arg("id")
+            .arg("--auth")
+            .arg(auth);
+
+        if let Some(fee) = fee_auth {
+            command.arg("--fee-auth").arg(fee);
+        }
+
+        Self::handle_output(
+            command.output().await,
+            "output",
+            "aot program tx id",
             Self::parse_string,
         )
     }

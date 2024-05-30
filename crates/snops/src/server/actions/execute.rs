@@ -23,7 +23,7 @@ pub async fn execute(Env { env, .. }: Env, Json(action): Json<ExecuteAction>) ->
 }
 
 impl ExecuteAction {
-    pub async fn execute(&self, env: &Environment) -> Result<(), ExecutionError> {
+    pub async fn execute(&self, env: &Environment) -> Result<String, ExecutionError> {
         let Self {
             cannon: cannon_id,
             private_key,
@@ -61,7 +61,8 @@ impl ExecuteAction {
             .collect::<Result<Vec<String>, AuthorizeError>>()?;
 
         // authorize the transaction
-        let auth_str = AotCmd::new(env.aot_bin.clone(), env.network)
+        let aot = AotCmd::new(env.aot_bin.clone(), env.network);
+        let auth_str = aot
             .authorize(
                 &resolved_pk,
                 program,
@@ -76,8 +77,20 @@ impl ExecuteAction {
         let authorization: Authorization =
             serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
 
+        let tx_id = aot
+            .get_tx_id(
+                serde_json::to_string(&authorization.auth).map_err(AuthorizeError::Json)?,
+                authorization
+                    .fee_auth
+                    .as_ref()
+                    .map(|fee_auth| serde_json::to_string(&fee_auth).map_err(AuthorizeError::Json))
+                    .transpose()?,
+            )
+            .await?;
+
         // proxy it to a listen cannon
         cannon.proxy_auth(authorization)?;
-        Ok(())
+
+        Ok(tx_id)
     }
 }

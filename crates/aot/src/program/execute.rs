@@ -110,7 +110,7 @@ impl<N: Network> Execute<N> {
 
         // Broadcast the transaction.
         tracing::info!("broadcasting transaction...");
-        tracing::debug!("{}", serde_json::to_string(&tx)?);
+        println!("{}", serde_json::to_string(&tx)?);
         let response = reqwest::blocking::Client::new()
             .post(format!("{}/{network}/transaction/broadcast", self.query))
             .header("Content-Type", "application/json")
@@ -120,7 +120,7 @@ impl<N: Network> Execute<N> {
         // Ensure the response is successful.
         if response.status().is_success() {
             // Return the transaction.
-            println!("{}", response.text()?);
+            // println!("{}", response.text()?);
             Ok(())
         } else {
             // Return the error.

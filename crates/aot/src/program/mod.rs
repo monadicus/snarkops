@@ -1,12 +1,15 @@
 use std::sync::OnceLock;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Args, Subcommand};
 use lazy_static::lazy_static;
 use serde_json::json;
 use snarkvm::{
-    console::network::{MainnetV0, TestnetV0},
-    synthesizer::Process,
+    console::{
+        network::{MainnetV0, TestnetV0},
+        types::Field,
+    },
+    synthesizer::{Authorization, Process},
 };
 
 use crate::{runner::Key, Network};
@@ -103,10 +106,16 @@ macro_rules! use_process {
 
 #[derive(Debug, Subcommand)]
 pub enum Program<N: Network> {
+    /// Execute an authorization
     Execute(execute::Execute<N>),
+    /// Authorize a program execution
     AuthorizeProgram(auth_program::AuthorizeProgram<N>),
+    /// Authorize the fee for a program execution
     AuthorizeFee(auth_fee::AuthorizeFee<N>),
+    /// Authorize a program execution and its fee
     Authorize(Authorize<N>),
+    /// Given an authorization (and fee), return the transaction ID
+    Id(AuthToId<N>),
 }
 
 #[derive(Debug, Args)]
@@ -119,10 +128,48 @@ pub struct Authorize<N: Network> {
     pub program_opts: auth_program::AuthProgramOptions<N>,
 }
 
+#[derive(Debug, Args)]
+pub struct AuthToId<N: Network> {
+    #[clap(short, long)]
+    pub auth: Authorization<N>,
+    #[clap(short, long)]
+    pub fee_auth: Option<Authorization<N>>,
+}
+
+// convert a fee authorization to a real (fake) fee :)
+pub fn fee_from_auth<N: Network>(
+    fee_auth: &Authorization<N>,
+) -> Result<snarkvm::ledger::block::Fee<N>> {
+    let Some(transition) = fee_auth.transitions().values().next().cloned() else {
+        bail!("No transitions found in fee authorization");
+    };
+    snarkvm::ledger::block::Fee::from(transition, N::StateRoot::default(), None)
+}
+
+// compute the transaction ID for an authorization using the transitions and fee
+// authorization
+pub fn auth_tx_id<N: Network>(
+    auth: &Authorization<N>,
+    fee_auth: Option<&Authorization<N>>,
+) -> Result<N::TransactionID> {
+    let fee = fee_auth.map(fee_from_auth).transpose()?;
+
+    let field: Field<N> =
+        *snarkvm::ledger::block::Transaction::transitions_tree(auth.transitions().values(), &fee)?
+            .root();
+
+    Ok(field.into())
+}
+
 impl<N: Network> Program<N> {
     pub(crate) fn parse(self) -> Result<()> {
         match self {
             Program::Execute(command) => command.parse(),
+            Program::Id(AuthToId { auth, fee_auth }) => {
+                let id = auth_tx_id(&auth, fee_auth.as_ref())?;
+                println!("{id}");
+                Ok(())
+            }
             Program::Authorize(Authorize {
                 key,
                 program_opts,
