@@ -1,36 +1,34 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
     key_source::KeySource,
-    node_targets::NodeTargets,
+    node_targets::{NodeTarget, NodeTargets},
     state::{CannonId, DocHeightRequest},
 };
 
 #[derive(Deserialize, Serialize, Clone)]
-pub struct WithTargets<T = ()> {
+pub struct WithTargets<T = ()>
+where
+    T: Serialize,
+{
     pub nodes: NodeTargets,
     #[serde(flatten)]
     pub data: T,
 }
 
-impl From<NodeTargets> for WithTargets {
-    fn from(nodes: NodeTargets) -> Self {
-        Self { nodes, data: () }
-    }
-}
-
-impl<T: Serialize> From<T> for WithTargets<T> {
-    fn from(data: T) -> Self {
+impl From<Vec<NodeTarget>> for WithTargets<()> {
+    fn from(nodes: Vec<NodeTarget>) -> Self {
         Self {
-            nodes: NodeTargets::None,
-            data,
+            nodes: NodeTargets::from(nodes),
+            data: (),
         }
     }
 }
-
-impl<T: Serialize> From<(NodeTargets, T)> for WithTargets<T> {
-    fn from((nodes, data): (NodeTargets, T)) -> Self {
-        Self { nodes, data }
+impl From<NodeTargets> for WithTargets<()> {
+    fn from(nodes: NodeTargets) -> Self {
+        Self { nodes, data: () }
     }
 }
 
@@ -74,6 +72,16 @@ pub enum AleoValue {
     Key(KeySource),
     // Other values (u8, fields, etc.)
     Other(String),
+}
+
+impl FromStr for AleoValue {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(KeySource::from_str(s)
+            .map(AleoValue::Key)
+            .unwrap_or_else(|_| AleoValue::Other(s.to_owned())))
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

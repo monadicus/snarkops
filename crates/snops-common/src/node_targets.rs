@@ -55,12 +55,7 @@ impl DataFormat for NodeTargets {
         header: &Self::Header,
     ) -> Result<Self, DataReadError> {
         let targets = Vec::<NodeTarget>::read_data(reader, header)?;
-        Ok(match targets.len() {
-            0 => NodeTargets::None,
-            // unwrap safety: length is guaranteed to be 1
-            1 => NodeTargets::One(targets.into_iter().next().unwrap()),
-            _ => NodeTargets::Many(targets),
-        })
+        Ok(NodeTargets::from(targets))
     }
 }
 
@@ -387,9 +382,13 @@ impl From<NodeKey> for NodeTarget {
     }
 }
 
-impl From<Vec<NodeKey>> for NodeTargets {
-    fn from(nodes: Vec<NodeKey>) -> Self {
-        Self::Many(nodes.into_iter().map(NodeTarget::from).collect())
+impl From<Vec<NodeTarget>> for NodeTargets {
+    fn from(nodes: Vec<NodeTarget>) -> Self {
+        match nodes.len() {
+            0 => Self::None,
+            1 => Self::One(nodes.into_iter().next().unwrap()),
+            _ => Self::Many(nodes),
+        }
     }
 }
 
