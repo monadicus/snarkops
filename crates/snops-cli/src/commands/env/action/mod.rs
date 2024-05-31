@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use anyhow::Result;
 use clap::Parser;
 use reqwest::blocking::{Client, Response};
@@ -5,17 +7,49 @@ use serde_json::json;
 use snops_common::{
     action_models::{AleoValue, WithTargets},
     key_source::KeySource,
-    node_targets::NodeTarget,
-    state::CannonId,
+    node_targets::{NodeTarget, NodeTargetError, NodeTargets},
+    state::{CannonId, DocHeightRequest},
 };
 
 //scli env canary action online client/*
 //scli env canary action offline client/*
 
-#[derive(Debug, Parser)]
+#[derive(Clone, Debug, Parser)]
 pub struct Nodes {
     #[clap(num_args = 1, value_delimiter = ' ')]
     pub nodes: Vec<NodeTarget>,
+}
+
+#[derive(Clone, Debug)]
+pub enum NodesOption {
+    None,
+    Nodes(NodeTargets),
+}
+
+impl FromStr for NodesOption {
+    type Err = NodeTargetError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "none" {
+            Ok(NodesOption::None)
+        } else {
+            Ok(NodesOption::Nodes(
+                s.split(',')
+                    .map(NodeTarget::from_str)
+                    .collect::<Result<Vec<_>, Self::Err>>()?
+                    .into(),
+            ))
+        }
+    }
+}
+
+impl From<NodesOption> for NodeTargets {
+    fn from(opt: NodesOption) -> Self {
+        match opt {
+            NodesOption::None => NodeTargets::None,
+            NodesOption::Nodes(nodes) => nodes,
+        }
+    }
 }
 
 /// For interacting with snop environments.
@@ -44,6 +78,23 @@ pub enum Action {
         /// list of program inputs
         #[clap(num_args = 1, value_delimiter = ' ')]
         inputs: Vec<AleoValue>,
+    },
+    Config {
+        /// Configure the online state of the target nodes
+        #[clap(long, short)]
+        online: Option<bool>,
+        /// Configure the height of the target nodes
+        #[clap(long, short)]
+        height: Option<DocHeightRequest>,
+        /// Configure the peers of the target nodes, or `none`
+        #[clap(long, short)]
+        peers: Option<NodesOption>,
+        /// Configure the validators of the target nodes, or `none`
+        #[clap(long, short)]
+        validators: Option<NodesOption>,
+        /// The nodes to configure
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
     },
 }
 
@@ -105,6 +156,35 @@ impl Action {
                 }
 
                 client.post(ep).json(&json).send()?
+            }
+            Config {
+                online,
+                height,
+                peers,
+                validators,
+                nodes,
+            } => {
+                let ep = format!("{url}/api/v1/env/{env_id}/action/config");
+
+                let mut json = json!({
+                    "nodes": NodeTargets::from(nodes),
+                });
+
+                if let Some(online) = online {
+                    json["online"] = online.into();
+                }
+                if let Some(height) = height {
+                    json["height"] = json!(height);
+                }
+                if let Some(peers) = peers {
+                    json["peers"] = json!(NodeTargets::from(peers));
+                }
+                if let Some(validators) = validators {
+                    json["validators"] = json!(NodeTargets::from(validators));
+                }
+
+                // this api accepts a list of json objects
+                client.post(ep).json(&json!(vec![json])).send()?
             }
         })
     }
