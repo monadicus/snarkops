@@ -1,10 +1,7 @@
-use std::{
-    collections::{HashMap, HashSet},
-    net::{IpAddr, SocketAddr},
-};
+use std::net::{IpAddr, SocketAddr};
 
 use fixedbitset::FixedBitSet;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use snops_common::{
     key_source::KeySource,
@@ -148,7 +145,7 @@ fn please_be_online() -> bool {
 }
 
 /// Parse the labels as strings, but intern them on load
-pub fn deser_label<'de, D>(deserializer: D) -> Result<HashSet<Spur>, D::Error>
+pub fn deser_label<'de, D>(deserializer: D) -> Result<IndexSet<Spur>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -159,7 +156,7 @@ where
         .collect())
 }
 
-fn ser_label<S>(labels: &HashSet<Spur>, serializer: S) -> Result<S::Ok, S::Error>
+fn ser_label<S>(labels: &IndexSet<Spur>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -192,7 +189,7 @@ pub struct Node {
         deserialize_with = "deser_label",
         serialize_with = "ser_label"
     )]
-    pub labels: HashSet<Spur>,
+    pub labels: IndexSet<Spur>,
 
     /// When specified, an agent must have this id. Overrides the labels field.
     #[serde(default)]
@@ -208,7 +205,7 @@ pub struct Node {
 
     /// Environment variables to inject into the snarkOS process.
     #[serde(default)]
-    pub env: HashMap<String, String>,
+    pub env: IndexMap<String, String>,
 }
 
 impl Node {

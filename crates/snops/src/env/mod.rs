@@ -556,11 +556,13 @@ impl Environment {
             .matching_nodes(&node.peers, &state.pool, PortType::Node)
             .filter(not_me)
             .collect();
+        node_state.peers.sort();
 
         node_state.validators = self
             .matching_nodes(&node.validators, &state.pool, PortType::Bft)
             .filter(not_me)
             .collect();
+        node_state.validators.sort();
 
         node_state
     }

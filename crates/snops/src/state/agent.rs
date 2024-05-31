@@ -1,11 +1,11 @@
 use std::{
-    collections::HashSet,
     net::IpAddr,
     sync::{Arc, Weak},
     time::Instant,
 };
 
 use fixedbitset::FixedBitSet;
+use indexmap::IndexSet;
 use jwt::SignWithKey;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
@@ -102,7 +102,7 @@ impl Agent {
     }
 
     /// Check if an agent has a set of labels
-    pub fn has_labels(&self, labels: &HashSet<Spur>) -> bool {
+    pub fn has_labels(&self, labels: &IndexSet<Spur>) -> bool {
         labels.is_empty() || self.flags.labels.intersection(labels).count() == labels.len()
     }
 
@@ -118,7 +118,7 @@ impl Agent {
             .map_or(false, |label| self.flags.labels.contains(&label))
     }
 
-    pub fn str_labels(&self) -> HashSet<&str> {
+    pub fn str_labels(&self) -> IndexSet<&str> {
         self.flags
             .labels
             .iter()

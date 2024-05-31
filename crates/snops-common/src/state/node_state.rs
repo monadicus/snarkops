@@ -1,4 +1,6 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::net::SocketAddr;
+
+use indexmap::IndexMap;
 
 use super::{AgentId, HeightRequest, NodeKey};
 use crate::format::{DataFormat, DataFormatReader, DataHeaderOf, PackedUint};
@@ -13,7 +15,7 @@ pub struct NodeState {
     pub online: bool,
     pub peers: Vec<AgentPeer>,
     pub validators: Vec<AgentPeer>,
-    pub env: HashMap<String, String>,
+    pub env: IndexMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -154,7 +156,9 @@ impl KeyState {
     }
 }
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 pub enum AgentPeer {
     Internal(AgentId, u16),
     External(SocketAddr),

@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
+use std::{collections::HashMap, str::FromStr};
 
 use axum::{
     extract::{self, Path, Request, State},
@@ -10,6 +7,7 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
+use indexmap::IndexSet;
 use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
@@ -151,7 +149,7 @@ struct FindAgents {
     mode: AgentModeOptions,
     env: Option<EnvId>,
     #[serde(default, deserialize_with = "crate::schema::nodes::deser_label")]
-    labels: HashSet<Spur>,
+    labels: IndexSet<Spur>,
     all: bool,
     include_offline: bool,
     local_pk: bool,

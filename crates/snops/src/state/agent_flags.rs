@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use fixedbitset::FixedBitSet;
+use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
@@ -14,7 +13,7 @@ pub struct AgentFlags {
     #[serde(deserialize_with = "deser_mode", serialize_with = "ser_mode")]
     pub mode: AgentModeOptions,
     #[serde(deserialize_with = "deser_labels", serialize_with = "ser_labels")]
-    pub labels: HashSet<Spur>,
+    pub labels: IndexSet<Spur>,
     #[serde(deserialize_with = "deser_pk", default, serialize_with = "ser_pk")]
     pub local_pk: bool,
 }
@@ -37,7 +36,7 @@ where
     ser.serialize_str(&u8::from(*mode).to_string())
 }
 
-fn deser_labels<'de, D>(deser: D) -> Result<HashSet<Spur>, D::Error>
+fn deser_labels<'de, D>(deser: D) -> Result<IndexSet<Spur>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -51,7 +50,7 @@ where
         .unwrap_or_default())
 }
 
-fn ser_labels<S>(labels: &HashSet<Spur>, ser: S) -> Result<S::Ok, S::Error>
+fn ser_labels<S>(labels: &IndexSet<Spur>, ser: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
