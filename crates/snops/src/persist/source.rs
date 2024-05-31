@@ -1,4 +1,4 @@
-use snops_common::{key_source::KeySource, node_targets::NodeTargets};
+use snops_common::node_targets::NodeTargets;
 
 use super::prelude::*;
 use crate::cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource};
@@ -7,7 +7,6 @@ use crate::cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource};
 pub struct TxSourceFormatHeader {
     pub version: u8,
     pub node_targets: DataHeaderOf<NodeTargets>,
-    pub key_source: DataHeaderOf<KeySource>,
 }
 
 impl DataFormat for TxSourceFormatHeader {
@@ -15,9 +14,7 @@ impl DataFormat for TxSourceFormatHeader {
     const LATEST_HEADER: Self::Header = 1;
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
-        Ok(self.version.write_data(writer)?
-            + self.node_targets.write_data(writer)?
-            + self.key_source.write_data(writer)?)
+        Ok(self.version.write_data(writer)? + self.node_targets.write_data(writer)?)
     }
 
     fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
@@ -31,11 +28,9 @@ impl DataFormat for TxSourceFormatHeader {
 
         let version = reader.read_data(&())?;
         let node_targets = reader.read_data(&((), ()))?;
-        let key_source = reader.read_data(&())?;
         Ok(Self {
             version,
             node_targets,
-            key_source,
         })
     }
 }
@@ -45,12 +40,10 @@ impl DataFormat for TxSource {
     const LATEST_HEADER: Self::Header = TxSourceFormatHeader {
         version: 1,
         node_targets: NodeTargets::LATEST_HEADER,
-        key_source: KeySource::LATEST_HEADER,
     };
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
-        written += 2u8.write_data(writer)?;
 
         match &self.query {
             QueryTarget::Local(local) => {
@@ -114,4 +107,107 @@ impl DataFormat for TxSource {
 
         Ok(TxSource { query, compute })
     }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use snops_common::{node_targets::NodeTargets, INTERN};
+
+    use crate::{
+        cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource},
+        persist::{prelude::*, TxSourceFormatHeader},
+    };
+
+    macro_rules! case {
+        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+            #[test]
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
+                let mut data = Vec::new();
+                write_dataformat(&mut data, &$a)?;
+                assert_eq!(data, $b);
+
+                let mut reader = &data[..];
+                let read_value = read_dataformat::<_, $ty>(&mut reader)?;
+
+                // write the data again because not every type implements PartialEq
+                let mut data2 = Vec::new();
+                write_dataformat(&mut data2, &read_value)?;
+                assert_eq!(data, data2);
+                Ok(())
+            }
+        };
+    }
+
+    case!(
+        source_header,
+        TxSourceFormatHeader,
+        TxSource::LATEST_HEADER,
+        [
+            TxSourceFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            TxSource::LATEST_HEADER.version.to_byte_vec()?,
+            NodeTargets::LATEST_HEADER.to_byte_vec()?,
+        ]
+        .concat()
+    );
+
+    case!(
+        source_local_local_none,
+        TxSource,
+        TxSource {
+            query: QueryTarget::Local(LocalService { sync_from: None }),
+            compute: ComputeTarget::Agent { labels: None }
+        },
+        [
+            TxSourceFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            TxSource::LATEST_HEADER.to_byte_vec()?,
+            0u8.to_byte_vec()?, // querytarget local discriminant
+            0u8.to_byte_vec()?, // sync from empty option
+            0u8.to_byte_vec()?, // computetarget agent discriminant
+            0u8.to_byte_vec()?, // labels empty option
+        ]
+        .concat()
+    );
+
+    case!(
+        source_local_local_some,
+        TxSource,
+        TxSource {
+            query: QueryTarget::Local(LocalService {
+                sync_from: Some(NodeTargets::One("client/*".parse()?))
+            }),
+            compute: ComputeTarget::Agent {
+                labels: Some(vec![INTERN.get_or_intern("foo")])
+            }
+        },
+        [
+            TxSourceFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            TxSource::LATEST_HEADER.to_byte_vec()?,
+            0u8.to_byte_vec()?, // querytarget local discriminant
+            Some(NodeTargets::One("client/*".parse()?)).to_byte_vec()?,
+            0u8.to_byte_vec()?, // computetarget agent discriminant
+            Some(vec!["foo".to_owned()]).to_byte_vec()?,
+        ]
+        .concat()
+    );
+
+    case!(
+        source_node_demox,
+        TxSource,
+        TxSource {
+            query: QueryTarget::Node(NodeTargets::One("client/*".parse()?)),
+            compute: ComputeTarget::Demox {
+                demox_api: "foo".to_owned()
+            }
+        },
+        [
+            TxSourceFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            TxSource::LATEST_HEADER.to_byte_vec()?,
+            1u8.to_byte_vec()?, // querytarget node discriminant
+            NodeTargets::One("client/*".parse()?).to_byte_vec()?,
+            1u8.to_byte_vec()?, // computetarget demox discriminant
+            "foo".to_owned().to_byte_vec()?,
+        ]
+        .concat()
+    );
 }
