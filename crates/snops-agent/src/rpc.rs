@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
+use std::{collections::HashSet, net::IpAddr, ops::Deref, sync::Arc};
 
 use futures::future;
 use snops_common::{
@@ -198,8 +198,8 @@ impl AgentService for AgentRpcServer {
                     }
 
                     command
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
+                        .stdout(std::io::stdout())
+                        .stderr(std::io::stderr())
                         .envs(&node.env)
                         .env("NETWORK", info.network.to_string())
                         .arg("--log")
