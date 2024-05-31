@@ -41,7 +41,7 @@ fn credits_aleo() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub struct ExecuteAction {
     /// The private key to use for the transaction. If not provided, the
     /// transaction will be signed with the committee member 0's key.
