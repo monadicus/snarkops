@@ -209,7 +209,7 @@ impl<N: Network> Genesis<N> {
                     );
 
                     bonded_balances.insert(*addr, (*addr, *addr, *balance));
-                    members.insert(*addr, (*balance, true, 0u8));
+                    members.insert(*addr, (*balance, true, 100u8));
                 }
 
                 (None, bonded_balances, members, balances.0)
