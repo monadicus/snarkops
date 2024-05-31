@@ -1,6 +1,5 @@
-use std::{collections::HashSet, net::IpAddr, ops::Deref, sync::Arc};
+use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
-use futures::future;
 use snops_common::{
     aot_cmds::AotCmd,
     constant::{
@@ -15,11 +14,8 @@ use snops_common::{
     state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, NetworkId, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
-};
-use tracing::{debug, error, info, trace, warn, Level};
+use tokio::process::Command;
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{api, metrics::MetricComputer, reconcile, state::AppState};
 
@@ -197,8 +193,13 @@ impl AgentService for AgentRpcServer {
                             .arg(loki.as_str());
                     }
 
+                    if state.cli.quiet {
+                        command.stdout(Stdio::null());
+                    } else {
+                        command.stdout(std::io::stdout());
+                    }
+
                     command
-                        .stdout(std::io::stdout())
                         .stderr(std::io::stderr())
                         .envs(&node.env)
                         .env("NETWORK", info.network.to_string())
@@ -306,41 +307,7 @@ impl AgentService for AgentRpcServer {
                     if node.online {
                         tracing::trace!("spawning node process...");
                         tracing::debug!("node command: {command:?}");
-                        let mut child = command.spawn().expect("failed to start child");
-
-                        let stdout: tokio::process::ChildStdout = child.stdout.take().unwrap();
-                        let stderr: tokio::process::ChildStderr = child.stderr.take().unwrap();
-
-                        let is_quiet_enabled = state.cli.quiet;
-                        tokio::spawn(async move {
-                            let child_span = tracing::span!(Level::INFO, "child process stdout");
-                            let _enter = child_span.enter();
-
-                            let mut reader1 = BufReader::new(stdout).lines();
-                            let mut reader2 = BufReader::new(stderr).lines();
-
-                            loop {
-                                // if quiet mode is enabled, we don't need to read stdout
-                                let reader = if is_quiet_enabled {
-                                    future::Either::Left(future::pending())
-                                } else {
-                                    future::Either::Right(reader1.next_line())
-                                };
-
-                                tokio::select! {
-                                    Ok(line) = reader => {
-                                        if let Some(line) = line {
-                                            println!("{line}");
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    Ok(Some(line)) = reader2.next_line() => {
-                                        eprintln!("{line}");
-                                    }
-                                }
-                            }
-                        });
+                        let child = command.spawn().expect("failed to start child");
 
                         *child_lock = Some(child);
 
