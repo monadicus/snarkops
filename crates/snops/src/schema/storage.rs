@@ -53,9 +53,8 @@ pub struct Document {
 /// Data generation instructions.
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct StorageGeneration {
-    // TODO: individually validate arguments, or just pass them like this?
     #[serde(default)]
-    pub genesis: GenesisGeneration,
+    pub genesis: Option<GenesisGeneration>,
 
     #[serde(default)]
     pub accounts: IndexMap<InternedId, Accounts>,
@@ -202,6 +201,8 @@ pub struct LoadedStorage {
     pub checkpoints: Option<CheckpointManager>,
     /// whether agents using this storage should persist it
     pub persist: bool,
+    /// whether to use the network's native genesis block
+    pub native_genesis: bool,
 }
 
 lazy_static! {
@@ -239,12 +240,26 @@ impl Document {
         let base = state.storage_path(network, id);
         let version_file = base.join(VERSION_FILE);
 
+        let mut native_genesis = true;
+
         // TODO: The dir can be made by a previous run and the aot stuff can fail
         // i.e an empty/incomplete directory can exist and we should check those
         let mut exists = matches!(tokio::fs::try_exists(&base).await, Ok(true));
 
+        // warn if an existing block/ledger already exists
+        if exists {
+            warn!("the specified storage ID {id} already exists");
+        }
+
+        let old_version = get_version_from_path(&version_file).await?;
+
+        info!(
+            "storage {id} has version {old_version:?}. incoming version is {}",
+            self.regen
+        );
+
         // wipe old storage when the version changes
-        if get_version_from_path(&version_file).await? != Some(self.regen) && exists {
+        if old_version != Some(self.regen) && exists {
             info!("storage {id} version changed, removing old storage");
             tokio::fs::remove_dir_all(&base)
                 .await
@@ -252,149 +267,139 @@ impl Document {
             exists = false;
         }
 
-        match self.generate {
-            // generate the block and ledger if we have generation params
-            Some(ref generation) => 'generate: {
-                // warn if an existing block/ledger already exists
-                if exists {
-                    // TODO: is this the behavior we want?
-                    warn!("the specified storage ID {id} already exists, using that one instead");
-                    break 'generate;
-                } else {
-                    tracing::debug!("generating storage for {id}");
-                    tokio::fs::create_dir_all(&base)
+        // generate the block and ledger if we have generation params
+        if let (Some(generation), false) = (self.generate.as_ref(), exists) {
+            tracing::debug!("generating storage for {id}");
+            tokio::fs::create_dir_all(&base)
+                .await
+                .map_err(|e| StorageError::GenerateStorage(id, e))?;
+
+            // generate the genesis block using the aot cli
+            let output = base.join(SNARKOS_GENESIS_FILE);
+
+            match (self.connect, generation.genesis.as_ref()) {
+                (None, None) => {
+                    info!("{id}: using network native genesis")
+                }
+                (Some(ref url), _) => {
+                    // downloaded genesis block is not native
+                    native_genesis = false;
+                    let err = |e| StorageError::FailedToFetchGenesis(id, url.clone(), e);
+
+                    // I think its ok to reuse this error here
+                    // because it just turns a failing response into an error
+                    // or failing to turn it into bytes
+                    let res = reqwest::get(url.clone())
                         .await
-                        .map_err(|e| StorageError::GenerateStorage(id, e))?;
+                        .map_err(err)?
+                        .error_for_status()
+                        .map_err(err)?
+                        .bytes()
+                        .await
+                        .map_err(err)?;
+
+                    tokio::fs::create_dir(base.join(LEDGER_BASE_DIR))
+                        .await
+                        .map_err(|e| StorageError::FailedToCreateLedgerDir(id, e))?;
+
+                    tokio::fs::write(&output, res)
+                        .await
+                        .map_err(|e| StorageError::FailedToWriteGenesis(id, e))?;
                 }
+                (None, Some(genesis)) => {
+                    // generated genesis block is not native
+                    native_genesis = false;
+                    let mut command = Command::new(DEFAULT_AOT_BIN.clone());
+                    command
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .env("NETWORK", network.to_string())
+                        .arg("genesis")
+                        .arg("--output")
+                        .arg(&output)
+                        .arg("--ledger")
+                        .arg(base.join(LEDGER_BASE_DIR));
 
-                // generate the genesis block using the aot cli
-                let output = base.join(SNARKOS_GENESIS_FILE);
-
-                match self.connect {
-                    Some(ref url) => {
-                        let err = |e| StorageError::FailedToFetchGenesis(id, url.clone(), e);
-
-                        // I think its ok to reuse this error here
-                        // because it just turns a failing response into an error
-                        // or failing to turn it into bytes
-                        let res = reqwest::get(url.clone())
-                            .await
-                            .map_err(err)?
-                            .error_for_status()
-                            .map_err(err)?
-                            .bytes()
-                            .await
-                            .map_err(err)?;
-
-                        tokio::fs::create_dir(base.join(LEDGER_BASE_DIR))
-                            .await
-                            .map_err(|e| StorageError::FailedToCreateLedgerDir(id, e))?;
-
-                        tokio::fs::write(&output, res)
-                            .await
-                            .map_err(|e| StorageError::FailedToWriteGenesis(id, e))?;
+                    // conditional seed flag
+                    if let Some(seed) = genesis.seed {
+                        command.arg("--seed").arg(seed.to_string());
                     }
-                    None => {
-                        let mut command = Command::new(DEFAULT_AOT_BIN.clone());
+
+                    // conditional genesis key flag
+                    if let Some(private_key) = &genesis.private_key {
+                        command.arg("--genesis-key").arg(private_key);
+                    };
+
+                    // generate committee based on the generation params
+                    match &genesis.balances {
+                        GenesisBalances::Generated {
+                            committee_size,
+                            bonded_balance,
+                        } => {
+                            command
+                                .arg("--committee-output")
+                                .arg(base.join("committee.json"));
+
+                            if let Some(committee_size) = committee_size {
+                                command
+                                    .arg("--committee-size")
+                                    .arg(committee_size.to_string());
+                            }
+                            if let Some(bonded_balance) = bonded_balance {
+                                command
+                                    .arg("--bonded-balance")
+                                    .arg(bonded_balance.to_string());
+                            }
+                        }
+                        GenesisBalances::Defined { bonded_balances } => {
+                            command
+                                .arg("--bonded-balances")
+                                .arg(serde_json::to_string(&bonded_balances).unwrap());
+                        }
+                    }
+
+                    // conditionally add additional accounts
+                    if let Some(additional_accounts) = genesis.additional_accounts {
                         command
-                            .stdout(Stdio::inherit())
-                            .stderr(Stdio::inherit())
-                            .env("NETWORK", network.to_string())
-                            .arg("genesis")
-                            .arg("--output")
-                            .arg(&output)
-                            .arg("--ledger")
-                            .arg(base.join(LEDGER_BASE_DIR));
-
-                        // conditional seed flag
-                        if let Some(seed) = generation.genesis.seed {
-                            command.arg("--seed").arg(seed.to_string());
-                        }
-
-                        // conditional genesis key flag
-                        if let Some(private_key) = &generation.genesis.private_key {
-                            command.arg("--genesis-key").arg(private_key);
-                        };
-
-                        // generate committee based on the generation params
-                        match &generation.genesis.balances {
-                            GenesisBalances::Generated {
-                                committee_size,
-                                bonded_balance,
-                            } => {
-                                command
-                                    .arg("--committee-output")
-                                    .arg(base.join("committee.json"));
-
-                                if let Some(committee_size) = committee_size {
-                                    command
-                                        .arg("--committee-size")
-                                        .arg(committee_size.to_string());
-                                }
-                                if let Some(bonded_balance) = bonded_balance {
-                                    command
-                                        .arg("--bonded-balance")
-                                        .arg(bonded_balance.to_string());
-                                }
-                            }
-                            GenesisBalances::Defined { bonded_balances } => {
-                                command
-                                    .arg("--bonded-balances")
-                                    .arg(serde_json::to_string(&bonded_balances).unwrap());
-                            }
-                        }
-
-                        // conditionally add additional accounts
-                        if let Some(additional_accounts) = generation.genesis.additional_accounts {
-                            command
-                                .arg("--additional-accounts")
-                                .arg(additional_accounts.to_string())
-                                .arg("--additional-accounts-output")
-                                .arg(base.join("accounts.json"));
-                        }
-
-                        if let Some(balance) = generation.genesis.additional_accounts_balance {
-                            command
-                                .arg("--additional-accounts-balance")
-                                .arg(balance.to_string());
-                        }
-
-                        info!("{command:?}");
-
-                        let res = command
-                            .spawn()
-                            .map_err(|e| {
-                                StorageError::Command(
-                                    CommandError::action("spawning", "aot genesis", e),
-                                    id,
-                                )
-                            })?
-                            .wait()
-                            .await
-                            .map_err(|e| {
-                                StorageError::Command(
-                                    CommandError::action("waiting", "aot genesis", e),
-                                    id,
-                                )
-                            })?;
-
-                        if !res.success() {
-                            warn!("failed to run genesis generation command...");
-                        }
+                            .arg("--additional-accounts")
+                            .arg(additional_accounts.to_string())
+                            .arg("--additional-accounts-output")
+                            .arg(base.join("accounts.json"));
                     }
-                }
 
-                // ensure the genesis block was generated
-                tokio::fs::try_exists(&output)
-                    .await
-                    .map_err(|e| StorageError::FailedToGenGenesis(id, e))?;
-            }
+                    if let Some(balance) = genesis.additional_accounts_balance {
+                        command
+                            .arg("--additional-accounts-balance")
+                            .arg(balance.to_string());
+                    }
 
-            // no generation params passed
-            None => {
-                // assert that an existing block and ledger exists
-                if exists {
-                    Err(StorageError::NoGenerationParams(id))?;
+                    info!("{command:?}");
+
+                    let res = command
+                        .spawn()
+                        .map_err(|e| {
+                            StorageError::Command(
+                                CommandError::action("spawning", "aot genesis", e),
+                                id,
+                            )
+                        })?
+                        .wait()
+                        .await
+                        .map_err(|e| {
+                            StorageError::Command(
+                                CommandError::action("waiting", "aot genesis", e),
+                                id,
+                            )
+                        })?;
+
+                    if !res.success() {
+                        warn!("failed to run genesis generation command...");
+                    }
+
+                    // ensure the genesis block was generated
+                    tokio::fs::try_exists(&output)
+                        .await
+                        .map_err(|e| StorageError::FailedToGenGenesis(id, e))?;
                 }
             }
         }
@@ -515,11 +520,11 @@ impl Document {
         if let (
             Some(StorageGeneration {
                 genesis:
-                    GenesisGeneration {
+                    Some(GenesisGeneration {
                         private_key,
                         balances: GenesisBalances::Defined { bonded_balances },
                         ..
-                    },
+                    }),
                 ..
             }),
             false,
@@ -552,6 +557,7 @@ impl Document {
             accounts,
             checkpoints,
             persist: self.persist,
+            native_genesis,
         });
         if let Err(e) = state
             .db
@@ -718,6 +724,7 @@ impl LoadedStorage {
             retention_policy: self.checkpoints.as_ref().map(|c| c.policy().clone()),
             checkpoints,
             persist: self.persist,
+            native_genesis: self.native_genesis,
         }
     }
 

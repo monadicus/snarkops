@@ -29,7 +29,7 @@ fn parse<N: Network>() -> Result<()> {
     let cli = Cli::<N>::parse();
 
     if let Err(err) = cli.run() {
-        eprintln!("⚠️ {err}");
+        eprintln!("⚠️ {err:?}");
         exit(1);
     }
 

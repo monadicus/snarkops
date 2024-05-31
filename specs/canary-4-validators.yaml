@@ -3,17 +3,17 @@ version: storage.snarkos.testing.monadic.us/v1
 
 id: base
 name: base-ledger
-regen: 4
+regen: 3
 
 generate:
-  genesis:
-    seed: 1
+  # genesis:
+  # seed: 1
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
 name: 4-validators
 
-network: testnet
+network: canary
 
 nodes:
   validator/test:

@@ -1,26 +1,24 @@
 ---
 version: storage.snarkos.testing.monadic.us/v1
 
-id: base
-name: base-ledger
-regen: 4
-
+id: canary-clients
+name: canary-clients
+regen: 5
 generate:
-  genesis:
-    seed: 1
+  accounts:
+    clients: 4
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
-name: 4-validators
+name: 4-clients
 
 network: testnet
 
 nodes:
-  validator/test:
+  client/test:
     replicas: 4
-    key: committee.$
-    height: 0
-    validators: [validator/*]
+    key: clients.$
+    height: top
     peers: []
 
   # validator/4:

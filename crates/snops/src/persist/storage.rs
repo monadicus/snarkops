@@ -1,16 +1,22 @@
+use std::collections::HashMap;
+
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     constant::LEDGER_BASE_DIR,
+    key_source::ACCOUNTS_KEY_ID,
     state::{InternedId, NetworkId, StorageId},
 };
-use tracing::info;
+use tracing::{info, warn};
 
 use super::prelude::*;
 use crate::{
     cli::Cli,
     schema::{
         error::StorageError,
-        storage::{pick_commitee_addr, read_to_addrs, LoadedStorage, STORAGE_DIR},
+        storage::{
+            pick_account_addr, pick_additional_addr, pick_commitee_addr, read_to_addrs,
+            LoadedStorage, STORAGE_DIR,
+        },
     },
 };
 
@@ -22,6 +28,7 @@ pub struct PersistStorage {
     pub persist: bool,
     pub accounts: Vec<InternedId>,
     pub retention_policy: Option<RetentionPolicy>,
+    pub native_genesis: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +78,7 @@ impl From<&LoadedStorage> for PersistStorage {
             persist: storage.persist,
             accounts: storage.accounts.keys().cloned().collect(),
             retention_policy: storage.checkpoints.as_ref().map(|c| c.policy().clone()),
+            native_genesis: storage.native_genesis,
         }
     }
 }
@@ -97,6 +105,28 @@ impl PersistStorage {
             info!("storage {id} loaded without a checkpoint manager");
         }
 
+        let mut accounts = HashMap::new();
+
+        // load accounts json
+        for name in &self.accounts {
+            let path = storage_path.join(&format!("{name}.json"));
+
+            let res = if *name == *ACCOUNTS_KEY_ID {
+                read_to_addrs(pick_additional_addr, &path).await
+            } else {
+                read_to_addrs(pick_account_addr, &path).await
+            };
+
+            match res {
+                Ok(account) => {
+                    accounts.insert(*name, account);
+                }
+                Err(e) => {
+                    warn!("storage {id} failed to load account file {name}: {e}")
+                }
+            }
+        }
+
         Ok(LoadedStorage {
             id,
             network: self.network,
@@ -104,8 +134,8 @@ impl PersistStorage {
             persist: self.persist,
             committee: read_to_addrs(pick_commitee_addr, &committee_file).await?,
             checkpoints,
-            // TODO: waiting for #116 to be merged, then make a reusable function
-            accounts: Default::default(),
+            native_genesis: self.native_genesis,
+            accounts,
         })
     }
 }
@@ -127,6 +157,7 @@ impl DataFormat for PersistStorage {
         written += self.persist.write_data(writer)?;
         written += self.accounts.write_data(writer)?;
         written += self.retention_policy.write_data(writer)?;
+        written += self.native_genesis.write_data(writer)?;
 
         Ok(written)
     }
@@ -151,6 +182,7 @@ impl DataFormat for PersistStorage {
             persist: reader.read_data(&())?,
             accounts: reader.read_data(&())?,
             retention_policy: reader.read_data(&header.retention_policy)?,
+            native_genesis: reader.read_data(&())?,
         })
     }
 }
@@ -211,6 +243,7 @@ mod tests {
             persist: true,
             accounts: vec![],
             retention_policy: None,
+            native_genesis: false,
         },
         [
             PersistStorageFormatHeader::LATEST_HEADER.to_byte_vec()?,
@@ -221,6 +254,7 @@ mod tests {
             true.to_byte_vec()?,
             Vec::<InternedId>::new().to_byte_vec()?,
             None::<RetentionPolicy>.to_byte_vec()?,
+            false.to_byte_vec()?,
         ]
         .concat()
     );
@@ -235,10 +269,11 @@ mod tests {
             persist: false,
             accounts: vec![InternedId::from_str("accounts")?],
             retention_policy: None,
+            native_genesis: true,
         },
         [
             2, 1, 1, 1, 1, 1, 4, 98, 97, 115, 101, 0, 0, 0, 0, 1, 1, 1, 8, 97, 99, 99, 111, 117,
-            110, 116, 115, 0
+            110, 116, 115, 0, 1
         ]
     );
 }

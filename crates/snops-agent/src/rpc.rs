@@ -208,11 +208,17 @@ impl AgentService for AgentRpcServer {
                         .arg("run")
                         .arg("--type")
                         .arg(node.node_key.ty.to_string())
-                        // storage configuration
-                        .arg("--genesis")
-                        .arg(storage_path.join(SNARKOS_GENESIS_FILE))
                         .arg("--ledger")
-                        .arg(ledger_path)
+                        .arg(ledger_path);
+
+                    if !info.storage.native_genesis {
+                        command
+                            .arg("--genesis")
+                            .arg(storage_path.join(SNARKOS_GENESIS_FILE));
+                    }
+
+                    // storage configuration
+                    command
                         // port configuration
                         .arg("--bind")
                         .arg(state.cli.bind_addr.to_string())

@@ -69,13 +69,16 @@ pub async fn check_files(
         &state.endpoint
     );
 
-    // download the genesis block
-    api::check_file(genesis_url, &genesis_path)
-        .await
-        .map_err(|e| {
-            error!("failed to download {SNARKOS_GENESIS_FILE} from the control plane: {e}");
-            ReconcileError::StorageAcquireError(SNARKOS_GENESIS_FILE.to_owned())
-        })?;
+    // skip genesis download for native genesis storage
+    if !info.storage.native_genesis {
+        // download the genesis block
+        api::check_file(genesis_url, &genesis_path)
+            .await
+            .map_err(|e| {
+                error!("failed to download {SNARKOS_GENESIS_FILE} from the control plane: {e}");
+                ReconcileError::StorageAcquireError(SNARKOS_GENESIS_FILE.to_owned())
+            })?;
+    }
 
     // don't download
     if height.reset() {
@@ -179,9 +182,11 @@ pub async fn load_ledger(
         }
     }
 
+    let tar_path = storage_path.join(LEDGER_STORAGE_FILE);
+
     // A reset height will not require untarring the ledger because it is
     // created from the genesis block
-    if is_new_env && !height.reset() {
+    if is_new_env && !height.reset() && tar_path.exists() {
         changed = true;
 
         // ensure the storage directory exists
@@ -198,7 +203,7 @@ pub async fn load_ledger(
         let status = Command::new("tar")
             .current_dir(untar_base)
             .arg("xzf")
-            .arg(&storage_path.join(LEDGER_STORAGE_FILE))
+            .arg(&tar_path)
             .arg("-C") // the untar_dir must exist. this will extract the contents of the tar to the
             // directory
             .arg(untar_dir)
@@ -251,17 +256,23 @@ pub async fn load_ledger(
         .await?;
 
     // apply the checkpoint to the ledger
-    let res = Command::new(state.cli.path.join(SNARKOS_FILE))
+    let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
+    command
         .stdout(std::io::stdout())
         .stderr(std::io::stderr())
         .arg("ledger")
         .arg("--ledger")
-        .arg(&ledger_dir)
-        .arg("--genesis")
-        .arg(&storage_path.join(SNARKOS_GENESIS_FILE))
-        .arg("checkpoint")
-        .arg("apply")
-        .arg(path)
+        .arg(&ledger_dir);
+
+    if !info.storage.native_genesis {
+        command
+            .arg("--genesis")
+            .arg(&storage_path.join(SNARKOS_GENESIS_FILE));
+    }
+
+    command.arg("checkpoint").arg("apply").arg(path);
+
+    let res = command
         .spawn()
         .map_err(|e| {
             error!("failed to spawn checkpoint apply process: {e}");

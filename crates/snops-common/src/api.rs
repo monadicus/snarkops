@@ -29,4 +29,6 @@ pub struct StorageInfo {
     pub persist: bool,
     /// Version identifier for this ledger
     pub version: u16,
+    /// Whether to use the network's native genesis block
+    pub native_genesis: bool,
 }
