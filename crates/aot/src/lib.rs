@@ -11,7 +11,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use snarkvm::{
     console::{
-        network::{MainnetV0, TestnetV0},
+        network::{CanaryV0, MainnetV0, TestnetV0},
         program::Network,
     },
     ledger::{
@@ -23,6 +23,7 @@ use snarkvm::{
 pub enum NetworkId {
     Mainnet,
     Testnet,
+    Canary,
 }
 
 impl std::str::FromStr for NetworkId {
@@ -32,6 +33,7 @@ impl std::str::FromStr for NetworkId {
         match s {
             "mainnet" => Ok(Self::Mainnet),
             "testnet" => Ok(Self::Testnet),
+            "canary" => Ok(Self::Canary),
             _ => Err("Invalid network ID"),
         }
     }
@@ -42,6 +44,7 @@ impl std::fmt::Display for NetworkId {
         match self {
             Self::Mainnet => write!(f, "mainnet"),
             Self::Testnet => write!(f, "testnet"),
+            Self::Canary => write!(f, "canary"),
         }
     }
 }
@@ -51,6 +54,7 @@ impl From<NetworkId> for u16 {
         match id {
             NetworkId::Mainnet => <MainnetV0 as Network>::ID,
             NetworkId::Testnet => <TestnetV0 as Network>::ID,
+            NetworkId::Canary => <CanaryV0 as Network>::ID,
         }
     }
 }
@@ -60,6 +64,7 @@ impl NetworkId {
         match N::ID {
             <MainnetV0 as Network>::ID => Self::Mainnet,
             <TestnetV0 as Network>::ID => Self::Testnet,
+            <CanaryV0 as Network>::ID => Self::Canary,
             _ => unreachable!(),
         }
     }

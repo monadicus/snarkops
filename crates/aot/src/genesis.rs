@@ -20,8 +20,8 @@ use snarkvm::{
 };
 
 use crate::{
-    ledger::util::public_transaction, mux_aleo, Address, Block, CTRecord, Committee, DbLedger,
-    MemVM, NetworkId, PTRecord, PrivateKey, Transaction, ViewKey,
+    ledger::util::public_transaction, use_aleo_network_downcast, Address, Block, CTRecord,
+    Committee, DbLedger, MemVM, NetworkId, PTRecord, PrivateKey, Transaction, ViewKey,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -209,7 +209,7 @@ impl<N: Network> Genesis<N> {
                     );
 
                     bonded_balances.insert(*addr, (*addr, *addr, *balance));
-                    members.insert(*addr, (*balance, true));
+                    members.insert(*addr, (*balance, true, 0u8));
                 }
 
                 (None, bonded_balances, members, balances.0)
@@ -240,7 +240,7 @@ impl<N: Network> Genesis<N> {
 
                     committee_members.insert(addr, (key, self.bonded_balance));
                     bonded_balances.insert(addr, (addr, addr, self.bonded_balance));
-                    members.insert(addr, (self.bonded_balance, true));
+                    members.insert(addr, (self.bonded_balance, true, 0u8));
                     public_balances.insert(addr, self.bonded_balance);
                 }
 
@@ -319,7 +319,7 @@ impl<N: Network> Genesis<N> {
             accounts = accounts
                 .into_iter()
                 .map(|(addr, (key, balance, _))| {
-                    let record_tx: Transaction<N> = mux_aleo!(
+                    let record_tx: Transaction<N> = use_aleo_network_downcast!(
                         A,
                         N,
                         public_transaction::<_, _, A>(

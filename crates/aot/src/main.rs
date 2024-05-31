@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 use snarkos_aot::{cli::Cli, NetworkId};
 use snarkvm::console::{
-    network::{MainnetV0, TestnetV0},
+    network::{CanaryV0, MainnetV0, TestnetV0},
     program::Network,
 };
 
@@ -21,6 +21,7 @@ fn main() -> Result<()> {
     match network {
         NetworkId::Mainnet => parse::<MainnetV0>(),
         NetworkId::Testnet => parse::<TestnetV0>(),
+        NetworkId::Canary => parse::<CanaryV0>(),
     }
 }
 
