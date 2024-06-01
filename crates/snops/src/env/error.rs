@@ -64,6 +64,7 @@ impl_into_status_code!(ExecutionError, |value| match value {
 });
 
 impl_into_type_str!(ExecutionError, |value| match value {
+    AuthorizeError(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     AotCmdError(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     Cannon(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     _ => value.as_ref().to_string(),
