@@ -9,9 +9,9 @@ class Snops {
 		return new Agents(this.api);
 	}
 
-	// env(env_id?: string): Env {
-	// 	return new Env(this.api, env_id);
-	// }
+	env(env_id?: string): Env {
+		return new Env(this.api, env_id);
+	}
 }
 
 class SnopsApi {
@@ -30,6 +30,7 @@ class SnopsApi {
 				'Content-Type': 'application/json'
 			},
 		});
+		console.debug(`url: ${this.url}${SnopsApi.API}${url}, status: ${res.status}`);
 		const blob = await res.json();
 		return blob as T;
 	}
@@ -60,6 +61,10 @@ class SnopsApi {
 
 	async findAgents(query: string, find: FindAgentsBody): Promise<AgentStatus[]> {
 		return this.post(`agents/find`, find);
+	}
+
+	async executeAction(query: string, execute: any): Promise<any> {
+		return this.post(`actions/${query}`, execute);
 	}
 }
 
@@ -107,11 +112,11 @@ class Agents {
 		return await this.api.getAgent(agent_id);
 	}
 
-	async tps(agent_id: string): Promise<string> {
+	async tps(agent_id: string) {
 		return await this.api.getAgentTps(agent_id);
 	}
 
-	find(): FindAgentBuilder {
+	find() {
 		return new FindAgentBuilder(this.api);
 	}
 }
@@ -202,63 +207,94 @@ class FindAgentBuilder {
 	}
 }
 
-// class Env {
-// 	private env_api: string;
+class Env {
+	private api: SnopsApi;
+	private env_id: string;
 
-// 	constructor(api: string, env_id?: string) {
-// 		this.env_api = `${base} / env / ${env_id ? env_id : 'default'}`;
-// 	}
+	constructor(api: SnopsApi, env_id?: string) {
+		this.api = api;
+		this.env_id = env_id || 'default';
+	}
 
-// 	action(): Action {
-// 		return new Action(this.env_api);
-// 	}
+	action(): Action {
+		return new Action(this.api, this.env_id);
+	}
 
-// 	execute(locator: string, ...inputs: string[]): ExecuteBuilder {
-// 		return this.action().execute(this.env_api, locator, ...inputs);
-// 	}
-// }
+	execute(locator: string, ...inputs: string[]): ExecuteBuilder {
+		return this.action().execute(locator, ...inputs);
+	}
+}
 
-// class Action {
-// 	private action_api: string;
+class Action {
+	private api: SnopsApi;
+	private env_id: string;
 
-// 	constructor(base: string) {
-// 		this.action_api = base + '/action/';
-// 	}
+	constructor(api: SnopsApi, env_id: string) {
+		this.api = api;
+		this.env_id = env_id;
+	}
 
-// 	execute(locator: string, ...inputs: string[]): ExecuteBuilder {
-// 		return new ExecuteBuilder(this.action_api, locator, inputs);
-// 	}
-// }
+	execute(locator: string, ...inputs: string[]): ExecuteBuilder {
+		return new ExecuteBuilder(this.api, this.env_id, locator, inputs);
+	}
+}
 
-// class ExecuteBuilder {
-// 	private url: string;
-// 	private locator: string;
-// 	private inputs: string[];
-// 	private _private_key?: string;
-// 	private cannon?: string;
-// 	private priority_fee?: number;
-// 	private fee_record?: string;
+class ExecuteBuilder {
+	private api: SnopsApi;
+	private env_id: string;
 
-// 	constructor(url: string, locator: string, inputs: string[]) {
-// 		this.locator = locator;
-// 		this.inputs = inputs;
-// 		this.url = `${url} / execute`;
-// 	}
+	private locator: string;
+	private inputs: string[];
+	private _private_key?: string;
+	private _cannon?: string;
+	private _priority_fee?: number;
+	private _fee_record?: string;
 
-// 	set private_key(private_key: string) {
-// 		this._private_key = private_key;
-// 	}
+	constructor(api: SnopsApi, env_id: string, locator: string, inputs: string[]) {
+		this.api = api;
+		this.env_id = env_id;
+		this.locator = locator;
+		this.inputs = inputs;
+	}
 
-// 	async call() {
+	private_key(private_key: string): ExecuteBuilder {
+		this._private_key = private_key;
+		return this;
+	}
 
+	cannon(cannon: string): ExecuteBuilder {
+		this._cannon = cannon;
+		return this;
+	}
 
-// 	}
-// }
+	priority_fee(priority_fee: number): ExecuteBuilder {
+		this._priority_fee = priority_fee;
+		return this;
+	}
 
-const snops = new Snops('http://node.internal.monadic.us:1234');
-// const res = await snops.agents().find().env('canary').validator().find();
-const res = await snops.agents().list();
+	fee_record(fee_record: string): ExecuteBuilder {
+		this._fee_record = fee_record;
+		return this;
+	}
+
+	async execute() {
+		return await this.api.executeAction(`env/${this.env_id}/${this.locator}`, {
+			private_key: this._private_key,
+			cannon: this._cannon,
+			priority_fee: this._priority_fee,
+			fee_record: this._fee_record,
+			locator: this.locator,
+			inputs: this.inputs,
+		});
+	}
+}
+
+const snops = new Snops('http://localhost:1234');
+// const snops = new Snops('http://node.internal.monadic.us:1234');
+
+const res = await snops.agents().find().env('canary').validator().find();
+// const res = await snops.agents().list();
+// const res = snops.env().action().execute('transfer_public', ...['committee.1', '1000u64']).call();
+// const res = snops.env().execute('transfer_public', ...['committee.1', '1000u64']);
+
 console.log(res);
-
-// snops.env().execute('transfer_public', ...['committee.1', '1000u64']);
-// snops.env().action().execute('transfer_public', ...['committee.1', '1000u64']).call();
