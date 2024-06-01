@@ -80,7 +80,7 @@ pub enum SnarkosRequestError {
     InvalidState,
     #[error("expected Node to be online")]
     OfflineNode,
-    #[error("failed failed to obtain environment info")]
+    #[error("failed to obtain environment info")]
     MissingEnvInfo,
     #[error("error making request: {0}")]
     RequestError(String),

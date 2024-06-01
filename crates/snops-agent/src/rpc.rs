@@ -386,7 +386,10 @@ impl AgentService for AgentRpcServer {
             .state
             .get_env_info(env_id)
             .await
-            .map_err(|_| SnarkosRequestError::MissingEnvInfo)?
+            .map_err(|e| {
+                error!("failed to get env info: {e}");
+                SnarkosRequestError::MissingEnvInfo
+            })?
             .network;
 
         let url = format!(
