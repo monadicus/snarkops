@@ -13,6 +13,17 @@ class Snops {
 		return new Env(this.api, env_id);
 	}
 }
+
+class CustomError<T> extends Error {
+	originalError: T;
+
+	constructor(message: string, json_err: T) {
+		super(message);
+		this.name = 'CustomError';
+		this.originalError = json_err;
+	}
+}
+
 class SnopsApi {
 	private static API: string = '/api/v1/';
 	private url: string;
@@ -39,7 +50,11 @@ class SnopsApi {
 			throw new Error(`Failed to fetch '${full_url}' with status ${res.status} and body ${rawBody}: ${e}`);
 		}
 
-		if (isErrorCode) throw parsed;
+		if (isErrorCode) {
+			throw new Error(JSON.stringify({
+				parsed
+			}, null, 2));
+		};
 		return parsed;
 	}
 
@@ -325,11 +340,5 @@ const snops = new Snops('http://localhost:1234');
 // const res = await snops.agents.find.with_labels("local-2").client().call();
 
 // const res = await snops.env().list();
-try {
-	const res = await snops.env().action.execute('transfer_public', ...['committee.1', '1000u64']).call();
-	console.log(res);
-} catch (err) {
-	console.error('error:', err);
-
-}
+const res = await snops.env().action.execute('transfer_public', ...['committee.1', '1000u64']).call();
 // const res = snops.env().execute('transfer_public', ...['committee.1', '1000u64']);
