@@ -3,6 +3,7 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     aot_cmds::AotCmdError,
     impl_into_status_code, impl_into_type_str,
+    rpc::error::SnarkosRequestError,
     state::{AgentId, CannonId, EnvId, NodeKey, TimelineId},
 };
 use strum_macros::AsRefStr;
@@ -14,6 +15,23 @@ use crate::{
     schema::error::SchemaError,
     state::error::BatchReconcileError,
 };
+
+#[derive(Debug, Error, AsRefStr)]
+pub enum EnvRequestError {
+    #[error("environment {0} not found")]
+    MissingEnv(EnvId),
+    #[error(transparent)]
+    AgentRequestError(SnarkosRequestError),
+    #[error("no nodes matched the target")]
+    NoMatchingNodes,
+    #[error("no responsive nodes found")]
+    NoResponsiveNodes,
+}
+
+impl_into_status_code!(EnvRequestError, |value| match value {
+    AgentRequestError(_e) => StatusCode::INTERNAL_SERVER_ERROR,
+    _ => StatusCode::NOT_FOUND,
+});
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum ExecutionError {

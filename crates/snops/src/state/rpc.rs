@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt::Display, time::Duration};
 
 use serde::de::DeserializeOwned;
 use snops_common::{
@@ -30,7 +30,7 @@ impl AgentClient {
 
     pub async fn snarkos_get<T: DeserializeOwned>(
         &self,
-        route: impl ToString,
+        route: impl Display,
     ) -> Result<T, SnarkosRequestError> {
         match self
             .0

@@ -12,7 +12,7 @@ use strum_macros::AsRefStr;
 use thiserror::Error;
 
 use super::{status::TransactionStatusSender, Authorization};
-use crate::error::StateError;
+use crate::{env::error::EnvRequestError, error::StateError};
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum AuthorizeError {
@@ -180,6 +180,8 @@ pub enum CannonError {
     Source(#[from] SourceError),
     #[error(transparent)]
     State(#[from] StateError),
+    #[error(transparent)]
+    RequestError(#[from] EnvRequestError),
 }
 
 impl_into_status_code!(CannonError, |value| match value {

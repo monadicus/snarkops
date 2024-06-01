@@ -39,7 +39,7 @@ use self::{
 use crate::{
     cannon::source::{ComputeTarget, QueryTarget},
     env::PortType,
-    state::GlobalState,
+    state::{GlobalState, REST_CLIENT},
 };
 
 /*
@@ -70,10 +70,6 @@ cannon buffer size
 burst mode??
 
 */
-
-lazy_static::lazy_static! {
-    static ref CLIENT: reqwest::Client = reqwest::Client::new();
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Authorization {
@@ -238,79 +234,10 @@ impl CannonInstance {
                     Err(CannonInstanceError::MissingQueryPort(cannon_id).into())
                 }
             }
-            QueryTarget::Node(target) => {
-                let Some(env) = self.global_state.get_env(env_id) else {
-                    unreachable!("called from a place where env is present")
-                };
-
-                let mut query_nodes = env
-                    .matching_nodes(target, &self.global_state.pool, PortType::Rest)
-                    // collecting here is required to avoid a long lived borrow on the agent
-                    // pool if this collect is removed, the iterator
-                    // will not be Send, and axum will be sad
-                    .collect::<Vec<_>>();
-
-                // select nodes in a random order
-                query_nodes.shuffle(&mut rand::thread_rng());
-
-                // walk through the nodes until we find one that responds
-                for peer in query_nodes {
-                    let addr = match peer {
-                        AgentPeer::Internal(agent_id, _) => {
-                            // ensure the node state is online
-                            if !self.global_state.is_agent_node_online(agent_id) {
-                                continue;
-                            };
-
-                            // attempt to get the state root from the client via RPC
-                            if let Some(client) = self.global_state.get_client(agent_id) {
-                                match client.snarkos_get::<String>("/stateRoot/latest").await {
-                                    Ok(state_root) => return Ok(state_root),
-                                    Err(e) => {
-                                        warn!(
-                                                "cannon {env_id}.{cannon_id} failed to get state root from agent {agent_id}: {e}"
-                                            );
-                                        continue;
-                                    }
-                                }
-                            }
-
-                            // get the agent's rest address as a fallback for the client
-                            if let Some(sock_addr) = self.global_state.get_agent_rest(agent_id) {
-                                sock_addr
-                            } else {
-                                continue;
-                            }
-                        }
-                        AgentPeer::External(addr) => addr,
-                    };
-
-                    // attempt to get the state root from the internal or external node via REST
-                    let url = format!("http://{addr}/{network}/latest/stateRoot");
-                    match CLIENT.get(url).send().await {
-                        Ok(res) => {
-                            if let Ok(e) = res.json().await {
-                                e
-                            } else {
-                                warn!(
-                                    "cannon {env_id}.{cannon_id} failed to parse state root from {peer:?}"
-                                );
-                                continue;
-                            }
-                        }
-                        Err(e) => {
-                            warn!("cannon {env_id}.{cannon_id} failed to get state root from {peer:?}: {e}");
-                            continue;
-                        }
-                    }
-                }
-
-                // if no nodes were found, return an error
-                Err(CannonInstanceError::TargetNodeNotFound(
-                    cannon_id,
-                    target.clone(),
-                ))?
-            }
+            QueryTarget::Node(target) => Ok(self
+                .global_state
+                .snarkos_get::<String>(env_id, "/stateRoot/latest", target)
+                .await?),
         }
     }
 
@@ -558,7 +485,7 @@ impl ExecutionContext {
                         }
                         AgentPeer::External(addr) => {
                             let url = format!("http://{addr}/{network}/transaction/broadcast");
-                            match CLIENT
+                            match REST_CLIENT
                                 .post(url)
                                 .header("Content-Type", "application/json")
                                 .body(tx.clone())
