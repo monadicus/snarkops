@@ -27,7 +27,7 @@ pub async fn execute_status(
 ) -> Result<Json<serde_json::Value>, ActionError> {
     use TransactionStatus::*;
 
-    let mut timeout = Box::pin(tokio::time::sleep(std::time::Duration::from_secs(10)));
+    let mut timeout = Box::pin(tokio::time::sleep(std::time::Duration::from_secs(30)));
     let mut agent_id = None;
     let mut retries = 0;
 
