@@ -237,7 +237,16 @@ impl GlobalState {
 
             // attempt to get the state root from the internal or external node via REST
             let url = format!("http://{addr}/{network}{route}");
-            match REST_CLIENT.get(&url).send().await {
+            let Ok(res) = tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                REST_CLIENT.get(&url).send(),
+            )
+            .await
+            else {
+                // timeout
+                continue;
+            };
+            match res {
                 Ok(res) => match res.json().await {
                     Ok(e) => e,
                     Err(e) => {
