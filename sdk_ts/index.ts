@@ -5,7 +5,7 @@ class Snops {
 		this.api = new SnopsApi(url);
 	}
 
-	agents(): Agents {
+	get agents(): Agents {
 		return new Agents(this.api);
 	}
 
@@ -13,7 +13,6 @@ class Snops {
 		return new Env(this.api, env_id);
 	}
 }
-
 class SnopsApi {
 	private static API: string = '/api/v1/';
 	private url: string;
@@ -23,16 +22,25 @@ class SnopsApi {
 	}
 
 	async fetch<B, T>(method: string, url: string, body?: B): Promise<T> {
-		const res = await fetch(`${this.url}${SnopsApi.API}${url}`, {
+		const full_url = `${this.url}${SnopsApi.API}${url}`;
+		const res = await fetch(full_url, {
 			method,
-			body: body ? JSON.stringify({ body }) : null,
+			body: body ? JSON.stringify(body) : null,
 			headers: {
 				'Content-Type': 'application/json'
 			},
 		});
-		console.debug(`url: ${this.url}${SnopsApi.API}${url}, status: ${res.status}`);
-		const blob = await res.json();
-		return blob as T;
+		const rawBody = await res.text();
+		const isErrorCode = res.status < 200 || res.status >= 300;
+		let parsed: T;
+		try {
+			parsed = JSON.parse(rawBody);
+		} catch (e) {
+			throw new Error(`Failed to fetch '${full_url}' with status ${res.status} and body ${rawBody}: ${e}`);
+		}
+
+		if (isErrorCode) throw parsed;
+		return parsed;
 	}
 
 	async get<T>(url: string): Promise<T> {
@@ -55,16 +63,21 @@ class SnopsApi {
 		return this.get(`agents/${id}`);
 	}
 
-	async getAgentTps(id: string): Promise<string> {
+	async getAgentTps(id: string): Promise<number> {
 		return this.get(`agents/${id}/tps`);
 	}
 
 	async findAgents(query: string, find: FindAgentsBody): Promise<AgentStatus[]> {
+		console.debug(find);
 		return this.post(`agents/find`, find);
 	}
 
-	async executeAction(query: string, execute: any): Promise<any> {
-		return this.post(`actions/${query}`, execute);
+	async listEnvs(): Promise<string[]> {
+		return await this.get('env/list');
+	}
+
+	async executeAction(env_id: string, execute: any): Promise<any> {
+		return this.post(`env/${env_id}/action/execute`, execute);
 	}
 }
 
@@ -116,7 +129,7 @@ class Agents {
 		return await this.api.getAgentTps(agent_id);
 	}
 
-	find() {
+	get find() {
 		return new FindAgentBuilder(this.api);
 	}
 }
@@ -175,7 +188,7 @@ class FindAgentBuilder {
 		return this;
 	}
 
-	labels(...labels: string[]): FindAgentBuilder {
+	with_labels(...labels: string[]): FindAgentBuilder {
 		this._labels = labels;
 		return this;
 	}
@@ -190,7 +203,7 @@ class FindAgentBuilder {
 		return this;
 	}
 
-	async find(): Promise<any> {
+	async call(): Promise<any> {
 		return await this.api.findAgents('find', {
 			mode: {
 				client: this._client,
@@ -209,19 +222,22 @@ class FindAgentBuilder {
 
 class Env {
 	private api: SnopsApi;
-	private env_id: string;
+	private env_id?: string;
 
 	constructor(api: SnopsApi, env_id?: string) {
 		this.api = api;
-		this.env_id = env_id || 'default';
 	}
 
-	action(): Action {
+	get action(): Action {
 		return new Action(this.api, this.env_id);
 	}
 
+	async list() {
+		return this.api.listEnvs();
+	}
+
 	execute(locator: string, ...inputs: string[]): ExecuteBuilder {
-		return this.action().execute(locator, ...inputs);
+		return this.action.execute(locator, ...inputs);
 	}
 }
 
@@ -229,9 +245,9 @@ class Action {
 	private api: SnopsApi;
 	private env_id: string;
 
-	constructor(api: SnopsApi, env_id: string) {
+	constructor(api: SnopsApi, env_id?: string) {
 		this.api = api;
-		this.env_id = env_id;
+		this.env_id = env_id || 'default';
 	}
 
 	execute(locator: string, ...inputs: string[]): ExecuteBuilder {
@@ -243,7 +259,8 @@ class ExecuteBuilder {
 	private api: SnopsApi;
 	private env_id: string;
 
-	private locator: string;
+	private program?: string;
+	private fn: string;
 	private inputs: string[];
 	private _private_key?: string;
 	private _cannon?: string;
@@ -253,8 +270,17 @@ class ExecuteBuilder {
 	constructor(api: SnopsApi, env_id: string, locator: string, inputs: string[]) {
 		this.api = api;
 		this.env_id = env_id;
-		this.locator = locator;
 		this.inputs = inputs;
+
+		const parts = locator.split('/');
+		if (parts.length === 1) {
+			this.fn = parts[0];
+		} else if (parts.length === 2) {
+			this.program = parts[0];
+			this.fn = parts[1];
+		} else {
+			throw new Error(`Invalid locator ${locator}`);
+		}
 	}
 
 	private_key(private_key: string): ExecuteBuilder {
@@ -277,13 +303,14 @@ class ExecuteBuilder {
 		return this;
 	}
 
-	async execute() {
-		return await this.api.executeAction(`env/${this.env_id}/${this.locator}`, {
+	async call() {
+		return await this.api.executeAction(this.env_id, {
 			private_key: this._private_key,
 			cannon: this._cannon,
 			priority_fee: this._priority_fee,
 			fee_record: this._fee_record,
-			locator: this.locator,
+			program: this.program,
+			function: this.fn,
 			inputs: this.inputs,
 		});
 	}
@@ -292,9 +319,17 @@ class ExecuteBuilder {
 const snops = new Snops('http://localhost:1234');
 // const snops = new Snops('http://node.internal.monadic.us:1234');
 
-const res = await snops.agents().find().env('canary').validator().find();
-// const res = await snops.agents().list();
-// const res = snops.env().action().execute('transfer_public', ...['committee.1', '1000u64']).call();
-// const res = snops.env().execute('transfer_public', ...['committee.1', '1000u64']);
+// const res = await snops.agents.list();
+// const res = await snops.agents.get("local-2");
+// const res = await snops.agents.tps("local-2");
+// const res = await snops.agents.find.with_labels("local-2").client().call();
 
-console.log(res);
+// const res = await snops.env().list();
+try {
+	const res = await snops.env().action.execute('transfer_public', ...['committee.1', '1000u64']).call();
+	console.log(res);
+} catch (err) {
+	console.error('error:', err);
+
+}
+// const res = snops.env().execute('transfer_public', ...['committee.1', '1000u64']);
