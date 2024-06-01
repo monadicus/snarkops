@@ -51,9 +51,11 @@ impl AgentClient {
         auth: String,
         fee_auth: Option<String>,
     ) -> Result<String, StateError> {
+        let mut ctx = context::current();
+        ctx.deadline += Duration::from_secs(30);
         Ok(self
             .0
-            .execute_authorization(context::current(), env_id, network, query, auth, fee_auth)
+            .execute_authorization(ctx, env_id, network, query, auth, fee_auth)
             .await??)
     }
 
