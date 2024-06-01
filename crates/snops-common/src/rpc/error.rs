@@ -75,6 +75,26 @@ pub enum AgentError {
 }
 
 #[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
+pub enum SnarkosRequestError {
+    #[error("expected agent to be in Node state")]
+    InvalidState,
+    #[error("expected Node to be online")]
+    OfflineNode,
+    #[error("failed failed to obtain environment info")]
+    MissingEnvInfo,
+    #[error("error making request: {0}")]
+    RequestError(String),
+    #[error("error parsing json: {0}")]
+    JsonParseError(String),
+    #[error("error serializing json: {0}")]
+    JsonSerializeError(String),
+    #[error("error deserializing json: {0}")]
+    JsonDeserializeError(String),
+    #[error("rpc error: {0}")]
+    RpcError(String),
+}
+
+#[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
 pub enum ResolveError {
     #[error("source agent not found")]
     SourceAgentNotFound,

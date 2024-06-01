@@ -21,6 +21,7 @@ httpdate.workspace = true
 local-ip-address.workspace = true
 nix = { workspace = true, features = ["signal"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
+serde_json.workspace = true
 simple_moving_average.workspace = true
 snops-common = { workspace = true, features = ["aot_cmds"] }
 tarpc.workspace = true

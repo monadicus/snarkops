@@ -149,6 +149,18 @@ impl GlobalState {
         self.pool.get(&id)?.client_owned()
     }
 
+    /// check if an agent's node is in an online state
+    pub fn is_agent_node_online(&self, id: AgentId) -> bool {
+        let Some(agent) = self.pool.get(&id) else {
+            return false;
+        };
+
+        match agent.state() {
+            AgentState::Node(_, state) => state.online,
+            _ => false,
+        }
+    }
+
     pub fn get_agent_rest(&self, id: AgentId) -> Option<SocketAddr> {
         let agent = self.pool.get(&id)?;
         Some(SocketAddr::new(agent.addrs()?.usable()?, agent.rest_port()))

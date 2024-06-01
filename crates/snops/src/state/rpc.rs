@@ -1,7 +1,11 @@
 use std::time::Duration;
 
+use serde::de::DeserializeOwned;
 use snops_common::{
-    rpc::{agent::AgentServiceClient, error::ReconcileError},
+    rpc::{
+        agent::AgentServiceClient,
+        error::{ReconcileError, SnarkosRequestError},
+    },
     state::{AgentState, EnvId, NetworkId},
 };
 use tarpc::{client::RpcError, context};
@@ -24,8 +28,19 @@ impl AgentClient {
             .map(|res| res.map(|_| to))
     }
 
-    pub async fn get_state_root(&self) -> Result<String, StateError> {
-        Ok(self.0.get_state_root(context::current()).await??)
+    pub async fn snarkos_get<T: DeserializeOwned>(
+        &self,
+        route: impl ToString,
+    ) -> Result<T, SnarkosRequestError> {
+        match self
+            .0
+            .snarkos_get(context::current(), route.to_string())
+            .await
+        {
+            Ok(res) => serde_json::from_str(&res?)
+                .map_err(|e| SnarkosRequestError::JsonDeserializeError(e.to_string())),
+            Err(e) => Err(SnarkosRequestError::RpcError(e.to_string())),
+        }
     }
 
     pub async fn execute_authorization(

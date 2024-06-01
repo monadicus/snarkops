@@ -8,7 +8,7 @@ use snops_common::{
     rpc::{
         agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake},
         control::{ControlServiceRequest, ControlServiceResponse},
-        error::{AgentError, ReconcileError},
+        error::{AgentError, ReconcileError, SnarkosRequestError},
         MuxMessage,
     },
     state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, NetworkId, PortConfig},
@@ -367,32 +367,43 @@ impl AgentService for AgentRpcServer {
         )
     }
 
-    async fn get_state_root(self, _: context::Context) -> Result<String, AgentError> {
+    async fn snarkos_get(
+        self,
+        _: context::Context,
+        route: String,
+    ) -> Result<String, SnarkosRequestError> {
         let env_id =
-            if let AgentState::Node(env_id, _) = self.state.agent_state.read().await.deref() {
+            if let AgentState::Node(env_id, state) = self.state.agent_state.read().await.deref() {
+                if !state.online {
+                    return Err(SnarkosRequestError::OfflineNode);
+                }
                 *env_id
             } else {
-                return Err(AgentError::InvalidState);
+                return Err(SnarkosRequestError::InvalidState);
             };
 
         let network = self
             .state
             .get_env_info(env_id)
             .await
-            .map_err(|_| AgentError::FailedToMakeRequest)?
+            .map_err(|_| SnarkosRequestError::MissingEnvInfo)?
             .network;
 
         let url = format!(
-            "http://127.0.0.1:{}/{network}/latest/stateRoot",
+            "http://127.0.0.1:{}/{network}{route}",
             self.state.cli.ports.rest
         );
         let response = reqwest::get(&url)
             .await
-            .map_err(|_| AgentError::FailedToMakeRequest)?;
-        response
+            .map_err(|err| SnarkosRequestError::RequestError(err.to_string()))?;
+
+        let value: serde_json::Value = response
             .json()
             .await
-            .map_err(|_| AgentError::FailedToParseJson)
+            .map_err(|err| SnarkosRequestError::JsonParseError(err.to_string()))?;
+
+        serde_json::to_string_pretty(&value)
+            .map_err(|err| SnarkosRequestError::JsonSerializeError(err.to_string()))
     }
 
     async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {

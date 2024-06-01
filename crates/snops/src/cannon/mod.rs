@@ -257,9 +257,14 @@ impl CannonInstance {
                 for peer in query_nodes {
                     let addr = match peer {
                         AgentPeer::Internal(agent_id, _) => {
+                            // ensure the node state is online
+                            if !self.global_state.is_agent_node_online(agent_id) {
+                                continue;
+                            };
+
                             // attempt to get the state root from the client via RPC
                             if let Some(client) = self.global_state.get_client(agent_id) {
-                                match client.get_state_root().await {
+                                match client.snarkos_get::<String>("/stateRoot/latest").await {
                                     Ok(state_root) => return Ok(state_root),
                                     Err(e) => {
                                         warn!(
@@ -533,7 +538,13 @@ impl ExecutionContext {
                 for node in broadcast_nodes {
                     match node {
                         AgentPeer::Internal(id, _) => {
+                            // ensure the client is connected
                             let Some(client) = self.state.get_client(id) else {
+                                continue;
+                            };
+
+                            // ensure the node state is online
+                            if !self.state.is_agent_node_online(id) {
                                 continue;
                             };
 
