@@ -4,13 +4,14 @@ use std::{
 };
 
 use snops_common::{
+    api::EnvInfo,
     rpc::{
         agent::{AgentServiceRequest, AgentServiceResponse},
         control::{ControlService, ControlServiceRequest, ControlServiceResponse},
         error::ResolveError,
         MuxMessage,
     },
-    state::AgentId,
+    state::{AgentId, EnvId},
 };
 use tarpc::{context, ClientMessage, Response};
 
@@ -48,6 +49,10 @@ impl ControlService for ControlRpcServer {
             .await
             .map_err(|_| ResolveError::AgentHasNoAddresses)?;
         resolve_addrs(&addr_map, self.agent, &peers).map_err(|_| ResolveError::SourceAgentNotFound)
+    }
+
+    async fn get_env_info(self, _: context::Context, env_id: EnvId) -> Option<EnvInfo> {
+        Some(self.state.get_env(env_id)?.info())
     }
 }
 

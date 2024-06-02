@@ -3,7 +3,7 @@ use std::{os::unix::fs::PermissionsExt, path::Path};
 use futures::StreamExt;
 use http::StatusCode;
 use reqwest::IntoUrl;
-use snops_common::{api::EnvInfo, state::EnvId};
+use snops_common::state::EnvId;
 use tokio::{fs::File, io::AsyncWriteExt};
 use tracing::info;
 
@@ -42,18 +42,6 @@ pub async fn check_file(url: impl IntoUrl, to: &Path) -> anyhow::Result<()> {
     download_file(&client, url, to).await?;
 
     Ok(())
-}
-
-pub async fn get_env_info(url: impl IntoUrl) -> anyhow::Result<EnvInfo> {
-    let req = reqwest::get(url).await?;
-    if !req.status().is_success() {
-        return Err(anyhow::anyhow!(
-            "error getting storage info: {}",
-            req.status()
-        ));
-    }
-    let body = req.json().await?;
-    Ok(body)
 }
 
 pub async fn check_binary(env_id: EnvId, base_url: &str, path: &Path) -> anyhow::Result<()> {

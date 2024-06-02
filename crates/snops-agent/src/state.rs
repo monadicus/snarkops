@@ -5,12 +5,14 @@ use std::{
     time::Duration,
 };
 
+use anyhow::bail;
 use reqwest::Url;
 use snops_common::{
     api::EnvInfo,
     rpc::control::ControlServiceClient,
     state::{AgentId, AgentPeer, AgentState, EnvId},
 };
+use tarpc::context;
 use tokio::{
     process::Child,
     select,
@@ -19,7 +21,7 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{api, cli::Cli, metrics::Metrics};
+use crate::{cli::Cli, metrics::Metrics};
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -68,8 +70,9 @@ impl GlobalState {
             _ => {}
         }
 
-        let info =
-            api::get_env_info(format!("{}/api/v1/env/{env_id}/info", &self.endpoint)).await?;
+        let Some(info) = self.client.get_env_info(context::current(), env_id).await? else {
+            bail!("failed to get env info: env not found {env_id}");
+        };
 
         *self.env_info.write().await = Some((env_id, info.clone()));
 
