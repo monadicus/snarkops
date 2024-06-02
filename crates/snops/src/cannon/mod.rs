@@ -485,13 +485,19 @@ impl ExecutionContext {
                         }
                         AgentPeer::External(addr) => {
                             let url = format!("http://{addr}/{network}/transaction/broadcast");
-                            match REST_CLIENT
+                            let req = REST_CLIENT
                                 .post(url)
                                 .header("Content-Type", "application/json")
                                 .body(tx.clone())
-                                .send()
-                                .await
-                            {
+                                .send();
+                            let Ok(res) =
+                                tokio::time::timeout(std::time::Duration::from_secs(5), req).await
+                            else {
+                                warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: timeout");
+                                continue;
+                            };
+
+                            match res {
                                 Err(e) => {
                                     warn!(
                                             "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}"
