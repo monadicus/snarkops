@@ -3,6 +3,7 @@ use regex::Regex;
 
 mod agent_mode;
 mod agent_state;
+mod agent_status;
 mod height_request;
 mod id;
 mod network;
@@ -14,6 +15,7 @@ mod strings;
 
 pub use agent_mode::*;
 pub use agent_state::*;
+pub use agent_status::*;
 pub use height_request::*;
 pub use id::*;
 pub use network::*;
