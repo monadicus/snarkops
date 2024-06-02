@@ -1,4 +1,4 @@
-class Snops {
+export class Snops {
 	private api: SnopsApi;
 
 	constructor(url: string) {
@@ -22,6 +22,40 @@ class CustomError<T> extends Error {
 		this.name = 'CustomError';
 		this.originalError = json_err;
 	}
+}
+
+interface WithTargets<T> {
+	nodes: string[] | string;
+	data?: T;
+}
+
+interface ExternalNode {
+	ip: string;
+	External: {
+		ports: {
+			bft: string;
+			node: string;
+			rest: string;
+		}
+	}
+}
+
+interface InternalNode {
+	Internal: {
+		online: boolean;
+		replicas?: number;
+		key?: string;
+		labels: string[];
+		agent?: string;
+		validators?: string[] | string;
+		peers?: string[] | string;
+		env: Record<string, string>;
+	}
+}
+
+interface TopologyResponse {
+	internal: Record<string, InternalNode>;
+	external: Record<string, ExternalNode>;
 }
 
 class SnopsApi {
@@ -91,8 +125,8 @@ class SnopsApi {
 		return await this.get('env/list');
 	}
 
-	async envTopology(env_id: string): Promise<any> {
-		return await this.get(`env/${env_id}/topology`);
+	async envTopology(env_id: string): Promise<TopologyResponse> {
+		return await this.get<TopologyResponse>(`env/${env_id}/topology`);
 	}
 
 	async envResolvedTopology(env_id: string): Promise<any> {
@@ -115,8 +149,20 @@ class SnopsApi {
 		return await this.get(`env/${env_id}/info`);
 	}
 
-	async executeAction(env_id: string, execute: any): Promise<any> {
+	async executeAction(env_id: string, execute: any): Promise<Record<string, string>> {
 		return this.post(`env/${env_id}/action/execute`, execute);
+	}
+
+	async onlineAction(env_id: string, nodes: string[] | string): Promise<Record<string, string>> {
+		return this.post(`env/${env_id}/action/online`, { nodes });
+	}
+
+	async offlineAction(env_id: string, nodes: string[] | string): Promise<Record<string, string>> {
+		return this.post(`env/${env_id}/action/offline`, { nodes });
+	}
+
+	async rebootAction(env_id: string, nodes: string[] | string): Promise<any> {
+		return this.post(`env/${env_id}/action/reboot`, { nodes });
 	}
 }
 
@@ -142,14 +188,7 @@ interface FindAgentsBody {
 	local_pk: boolean,
 }
 
-class Agent {
-	private status: AgentStatus;
-	constructor(status: AgentStatus) {
-		this.status = status;
-	}
-}
-
-class Agents {
+export class Agents {
 	private api: SnopsApi;
 
 	constructor(api: SnopsApi) {
@@ -314,6 +353,18 @@ class Action {
 		this.env_id = env_id || 'default';
 	}
 
+	async online(nodes: string[] | string) {
+		return await this.api.onlineAction(this.env_id, nodes);
+	}
+
+	async offline(nodes: string[] | string) {
+		return await this.api.offlineAction(this.env_id, nodes);
+	}
+
+	async reboot(nodes: string[] | string) {
+		return await this.api.rebootAction(this.env_id, nodes);
+	}
+
 	execute(locator: string, ...inputs: string[]): ExecuteBuilder {
 		return new ExecuteBuilder(this.api, this.env_id, locator, inputs);
 	}
@@ -379,15 +430,3 @@ class ExecuteBuilder {
 		});
 	}
 }
-
-const snops = new Snops('http://localhost:1234');
-// const snops = new Snops('http://node.internal.monadic.us:1234');
-
-// const res = await snops.agents.list();
-// const res = await snops.agents.get("local-2");
-// const res = await snops.agents.tps("local-2");
-// const res = await snops.agents.find.with_labels("local-2").client().call();
-
-// const res = await snops.env().list();
-const res = await snops.env().action.execute('transfer_public', ...['committee.1', '1000u64']).call();
-// const res = snops.env().execute('transfer_public', ...['committee.1', '1000u64']);
