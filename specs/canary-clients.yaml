@@ -3,8 +3,7 @@ version: storage.snarkos.testing.monadic.us/v1
 
 id: canary-clients
 name: canary-clients
-regen: 6
-connect: https://github.com/AleoNet/snarkVM/raw/mainnet-staging/parameters/src/canary/resources/block.genesis
+regen: 1
 generate:
   accounts:
     clients: 4

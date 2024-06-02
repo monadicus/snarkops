@@ -18,7 +18,7 @@ use crate::{
     db::Database,
     env::{error::EnvRequestError, Environment, PortType},
     error::StateError,
-    schema::storage::STORAGE_DIR,
+    schema::storage::{LoadedStorage, STORAGE_DIR},
     server::{error::StartError, prometheus::HttpsdResponse},
     util::OpaqueDebug,
 };
@@ -166,6 +166,27 @@ impl GlobalState {
             AgentState::Node(_, state) => state.online,
             _ => false,
         }
+    }
+
+    pub fn try_unload_storage(
+        &self,
+        network: NetworkId,
+        id: StorageId,
+    ) -> Option<Arc<LoadedStorage>> {
+        // if the storage is in use, don't unload it
+        if self
+            .envs
+            .iter()
+            .any(|e| e.storage.id == id && e.storage.network == network)
+        {
+            return None;
+        }
+
+        let (_, storage) = self.storage.remove(&(network, id))?;
+        if let Err(e) = self.db.storage.delete(&(network, id)) {
+            tracing::error!("[storage {network}.{id}] failed to delete persistence: {e}");
+        }
+        Some(storage)
     }
 
     pub fn get_agent_rest(&self, id: AgentId) -> Option<SocketAddr> {

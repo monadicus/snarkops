@@ -427,6 +427,9 @@ impl Environment {
         if let Err(e) = state.db.envs.delete(&id) {
             error!("[env {id}] failed to delete persistence: {e}");
         }
+        if let Some(storage) = state.try_unload_storage(env.network, env.storage.id) {
+            info!("[env {id}] unloaded storage {}", storage.id);
+        }
 
         trace!("[env {id}] marking prom as dirty");
         state.prom_httpsd.lock().await.set_dirty();

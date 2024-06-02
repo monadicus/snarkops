@@ -240,7 +240,7 @@ impl Document {
         let base = state.storage_path(network, id);
         let version_file = base.join(VERSION_FILE);
 
-        let mut native_genesis = true;
+        let mut native_genesis = false;
 
         // TODO: The dir can be made by a previous run and the aot stuff can fail
         // i.e an empty/incomplete directory can exist and we should check those
@@ -279,11 +279,11 @@ impl Document {
 
             match (self.connect, generation.genesis.as_ref()) {
                 (None, None) => {
+                    native_genesis = true;
                     info!("{id}: using network native genesis")
                 }
                 (Some(ref url), _) => {
                     // downloaded genesis block is not native
-                    native_genesis = false;
                     let err = |e| StorageError::FailedToFetchGenesis(id, url.clone(), e);
 
                     // I think its ok to reuse this error here
@@ -308,7 +308,6 @@ impl Document {
                 }
                 (None, Some(genesis)) => {
                     // generated genesis block is not native
-                    native_genesis = false;
                     let mut command = Command::new(DEFAULT_AOT_BIN.clone());
                     command
                         .stdout(Stdio::inherit())

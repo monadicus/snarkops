@@ -3,7 +3,7 @@ version: storage.snarkos.testing.monadic.us/v1
 
 id: canary-bonding
 name: canary-bonding
-regen: 7
+regen: 5
 generate:
   genesis:
     seed: 1
