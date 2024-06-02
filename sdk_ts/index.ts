@@ -91,6 +91,30 @@ class SnopsApi {
 		return await this.get('env/list');
 	}
 
+	async envTopology(env_id: string): Promise<any> {
+		return await this.get(`env/${env_id}/topology`);
+	}
+
+	async envResolvedTopology(env_id: string): Promise<any> {
+		return await this.get(`env/${env_id}/topology/resolved`);
+	}
+
+	async envAgents(env_id: string): Promise<AgentStatus[]> {
+		return await this.get(`env/${env_id}/agents`);
+	}
+
+	async envAgent(env_id: string, node_ty: string, node_key: string): Promise<AgentStatus> {
+		return await this.get(`env/${env_id}/agents/${node_ty}/${node_key}`);
+	}
+
+	async envPrepare(env_id: string, prepare: any): Promise<any> {
+		return this.post(`env/${env_id}/prepare`, prepare);
+	}
+
+	async envInfo(env_id: string): Promise<any> {
+		return await this.get(`env/${env_id}/info`);
+	}
+
 	async executeAction(env_id: string, execute: any): Promise<any> {
 		return this.post(`env/${env_id}/action/execute`, execute);
 	}
@@ -237,10 +261,11 @@ class FindAgentBuilder {
 
 class Env {
 	private api: SnopsApi;
-	private env_id?: string;
+	private env_id: string;
 
 	constructor(api: SnopsApi, env_id?: string) {
 		this.api = api;
+		this.env_id = env_id || 'default';
 	}
 
 	get action(): Action {
@@ -249,6 +274,30 @@ class Env {
 
 	async list() {
 		return this.api.listEnvs();
+	}
+
+	async topology() {
+		return await this.api.envTopology(this.env_id);
+	}
+
+	async resolvedTopology() {
+		return await this.api.envResolvedTopology(this.env_id);
+	}
+
+	async agents() {
+		return await this.api.envAgents(this.env_id);
+	}
+
+	async agent(node_ty: string, node_key: string) {
+		return await this.api.envAgent(this.env_id, node_ty, node_key);
+	}
+
+	async prepare(prepare: any) {
+		return await this.api.envPrepare(this.env_id, prepare);
+	}
+
+	async info() {
+		return await this.api.envInfo(this.env_id);
 	}
 
 	execute(locator: string, ...inputs: string[]): ExecuteBuilder {
