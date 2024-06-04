@@ -114,6 +114,8 @@ async fn main() {
 
     // create the client state
     let state = Arc::new(GlobalState {
+        started: Instant::now(),
+        connected: Mutex::new(Instant::now()),
         client,
         external_addr,
         internal_addrs,
@@ -189,6 +191,7 @@ async fn main() {
                 },
             };
 
+            *state.connected.lock().unwrap() = Instant::now();
             info!("Connection established with the control plane");
 
             let mut terminating = false;

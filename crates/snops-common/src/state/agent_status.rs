@@ -50,10 +50,10 @@ pub struct AgentStatus {
     /// The status of the node
     pub node_status: NodeStatus,
     /// The number of seconds since this agent was started
-    pub online_secs: u32,
+    pub online_secs: u64,
     /// The number of seconds since this agent was last connected to the control
     /// plane
-    pub connected_secs: u32,
+    pub connected_secs: u64,
     /// A map of transfers in progress
     pub transfers: IndexMap<String, TransferStatus>,
 }

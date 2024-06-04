@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     net::IpAddr,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::bail;
@@ -10,9 +10,9 @@ use reqwest::Url;
 use snops_common::{
     api::EnvInfo,
     rpc::control::ControlServiceClient,
-    state::{AgentId, AgentPeer, AgentState, EnvId},
+    state::{AgentId, AgentPeer, AgentState, AgentStatus, EnvId, NodeStatus},
 };
-use tarpc::context;
+use tarpc::{client::RpcError, context};
 use tokio::{
     process::Child,
     select,
@@ -30,6 +30,8 @@ pub type AppState = Arc<GlobalState>;
 /// Global state for this agent runner.
 pub struct GlobalState {
     pub client: ControlServiceClient,
+    pub started: Instant,
+    pub connected: Mutex<Instant>,
 
     pub external_addr: Option<IpAddr>,
     pub internal_addrs: Vec<IpAddr>,
@@ -104,5 +106,27 @@ impl GlobalState {
                 }
             }
         }
+    }
+
+    /// Derive an `AgentStatus` from the global state of this agent.
+    pub fn agent_status(&self) -> AgentStatus {
+        AgentStatus {
+            agent_version: Default::default(), // TODO
+            node_info: None,                   // TODO
+            node_status: Default::default(),   // TODO
+            online_secs: self.started.elapsed().as_secs(),
+            connected_secs: match self.connected.lock() {
+                Ok(instant) => instant.elapsed().as_secs(),
+                Err(_) => 0,
+            },
+            transfers: Default::default(), // TODO
+        }
+    }
+
+    // Post this agent's `AgentStatus` to the control plane.
+    pub async fn post_agent_status(&self) -> Result<(), RpcError> {
+        self.client
+            .post_agent_status(context::current(), self.agent_status())
+            .await
     }
 }

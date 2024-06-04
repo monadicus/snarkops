@@ -6,7 +6,7 @@ use std::{
 use super::error::ResolveError;
 use crate::{
     api::EnvInfo,
-    state::{AgentId, EnvId},
+    state::{AgentId, AgentStatus, EnvId},
 };
 
 #[tarpc::service]
@@ -18,4 +18,6 @@ pub trait ControlService {
 
     /// Get the environment info for the given environment.
     async fn get_env_info(env_id: EnvId) -> Option<EnvInfo>;
+
+    async fn post_agent_status(status: AgentStatus);
 }

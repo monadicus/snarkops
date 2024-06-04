@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
     rpc::agent::AgentServiceClient,
-    state::{AgentId, AgentModeOptions, AgentState, EnvId, NodeState, PortConfig},
+    state::{AgentId, AgentModeOptions, AgentState, AgentStatus, EnvId, NodeState, PortConfig},
     INTERN,
 };
 
@@ -31,6 +31,7 @@ pub struct Agent {
     pub(crate) claims: Claims,
     pub(crate) connection: AgentConnection,
     pub(crate) state: AgentState,
+    pub(crate) status: Option<AgentStatus>,
 
     /// CLI provided information (mode, labels, local private key)
     pub(crate) flags: AgentFlags,
@@ -58,6 +59,7 @@ impl Agent {
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),
+            status: None,
             ports: None,
             addrs: None,
         }
@@ -79,6 +81,7 @@ impl Agent {
             connection: AgentConnection::Offline {
                 since: Instant::now(),
             },
+            status: None,
             state,
             ports,
             addrs,

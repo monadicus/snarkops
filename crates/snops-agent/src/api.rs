@@ -7,22 +7,54 @@ use snops_common::state::EnvId;
 use tokio::{fs::File, io::AsyncWriteExt};
 use tracing::info;
 
+// #[derive(Debug, Clone)]
+// pub struct Transfer {
+//     pub started: Instant,
+//     pub downloaded: usize,
+//     pub total: usize,
+// }
+
+// impl Default for Transfer {
+//     fn default() -> Self {
+//         Self {
+//             started: Instant::now(),
+//             downloaded: Default::default(),
+//             total: Default::default(),
+//         }
+//     }
+// }
+
 /// Download a file. Returns a None if 404.
 pub async fn download_file(
     client: &reqwest::Client,
     url: impl IntoUrl,
     to: impl AsRef<Path>,
+    // mut transfer: Option<&mut Transfer>,
 ) -> anyhow::Result<Option<()>> {
+    // if let Some(ref mut transfer) = transfer {
+    //     transfer.started = Instant::now();
+    // }
+
     let req = client.get(url).send().await?;
     if req.status() == StatusCode::NOT_FOUND {
         return Ok(None);
     }
 
+    // if let Some(ref mut transfer) = transfer {
+    //     transfer.total = req.content_length().unwrap_or_default() as usize;
+    // }
+
     let mut stream = req.bytes_stream();
     let mut file = File::create(to).await?;
 
     while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
+        let chunk = chunk?;
+
+        // if let Some(ref mut transfer) = transfer {
+        //     transfer.downloaded += chunk.len();
+        // }
+
+        file.write_all(&chunk).await?;
     }
 
     Ok(Some(()))
