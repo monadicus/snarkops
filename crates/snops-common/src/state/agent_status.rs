@@ -23,6 +23,15 @@ pub enum NodeStatus {
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LatestNodeInfo {
+    pub height: u32,
+    pub state_root: String,
+    pub block_hash: String,
+    pub block_timestamp: i64,
+    pub block_time: u32,
+}
+
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TransferStatus {
     /// The time the transfer started (relative to the agent's startup time)
     pub started_at: u32,
@@ -36,18 +45,15 @@ pub struct TransferStatus {
 pub struct AgentStatus {
     /// Version of the agent binary
     pub agent_version: String,
-    /// The current height of the node
-    pub height: Option<u32>,
-    /// The time of the last height update (used to check for stuck nodes and
-    /// freshness)
-    pub last_height_time: Option<u32>,
+    /// The latest node info
+    pub node_info: Option<LatestNodeInfo>,
+    /// The status of the node
+    pub node_status: NodeStatus,
     /// The number of seconds since this agent was started
     pub online_secs: u32,
     /// The number of seconds since this agent was last connected to the control
     /// plane
     pub connected_secs: u32,
-    /// The status of the node
-    pub node_status: NodeStatus,
     /// A map of transfers in progress
     pub transfers: IndexMap<String, TransferStatus>,
 }
