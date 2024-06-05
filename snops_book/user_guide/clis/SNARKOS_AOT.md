@@ -9,18 +9,11 @@ This document contains the help content for the `snarkos-aot` command-line progr
 * [`snarkos-aot accounts`↴](#snarkos-aot-accounts)
 * [`snarkos-aot ledger`↴](#snarkos-aot-ledger)
 * [`snarkos-aot ledger init`↴](#snarkos-aot-ledger-init)
-* [`snarkos-aot ledger tx`↴](#snarkos-aot-ledger-tx)
-* [`snarkos-aot ledger tx from-ops`↴](#snarkos-aot-ledger-tx-from-ops)
-* [`snarkos-aot ledger tx num`↴](#snarkos-aot-ledger-tx-num)
-* [`snarkos-aot ledger add`↴](#snarkos-aot-ledger-add)
-* [`snarkos-aot ledger add random`↴](#snarkos-aot-ledger-add-random)
-* [`snarkos-aot ledger add stdin`↴](#snarkos-aot-ledger-add-stdin)
 * [`snarkos-aot ledger view`↴](#snarkos-aot-ledger-view)
 * [`snarkos-aot ledger view top`↴](#snarkos-aot-ledger-view-top)
 * [`snarkos-aot ledger view block`↴](#snarkos-aot-ledger-view-block)
 * [`snarkos-aot ledger view balance`↴](#snarkos-aot-ledger-view-balance)
 * [`snarkos-aot ledger view records`↴](#snarkos-aot-ledger-view-records)
-* [`snarkos-aot ledger distribute`↴](#snarkos-aot-ledger-distribute)
 * [`snarkos-aot ledger rewind`↴](#snarkos-aot-ledger-rewind)
 * [`snarkos-aot ledger replay`↴](#snarkos-aot-ledger-replay)
 * [`snarkos-aot ledger execute`↴](#snarkos-aot-ledger-execute)
@@ -32,9 +25,12 @@ This document contains the help content for the `snarkos-aot` command-line progr
 * [`snarkos-aot ledger checkpoint view`↴](#snarkos-aot-ledger-checkpoint-view)
 * [`snarkos-aot ledger checkpoint clean`↴](#snarkos-aot-ledger-checkpoint-clean)
 * [`snarkos-aot run`↴](#snarkos-aot-run)
-* [`snarkos-aot execute`↴](#snarkos-aot-execute)
-* [`snarkos-aot authorize`↴](#snarkos-aot-authorize)
-* [`snarkos-aot authorize transfer-public`↴](#snarkos-aot-authorize-transfer-public)
+* [`snarkos-aot program`↴](#snarkos-aot-program)
+* [`snarkos-aot program execute`↴](#snarkos-aot-program-execute)
+* [`snarkos-aot program authorize-program`↴](#snarkos-aot-program-authorize-program)
+* [`snarkos-aot program authorize-fee`↴](#snarkos-aot-program-authorize-fee)
+* [`snarkos-aot program authorize`↴](#snarkos-aot-program-authorize)
+* [`snarkos-aot program id`↴](#snarkos-aot-program-id)
 * [`snarkos-aot man`↴](#snarkos-aot-man)
 * [`snarkos-aot md`↴](#snarkos-aot-md)
 
@@ -48,8 +44,7 @@ This document contains the help content for the `snarkos-aot` command-line progr
 * `accounts` — 
 * `ledger` — 
 * `run` — 
-* `execute` — 
-* `authorize` — 
+* `program` — 
 * `man` — For generating cli manpages. Only with the mangen feature enabled
 * `md` — For generating cli markdown. Only with the clipages feature enabled
 
@@ -115,19 +110,16 @@ This document contains the help content for the `snarkos-aot` command-line progr
 
 ## `snarkos-aot ledger`
 
-**Usage:** `snarkos-aot ledger [OPTIONS] --genesis <GENESIS> --ledger <LEDGER> <COMMAND>`
+**Usage:** `snarkos-aot ledger [OPTIONS] --ledger <LEDGER> <COMMAND>`
 
 ###### **Subcommands:**
 
 * `init` — 
-* `tx` — 
-* `add` — 
 * `view` — 
-* `distribute` — 
 * `rewind` — 
 * `replay` — 
 * `execute` — 
-* `query` — Receive inquiries on /mainnet/latest/stateRoot
+* `query` — Receive inquiries on /<network>/latest/stateRoot
 * `hash` — 
 * `checkpoint` — 
 
@@ -149,84 +141,6 @@ This document contains the help content for the `snarkos-aot` command-line progr
 ## `snarkos-aot ledger init`
 
 **Usage:** `snarkos-aot ledger init`
-
-
-
-## `snarkos-aot ledger tx`
-
-**Usage:** `snarkos-aot ledger tx <COMMAND>`
-
-###### **Subcommands:**
-
-* `from-ops` — 
-* `num` — 
-
-
-
-## `snarkos-aot ledger tx from-ops`
-
-**Usage:** `snarkos-aot ledger tx from-ops --operations <OPERATIONS>`
-
-###### **Options:**
-
-* `--operations <OPERATIONS>`
-
-
-
-## `snarkos-aot ledger tx num`
-
-**Usage:** `snarkos-aot ledger tx num --private-keys <PRIVATE_KEYS> <NUM>`
-
-###### **Arguments:**
-
-* `<NUM>`
-
-###### **Options:**
-
-* `--private-keys <PRIVATE_KEYS>`
-
-
-
-## `snarkos-aot ledger add`
-
-**Usage:** `snarkos-aot ledger add <COMMAND>`
-
-###### **Subcommands:**
-
-* `random` — 
-* `stdin` — 
-
-
-
-## `snarkos-aot ledger add random`
-
-**Usage:** `snarkos-aot ledger add random [OPTIONS] --private-keys <PRIVATE_KEYS>`
-
-###### **Options:**
-
-* `--block-private-key <BLOCK_PRIVATE_KEY>`
-* `--private-keys <PRIVATE_KEYS>`
-* `-n`, `--num-blocks <NUM_BLOCKS>`
-
-  Default value: `5`
-* `--min-per-block <MIN_PER_BLOCK>` — Minimum number of transactions per block
-
-  Default value: `128`
-* `--max-per-block <MAX_PER_BLOCK>` — Maximumnumber of transactions per block
-
-  Default value: `1024`
-* `--max-tx-credits <MAX_TX_CREDITS>` — Maximum transaction credit transfer. If unspecified, maximum is entire account balance
-
-
-
-## `snarkos-aot ledger add stdin`
-
-**Usage:** `snarkos-aot ledger add stdin [OPTIONS]`
-
-###### **Options:**
-
-* `--private-key <private-key>` — The private key to use when generating the block
-* `--txs-per-block <txs-per-block>` — The number of transactions to add per block
 
 
 
@@ -279,19 +193,6 @@ This document contains the help content for the `snarkos-aot` command-line progr
 
 
 
-## `snarkos-aot ledger distribute`
-
-**Usage:** `snarkos-aot ledger distribute [OPTIONS] --from <FROM> --amount <AMOUNT>`
-
-###### **Options:**
-
-* `--from <FROM>` — The private key in which to distribute credits from
-* `--to <TO>` — A comma-separated list of addresses to distribute credits to. This or `--num-accounts` must be passed
-* `--num-accounts <NUM_ACCOUNTS>` — The number of new addresses to generate and distribute credits to. This or `--to` must be passed
-* `--amount <AMOUNT>` — The amount of microcredits to distribute
-
-
-
 ## `snarkos-aot ledger rewind`
 
 **Usage:** `snarkos-aot ledger rewind <CHECKPOINT>`
@@ -324,21 +225,31 @@ This document contains the help content for the `snarkos-aot` command-line progr
 
 ## `snarkos-aot ledger execute`
 
-**Usage:** `snarkos-aot ledger execute --query <QUERY> <AUTHORIZATION>`
-
-###### **Arguments:**
-
-* `<AUTHORIZATION>`
+**Usage:** `snarkos-aot ledger execute [OPTIONS] --authorization <AUTHORIZATION> --query <QUERY>`
 
 ###### **Options:**
 
-* `-q`, `--query <QUERY>`
+* `-a`, `--authorization <AUTHORIZATION>` — The Authorization for the function
+* `-e`, `--exec-mode <EXEC_MODE>`
+
+  Default value: `local`
+
+  Possible values: `local`, `remote`
+
+* `-q`, `--query <QUERY>` — Query endpoint
+* `-f`, `--fee <FEE>` — The authorization for the fee execution
+* `-b`, `--broadcast` — Whether to broadcast the transaction
+
+  Default value: `false`
+
+  Possible values: `true`, `false`
+
 
 
 
 ## `snarkos-aot ledger query`
 
-Receive inquiries on /mainnet/latest/stateRoot
+Receive inquiries on /<network>/latest/stateRoot
 
 **Usage:** `snarkos-aot ledger query [OPTIONS]`
 
@@ -354,7 +265,7 @@ Receive inquiries on /mainnet/latest/stateRoot
 
   Possible values: `true`, `false`
 
-* `--record` — Receive messages from /mainnet/transaction/broadcast and record them to the output
+* `--record` — Receive messages from /<network>/transaction/broadcast and record them to the output
 
   Possible values: `true`, `false`
 
@@ -430,13 +341,11 @@ Cleanup old checkpoints
 
 ## `snarkos-aot run`
 
-**Usage:** `snarkos-aot run [OPTIONS] --genesis <GENESIS> --ledger <LEDGER> --type <type> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
+**Usage:** `snarkos-aot run [OPTIONS] --ledger <LEDGER> --type <type> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
 
 ###### **Options:**
 
 * `-g`, `--genesis <GENESIS>` — A path to the genesis block to initialize the ledger from
-
-  Default value: `genesis.block`
 * `-l`, `--ledger <LEDGER>` — The ledger from which to view a block
 
   Default value: `./ledger`
@@ -459,11 +368,7 @@ Cleanup old checkpoints
 
   Default value: `9000`
 * `--peers <PEERS>` — Specify the IP address and port of the peer(s) to connect to
-
-  Default value: ``
 * `--validators <VALIDATORS>` — Specify the IP address and port of the validator(s) to connect to
-
-  Default value: ``
 * `--rest-rps <REST_RPS>` — Specify the requests per second (RPS) rate limit per IP for the REST server
 
   Default value: `1000`
@@ -471,48 +376,114 @@ Cleanup old checkpoints
 
 
 
-## `snarkos-aot execute`
+## `snarkos-aot program`
 
-**Usage:** `snarkos-aot execute --query <QUERY> <AUTHORIZATION>`
-
-###### **Arguments:**
-
-* `<AUTHORIZATION>`
-
-###### **Options:**
-
-* `-q`, `--query <QUERY>`
-
-
-
-## `snarkos-aot authorize`
-
-**Usage:** `snarkos-aot authorize <COMMAND>`
+**Usage:** `snarkos-aot program <COMMAND>`
 
 ###### **Subcommands:**
 
-* `transfer-public` — 
+* `execute` — Execute an authorization
+* `authorize-program` — Authorize a program execution
+* `authorize-fee` — Authorize the fee for a program execution
+* `authorize` — Authorize a program execution and its fee
+* `id` — Given an authorization (and fee), return the transaction ID
 
 
 
-## `snarkos-aot authorize transfer-public`
+## `snarkos-aot program execute`
 
-**Usage:** `snarkos-aot authorize transfer-public [OPTIONS] --private-key <PRIVATE_KEY> --recipient <RECIPIENT> --amount <AMOUNT>`
+Execute an authorization
+
+**Usage:** `snarkos-aot program execute [OPTIONS] --authorization <AUTHORIZATION> --query <QUERY>`
 
 ###### **Options:**
 
-* `--private-key <PRIVATE_KEY>`
-* `--recipient <RECIPIENT>`
-* `-a`, `--amount <AMOUNT>`
-* `--priority-fee <PRIORITY_FEE>`
+* `-a`, `--authorization <AUTHORIZATION>` — The Authorization for the function
+* `-e`, `--exec-mode <EXEC_MODE>`
 
-  Default value: `0`
-* `--broadcast`
+  Default value: `local`
+
+  Possible values: `local`, `remote`
+
+* `-q`, `--query <QUERY>` — Query endpoint
+* `-f`, `--fee <FEE>` — The authorization for the fee execution
+* `-b`, `--broadcast` — Whether to broadcast the transaction
 
   Default value: `false`
 
   Possible values: `true`, `false`
 
+
+
+
+## `snarkos-aot program authorize-program`
+
+Authorize a program execution
+
+**Usage:** `snarkos-aot program authorize-program <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>> <LOCATOR> [INPUTS]...`
+
+###### **Arguments:**
+
+* `<LOCATOR>` — Program ID and function name (eg. credits.aleo/transfer_public)
+* `<INPUTS>` — Program inputs (eg. 1u64 5field)
+
+###### **Options:**
+
+* `--private-key <PRIVATE_KEY>` — Specify the account private key of the node
+* `--private-key-file <PRIVATE_KEY_FILE>` — Specify the account private key of the node
+
+
+
+## `snarkos-aot program authorize-fee`
+
+Authorize the fee for a program execution
+
+**Usage:** `snarkos-aot program authorize-fee [OPTIONS] --authorization <AUTHORIZATION> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
+
+###### **Options:**
+
+* `--private-key <PRIVATE_KEY>` — Specify the account private key of the node
+* `--private-key-file <PRIVATE_KEY_FILE>` — Specify the account private key of the node
+* `--priority-fee <PRIORITY_FEE>` — The priority fee in microcredits
+
+  Default value: `0`
+* `--record <RECORD>` — The record for a private fee
+* `-a`, `--authorization <AUTHORIZATION>` — The Authorization for the function
+
+
+
+## `snarkos-aot program authorize`
+
+Authorize a program execution and its fee
+
+**Usage:** `snarkos-aot program authorize [OPTIONS] <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>> <LOCATOR> [INPUTS]...`
+
+###### **Arguments:**
+
+* `<LOCATOR>` — Program ID and function name (eg. credits.aleo/transfer_public)
+* `<INPUTS>` — Program inputs (eg. 1u64 5field)
+
+###### **Options:**
+
+* `--private-key <PRIVATE_KEY>` — Specify the account private key of the node
+* `--private-key-file <PRIVATE_KEY_FILE>` — Specify the account private key of the node
+* `--priority-fee <PRIORITY_FEE>` — The priority fee in microcredits
+
+  Default value: `0`
+* `--record <RECORD>` — The record for a private fee
+
+
+
+## `snarkos-aot program id`
+
+Given an authorization (and fee), return the transaction ID
+
+**Usage:** `snarkos-aot program id [OPTIONS] --auth <AUTH>`
+
+###### **Options:**
+
+* `-a`, `--auth <AUTH>`
+* `-f`, `--fee-auth <FEE_AUTH>`
 
 
 

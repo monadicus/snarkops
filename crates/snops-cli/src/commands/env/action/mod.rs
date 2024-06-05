@@ -69,7 +69,7 @@ pub enum Action {
         /// Desired cannon to fire the transaction
         #[clap(long, short)]
         cannon: Option<CannonId>,
-        #[clap(long, short)]
+        #[clap(long)]
         priority_fee: Option<u32>,
         #[clap(long, short)]
         fee_record: Option<String>,
@@ -84,7 +84,7 @@ pub enum Action {
         #[clap(long, short)]
         online: Option<bool>,
         /// Configure the height of the target nodes
-        #[clap(long, short)]
+        #[clap(long)]
         height: Option<DocHeightRequest>,
         /// Configure the peers of the target nodes, or `none`
         #[clap(long, short)]

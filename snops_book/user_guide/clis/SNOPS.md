@@ -19,6 +19,9 @@ This document contains the help content for the `snops` command-line program.
 
 ###### **Options:**
 
+* `--bind <BIND_ADDR>`
+
+  Default value: `0.0.0.0`
 * `--port <PORT>` — Control plane server port
 
   Default value: `1234`
