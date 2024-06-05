@@ -203,6 +203,7 @@ impl AgentService for AgentRpcServer {
                         .stderr(std::io::stderr())
                         .envs(&node.env)
                         .env("NETWORK", info.network.to_string())
+                        .env("HOME", &ledger_path)
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
