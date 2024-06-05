@@ -468,12 +468,17 @@ impl AgentService for AgentRpcServer {
         let aot_bin = self.state.cli.path.join(SNARKOS_FILE);
 
         // download the snarkOS binary
-        api::check_binary(env_id, &self.state.endpoint, &aot_bin) // TODO: http(s)?
-            .await
-            .map_err(|e| {
-                error!("failed obtain runner binary: {e}");
-                AgentError::ProcessFailed
-            })?;
+        api::check_binary(
+            env_id,
+            &self.state.endpoint,
+            &aot_bin,
+            self.state.transfer_tx(),
+        ) // TODO: http(s)?
+        .await
+        .map_err(|e| {
+            error!("failed obtain runner binary: {e}");
+            AgentError::ProcessFailed
+        })?;
 
         let start = std::time::Instant::now();
         match AotCmd::new(aot_bin, network)

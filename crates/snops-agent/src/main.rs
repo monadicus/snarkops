@@ -5,6 +5,7 @@ mod net;
 mod reconcile;
 mod rpc;
 mod state;
+mod transfers;
 
 use std::{
     mem::size_of,
@@ -110,6 +111,9 @@ async fn main() {
         .await
         .ok();
 
+    // start transfer monitor
+    let (transfer_tx, transfers) = transfers::start_monitor();
+
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
     let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
@@ -135,6 +139,8 @@ async fn main() {
         child: Default::default(),
         resolved_addrs: Default::default(),
         metrics: Default::default(),
+        transfer_tx,
+        transfers,
     });
 
     // start the metrics watcher

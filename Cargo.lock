@@ -4672,6 +4672,7 @@ dependencies = [
  "bincode",
  "checkpoint",
  "clap",
+ "dashmap",
  "futures",
  "futures-util",
  "http 1.1.0",

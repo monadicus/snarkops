@@ -40,9 +40,14 @@ pub async fn check_files(
 
     // TODO: store binary based on binary id
     // download the snarkOS binary
-    api::check_binary(env_id, &state.endpoint, &base_path.join(SNARKOS_FILE)) // TODO: http(s)?
-        .await
-        .expect("failed to acquire snarkOS binary");
+    api::check_binary(
+        env_id,
+        &state.endpoint,
+        &base_path.join(SNARKOS_FILE),
+        state.transfer_tx(),
+    ) // TODO: http(s)?
+    .await
+    .expect("failed to acquire snarkOS binary");
 
     let version_file = storage_path.join(VERSION_FILE);
 
@@ -72,7 +77,7 @@ pub async fn check_files(
     // skip genesis download for native genesis storage
     if !info.storage.native_genesis {
         // download the genesis block
-        api::check_file(genesis_url, &genesis_path)
+        api::check_file(genesis_url, &genesis_path, state.transfer_tx())
             .await
             .map_err(|e| {
                 error!("failed to download {SNARKOS_GENESIS_FILE} from the control plane: {e}");
@@ -87,7 +92,7 @@ pub async fn check_files(
     }
 
     // download the ledger file
-    api::check_file(ledger_url, &ledger_path)
+    api::check_file(ledger_url, &ledger_path, state.transfer_tx())
         .await
         .map_err(|e| {
             error!("failed to download {SNARKOS_GENESIS_FILE} from the control plane: {e}");
@@ -320,13 +325,15 @@ impl<'a> CheckpointSource<'a> {
                 let path = storage_path.join(&meta.filename);
                 info!("downloading {} from {checkpoint_url}...", meta.filename);
 
-                api::check_file(checkpoint_url, &path).await.map_err(|e| {
-                    error!(
-                        "failed to download {} from the control plane: {e}",
-                        meta.filename
-                    );
-                    ReconcileError::StorageAcquireError(meta.filename.clone())
-                })?;
+                api::check_file(checkpoint_url, &path, state.transfer_tx())
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            "failed to download {} from the control plane: {e}",
+                            meta.filename
+                        );
+                        ReconcileError::StorageAcquireError(meta.filename.clone())
+                    })?;
 
                 path
             }

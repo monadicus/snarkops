@@ -6,22 +6,27 @@ use std::{
 };
 
 use anyhow::bail;
+use dashmap::DashMap;
 use reqwest::Url;
 use snops_common::{
     api::EnvInfo,
     rpc::control::ControlServiceClient,
-    state::{AgentId, AgentPeer, AgentState, AgentStatus, EnvId, NodeStatus},
+    state::{AgentId, AgentPeer, AgentState, AgentStatus, EnvId},
 };
 use tarpc::{client::RpcError, context};
 use tokio::{
     process::Child,
     select,
-    sync::{Mutex as AsyncMutex, RwLock},
+    sync::{mpsc, Mutex as AsyncMutex, RwLock},
     task::AbortHandle,
 };
 use tracing::info;
 
-use crate::{cli::Cli, metrics::Metrics};
+use crate::{
+    cli::Cli,
+    metrics::Metrics,
+    transfers::{Transfer, TransferId, TransferTx},
+};
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -47,6 +52,9 @@ pub struct GlobalState {
     // Map of agent IDs to their resolved addresses.
     pub resolved_addrs: RwLock<HashMap<AgentId, IpAddr>>,
     pub metrics: RwLock<Metrics>,
+
+    pub transfer_tx: TransferTx,
+    pub transfers: Arc<DashMap<TransferId, Transfer>>,
 }
 
 impl GlobalState {
@@ -128,5 +136,9 @@ impl GlobalState {
         self.client
             .post_agent_status(context::current(), self.agent_status())
             .await
+    }
+
+    pub fn transfer_tx(&self) -> TransferTx {
+        self.transfer_tx.clone()
     }
 }
