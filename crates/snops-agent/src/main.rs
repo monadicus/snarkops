@@ -81,8 +81,14 @@ async fn main() {
     Cli::parse().run();
     let args = Cli::parse();
 
-    // get the network interfaces available to this node
-    let internal_addrs = net::get_internal_addrs().expect("failed to get network interfaces");
+    let internal_addrs = match (args.internal, args.external) {
+        // use specified internal address
+        (Some(internal), _) => vec![internal],
+        // use no internal address if the external address is loopback
+        (None, Some(external)) if external.is_loopback() => vec![],
+        // otherwise, get the local network interfaces available to this node
+        (None, _) => net::get_internal_addrs().expect("failed to get network interfaces"),
+    };
     let external_addr = args.external;
     if let Some(addr) = external_addr {
         info!("using external addr: {}", addr);

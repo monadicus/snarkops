@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use ::jwt::VerifyWithKey;
 use axum::{
@@ -52,6 +52,7 @@ mod rpc;
 
 pub async fn start(cli: Cli) -> Result<(), StartError> {
     let db = db::Database::open(&cli.path.join("store"))?;
+    let socket_addr = SocketAddr::new(cli.bind_addr, cli.port);
 
     let prometheus = cli
         .prometheus
@@ -70,9 +71,10 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:1234")
+    let listener = tokio::net::TcpListener::bind(socket_addr)
         .await
         .map_err(StartError::TcpBind)?;
+
     axum::serve(listener, app)
         .await
         .map_err(StartError::Serve)?;
