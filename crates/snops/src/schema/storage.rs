@@ -150,6 +150,9 @@ pub struct GenesisGeneration {
     pub additional_accounts_balance: Option<u64>,
     #[serde(flatten)]
     pub balances: GenesisBalances,
+    #[serde(flatten)]
+    pub commissions: GenesisCommissions,
+    pub bonded_withdrawal: Option<IndexMap<String, String>>,
 }
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
@@ -166,6 +169,17 @@ pub enum GenesisBalances {
     },
 }
 
+#[derive(Deserialize, Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum GenesisCommissions {
+    #[serde(rename_all = "kebab-case")]
+    Defined {
+        bonded_commissions: IndexMap<String, u8>,
+    },
+    #[serde(rename_all = "kebab-case")]
+    Generated { bonded_commission: Option<u8> },
+}
+
 impl Default for GenesisGeneration {
     fn default() -> Self {
         Self {
@@ -177,6 +191,10 @@ impl Default for GenesisGeneration {
                 committee_size: None,
                 bonded_balance: None,
             },
+            commissions: GenesisCommissions::Generated {
+                bonded_commission: None,
+            },
+            bonded_withdrawal: None,
         }
     }
 }
@@ -355,6 +373,28 @@ impl Document {
                                 .arg("--bonded-balances")
                                 .arg(serde_json::to_string(&bonded_balances).unwrap());
                         }
+                    }
+
+                    // generate committee commissions based on the generation params
+                    match &genesis.commissions {
+                        GenesisCommissions::Generated { bonded_commission } => {
+                            if let Some(bonded_commission) = bonded_commission {
+                                command
+                                    .arg("--bonded-balance")
+                                    .arg(bonded_commission.to_string());
+                            }
+                        }
+                        GenesisCommissions::Defined { bonded_commissions } => {
+                            command
+                                .arg("--bonded-commissions")
+                                .arg(serde_json::to_string(&bonded_commissions).unwrap());
+                        }
+                    }
+
+                    if let Some(withdrawal) = &genesis.bonded_withdrawal {
+                        command
+                            .arg("--bonded-withdrawal")
+                            .arg(serde_json::to_string(withdrawal).unwrap());
                     }
 
                     // conditionally add additional accounts
