@@ -60,3 +60,20 @@ nodes:
 #
 # --- set validator 0 to be online
 # scli env action online validator/bonded-0
+#
+#
+# ---
+# withdraw test
+# ---
+#
+# --- transfer 100 credits to validator 0's withdraw address
+# scli env action execute transfer_public --private-key committee.0 val_withdraw.0 100_000_000u64
+#
+# --- start unbonding 100 credits from validator 0 to withdraw address
+# scli env action execute unbond_public --private-key val_withdraw.0 validator.0 100_000_000u64
+#
+# (wait 360 blocks from the height value in /<NETWORK>/program/credits.aleo/mapping/unbonding/<ADDRESS>)
+#
+# --- claim the unbonded credits from validator 0
+# scli env action execute claim_unbond_public  --private-key val_withdraw.0 validator.0
+
