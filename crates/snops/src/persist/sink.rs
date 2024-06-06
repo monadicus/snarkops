@@ -28,8 +28,7 @@ impl DataFormat for TxSinkFormatHeader {
 
         let version = reader.read_data(&())?;
         let node_targets = read_dataformat(reader)?;
-        // TODO USEME
-        reader.read_data(&())?;
+
         Ok(Self {
             version,
             node_targets,
