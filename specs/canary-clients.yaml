@@ -20,15 +20,3 @@ nodes:
     key: clients.$
     height: top
     peers: []
-
-  # validator/4:
-  #   key: committee.3
-  #   validators: [validator/*]
-  #   peers: []
-# ---
-# version: cannon.snarkos.testing.monadic.us/v1
-# name: listen
-# source:
-#   query: validator/*
-# sink:
-#   target: validator/*

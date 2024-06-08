@@ -19,8 +19,3 @@ nodes:
     height: 0
     validators: [validator/*]
     peers: []
-
-  # validator/4:
-  #   key: committee.3
-  #   validators: [validator/*]
-  #   peers: []

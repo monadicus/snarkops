@@ -6,8 +6,8 @@ name: base-ledger
 regen: 3
 
 generate:
-  # genesis:
-  # seed: 1
+  genesis:
+    seed: 1
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
@@ -22,15 +22,3 @@ nodes:
     height: 0
     validators: [validator/*]
     peers: []
-
-  # validator/4:
-  #   key: committee.3
-  #   validators: [validator/*]
-  #   peers: []
-# ---
-# version: cannon.snarkos.testing.monadic.us/v1
-# name: listen
-# source:
-#   query: validator/*
-# sink:
-#   target: validator/*

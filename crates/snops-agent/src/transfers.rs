@@ -45,7 +45,7 @@ pub enum TransferState {
 }
 
 pub fn next_id() -> TransferId {
-    const TRANSFER_ID_CTR: AtomicUsize = AtomicUsize::new(0);
+    static TRANSFER_ID_CTR: AtomicUsize = AtomicUsize::new(0);
     TRANSFER_ID_CTR.fetch_add(1, Ordering::AcqRel)
 }
 

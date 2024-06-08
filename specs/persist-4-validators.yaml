@@ -7,7 +7,9 @@ description: |-
   A local mainnet that persists ledger data between starts
 
 retention-policy: default
-generate: {}
+generate:
+  genesis:
+    seed: 1
 persist: true
 regen: 1
 
