@@ -3435,6 +3435,7 @@ dependencies = [
  "aleo-std",
  "anyhow",
  "axum",
+ "bech32",
  "bincode",
  "checkpoint",
  "clap",
