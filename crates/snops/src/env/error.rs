@@ -3,6 +3,7 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     aot_cmds::AotCmdError,
     impl_into_status_code, impl_into_type_str,
+    rpc::error::SnarkosRequestError,
     state::{AgentId, CannonId, EnvId, NodeKey, TimelineId},
 };
 use strum_macros::AsRefStr;
@@ -12,15 +13,25 @@ use tokio::task::JoinError;
 use crate::{
     cannon::error::{AuthorizeError, CannonError},
     schema::error::SchemaError,
+    state::error::BatchReconcileError,
 };
 
-#[derive(Debug, Error)]
-#[error("batch reconciliation failed with `{failures}` failed reconciliations")]
-pub struct BatchReconcileError {
-    pub failures: usize,
+#[derive(Debug, Error, AsRefStr)]
+pub enum EnvRequestError {
+    #[error("environment {0} not found")]
+    MissingEnv(EnvId),
+    #[error(transparent)]
+    AgentRequestError(SnarkosRequestError),
+    #[error("no nodes matched the target")]
+    NoMatchingNodes,
+    #[error("no responsive nodes found")]
+    NoResponsiveNodes,
 }
 
-impl_into_status_code!(BatchReconcileError);
+impl_into_status_code!(EnvRequestError, |value| match value {
+    AgentRequestError(_e) => StatusCode::INTERNAL_SERVER_ERROR,
+    _ => StatusCode::NOT_FOUND,
+});
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum ExecutionError {
@@ -53,6 +64,7 @@ impl_into_status_code!(ExecutionError, |value| match value {
 });
 
 impl_into_type_str!(ExecutionError, |value| match value {
+    AuthorizeError(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     AotCmdError(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     Cannon(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     _ => value.as_ref().to_string(),

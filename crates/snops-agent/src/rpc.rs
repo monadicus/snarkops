@@ -1,6 +1,5 @@
 use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
-use futures::future;
 use snops_common::{
     aot_cmds::AotCmd,
     constant::{
@@ -9,17 +8,14 @@ use snops_common::{
     rpc::{
         agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake},
         control::{ControlServiceRequest, ControlServiceResponse},
-        error::{AgentError, ReconcileError},
+        error::{AgentError, ReconcileError, SnarkosRequestError},
         MuxMessage,
     },
     state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, NetworkId, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
-};
-use tracing::{debug, error, info, trace, warn, Level};
+use tokio::process::Command;
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{api, metrics::MetricComputer, reconcile, state::AppState};
 
@@ -197,21 +193,33 @@ impl AgentService for AgentRpcServer {
                             .arg(loki.as_str());
                     }
 
+                    if state.cli.quiet {
+                        command.stdout(Stdio::null());
+                    } else {
+                        command.stdout(std::io::stdout());
+                    }
+
                     command
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
+                        .stderr(std::io::stderr())
                         .envs(&node.env)
                         .env("NETWORK", info.network.to_string())
+                        .env("HOME", &ledger_path)
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
                         .arg("--type")
                         .arg(node.node_key.ty.to_string())
-                        // storage configuration
-                        .arg("--genesis")
-                        .arg(storage_path.join(SNARKOS_GENESIS_FILE))
                         .arg("--ledger")
-                        .arg(ledger_path)
+                        .arg(ledger_path);
+
+                    if !info.storage.native_genesis {
+                        command
+                            .arg("--genesis")
+                            .arg(storage_path.join(SNARKOS_GENESIS_FILE));
+                    }
+
+                    // storage configuration
+                    command
                         // port configuration
                         .arg("--bind")
                         .arg(state.cli.bind_addr.to_string())
@@ -306,41 +314,7 @@ impl AgentService for AgentRpcServer {
                     if node.online {
                         tracing::trace!("spawning node process...");
                         tracing::debug!("node command: {command:?}");
-                        let mut child = command.spawn().expect("failed to start child");
-
-                        let stdout: tokio::process::ChildStdout = child.stdout.take().unwrap();
-                        let stderr: tokio::process::ChildStderr = child.stderr.take().unwrap();
-
-                        let is_quiet_enabled = state.cli.quiet;
-                        tokio::spawn(async move {
-                            let child_span = tracing::span!(Level::INFO, "child process stdout");
-                            let _enter = child_span.enter();
-
-                            let mut reader1 = BufReader::new(stdout).lines();
-                            let mut reader2 = BufReader::new(stderr).lines();
-
-                            loop {
-                                // if quiet mode is enabled, we don't need to read stdout
-                                let reader = if is_quiet_enabled {
-                                    future::Either::Left(future::pending())
-                                } else {
-                                    future::Either::Right(reader1.next_line())
-                                };
-
-                                tokio::select! {
-                                    Ok(line) = reader => {
-                                        if let Some(line) = line {
-                                            println!("{line}");
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    Ok(Some(line)) = reader2.next_line() => {
-                                        eprintln!("{line}");
-                                    }
-                                }
-                            }
-                        });
+                        let child = command.spawn().expect("failed to start child");
 
                         *child_lock = Some(child);
 
@@ -394,32 +368,46 @@ impl AgentService for AgentRpcServer {
         )
     }
 
-    async fn get_state_root(self, _: context::Context) -> Result<String, AgentError> {
+    async fn snarkos_get(
+        self,
+        _: context::Context,
+        route: String,
+    ) -> Result<String, SnarkosRequestError> {
         let env_id =
-            if let AgentState::Node(env_id, _) = self.state.agent_state.read().await.deref() {
+            if let AgentState::Node(env_id, state) = self.state.agent_state.read().await.deref() {
+                if !state.online {
+                    return Err(SnarkosRequestError::OfflineNode);
+                }
                 *env_id
             } else {
-                return Err(AgentError::InvalidState);
+                return Err(SnarkosRequestError::InvalidState);
             };
 
         let network = self
             .state
             .get_env_info(env_id)
             .await
-            .map_err(|_| AgentError::FailedToMakeRequest)?
+            .map_err(|e| {
+                error!("failed to get env info: {e}");
+                SnarkosRequestError::MissingEnvInfo
+            })?
             .network;
 
         let url = format!(
-            "http://127.0.0.1:{}/{network}/latest/stateRoot",
+            "http://127.0.0.1:{}/{network}{route}",
             self.state.cli.ports.rest
         );
         let response = reqwest::get(&url)
             .await
-            .map_err(|_| AgentError::FailedToMakeRequest)?;
-        response
+            .map_err(|err| SnarkosRequestError::RequestError(err.to_string()))?;
+
+        let value: serde_json::Value = response
             .json()
             .await
-            .map_err(|_| AgentError::FailedToParseJson)
+            .map_err(|err| SnarkosRequestError::JsonParseError(err.to_string()))?;
+
+        serde_json::to_string_pretty(&value)
+            .map_err(|err| SnarkosRequestError::JsonSerializeError(err.to_string()))
     }
 
     async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {
@@ -471,7 +459,7 @@ impl AgentService for AgentRpcServer {
         query: String,
         auth: String,
         fee_auth: Option<String>,
-    ) -> Result<(), AgentError> {
+    ) -> Result<String, AgentError> {
         info!("executing authorization...");
 
         // TODO: maybe in the env config store a branch label for the binary so it won't
@@ -480,12 +468,17 @@ impl AgentService for AgentRpcServer {
         let aot_bin = self.state.cli.path.join(SNARKOS_FILE);
 
         // download the snarkOS binary
-        api::check_binary(env_id, &self.state.endpoint, &aot_bin) // TODO: http(s)?
-            .await
-            .map_err(|e| {
-                error!("failed obtain runner binary: {e}");
-                AgentError::ProcessFailed
-            })?;
+        api::check_binary(
+            env_id,
+            &self.state.endpoint,
+            &aot_bin,
+            self.state.transfer_tx(),
+        ) // TODO: http(s)?
+        .await
+        .map_err(|e| {
+            error!("failed obtain runner binary: {e}");
+            AgentError::ProcessFailed
+        })?;
 
         let start = std::time::Instant::now();
         match AotCmd::new(aot_bin, network)
@@ -496,13 +489,12 @@ impl AgentService for AgentRpcServer {
                 let elapsed = start.elapsed().as_millis();
                 info!("authorization executed in {elapsed}ms");
                 trace!("authorization output: {exec}");
+                Ok(exec)
             }
             Err(e) => {
                 error!("failed to execute: {e}");
-                return Err(AgentError::ProcessFailed);
+                Err(AgentError::ProcessFailed)
             }
         }
-
-        Ok(())
     }
 }

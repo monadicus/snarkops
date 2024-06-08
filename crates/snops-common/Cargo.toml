@@ -17,17 +17,20 @@ clap_mangen = { workspace = true, optional = true }
 clap-markdown = { workspace = true, optional = true }
 futures.workspace = true
 http.workspace = true
+indexmap.workspace = true
 lasso.workspace = true
 lazy_static.workspace = true
 paste.workspace = true
 regex.workspace = true
 rand.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+wildmatch.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["process"] }

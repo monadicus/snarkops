@@ -1,7 +1,11 @@
-use std::time::Duration;
+use std::{fmt::Display, time::Duration};
 
+use serde::de::DeserializeOwned;
 use snops_common::{
-    rpc::{agent::AgentServiceClient, error::ReconcileError},
+    rpc::{
+        agent::AgentServiceClient,
+        error::{ReconcileError, SnarkosRequestError},
+    },
     state::{AgentState, EnvId, NetworkId},
 };
 use tarpc::{client::RpcError, context};
@@ -24,8 +28,19 @@ impl AgentClient {
             .map(|res| res.map(|_| to))
     }
 
-    pub async fn get_state_root(&self) -> Result<String, StateError> {
-        Ok(self.0.get_state_root(context::current()).await??)
+    pub async fn snarkos_get<T: DeserializeOwned>(
+        &self,
+        route: impl Display,
+    ) -> Result<T, SnarkosRequestError> {
+        match self
+            .0
+            .snarkos_get(context::current(), route.to_string())
+            .await
+        {
+            Ok(res) => serde_json::from_str(&res?)
+                .map_err(|e| SnarkosRequestError::JsonDeserializeError(e.to_string())),
+            Err(e) => Err(SnarkosRequestError::RpcError(e.to_string())),
+        }
     }
 
     pub async fn execute_authorization(
@@ -35,10 +50,12 @@ impl AgentClient {
         query: String,
         auth: String,
         fee_auth: Option<String>,
-    ) -> Result<(), StateError> {
+    ) -> Result<String, StateError> {
+        let mut ctx = context::current();
+        ctx.deadline += Duration::from_secs(30);
         Ok(self
             .0
-            .execute_authorization(context::current(), env_id, network, query, auth, fee_auth)
+            .execute_authorization(ctx, env_id, network, query, auth, fee_auth)
             .await??)
     }
 

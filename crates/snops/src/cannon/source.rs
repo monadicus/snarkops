@@ -1,22 +1,14 @@
-use std::collections::HashSet;
-
-use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snops_common::{
-    lasso::Spur,
-    state::{NetworkId, NodeKey, TxPipeId},
-    INTERN,
-};
+use snops_common::{lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN};
 
 use super::{
-    authorized::Authorize,
     error::{CannonError, SourceError},
     net::get_available_port,
+    status::{TransactionStatus, TransactionStatusSender},
 };
 use crate::{
     env::{set::find_compute_agent, Environment},
-    schema::{nodes::KeySource, NodeTargets},
     state::GlobalState,
 };
 
@@ -33,7 +25,7 @@ pub struct LocalService {
     ///
     /// requires cannon to have an associated env_id
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sync_from: Option<NodeKey>,
+    pub sync_from: Option<NodeTargets>,
 }
 
 impl LocalService {
@@ -148,110 +140,25 @@ pub enum TxMode {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", untagged)]
-pub enum TxSource {
-    /// Read transactions from a file
-    #[serde(rename_all = "kebab-case")]
-    Playback {
-        // filename from the storage for the tx list
-        file_name: TxPipeId,
-    },
-    /// Generate transactions in real time
-    #[serde(rename_all = "kebab-case")]
-    RealTime {
-        #[serde(default)]
-        query: QueryTarget,
-        #[serde(default)]
-        compute: ComputeTarget,
-
-        /// defaults to TransferPublic
-        tx_modes: HashSet<TxMode>,
-
-        /// private keys for making transactions
-        /// defaults to committee keys
-        private_keys: Vec<KeySource>,
-        /// addreses for transaction targets
-        /// defaults to committee addresses
-        addresses: Vec<KeySource>,
-    },
+#[serde(rename_all = "kebab-case")]
+pub struct TxSource {
     /// Receive authorizations from a persistent path
     /// /api/v1/env/:env_id/cannons/:id/auth
-    #[serde(rename_all = "kebab-case")]
-    Listen {
-        #[serde(default)]
-        query: QueryTarget,
-        #[serde(default)]
-        compute: ComputeTarget,
-    },
+    #[serde(default)]
+    pub query: QueryTarget,
+    #[serde(default)]
+    pub compute: ComputeTarget,
 }
 
 impl TxSource {
     /// Get an available port for the query service if applicable
     pub fn get_query_port(&self) -> Result<Option<u16>, CannonError> {
-        matches!(
-            self,
-            TxSource::RealTime {
-                query: QueryTarget::Local(_),
-                ..
-            } | TxSource::Listen {
-                query: QueryTarget::Local(_),
-                ..
-            }
-        )
-        .then(|| get_available_port().ok_or(SourceError::TxSourceUnavailablePort.into()))
-        .transpose()
-    }
-
-    pub fn get_auth(&self, env: &Environment) -> Result<Authorize, CannonError> {
-        match self {
-            TxSource::RealTime {
-                tx_modes,
-                private_keys,
-                addresses,
-                ..
-            } => {
-                let sample_pk = || {
-                    private_keys
-                        .iter()
-                        .choose(&mut rand::thread_rng())
-                        .and_then(|k| env.storage.sample_keysource_pk(k).try_string())
-                        .ok_or(SourceError::CouldNotSelect("private key"))
-                };
-                let sample_addr = || {
-                    addresses
-                        .iter()
-                        .choose(&mut rand::thread_rng())
-                        .and_then(|k| env.storage.sample_keysource_addr(k).try_string())
-                        .ok_or(SourceError::CouldNotSelect("address"))
-                };
-
-                let mode = tx_modes
-                    .iter()
-                    .choose(&mut rand::thread_rng())
-                    .ok_or(SourceError::NoTxModeAvailable)?;
-
-                let auth = match mode {
-                    TxMode::Credits(credit) => match credit {
-                        CreditsTxMode::BondPublic => todo!(),
-                        CreditsTxMode::UnbondPublic => todo!(),
-                        CreditsTxMode::TransferPublic => Authorize {
-                            program_id: "aleo.credits".to_string(),
-                            function_name: "transfer_public".to_string(),
-                            private_key: sample_pk()?,
-                            inputs: vec![sample_addr()?, "1u64".to_string()],
-                            priority_fee: None,
-                            fee_record: None,
-                        },
-                        CreditsTxMode::TransferPublicToPrivate => todo!(),
-                        CreditsTxMode::TransferPrivate => todo!(),
-                        CreditsTxMode::TransferPrivateToPublic => todo!(),
-                    },
-                };
-
-                Ok(auth)
-            }
-            _ => Err(SourceError::CannotAuthorizePlaybackTx.into()),
+        if !matches!(self.query, QueryTarget::Local(_)) {
+            return Ok(None);
         }
+        Ok(Some(
+            get_available_port().ok_or(SourceError::TxSourceUnavailablePort)?,
+        ))
     }
 }
 
@@ -260,23 +167,26 @@ impl ComputeTarget {
         &self,
         state: &GlobalState,
         env: &Environment,
-        query_path: String,
+        query_path: &str,
         auth: &serde_json::Value,
         fee_auth: Option<&serde_json::Value>,
+        events: &TransactionStatusSender,
     ) -> Result<(), CannonError> {
         match self {
             ComputeTarget::Agent { labels } => {
                 // find a client, mark it as busy
-                let (client, _busy) =
+                let (agent_id, client, _busy) =
                     find_compute_agent(state, &labels.clone().unwrap_or_default())
                         .ok_or(SourceError::NoAvailableAgents("authorization"))?;
 
+                events.send(TransactionStatus::Executing(agent_id));
+
                 // execute the authorization
-                client
+                let transaction = client
                     .execute_authorization(
                         env.id,
                         env.network,
-                        query_path,
+                        query_path.to_owned(),
                         serde_json::to_string(&auth)
                             .map_err(|e| SourceError::Json("authorize tx", e))?,
                         fee_auth
@@ -287,6 +197,8 @@ impl ComputeTarget {
                             .transpose()?,
                     )
                     .await?;
+
+                events.send(TransactionStatus::ExecuteComplete(transaction));
 
                 Ok(())
             }

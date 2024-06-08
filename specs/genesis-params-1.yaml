@@ -14,6 +14,7 @@ generate:
     additional-accounts-balance: 10000000000
     committee-size: 5
     bonded-balance: 10000000000000
+    bonded-commission: 95
 
 persist: false
 regen: 1

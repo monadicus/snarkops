@@ -12,17 +12,9 @@ version: cannon.snarkos.testing.monadic.us/v1
 name: committee-tx-public
 
 source:
-  # query: { mode: local }
-  # compute: { labels: [local] }
-  tx-modes: [transfer-public]
-  private-keys: [committee.$]
-  addresses: [committee.$]
+  query: { mode: local }
+  compute: { labels: [local] }
 
 sink:
   tx-request-delay-ms: 1000
   file-name: txs.json
-
-# create the cannon immediately
-instance: true
-# fire 10 transactions
-count: 10

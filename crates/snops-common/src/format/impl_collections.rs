@@ -3,6 +3,8 @@ use std::{
     io::{Read, Write},
 };
 
+use indexmap::{IndexMap, IndexSet};
+
 use super::{
     packed_int::PackedUint, DataFormat, DataFormatReader, DataFormatWriter, DataReadError,
     DataWriteError,
@@ -51,63 +53,80 @@ impl<T: DataFormat> DataFormat for Vec<T> {
     }
 }
 
-impl<T> DataFormat for HashSet<T>
-where
-    T: DataFormat + Eq + std::hash::Hash,
-{
-    type Header = T::Header;
-    const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
+macro_rules! impl_set {
+    ($set_ty:ident) => {
+        impl<T> DataFormat for $set_ty<T>
+        where
+            T: DataFormat + Eq + std::hash::Hash,
+        {
+            type Header = T::Header;
+            const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
 
-    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
-        let mut written = PackedUint::from(self.len()).write_data(writer)?;
-        for item in self.iter() {
-            written += writer.write_data(item)?;
-        }
-        Ok(written)
-    }
+            fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+                let mut written = PackedUint::from(self.len()).write_data(writer)?;
+                for item in self.iter() {
+                    written += writer.write_data(item)?;
+                }
+                Ok(written)
+            }
 
-    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
-        let len = usize::from(PackedUint::read_data(reader, &())?);
-        let mut data = HashSet::with_capacity(len);
-        for _ in 0..len {
-            data.insert(reader.read_data(header)?);
+            fn read_data<R: Read>(
+                reader: &mut R,
+                header: &Self::Header,
+            ) -> Result<Self, DataReadError> {
+                let len = usize::from(PackedUint::read_data(reader, &())?);
+                let mut data = $set_ty::with_capacity(len);
+                for _ in 0..len {
+                    data.insert(reader.read_data(header)?);
+                }
+                Ok(data)
+            }
         }
-        Ok(data)
-    }
+    };
 }
 
-impl<K, V> DataFormat for HashMap<K, V>
-where
-    K: DataFormat + Eq + std::hash::Hash,
-    V: DataFormat,
-{
-    type Header = (K::Header, V::Header);
-    const LATEST_HEADER: Self::Header = (K::LATEST_HEADER, V::LATEST_HEADER);
+impl_set!(HashSet);
+impl_set!(IndexSet);
 
-    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
-        let mut written = PackedUint::from(self.len()).write_data(writer)?;
-        for (key, value) in self.iter() {
-            written += writer.write_data(key)?;
-            written += writer.write_data(value)?;
-        }
-        Ok(written)
-    }
+macro_rules! impl_map {
+    ($map_ty:ident) => {
+        impl<K, V> DataFormat for $map_ty<K, V>
+        where
+            K: DataFormat + Eq + std::hash::Hash,
+            V: DataFormat,
+        {
+            type Header = (K::Header, V::Header);
+            const LATEST_HEADER: Self::Header = (K::LATEST_HEADER, V::LATEST_HEADER);
 
-    fn read_data<R: Read>(
-        reader: &mut R,
-        (key_header, value_header): &Self::Header,
-    ) -> Result<Self, DataReadError> {
-        let len = usize::from(PackedUint::read_data(reader, &())?);
-        let mut data = HashMap::with_capacity(len);
-        for _ in 0..len {
-            data.insert(
-                reader.read_data(key_header)?,
-                reader.read_data(value_header)?,
-            );
+            fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+                let mut written = PackedUint::from(self.len()).write_data(writer)?;
+                for (key, value) in self.iter() {
+                    written += writer.write_data(key)?;
+                    written += writer.write_data(value)?;
+                }
+                Ok(written)
+            }
+
+            fn read_data<R: Read>(
+                reader: &mut R,
+                (key_header, value_header): &Self::Header,
+            ) -> Result<Self, DataReadError> {
+                let len = usize::from(PackedUint::read_data(reader, &())?);
+                let mut data = $map_ty::with_capacity(len);
+                for _ in 0..len {
+                    data.insert(
+                        reader.read_data(key_header)?,
+                        reader.read_data(value_header)?,
+                    );
+                }
+                Ok(data)
+            }
         }
-        Ok(data)
-    }
+    };
 }
+
+impl_map!(HashMap);
+impl_map!(IndexMap);
 
 #[cfg(test)]
 #[rustfmt::skip]

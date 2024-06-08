@@ -12,17 +12,16 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli agent list`↴](#snops-cli-agent-list)
 * [`snops-cli agent tps`↴](#snops-cli-agent-tps)
 * [`snops-cli env`↴](#snops-cli-env)
+* [`snops-cli env action`↴](#snops-cli-env-action)
+* [`snops-cli env action offline`↴](#snops-cli-env-action-offline)
+* [`snops-cli env action online`↴](#snops-cli-env-action-online)
+* [`snops-cli env action reboot`↴](#snops-cli-env-action-reboot)
+* [`snops-cli env action execute`↴](#snops-cli-env-action-execute)
+* [`snops-cli env action config`↴](#snops-cli-env-action-config)
 * [`snops-cli env agent`↴](#snops-cli-env-agent)
 * [`snops-cli env agents`↴](#snops-cli-env-agents)
 * [`snops-cli env clean`↴](#snops-cli-env-clean)
 * [`snops-cli env list`↴](#snops-cli-env-list)
-* [`snops-cli env timeline`↴](#snops-cli-env-timeline)
-* [`snops-cli env timeline apply`↴](#snops-cli-env-timeline-apply)
-* [`snops-cli env timeline delete`↴](#snops-cli-env-timeline-delete)
-* [`snops-cli env timeline info`↴](#snops-cli-env-timeline-info)
-* [`snops-cli env timeline list`↴](#snops-cli-env-timeline-list)
-* [`snops-cli env timeline start`↴](#snops-cli-env-timeline-start)
-* [`snops-cli env timeline stop`↴](#snops-cli-env-timeline-stop)
 * [`snops-cli env topology`↴](#snops-cli-env-topology)
 * [`snops-cli env topology-resolved`↴](#snops-cli-env-topology-resolved)
 * [`snops-cli env prepare`↴](#snops-cli-env-prepare)
@@ -159,11 +158,11 @@ For interacting with snop environments
 
 ###### **Subcommands:**
 
+* `action` — For interacting with snop environments
 * `agent` — Get an env's specific agent by
 * `agents` — List an env's agents
 * `clean` — Clean a specific environment
 * `list` — List all environments. Ignores the env id
-* `timeline` — List all steps for a specific timeline
 * `topology` — Show the current topology of a specific environment
 * `topology-resolved` — Show the resolved topology of a specific environment. Shows only internal agents
 * `prepare` — Prepare a (test) environment
@@ -174,6 +173,90 @@ For interacting with snop environments
 * `<ID>` — Show a specific env
 
   Default value: `default`
+
+
+
+## `snops-cli env action`
+
+For interacting with snop environments
+
+**Usage:** `snops-cli env action <COMMAND>`
+
+###### **Subcommands:**
+
+* `offline` — 
+* `online` — 
+* `reboot` — 
+* `execute` — 
+* `config` — 
+
+
+
+## `snops-cli env action offline`
+
+**Usage:** `snops-cli env action offline [NODES]...`
+
+###### **Arguments:**
+
+* `<NODES>`
+
+
+
+## `snops-cli env action online`
+
+**Usage:** `snops-cli env action online [NODES]...`
+
+###### **Arguments:**
+
+* `<NODES>`
+
+
+
+## `snops-cli env action reboot`
+
+**Usage:** `snops-cli env action reboot [NODES]...`
+
+###### **Arguments:**
+
+* `<NODES>`
+
+
+
+## `snops-cli env action execute`
+
+**Usage:** `snops-cli env action execute [OPTIONS] <LOCATOR> [INPUTS]...`
+
+###### **Arguments:**
+
+* `<LOCATOR>` — `transfer_public` OR `credits.aleo/transfer_public`
+* `<INPUTS>` — list of program inputs
+
+###### **Options:**
+
+* `-p`, `--private-key <PRIVATE_KEY>` — Private key to use, can be `committee.0` to use committee member 0's key
+* `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
+* `--priority-fee <PRIORITY_FEE>`
+* `-f`, `--fee-record <FEE_RECORD>`
+
+
+
+## `snops-cli env action config`
+
+**Usage:** `snops-cli env action config [OPTIONS] [NODES]...`
+
+###### **Arguments:**
+
+* `<NODES>` — The nodes to configure
+
+###### **Options:**
+
+* `-o`, `--online <ONLINE>` — Configure the online state of the target nodes
+
+  Possible values: `true`, `false`
+
+* `--height <HEIGHT>` — Configure the height of the target nodes
+* `-p`, `--peers <PEERS>` — Configure the peers of the target nodes, or `none`
+* `-v`, `--validators <VALIDATORS>` — Configure the validators of the target nodes, or `none`
 
 
 
@@ -210,77 +293,6 @@ Clean a specific environment
 List all environments. Ignores the env id
 
 **Usage:** `snops-cli env list`
-
-
-
-## `snops-cli env timeline`
-
-List all steps for a specific timeline
-
-**Usage:** `snops-cli env timeline [ID] <COMMAND>`
-
-###### **Subcommands:**
-
-* `apply` — Apply a timeline to an environment
-* `delete` — Delete a timeline from an environment
-* `info` — List all steps for a specific timeline
-* `list` — List all timelines for a specific environment. Timeline id is ignored
-* `start` — Start an environment's timeline (a test)
-* `stop` — Stop an environment's timeline
-
-###### **Arguments:**
-
-* `<ID>` — The timeline id
-
-  Default value: `dummy_value___`
-
-
-
-## `snops-cli env timeline apply`
-
-Apply a timeline to an environment
-
-**Usage:** `snops-cli env timeline apply`
-
-
-
-## `snops-cli env timeline delete`
-
-Delete a timeline from an environment
-
-**Usage:** `snops-cli env timeline delete`
-
-
-
-## `snops-cli env timeline info`
-
-List all steps for a specific timeline
-
-**Usage:** `snops-cli env timeline info`
-
-
-
-## `snops-cli env timeline list`
-
-List all timelines for a specific environment. Timeline id is ignored
-
-**Usage:** `snops-cli env timeline list`
-
-
-
-## `snops-cli env timeline start`
-
-Start an environment's timeline (a test)
-
-**Usage:** `snops-cli env timeline start`
-
-
-
-## `snops-cli env timeline stop`
-
-Stop an environment's timeline
-
-**Usage:** `snops-cli env timeline stop`
 
 
 

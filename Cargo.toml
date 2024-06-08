@@ -47,6 +47,7 @@ axum = { version = "0.7", default-features = false }
 # uncomment to enable #[debug_handler] for axum :^)
 # axum = { version = "0.7", features = ["macros"], default-features = false }
 anyhow = { version = "1", features = ["backtrace"] }
+bech32 = "0.9"
 bimap = "0.6"
 bincode = "1.3"
 bytes = "1.6"
@@ -80,7 +81,7 @@ paste = "1.0"
 rand = { version = "0.8", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
 rayon = "1"
-regex = { version = "1.10", default-features = false }
+regex = { version = "1.10", features = ["unicode"], default-features = false }
 reqwest = { version = "0.12", default-features = false, features = [
 	"default-tls",
 	"http2",
@@ -102,10 +103,10 @@ sled = "0.34"
 # snarkvm = { path = "../snarkvm", features = ["rocks"] }
 # snarkos-node-metrics = { path = "../snarkos/node/metrics" }
 
-snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "66a3425" }
-snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "66a3425" }
-snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "66a3425" }
-snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "393b8fb", features = [
+snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "81ca9cf" }
+snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "81ca9cf" }
+snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "81ca9cf" }
+snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "74a437897", features = [
 	"rocks",
 ] }
 

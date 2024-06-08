@@ -5,6 +5,7 @@ mod net;
 mod reconcile;
 mod rpc;
 mod state;
+mod transfers;
 
 use std::{
     mem::size_of,
@@ -81,8 +82,14 @@ async fn main() {
     Cli::parse().run();
     let args = Cli::parse();
 
-    // get the network interfaces available to this node
-    let internal_addrs = net::get_internal_addrs().expect("failed to get network interfaces");
+    let internal_addrs = match (args.internal, args.external) {
+        // use specified internal address
+        (Some(internal), _) => vec![internal],
+        // use no internal address if the external address is loopback
+        (None, Some(external)) if external.is_loopback() => vec![],
+        // otherwise, get the local network interfaces available to this node
+        (None, _) => net::get_internal_addrs().expect("failed to get network interfaces"),
+    };
     let external_addr = args.external;
     if let Some(addr) = external_addr {
         info!("using external addr: {}", addr);
@@ -104,6 +111,9 @@ async fn main() {
         .await
         .ok();
 
+    // start transfer monitor
+    let (transfer_tx, transfers) = transfers::start_monitor();
+
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
     let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
@@ -114,6 +124,8 @@ async fn main() {
 
     // create the client state
     let state = Arc::new(GlobalState {
+        started: Instant::now(),
+        connected: Mutex::new(Instant::now()),
         client,
         external_addr,
         internal_addrs,
@@ -127,6 +139,8 @@ async fn main() {
         child: Default::default(),
         resolved_addrs: Default::default(),
         metrics: Default::default(),
+        transfer_tx,
+        transfers,
     });
 
     // start the metrics watcher
@@ -189,6 +203,7 @@ async fn main() {
                 },
             };
 
+            *state.connected.lock().unwrap() = Instant::now();
             info!("Connection established with the control plane");
 
             let mut terminating = false;

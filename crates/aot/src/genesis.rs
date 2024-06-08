@@ -7,7 +7,7 @@ use colored::Colorize;
 use indexmap::IndexMap;
 use rand::{CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use snarkvm::{
     console::program::Network,
     ledger::{
@@ -20,17 +20,17 @@ use snarkvm::{
 };
 
 use crate::{
-    ledger::util::public_transaction, mux_aleo, Address, Block, CTRecord, Committee, DbLedger,
-    MemVM, NetworkId, PTRecord, PrivateKey, Transaction, ViewKey,
+    ledger::util::public_transaction, use_aleo_network_downcast, Address, Block, CTRecord,
+    Committee, DbLedger, MemVM, NetworkId, PTRecord, PrivateKey, Transaction, ViewKey,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Balances<N: Network>(IndexMap<Address<N>, u64>);
-impl<N: Network> FromStr for Balances<N> {
+pub struct AddressMap<N: Network, T: DeserializeOwned>(IndexMap<Address<N>, T>);
+impl<N: Network, T: DeserializeOwned> FromStr for AddressMap<N, T> {
     type Err = serde_json::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Balances(serde_json::from_str(s)?))
+        Ok(AddressMap(serde_json::from_str(s)?))
     }
 }
 
@@ -38,24 +38,24 @@ impl<N: Network> FromStr for Balances<N> {
 pub struct Genesis<N: Network> {
     /// The private key to use when generating the genesis block. Generates one
     /// randomly if not passed.
-    #[clap(name = "genesis-key", short, long)]
+    #[clap(short, long)]
     pub genesis_key: Option<PrivateKey<N>>,
 
     /// Where to write the genesis block to.
-    #[clap(name = "output", short, long, default_value = "genesis.block")]
+    #[clap(short, long, default_value = "genesis.block")]
     pub output: PathBuf,
 
     /// The committee size. Not used if --bonded-balances is set.
-    #[clap(name = "committee-size", long, default_value_t = 4)]
+    #[clap(long, default_value_t = 4)]
     pub committee_size: u16,
 
     /// A place to optionally write out the generated committee private keys
     /// JSON.
-    #[clap(name = "committee-output", long)]
+    #[clap(long)]
     pub committee_output: Option<PathBuf>,
 
     /// Additional number of accounts that aren't validators to add balances to.
-    #[clap(name = "additional-accounts", long, default_value_t = 0)]
+    #[clap(long, default_value_t = 0)]
     pub additional_accounts: u16,
 
     /// The balance to add to the number of accounts specified by
@@ -69,31 +69,46 @@ pub struct Genesis<N: Network> {
 
     /// If --additional-accounts is passed you can additionally add an amount to
     /// give them in a record.
-    #[clap(name = "additional-accounts-record-balance", long)]
+    #[clap(long)]
     pub additional_accounts_record_balance: Option<u64>,
 
     /// A place to write out the additionally generated accounts by
     /// --additional-accounts.
-    #[clap(name = "additional-accounts-output", long)]
+    #[clap(long)]
     pub additional_accounts_output: Option<PathBuf>,
 
     /// The seed to use when generating committee private keys and the genesis
     /// block. If unpassed, uses DEVELOPMENT_MODE_RNG_SEED (1234567890u64).
-    #[clap(name = "seed", long)]
+    #[clap(long)]
     pub seed: Option<u64>,
 
     /// The bonded balance each bonded address receives. Not used if
     /// `--bonded-balances` is passed.
-    #[clap(name = "bonded-balance", long, default_value_t = 10_000_000_000_000)]
+    #[clap(long, default_value_t = 10_000_000_000_000)]
     pub bonded_balance: u64,
 
     /// An optional map from address to bonded balance. Overrides
     /// `--bonded-balance` and `--committee-size`.
-    #[clap(name = "bonded-balances", long)]
-    pub bonded_balances: Option<Balances<N>>,
+    #[clap(long)]
+    pub bonded_balances: Option<AddressMap<N, u64>>,
+
+    /// An optional to specify withdrawal addresses for the genesis committee.
+    #[clap(long)]
+    pub bonded_withdrawal: Option<AddressMap<N, Address<N>>>,
+
+    /// The bonded commission each bonded address uses. Not used if
+    /// `--bonded-commissions` is passed. Defaults to 0. Must be 100 or less.
+    #[clap(long, default_value_t = 0)]
+    pub bonded_commission: u8,
+
+    /// An optional map from address to bonded commission. Overrides
+    /// `--bonded-commission`.
+    /// Defaults to 0. Must be 100 or less.
+    #[clap(long)]
+    pub bonded_commissions: Option<AddressMap<N, u8>>,
 
     /// Optionally initialize a ledger as well.
-    #[clap(name = "ledger", long)]
+    #[clap(long)]
     pub ledger: Option<PathBuf>,
 }
 
@@ -190,6 +205,25 @@ impl<N: Network> Genesis<N> {
 
         let genesis_addr = Address::try_from(&genesis_key)?;
 
+        // Lookup the commission for a given address.
+        let get_commission = |addr| {
+            self.bonded_commissions
+                .as_ref()
+                .and_then(|commissions| commissions.0.get(&addr))
+                .copied()
+                .unwrap_or(self.bonded_commission)
+                .clamp(0, 100)
+        };
+
+        // Lookup the withdrawal address for a given address.
+        let get_withdrawal = |addr| {
+            self.bonded_withdrawal
+                .as_ref()
+                .and_then(|withdrawals| withdrawals.0.get(&addr))
+                .copied()
+                .unwrap_or(addr)
+        };
+
         let (mut committee_members, bonded_balances, members, mut public_balances) = match self
             .bonded_balances
         {
@@ -208,8 +242,8 @@ impl<N: Network> Genesis<N> {
                         "Validator stake is too low: {balance} < {MIN_VALIDATOR_STAKE}",
                     );
 
-                    bonded_balances.insert(*addr, (*addr, *addr, *balance));
-                    members.insert(*addr, (*balance, true));
+                    bonded_balances.insert(*addr, (*addr, get_withdrawal(*addr), *balance));
+                    members.insert(*addr, (*balance, true, get_commission(*addr)));
                 }
 
                 (None, bonded_balances, members, balances.0)
@@ -239,8 +273,8 @@ impl<N: Network> Genesis<N> {
                     };
 
                     committee_members.insert(addr, (key, self.bonded_balance));
-                    bonded_balances.insert(addr, (addr, addr, self.bonded_balance));
-                    members.insert(addr, (self.bonded_balance, true));
+                    bonded_balances.insert(addr, (addr, get_withdrawal(addr), self.bonded_balance));
+                    members.insert(addr, (self.bonded_balance, true, get_commission(addr)));
                     public_balances.insert(addr, self.bonded_balance);
                 }
 
@@ -319,7 +353,7 @@ impl<N: Network> Genesis<N> {
             accounts = accounts
                 .into_iter()
                 .map(|(addr, (key, balance, _))| {
-                    let record_tx: Transaction<N> = mux_aleo!(
+                    let record_tx: Transaction<N> = use_aleo_network_downcast!(
                         A,
                         N,
                         public_transaction::<_, _, A>(
@@ -382,6 +416,22 @@ impl<N: Network> Genesis<N> {
         println!(
             "Genesis block written to {}.",
             self.output.display().to_string().yellow()
+        );
+
+        let output_json = self.output.with_extension("json");
+        serde_json::to_writer_pretty(
+            fs::File::options()
+                .append(false)
+                .truncate(true)
+                .create(true)
+                .write(true)
+                .open(&output_json)?,
+            &block,
+        )?;
+
+        println!(
+            "Genesis block JSON written to {}.",
+            output_json.display().to_string().yellow()
         );
 
         match (self.additional_accounts, self.additional_accounts_output) {

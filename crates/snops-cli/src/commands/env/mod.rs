@@ -5,7 +5,7 @@ use clap::{Parser, ValueHint};
 use reqwest::blocking::{Client, Response};
 use snops_common::state::NodeKey;
 
-mod timeline;
+mod action;
 
 /// For interacting with snop environments.
 #[derive(Debug, Parser)]
@@ -20,6 +20,8 @@ pub struct Env {
 /// Env commands
 #[derive(Debug, Parser)]
 enum EnvCommands {
+    #[clap(subcommand)]
+    Action(action::Action),
     /// Get an env's specific agent by.
     #[clap(alias = "a")]
     Agent {
@@ -40,10 +42,6 @@ enum EnvCommands {
     /// Ignores the env id.
     #[clap(alias = "ls")]
     List,
-
-    /// List all steps for a specific timeline.
-    #[clap(alias = "t")]
-    Timeline(timeline::Timeline),
 
     /// Show the current topology of a specific environment.
     #[clap(alias = "top")]
@@ -71,6 +69,7 @@ impl Env {
     pub fn run(self, url: &str, client: Client) -> Result<Response> {
         use EnvCommands::*;
         Ok(match self.command {
+            Action(action) => action.execute(url, &self.id, client)?,
             Agent { key } => {
                 let ep = format!("{url}/api/v1/env/{}/agents/{}", self.id, key);
 
@@ -91,7 +90,6 @@ impl Env {
 
                 client.get(ep).send()?
             }
-            Timeline(timeline) => timeline.run(url, &self.id, client)?,
             Topology => {
                 let ep = format!("{url}/api/v1/env/{}/topology", self.id);
 

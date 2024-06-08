@@ -152,14 +152,14 @@ fn _find_compute_agent_by_mask<'a, I: Iterator<Item = &'a Agent>>(
 pub fn find_compute_agent(
     state: &GlobalState,
     labels: &[Spur],
-) -> Option<(AgentClient, Arc<Busy>)> {
+) -> Option<(AgentId, AgentClient, Arc<Busy>)> {
     state.pool.iter().find_map(|a| {
         if !a.can_compute() || a.is_compute_claimed() || !labels.iter().all(|l| a.has_label(*l)) {
             return None;
         }
         let arc = a.make_busy();
         a.client_owned()
-            .and_then(|c| (Arc::strong_count(&arc) == 2).then_some((c, arc)))
+            .and_then(|c| (Arc::strong_count(&arc) == 2).then_some((a.id(), c, arc)))
     })
 }
 

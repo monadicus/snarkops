@@ -48,6 +48,16 @@ impl DataReadError {
     pub fn unsupported(name: impl Display, expected: impl Display, found: impl Display) -> Self {
         Self::UnsupportedVersion(format!("{name}: expected {expected}, found {found}"))
     }
+
+    pub fn custom(error: impl Display) -> Self {
+        Self::Custom(format!("{error}"))
+    }
+}
+
+impl DataWriteError {
+    pub fn custom(error: impl Display) -> Self {
+        Self::Custom(format!("{error}"))
+    }
 }
 
 /// Write data and its header to a writer

@@ -1,112 +1,15 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{BufWriter, Write},
     path::PathBuf,
-    sync::{atomic::AtomicU32, Mutex},
+    sync::Mutex,
 };
 
 use snops_common::state::TxPipeId;
 use tracing::debug;
 
-use super::{error::CannonError, ExecutionContext};
-use crate::{
-    cannon::error::{TransactionDrainError, TransactionSinkError},
-    persist::PersistDrainCount,
-};
-
-#[derive(Debug)]
-pub struct TransactionDrain {
-    id: TxPipeId,
-    /// Line reader
-    reader: Mutex<Option<BufReader<File>>>,
-    pub(crate) line: AtomicU32,
-}
-
-impl TransactionDrain {
-    /// Create a new transaction drain
-    pub fn new_unread(storage_path: PathBuf, source: TxPipeId) -> Result<Self, CannonError> {
-        Self::new(storage_path, source, 0)
-    }
-    /// Create a new transaction drain starting at a specific line
-    pub fn new(storage_path: PathBuf, id: TxPipeId, line: u32) -> Result<Self, CannonError> {
-        let source = storage_path.join(id.to_string());
-        debug!("opening tx drain @ {source:?}");
-
-        let f = File::open(&source)
-            .map_err(|e| TransactionDrainError::FailedToOpenSource(source, e))?;
-
-        let mut reader = BufReader::new(f);
-
-        // skip the first `line` lines
-        let mut buf = String::new();
-        for i in 0..line {
-            // if the file is empty, return an empty drain
-            if let Ok(0) = reader.read_line(&mut buf) {
-                return Ok(Self {
-                    id,
-                    reader: Mutex::new(None),
-                    line: AtomicU32::new(i),
-                });
-            }
-        }
-
-        Ok(Self {
-            id,
-            reader: Mutex::new(Some(reader)),
-            line: AtomicU32::new(line),
-        })
-    }
-
-    /// Read the next line from the transaction drain
-    pub fn next(&self) -> Result<Option<String>, CannonError> {
-        let mut lock = self
-            .reader
-            .lock()
-            .map_err(|_| TransactionDrainError::FailedToLock)?;
-
-        if lock.is_none() {
-            return Ok(None);
-        }
-
-        let mut buf = String::new();
-        // read a line and clear the lock on EOF
-        if lock
-            .as_mut()
-            .unwrap()
-            .read_line(&mut buf)
-            .map_err(TransactionDrainError::FailedToReadLine)?
-            == 0
-        {
-            *lock = None;
-            return Ok(None);
-        }
-        self.line.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        Ok(Some(buf))
-    }
-
-    /// Save persistence for this drain
-    pub async fn write_persistence(&self, ctx: &ExecutionContext) {
-        let Some(env) = ctx.state.get_env(ctx.env_id) else {
-            return;
-        };
-
-        let key = (env.id, self.id);
-        let count = self.line.load(std::sync::atomic::Ordering::Relaxed);
-
-        if let Err(e) = ctx
-            .state
-            .db
-            .tx_drain_counts
-            .save(&key, &PersistDrainCount { count })
-        {
-            tracing::error!(
-                "Error saving drain count for env {}, drain {}: {e}",
-                env.id,
-                self.id
-            );
-        }
-    }
-}
+use super::error::CannonError;
+use crate::cannon::error::TransactionSinkError;
 
 #[derive(Debug)]
 pub struct TransactionSink(Mutex<Option<BufWriter<File>>>);

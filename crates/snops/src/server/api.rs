@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
+use std::{collections::HashMap, str::FromStr};
 
 use axum::{
     extract::{self, Path, Request, State},
@@ -10,18 +7,19 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
+use indexmap::IndexSet;
 use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     lasso::Spur,
     rpc::agent::AgentMetric,
-    state::{id_or_none, AgentMode, AgentState, EnvId, NodeKey},
+    state::{id_or_none, AgentModeOptions, AgentState, EnvId, NodeKey},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
 
-use super::{error::ServerError, models::AgentStatusResponse, AppState};
+use super::{actions, error::ServerError, models::AgentStatusResponse, AppState};
 use crate::{cannon::router::redirect_cannon_routes, schema::storage::DEFAULT_AOT_BIN};
 use crate::{
     env::{EnvPeer, Environment},
@@ -55,18 +53,17 @@ pub(super) fn routes() -> Router<AppState> {
             "/env/:env_id/agents/:node_ty/:node_key",
             get(get_env_agent_key),
         )
+        // .route(
+        //     "/env/:env_id/agents/:node_ty/:node_key/action/status",
+        //     get(get_env_agent_key),
+        // )
+        // .route("/env/:env_id/metric/:prom_ql", get())
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/info", get(get_env_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
-        .route(
-            "/env/:env_id/timelines/:timeline_id/steps",
-            get(get_timeline),
-        )
-        .route("/env/:id/timelines/:timeline_id", post(post_timeline))
-        .route("/env/:id/timelines/:timeline_id", delete(delete_timeline))
-        .route("/env/:env_id/timelines", get(get_timelines))
+        .nest("/env/:env_id/action", actions::routes())
 }
 
 #[derive(Deserialize)]
@@ -149,10 +146,10 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Respon
 
 #[derive(Debug, Deserialize)]
 struct FindAgents {
-    mode: AgentMode,
+    mode: AgentModeOptions,
     env: Option<EnvId>,
     #[serde(default, deserialize_with = "crate::schema::nodes::deser_label")]
-    labels: HashSet<Spur>,
+    labels: IndexSet<Spur>,
     all: bool,
     include_offline: bool,
     local_pk: bool,
@@ -201,28 +198,6 @@ async fn find_agents(
 
 async fn get_env_list(State(state): State<AppState>) -> Response {
     Json(state.envs.iter().map(|e| e.id).collect::<Vec<_>>()).into_response()
-}
-
-async fn get_timeline(
-    Path((env_id, timeline_id)): Path<(String, String)>,
-    State(state): State<AppState>,
-) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let timeline_id = unwrap_or_not_found!(id_or_none(&timeline_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-    let timeline = unwrap_or_not_found!(env.timelines.get(&timeline_id));
-
-    Json(json!({
-        "steps": timeline.len(),
-    }))
-    .into_response()
-}
-
-async fn get_timelines(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-
-    Json(&env.timelines.iter().map(|t| *t.key()).collect::<Vec<_>>()).into_response()
 }
 
 async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
@@ -322,36 +297,8 @@ async fn post_env_prepare(
     // TODO: some live state to report to the calling CLI or something would be
     // really nice
 
-    // TODO: clean up existing test
-
     match Environment::prepare(env_id, documents, state).await {
         Ok(env_id) => (StatusCode::OK, Json(json!({ "id": env_id }))).into_response(),
-        Err(e) => ServerError::from(e).into_response(),
-    }
-}
-
-async fn post_timeline(
-    Path((env_id, timeline_id)): Path<(String, String)>,
-    State(state): State<AppState>,
-) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let timeline_id = unwrap_or_not_found!(id_or_none(&timeline_id));
-
-    match Environment::execute(state, env_id, timeline_id).await {
-        Ok(()) => status_ok(),
-        Err(e) => ServerError::from(e).into_response(),
-    }
-}
-
-async fn delete_timeline(
-    Path((env_id, timeline_id)): Path<(String, String)>,
-    State(state): State<AppState>,
-) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let timeline_id = unwrap_or_not_found!(id_or_none(&timeline_id));
-
-    match Environment::cleanup_timeline(env_id, timeline_id, &state).await {
-        Ok(_) => status_ok(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }

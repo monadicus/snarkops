@@ -5,12 +5,15 @@ use snops_common::state::{AgentId, EnvId, NetworkId, StorageId};
 
 mod agent;
 mod agent_flags;
+pub mod error;
 mod global;
+mod reconcile;
 mod rpc;
 
 pub use agent::*;
 pub use agent_flags::*;
 pub use global::*;
+pub use reconcile::*;
 pub use rpc::*;
 
 use crate::{env::Environment, schema::storage::LoadedStorage};

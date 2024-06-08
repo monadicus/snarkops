@@ -6,7 +6,7 @@ use serde::de::Error;
 use super::INTERNED_ID_REGEX;
 use crate::{format::DataFormat, INTERN};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct InternedId(lasso::Spur);
 
 impl InternedId {
@@ -21,6 +21,24 @@ impl InternedId {
 
     pub fn is_match(s: &str) -> bool {
         INTERNED_ID_REGEX.is_match(s)
+    }
+}
+
+impl Default for InternedId {
+    fn default() -> Self {
+        Self(INTERN.get_or_intern("default"))
+    }
+}
+
+impl std::cmp::PartialOrd for InternedId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(std::convert::AsRef::<str>::as_ref(self).cmp(other.as_ref()))
+    }
+}
+
+impl Ord for InternedId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        std::convert::AsRef::<str>::as_ref(self).cmp(other.as_ref())
     }
 }
 

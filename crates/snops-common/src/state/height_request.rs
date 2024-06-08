@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use checkpoint::RetentionSpan;
 
 use crate::format::{DataFormat, DataFormatReader, DataHeaderOf, DataReadError};
@@ -22,6 +24,25 @@ pub enum DocHeightRequest {
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
+}
+
+impl FromStr for DocHeightRequest {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "top" => Ok(DocHeightRequest::Top),
+            s => {
+                if let Ok(height) = s.parse() {
+                    Ok(DocHeightRequest::Absolute(height))
+                } else if let Ok(span) = s.parse() {
+                    Ok(DocHeightRequest::Checkpoint(span))
+                } else {
+                    Err(format!("invalid DocHeightRequest: {}", s))
+                }
+            }
+        }
+    }
 }
 
 impl DataFormat for DocHeightRequest {

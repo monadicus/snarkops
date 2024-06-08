@@ -8,7 +8,7 @@ use std::{
 use clap::CommandFactory;
 use clap::Parser;
 use http::Uri;
-use snops_common::state::{AgentId, AgentMode, PortConfig};
+use snops_common::state::{AgentId, AgentModeOptions, PortConfig};
 use tracing::{info, warn};
 
 pub const ENV_ENDPOINT: &str = "SNOPS_ENDPOINT";
@@ -43,6 +43,9 @@ pub struct Cli {
     /// external-to-external connections
     #[arg(long)]
     pub external: Option<IpAddr>,
+    /// Manually specify internal addresses.
+    #[arg(long)]
+    pub internal: Option<IpAddr>,
 
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
@@ -51,7 +54,7 @@ pub struct Cli {
     pub ports: PortConfig,
 
     #[clap(flatten)]
-    pub modes: AgentMode,
+    pub modes: AgentModeOptions,
 
     #[clap(short, long, default_value_t = false)]
     /// Run the agent in quiet mode, suppressing most node output

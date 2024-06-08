@@ -1,4 +1,9 @@
-use std::{fmt::Display, path::PathBuf, str::FromStr};
+use std::{
+    fmt::Display,
+    net::{IpAddr, Ipv4Addr},
+    path::PathBuf,
+    str::FromStr,
+};
 
 #[cfg(any(feature = "clipages", feature = "mangen"))]
 use clap::CommandFactory;
@@ -7,6 +12,9 @@ use url::Url;
 
 #[derive(Debug, Parser)]
 pub struct Cli {
+    #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    pub bind_addr: IpAddr,
+
     /// Control plane server port
     #[arg(long, default_value_t = 1234)]
     pub port: u16,

@@ -4,10 +4,12 @@ use crate::format::DataFormat;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum NetworkId {
     #[default]
     Mainnet,
     Testnet,
+    Canary,
 }
 
 impl std::str::FromStr for NetworkId {
@@ -17,6 +19,7 @@ impl std::str::FromStr for NetworkId {
         match s {
             "mainnet" => Ok(Self::Mainnet),
             "testnet" => Ok(Self::Testnet),
+            "canary" => Ok(Self::Canary),
             _ => Err("Invalid network ID"),
         }
     }
@@ -27,6 +30,7 @@ impl std::fmt::Display for NetworkId {
         match self {
             Self::Mainnet => write!(f, "mainnet"),
             Self::Testnet => write!(f, "testnet"),
+            Self::Canary => write!(f, "canary"),
         }
     }
 }
@@ -42,6 +46,7 @@ impl DataFormat for NetworkId {
         match self {
             Self::Mainnet => 0u8.write_data(writer),
             Self::Testnet => 1u8.write_data(writer),
+            Self::Canary => 2u8.write_data(writer),
         }
     }
 
@@ -60,6 +65,7 @@ impl DataFormat for NetworkId {
         match u8::read_data(reader, &())? {
             0 => Ok(Self::Mainnet),
             1 => Ok(Self::Testnet),
+            2 => Ok(Self::Canary),
             n => Err(crate::format::DataReadError::Custom(format!(
                 "Invalid network ID: {n}"
             ))),

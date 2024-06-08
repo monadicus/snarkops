@@ -1,0 +1,79 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: canary-bonding
+name: canary-bonding
+regen: 5
+generate:
+  genesis:
+    seed: 1
+    committee-size: 4
+  accounts:
+    delegator:
+      seed: 2
+      count: 10
+    del_withdraw:
+      seed: 2
+      count: 10
+    validators:
+      seed: 3
+      count: 10
+    val_withdraw:
+      seed: 4
+      count: 10
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+name: bonding-demo
+
+network: canary
+
+nodes:
+  validator/committee:
+    replicas: 4
+    key: committee.$
+    height: top
+    validators: [validator/*]
+    peers: []
+
+  validator/bonded:
+    replicas: 4
+    online: false
+    key: validators.$
+    height: top
+    validators: [validator/*]
+    peers: []
+# ---
+# bond test
+# ---
+# --- transfer 200 credits to validator 0
+# scli env action execute transfer_public --private-key committee.0 validators.0 200_000_000u64
+#
+# --- transfer 10,000,100 credits to delegator 0
+# scli env action execute transfer_public --private-key committee.0 delegator.0 10_000_100_000_000u64
+#
+# --- delegate 10,000,000 credits to validator 0
+# scli env action execute bond_public --private-key delegator.0 validators.0 del_withdraw.0 10_000_000_000_000u64
+#
+# --- bond 100 credits to validator 0
+# scli env action execute bond_validator --private-key validators.0 val_withdraw.0 100_000_000u64 100u8
+#
+# --- set validator 0 to be online
+# scli env action online validator/bonded-0
+#
+#
+# ---
+# withdraw test
+# ---
+#
+# --- transfer 100 credits to validator 0's withdraw address
+# scli env action execute transfer_public --private-key committee.0 val_withdraw.0 100_000_000u64
+#
+# --- start unbonding 100 credits from validator 0 to withdraw address
+# scli env action execute unbond_public --private-key val_withdraw.0 validator.0 100_000_000u64
+#
+# (wait 360 blocks from the height value in /<NETWORK>/program/credits.aleo/mapping/unbonding/<ADDRESS>)
+#
+# --- claim the unbonded credits from validator 0
+# scli env action execute claim_unbond_public  --private-key val_withdraw.0 validator.0
+

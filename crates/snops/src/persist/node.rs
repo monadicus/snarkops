@@ -1,11 +1,6 @@
-use snops_common::{
-    format::{
-        read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataFormatWriter,
-        DataHeaderOf,
-    },
-    state::AgentId,
-};
+use snops_common::state::AgentId;
 
+use super::prelude::*;
 use crate::schema::nodes::{ExternalNode, Node, NodeFormatHeader};
 
 #[derive(Debug, Clone)]
@@ -24,19 +19,13 @@ impl DataFormat for PersistNodeFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(write_dataformat(writer, &self.node)? + write_dataformat(writer, &self.external_node)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "PersistNodeFormatHeader",
                 Self::LATEST_HEADER,
                 header,
@@ -60,10 +49,7 @@ impl DataFormat for PersistNode {
         external_node: ExternalNode::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         match self {
             PersistNode::Internal(id, state) => {
@@ -79,10 +65,7 @@ impl DataFormat for PersistNode {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         match reader.read_data(&())? {
             0u8 => {
                 let id = reader.read_data(&())?;
@@ -93,7 +76,7 @@ impl DataFormat for PersistNode {
                 let n = reader.read_data(&header.external_node)?;
                 Ok(PersistNode::External(n))
             }
-            n => Err(snops_common::format::DataReadError::Custom(format!(
+            n => Err(DataReadError::Custom(format!(
                 "invalid PersistNode discriminant: {n}"
             ))),
         }
@@ -106,15 +89,13 @@ mod tests {
 
     use snops_common::{
         format::DataFormat,
+        node_targets::NodeTargets,
         state::{DocHeightRequest, InternedId},
     };
 
     use crate::{
         persist::{PersistNode, PersistNodeFormatHeader},
-        schema::{
-            nodes::{ExternalNode, Node, NodeFormatHeader},
-            NodeTargets,
-        },
+        schema::nodes::{ExternalNode, Node, NodeFormatHeader},
     };
 
     macro_rules! case {

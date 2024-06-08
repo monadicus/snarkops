@@ -29,11 +29,11 @@ pub trait AgentService {
     /// state.
     async fn reconcile(to: AgentState) -> Result<(), ReconcileError>;
 
-    /// Get the state root from the running node
-    async fn get_state_root() -> Result<String, AgentError>;
-
     /// Broadcast a transaction locally
     async fn broadcast_tx(tx: String) -> Result<(), AgentError>;
+
+    /// Make a GET request to the snarkos server
+    async fn snarkos_get(route: String) -> Result<String, SnarkosRequestError>;
 
     /// Locally execute an authorization, using the given query
     /// environment id is passed so the agent can determine which aot binary to
@@ -44,7 +44,7 @@ pub trait AgentService {
         query: String,
         auth: String,
         fee_auth: Option<String>,
-    ) -> Result<(), AgentError>;
+    ) -> Result<String, AgentError>;
 
     async fn get_metric(metric: AgentMetric) -> f64;
 }

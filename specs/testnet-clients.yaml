@@ -1,0 +1,23 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: testnet-clients
+name: testnet-clients
+regen: 5
+
+generate:
+  accounts:
+    clients: 4
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+name: 4-clients
+
+network: testnet
+
+nodes:
+  client/test:
+    replicas: 4
+    key: clients.$
+    height: top
+    peers: []

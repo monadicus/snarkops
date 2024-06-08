@@ -27,6 +27,7 @@ This document contains the help content for the `snops-agent` command-line progr
 
   Default value: `./snops-data`
 * `--external <EXTERNAL>` — Enable the agent to fetch its external address. Necessary to determine which agents are on shared networks, and for external-to-external connections
+* `--internal <INTERNAL>` — Manually specify internal addresses
 * `--bind <BIND_ADDR>`
 
   Default value: `0.0.0.0`

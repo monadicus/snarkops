@@ -1,8 +1,6 @@
-use snops_common::{
-    format::{read_dataformat, write_dataformat, DataFormat, DataFormatReader, DataHeaderOf},
-    state::{AgentMode, AgentState, NodeState, PortConfig},
-};
+use snops_common::state::{AgentModeOptions, AgentState, NodeState, PortConfig};
 
+use super::prelude::*;
 use crate::{
     server::jwt::Claims,
     state::{Agent, AgentAddrs, AgentFlags},
@@ -21,10 +19,7 @@ impl DataFormat for AgentFormatHeader {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += self.version.write_data(writer)?;
         written += self.addrs.write_data(writer)?;
@@ -34,12 +29,9 @@ impl DataFormat for AgentFormatHeader {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "AgentFormatHeader",
                 Self::LATEST_HEADER,
                 *header,
@@ -66,10 +58,7 @@ impl DataFormat for Agent {
         ports: PortConfig::LATEST_HEADER,
     };
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
 
         written += self.id.write_data(writer)?;
@@ -91,12 +80,9 @@ impl DataFormat for Agent {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if header.version != Self::LATEST_HEADER.version {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "Agent",
                 Self::LATEST_HEADER.version,
                 header.version,
@@ -113,7 +99,7 @@ impl DataFormat for Agent {
                 AgentState::Node(env_id, state)
             }
             n => {
-                return Err(snops_common::format::DataReadError::Custom(format!(
+                return Err(DataReadError::Custom(format!(
                     "invalid AgentState discriminant: {n}"
                 )))
             }
@@ -136,10 +122,7 @@ impl DataFormat for AgentFlags {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += u8::from(self.mode).write_data(writer)?;
         written += self.labels.write_data(writer)?;
@@ -147,12 +130,9 @@ impl DataFormat for AgentFlags {
         Ok(written)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "AgentFlags",
                 Self::LATEST_HEADER,
                 *header,
@@ -160,7 +140,7 @@ impl DataFormat for AgentFlags {
         }
 
         Ok(AgentFlags {
-            mode: AgentMode::from(u8::read_data(reader, &())?),
+            mode: AgentModeOptions::from(u8::read_data(reader, &())?),
             labels: reader.read_data(&())?,
             local_pk: reader.read_data(&())?,
         })
@@ -171,19 +151,13 @@ impl DataFormat for AgentAddrs {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;
 
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(self.external.write_data(writer)? + self.internal.write_data(writer)?)
     }
 
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(DataReadError::unsupported(
                 "AgentAddrs",
                 Self::LATEST_HEADER,
                 *header,
@@ -200,7 +174,7 @@ impl DataFormat for AgentAddrs {
 #[cfg(test)]
 #[rustfmt::skip]
 mod test {
-    use snops_common::{format::{read_dataformat, write_dataformat, DataFormat, PackedUint}, state::{AgentMode, AgentState, HeightRequest, KeyState, NodeState, PortConfig}, INTERN};
+    use snops_common::{format::{read_dataformat, write_dataformat, DataFormat, PackedUint}, state::{AgentModeOptions, AgentState, HeightRequest, KeyState, NodeState, PortConfig}, INTERN};
     use crate::{persist::AgentFormatHeader, state::{Agent, AgentAddrs, AgentFlags}};
     use std::net::{IpAddr, Ipv4Addr};
 
@@ -228,7 +202,7 @@ mod test {
     case!(agent_flags_1,
         AgentFlags,
         AgentFlags {
-            mode: AgentMode::from(0u8),
+            mode: AgentModeOptions::from(0u8),
             labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
             local_pk: true,
         },
@@ -276,7 +250,7 @@ mod test {
             },
             AgentState::Inventory,
             AgentFlags {
-                mode: AgentMode::from(0u8),
+                mode: AgentModeOptions::from(0u8),
                 labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
                 local_pk: true,
             },
@@ -293,7 +267,7 @@ mod test {
             2u16.to_byte_vec()?,
             0u8.to_byte_vec()?, // inventory state
             AgentFlags {
-                mode: AgentMode::from(0u8),
+                mode: AgentModeOptions::from(0u8),
                 labels: [INTERN.get_or_intern("hello")].into_iter().collect(),
                 local_pk: true,
             }.to_byte_vec()?,
@@ -322,7 +296,7 @@ mod test {
                 env: Default::default(),
             })),
             AgentFlags {
-                mode: AgentMode::from(5u8),
+                mode: AgentModeOptions::from(5u8),
                 labels: Default::default(),
                 local_pk: true,
             },
@@ -349,7 +323,7 @@ mod test {
                 env: Default::default(),
             }.to_byte_vec()?,
             AgentFlags {
-                mode: AgentMode::from(5u8),
+                mode: AgentModeOptions::from(5u8),
                 labels: Default::default(),
                 local_pk: true,
             }.to_byte_vec()?,

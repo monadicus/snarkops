@@ -1,24 +1,31 @@
-use std::{collections::HashSet, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, fmt::Display, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use dashmap::DashMap;
 use prometheus_http_query::Client as PrometheusClient;
+use rand::seq::SliceRandom;
+use serde::de::DeserializeOwned;
 use snops_common::{
     constant::ENV_AGENT_KEY,
-    state::{AgentId, AgentState, EnvId, NetworkId, StorageId},
+    node_targets::NodeTargets,
+    state::{AgentId, AgentPeer, AgentState, EnvId, NetworkId, StorageId},
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use tracing::info;
 
 use super::{AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
     cli::Cli,
     db::Database,
-    env::Environment,
+    env::{error::EnvRequestError, Environment, PortType},
     error::StateError,
-    schema::storage::STORAGE_DIR,
+    schema::storage::{LoadedStorage, STORAGE_DIR},
     server::{error::StartError, prometheus::HttpsdResponse},
     util::OpaqueDebug,
 };
+
+lazy_static::lazy_static! {
+    pub(crate) static ref REST_CLIENT: reqwest::Client = reqwest::Client::new();
+}
 
 /// The global state for the control plane.
 #[derive(Debug)]
@@ -39,7 +46,7 @@ impl GlobalState {
         cli: Cli,
         db: Database,
         prometheus: Option<PrometheusClient>,
-    ) -> Result<Self, StartError> {
+    ) -> Result<Arc<Self>, StartError> {
         // Load storage meta from persistence, then read the storage data from FS
         let storage_meta = db.storage.read_all();
         let storage = StorageMap::default();
@@ -54,10 +61,37 @@ impl GlobalState {
             storage.insert((network, id), Arc::new(loaded));
         }
 
-        let env_meta = db.envs.read_all();
-        let envs = EnvMap::default();
-        for (id, meta) in env_meta {
-            let loaded = match meta.load(&db, &storage, &cli).await {
+        let pool: DashMap<_, _> = db.agents.read_all().collect();
+
+        let state = Arc::new(Self {
+            cli,
+            agent_key: std::env::var(ENV_AGENT_KEY).ok(),
+            pool,
+            storage,
+            envs: EnvMap::default(),
+            prom_httpsd: Default::default(),
+            prometheus: OpaqueDebug(prometheus),
+            db: OpaqueDebug(db),
+        });
+
+        let env_meta = state.db.envs.read_all().collect::<Vec<_>>();
+
+        let num_cannons = env_meta.iter().map(|(_, e)| e.cannons.len()).sum();
+        // this semaphor prevents cannons from starting until the environment is
+        // created
+        let cannons_ready = Arc::new(Semaphore::const_new(num_cannons));
+        // when this guard is dropped, the semaphore is released
+        let cannons_ready_guard = Arc::clone(&cannons_ready);
+        let _cannons_guard = cannons_ready_guard
+            .acquire_many(num_cannons as u32)
+            .await
+            .unwrap();
+
+        for (id, meta) in env_meta.into_iter() {
+            let loaded = match meta
+                .load(Arc::clone(&state), Arc::clone(&cannons_ready))
+                .await
+            {
                 Ok(l) => l,
                 Err(e) => {
                     tracing::error!("Error loading storage from persistence {id}: {e}");
@@ -65,18 +99,16 @@ impl GlobalState {
                 }
             };
             info!("loaded env {id} from persistence");
-            envs.insert(id, Arc::new(loaded));
+            state.envs.insert(id, Arc::new(loaded));
         }
 
-        let pool: DashMap<_, _> = db.agents.read_all().collect();
-
         // For all agents not in envs, set their state to Inventory
-        for mut entry in pool.iter_mut() {
+        for mut entry in state.pool.iter_mut() {
             let AgentState::Node(env, _) = entry.value().state() else {
                 continue;
             };
 
-            if envs.contains_key(env) {
+            if state.envs.contains_key(env) {
                 continue;
             }
 
@@ -85,19 +117,10 @@ impl GlobalState {
                 entry.key()
             );
             entry.set_state(AgentState::Inventory);
-            let _ = db.agents.save(entry.key(), entry.value());
+            let _ = state.db.agents.save(entry.key(), entry.value());
         }
 
-        Ok(Self {
-            cli,
-            agent_key: std::env::var(ENV_AGENT_KEY).ok(),
-            pool,
-            storage,
-            envs,
-            prom_httpsd: Default::default(),
-            prometheus: OpaqueDebug(prometheus),
-            db: OpaqueDebug(db),
-        })
+        Ok(state)
     }
 
     pub fn storage_path(&self, network: NetworkId, storage_id: StorageId) -> PathBuf {
@@ -133,6 +156,39 @@ impl GlobalState {
         self.pool.get(&id)?.client_owned()
     }
 
+    /// check if an agent's node is in an online state
+    pub fn is_agent_node_online(&self, id: AgentId) -> bool {
+        let Some(agent) = self.pool.get(&id) else {
+            return false;
+        };
+
+        match agent.state() {
+            AgentState::Node(_, state) => state.online,
+            _ => false,
+        }
+    }
+
+    pub fn try_unload_storage(
+        &self,
+        network: NetworkId,
+        id: StorageId,
+    ) -> Option<Arc<LoadedStorage>> {
+        // if the storage is in use, don't unload it
+        if self
+            .envs
+            .iter()
+            .any(|e| e.storage.id == id && e.storage.network == network)
+        {
+            return None;
+        }
+
+        let (_, storage) = self.storage.remove(&(network, id))?;
+        if let Err(e) = self.db.storage.delete(&(network, id)) {
+            tracing::error!("[storage {network}.{id}] failed to delete persistence: {e}");
+        }
+        Some(storage)
+    }
+
     pub fn get_agent_rest(&self, id: AgentId) -> Option<SocketAddr> {
         let agent = self.pool.get(&id)?;
         Some(SocketAddr::new(agent.addrs()?.usable()?, agent.rest_port()))
@@ -140,5 +196,92 @@ impl GlobalState {
 
     pub fn get_env(&self, id: EnvId) -> Option<Arc<Environment>> {
         Some(Arc::clone(self.envs.get(&id)?.value()))
+    }
+
+    pub async fn snarkos_get<T: DeserializeOwned>(
+        &self,
+        env_id: EnvId,
+        route: impl Display,
+        target: &NodeTargets,
+    ) -> Result<T, EnvRequestError> {
+        let Some(env) = self.get_env(env_id) else {
+            return Err(EnvRequestError::MissingEnv(env_id));
+        };
+
+        let network = env.network;
+
+        let mut query_nodes = env
+            .matching_nodes(target, &self.pool, PortType::Rest)
+            // collecting here is required to avoid a long lived borrow on the agent
+            // pool if this collect is removed, the iterator
+            // will not be Send, and axum will be sad
+            .collect::<Vec<_>>();
+
+        if query_nodes.is_empty() {
+            return Err(EnvRequestError::NoMatchingNodes);
+        }
+
+        // select nodes in a random order
+        query_nodes.shuffle(&mut rand::thread_rng());
+
+        // walk through the nodes until we find one that responds
+        for peer in query_nodes {
+            let addr = match peer {
+                AgentPeer::Internal(agent_id, _) => {
+                    // ensure the node state is online
+                    if !self.is_agent_node_online(agent_id) {
+                        continue;
+                    };
+
+                    // attempt to get the state root from the client via RPC
+                    if let Some(client) = self.get_client(agent_id) {
+                        match client.snarkos_get::<T>(&route).await {
+                            Ok(res) => return Ok(res),
+                            Err(e) => {
+                                tracing::error!(
+                                    "env {env_id} agent {agent_id} request failed: {e}"
+                                );
+                                continue;
+                            }
+                        }
+                    }
+
+                    // get the agent's rest address as a fallback for the client
+                    if let Some(sock_addr) = self.get_agent_rest(agent_id) {
+                        sock_addr
+                    } else {
+                        continue;
+                    }
+                }
+                AgentPeer::External(addr) => addr,
+            };
+
+            // attempt to get the state root from the internal or external node via REST
+            let url = format!("http://{addr}/{network}{route}");
+            let Ok(res) = tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                REST_CLIENT.get(&url).send(),
+            )
+            .await
+            else {
+                // timeout
+                continue;
+            };
+            match res {
+                Ok(res) => match res.json().await {
+                    Ok(e) => e,
+                    Err(e) => {
+                        tracing::error!("env {env_id} peer {peer:?} failed to parse {url}: {e}");
+                        continue;
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("env {env_id} peer {peer:?} failed to make request {url}: {e}");
+                    continue;
+                }
+            }
+        }
+
+        Err(EnvRequestError::NoResponsiveNodes)
     }
 }

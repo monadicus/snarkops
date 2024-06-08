@@ -1,11 +1,11 @@
 use std::{
-    collections::HashSet,
     net::IpAddr,
     sync::{Arc, Weak},
     time::Instant,
 };
 
 use fixedbitset::FixedBitSet;
+use indexmap::IndexSet;
 use jwt::SignWithKey;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
@@ -13,11 +13,11 @@ use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
     rpc::agent::AgentServiceClient,
-    state::{AgentId, AgentMode, AgentState, EnvId, NodeState, PortConfig},
+    state::{AgentId, AgentModeOptions, AgentState, AgentStatus, EnvId, NodeState, PortConfig},
     INTERN,
 };
 
-use super::{AgentClient, AgentFlags};
+use super::{AgentClient, AgentFlags, PendingAgentReconcile};
 use crate::server::jwt::{Claims, JWT_SECRET};
 
 #[derive(Debug)]
@@ -31,6 +31,7 @@ pub struct Agent {
     pub(crate) claims: Claims,
     pub(crate) connection: AgentConnection,
     pub(crate) state: AgentState,
+    pub(crate) status: Option<AgentStatus>,
 
     /// CLI provided information (mode, labels, local private key)
     pub(crate) flags: AgentFlags,
@@ -58,6 +59,7 @@ impl Agent {
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),
+            status: None,
             ports: None,
             addrs: None,
         }
@@ -79,6 +81,7 @@ impl Agent {
             connection: AgentConnection::Offline {
                 since: Instant::now(),
             },
+            status: None,
             state,
             ports,
             addrs,
@@ -102,7 +105,7 @@ impl Agent {
     }
 
     /// Check if an agent has a set of labels
-    pub fn has_labels(&self, labels: &HashSet<Spur>) -> bool {
+    pub fn has_labels(&self, labels: &IndexSet<Spur>) -> bool {
         labels.is_empty() || self.flags.labels.intersection(labels).count() == labels.len()
     }
 
@@ -118,7 +121,7 @@ impl Agent {
             .map_or(false, |label| self.flags.labels.contains(&label))
     }
 
-    pub fn str_labels(&self) -> HashSet<&str> {
+    pub fn str_labels(&self) -> IndexSet<&str> {
         self.flags
             .labels
             .iter()
@@ -184,7 +187,7 @@ impl Agent {
         &self.state
     }
 
-    pub fn modes(&self) -> AgentMode {
+    pub fn modes(&self) -> AgentModeOptions {
         self.flags.mode
     }
 
@@ -274,15 +277,29 @@ impl Agent {
         self.addrs = Some(AgentAddrs { external, internal });
     }
 
-    pub fn map_to_node_state_reconcile<F>(&self, f: F) -> Option<(AgentId, AgentClient, AgentState)>
+    pub fn map_to_reconcile<F>(&self, f: F) -> PendingAgentReconcile
     where
         F: Fn(NodeState) -> NodeState,
     {
-        Some((
+        (
             self.id(),
-            self.client_owned()?,
+            self.client_owned(),
             match &self.state {
                 AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone()))),
+                s => s.clone(),
+            },
+        )
+    }
+
+    pub fn filter_map_to_reconcile<F>(&self, f: F) -> Option<PendingAgentReconcile>
+    where
+        F: Fn(NodeState) -> Option<NodeState>,
+    {
+        Some((
+            self.id(),
+            self.client_owned(),
+            match &self.state {
+                AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone())?)),
                 _ => return None,
             },
         ))

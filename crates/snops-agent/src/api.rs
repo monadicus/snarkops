@@ -1,34 +1,94 @@
-use std::{os::unix::fs::PermissionsExt, path::Path};
+use std::{
+    os::unix::fs::PermissionsExt,
+    path::Path,
+    time::{Duration, Instant},
+};
 
+use anyhow::bail;
 use futures::StreamExt;
 use http::StatusCode;
 use reqwest::IntoUrl;
-use snops_common::{api::EnvInfo, state::EnvId};
+use snops_common::state::EnvId;
 use tokio::{fs::File, io::AsyncWriteExt};
 use tracing::info;
+
+use crate::transfers::{self, TransferMessage, TransferTx};
+
+const TRANSFER_UPDATE_RATE: Duration = Duration::from_secs(2);
 
 /// Download a file. Returns a None if 404.
 pub async fn download_file(
     client: &reqwest::Client,
     url: impl IntoUrl,
     to: impl AsRef<Path>,
-) -> anyhow::Result<Option<()>> {
+    transfer_tx: TransferTx,
+) -> anyhow::Result<Option<File>> {
     let req = client.get(url).send().await?;
     if req.status() == StatusCode::NOT_FOUND {
         return Ok(None);
     }
 
+    // create a new transfer
+    let tx_id = transfers::next_id();
+    transfer_tx.send(TransferMessage::Start {
+        id: tx_id,
+        desc: None,
+        bytes: req.content_length().unwrap_or_default() as usize,
+    })?;
+
     let mut stream = req.bytes_stream();
-    let mut file = File::create(to).await?;
+    let mut file = File::create(to).await.inspect_err(|_| {
+        let _ = transfer_tx.send(TransferMessage::End {
+            id: tx_id,
+            interruption: Some(()),
+        });
+    })?;
+
+    let mut transferred = 0;
+    let mut update_next = Instant::now() + TRANSFER_UPDATE_RATE;
 
     while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
+        let chunk = chunk.inspect_err(|_| {
+            let _ = transfer_tx.send(TransferMessage::End {
+                id: tx_id,
+                interruption: Some(()),
+            });
+        })?;
+
+        transferred += chunk.len();
+
+        // update the transfer if the update interval has elapsed
+        let now = Instant::now();
+        if now > update_next {
+            update_next = now + TRANSFER_UPDATE_RATE;
+            let _ = transfer_tx.send(TransferMessage::Progress {
+                id: tx_id,
+                bytes: transferred,
+            });
+        }
+
+        file.write_all(&chunk).await.inspect_err(|_| {
+            let _ = transfer_tx.send(TransferMessage::End {
+                id: tx_id,
+                interruption: Some(()),
+            });
+        })?;
     }
 
-    Ok(Some(()))
+    // mark the transfer as ended
+    transfer_tx.send(TransferMessage::End {
+        id: tx_id,
+        interruption: None,
+    })?;
+
+    Ok(Some(file))
 }
 
-pub async fn check_file(url: impl IntoUrl, to: &Path) -> anyhow::Result<()> {
+pub async fn check_file(
+    url: impl IntoUrl,
+    to: &Path,
+    transfer_tx: TransferTx,
+) -> anyhow::Result<()> {
     let client = reqwest::Client::new();
 
     if !should_download_file(&client, url.as_str(), to)
@@ -39,24 +99,17 @@ pub async fn check_file(url: impl IntoUrl, to: &Path) -> anyhow::Result<()> {
     }
 
     info!("downloading {to:?}");
-    download_file(&client, url, to).await?;
+    download_file(&client, url, to, transfer_tx).await?;
 
     Ok(())
 }
 
-pub async fn get_env_info(url: impl IntoUrl) -> anyhow::Result<EnvInfo> {
-    let req = reqwest::get(url).await?;
-    if !req.status().is_success() {
-        return Err(anyhow::anyhow!(
-            "error getting storage info: {}",
-            req.status()
-        ));
-    }
-    let body = req.json().await?;
-    Ok(body)
-}
-
-pub async fn check_binary(env_id: EnvId, base_url: &str, path: &Path) -> anyhow::Result<()> {
+pub async fn check_binary(
+    env_id: EnvId,
+    base_url: &str,
+    path: &Path,
+    transfer_tx: TransferTx,
+) -> anyhow::Result<()> {
     let client = reqwest::Client::new();
 
     // check if we already have an up-to-date binary
@@ -65,20 +118,23 @@ pub async fn check_binary(env_id: EnvId, base_url: &str, path: &Path) -> anyhow:
         .await
         .unwrap_or(true)
     {
+        // check permissions and ensure 0o755
+        let perms = std::fs::metadata(path)?.permissions();
+        if perms.mode() != 0o755 {
+            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
+        }
+
         return Ok(());
     }
     info!("binary update is available, downloading...");
 
-    // download the binary
-    let mut file = tokio::fs::File::create(path).await?;
-    let mut stream = client.get(&loc).send().await?.bytes_stream();
+    let Some(file) = download_file(&client, &loc, path, transfer_tx).await? else {
+        bail!("downloading binary returned 404");
+    };
 
-    while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
-    }
-
-    // ensure the permissions are set
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
+    // ensure the permissions are set for execution
+    file.set_permissions(std::fs::Permissions::from_mode(0o755))
+        .await?;
 
     Ok(())
 }
@@ -97,10 +153,19 @@ pub async fn should_download_file(
                 return Ok(true);
             };
 
+            let Some(content_length_header) = res.headers().get(http::header::CONTENT_LENGTH)
+            else {
+                return Ok(true);
+            };
+
             let remote_last_modified = httpdate::parse_http_date(last_modified_header.to_str()?)?;
             let local_last_modified = meta.modified()?;
 
+            let remote_content_length = content_length_header.to_str()?.parse::<u64>()?;
+            let local_content_length = meta.len();
+
             remote_last_modified > local_last_modified
+                || remote_content_length != local_content_length
         }
 
         // no existing file, unconditionally download binary

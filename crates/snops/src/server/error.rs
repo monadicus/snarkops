@@ -6,12 +6,18 @@ use snops_common::{impl_into_status_code, impl_into_type_str};
 use thiserror::Error;
 
 use crate::{
-    cannon::error::CannonError, db::error::DatabaseError, env::error::EnvError,
-    error::DeserializeError, schema::error::SchemaError,
+    cannon::error::CannonError,
+    db::error::DatabaseError,
+    env::error::{EnvError, ExecutionError},
+    error::DeserializeError,
+    schema::error::SchemaError,
+    state::error::BatchReconcileError,
 };
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum ServerError {
+    #[error(transparent)]
+    BatchReconcile(#[from] BatchReconcileError),
     #[error("Content resource `{0}` not found")]
     ContentNotFound(String),
     #[error(transparent)]
@@ -21,20 +27,26 @@ pub enum ServerError {
     #[error(transparent)]
     Env(#[from] EnvError),
     #[error(transparent)]
+    Execute(#[from] ExecutionError),
+    #[error(transparent)]
     Schema(#[from] SchemaError),
 }
 
 impl_into_status_code!(ServerError, |value| match value {
+    BatchReconcile(e) => e.into(),
     ContentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
     Cannon(e) => e.into(),
     Deserialize(e) => e.into(),
     Env(e) => e.into(),
+    Execute(e) => e.into(),
     Schema(e) => e.into(),
 });
 
 impl_into_type_str!(ServerError, |value| match value {
+    BatchReconcile(e) => format!("{}.{e}", value.as_ref()),
     Cannon(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Env(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    Execute(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Schema(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     _ => value.as_ref().to_string(),
 });
@@ -70,4 +82,36 @@ pub enum StartError {
     Serve(#[source] std::io::Error),
     #[error("failed to bind to tcp: {0}")]
     TcpBind(#[source] std::io::Error),
+}
+
+#[derive(Debug, Error, Serialize)]
+#[serde(untagged)]
+pub enum ActionError {
+    #[error("execution timed out")]
+    ExecuteStatusTimeout {
+        tx_id: String,
+        agent_id: Option<String>,
+        retries: i32,
+    },
+    #[error("execution aborted")]
+    ExecuteStatusAborted { tx_id: String, retries: i32 },
+    #[error("execution failed")]
+    ExecuteStatusFailed {
+        message: String,
+        tx_id: String,
+        retries: i32,
+    },
+}
+
+impl_into_status_code!(ActionError, |value| match value {
+    ExecuteStatusTimeout { .. } => StatusCode::REQUEST_TIMEOUT,
+    ExecuteStatusAborted { .. } | ExecuteStatusFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+});
+
+impl IntoResponse for ActionError {
+    fn into_response(self) -> axum::response::Response {
+        let mut json = json!(self);
+        json["error"] = self.to_string().into();
+        (StatusCode::from(&self), Json(&json)).into_response()
+    }
 }

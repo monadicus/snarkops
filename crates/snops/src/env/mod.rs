@@ -1,7 +1,3 @@
-pub mod error;
-pub mod set;
-pub mod timeline;
-
 use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
@@ -15,33 +11,37 @@ use indexmap::{map::Entry, IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use snops_common::{
     api::EnvInfo,
+    node_targets::NodeTargets,
     state::{
-        AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, TimelineId, TxPipeId,
+        AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState, TxPipeId,
     },
 };
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::sync::Semaphore;
 use tracing::{error, info, trace, warn};
 
-use self::{error::*, timeline::reconcile_agents};
+use self::error::*;
 use crate::{
     cannon::{
-        file::{TransactionDrain, TransactionSink},
+        file::TransactionSink,
         sink::TxSink,
-        source::TxSource,
-        CannonInstance,
+        source::{ComputeTarget, QueryTarget, TxSource},
+        CannonInstance, CannonInstanceMeta,
     },
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, AgentMapping, BusyMode},
     error::DeserializeError,
     persist::PersistEnv,
     schema::{
         nodes::{ExternalNode, Node},
-        outcomes::OutcomeMetrics,
         storage::{LoadedStorage, DEFAULT_AOT_BIN},
-        timeline::TimelineEvent,
-        ItemDocument, NodeTargets,
+        ItemDocument,
     },
     state::{Agent, GlobalState},
 };
+
+pub mod error;
+mod reconcile;
+pub mod set;
+pub use reconcile::*;
 
 #[derive(Debug)]
 pub struct Environment {
@@ -49,27 +49,15 @@ pub struct Environment {
     pub storage: Arc<LoadedStorage>,
     pub network: NetworkId,
 
-    pub outcomes: OutcomeMetrics,
     // TODO: pub outcome_results: RwLock<OutcomeResults>,
     pub node_peers: BiMap<NodeKey, EnvPeer>,
     pub node_states: DashMap<NodeKey, EnvNodeState>,
     pub aot_bin: PathBuf,
 
     /// Map of transaction files to their respective counters
-    pub tx_pipe: TxPipes,
-    /// Map of cannon ids to their cannon configurations
-    pub cannon_configs: DashMap<CannonId, (TxSource, TxSink)>,
-    /// Map of cannon ids to their cannon instances
-    pub cannons: DashMap<CannonId, Arc<CannonInstance>>,
-
-    pub timelines: DashMap<TimelineId, Vec<TimelineEvent>>,
-    pub timeline_handle: Mutex<Option<JoinHandle<Result<(), ExecutionError>>>>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct TxPipes {
-    pub drains: HashMap<TxPipeId, Arc<TransactionDrain>>,
     pub sinks: HashMap<TxPipeId, Arc<TransactionSink>>,
+    /// Map of cannon ids to their cannon instances
+    pub cannons: HashMap<CannonId, Arc<CannonInstance>>,
 }
 
 /// The effective test state of a node.
@@ -136,41 +124,33 @@ impl Environment {
 
         let mut storage_doc = None;
 
-        let (mut node_peers, mut node_states, cannons, mut tx_pipe) =
-            if let Some(ref env) = prev_env {
-                // stop the timeline if it's running
-                // TODO: when there are multiple timelines and they run in step mode, don't do
-                // this
-                if let Some(handle) = &*env.timeline_handle.lock().await {
-                    handle.abort();
-                }
+        let (mut node_peers, mut node_states) = if let Some(ref env) = prev_env {
+            // reuse certain elements from the previous environment with the same
+            // name
+            (env.node_peers.clone(), env.node_states.clone())
+        } else {
+            (Default::default(), Default::default())
+        };
 
-                // reuse certain elements from the previous environment with the same
-                // name
-                (
-                    env.node_peers.clone(),
-                    env.node_states.clone(),
-                    // TODO: cannons instanced at prepare-time need to be removed
-                    // if the instance flag is set to false or the name is changed
-                    env.cannons.clone(),
-                    env.tx_pipe.clone(),
-                )
-            } else {
-                (
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                )
-            };
-
-        let cannon_configs = DashMap::default();
-        let timelines = DashMap::default();
-        let mut outcomes: Option<OutcomeMetrics> = None;
         let mut network = NetworkId::default();
 
-        let mut immediate_cannons = vec![];
+        let mut pending_cannons = HashMap::new();
         let mut agents_to_inventory = IndexSet::<AgentId>::default();
+
+        // default cannon will target any node for query and broadcast target
+        // any available compute will be used as well.
+        pending_cannons.insert(
+            CannonId::default(),
+            (
+                TxSource {
+                    query: QueryTarget::Node(NodeTargets::ALL),
+                    compute: ComputeTarget::Agent { labels: None },
+                },
+                TxSink::RealTime {
+                    target: NodeTargets::ALL,
+                },
+            ),
+        );
 
         for document in documents {
             match document {
@@ -184,10 +164,7 @@ impl Environment {
                 }
 
                 ItemDocument::Cannon(cannon) => {
-                    cannon_configs.insert(cannon.name, (cannon.source, cannon.sink));
-                    if cannon.instance {
-                        immediate_cannons.push((cannon.name, cannon.count));
-                    }
+                    pending_cannons.insert(cannon.name, (cannon.source, cannon.sink));
                 }
 
                 ItemDocument::Nodes(nodes) => {
@@ -360,15 +337,6 @@ impl Environment {
                     node_states.extend(incoming_states.into_iter());
                 }
 
-                ItemDocument::Timeline(sub_timeline) => {
-                    timelines.insert(sub_timeline.name, sub_timeline.timeline);
-                }
-
-                ItemDocument::Outcomes(sub_outcomes) => match outcomes {
-                    Some(ref mut outcomes) => outcomes.extend(sub_outcomes.metrics.into_iter()),
-                    None => outcomes = Some(sub_outcomes.metrics),
-                },
-
                 _ => warn!("ignored unimplemented document type"),
             }
         }
@@ -381,55 +349,40 @@ impl Environment {
             .await?;
 
         let storage_id = storage.id;
-        let outcomes = outcomes.unwrap_or_default();
 
-        // review cannon configurations to ensure all playback sources and sinks
-        // have a real file backing them
-        for conf in cannon_configs.iter() {
-            let (source, sink) = conf.value();
-            if let TxSource::Playback { file_name } = source {
-                // prevent re-creating drains that were in the previous env
-                if tx_pipe.drains.contains_key(file_name) {
-                    continue;
-                }
+        // this semaphor prevents cannons from starting until the environment is
+        // created
+        let cannons_ready = Arc::new(Semaphore::const_new(pending_cannons.len()));
+        // when this guard is dropped, the semaphore is released
+        let cannons_ready_guard = Arc::clone(&cannons_ready);
+        let _cannons_guard = cannons_ready_guard
+            .acquire_many(pending_cannons.len() as u32)
+            .await
+            .unwrap();
 
-                tx_pipe.drains.insert(
-                    *file_name,
-                    Arc::new(TransactionDrain::new_unread(
-                        storage.path(&state),
-                        *file_name,
-                    )?),
-                );
-            }
-
-            if let TxSink::Record { file_name, .. } = sink {
-                // prevent re-creating sinks that were in the previous env
-                if tx_pipe.sinks.contains_key(file_name) {
-                    continue;
-                }
-
-                tx_pipe.sinks.insert(
-                    *file_name,
-                    Arc::new(TransactionSink::new(storage.path(&state), *file_name)?),
-                );
-            }
-        }
+        let (cannons, sinks) = prepare_cannons(
+            Arc::clone(&state),
+            &storage,
+            prev_env.clone(),
+            cannons_ready,
+            (env_id, network, storage_id, DEFAULT_AOT_BIN.clone()),
+            pending_cannons
+                .into_iter()
+                .map(|(n, (source, sink))| (n, source, sink))
+                .collect(),
+        )?;
 
         let env = Arc::new(Environment {
             id: env_id,
             storage,
-            outcomes,
             network,
             // TODO: outcome_results: Default::default(),
             node_peers,
             node_states,
-            tx_pipe,
-            cannon_configs,
+            sinks,
             cannons,
             // TODO: specify the binary when uploading the test or something
             aot_bin: DEFAULT_AOT_BIN.clone(),
-            timelines,
-            timeline_handle: Default::default(),
         });
 
         if let Err(e) = state.db.envs.save(&env_id, &PersistEnv::from(env.as_ref())) {
@@ -444,13 +397,13 @@ impl Environment {
                 agents_to_inventory.len()
             );
             // reconcile agents that are freed up from the delta between environments
-            if let Err(e) = reconcile_agents(
-                &state,
-                agents_to_inventory
-                    .into_iter()
-                    .map(|id| (id, state.get_client(id), AgentState::Inventory)),
-            )
-            .await
+            if let Err(e) = state
+                .reconcile_agents(
+                    agents_to_inventory
+                        .into_iter()
+                        .map(|id| (id, state.get_client(id), AgentState::Inventory)),
+                )
+                .await
             {
                 error!("an error occurred while attempting to inventory newly freed agents: {e}");
             }
@@ -459,56 +412,7 @@ impl Environment {
         // reconcile the nodes
         initial_reconcile(env_id, &state, prev_env.is_none()).await?;
 
-        // instance cannons that are marked for immediate use
-        for (name, count) in immediate_cannons {
-            let Some(config) = env.cannon_configs.get(&name) else {
-                continue;
-            };
-            let (source, sink) = config.value();
-
-            let (mut instance, rx) = CannonInstance::new(
-                Arc::clone(&state),
-                name, // instanced cannons use the same name as the config
-                (env_id, storage_id, &DEFAULT_AOT_BIN),
-                source.clone(),
-                sink.clone(),
-                count,
-            )?;
-
-            // instanced cannons receive the fired count from the previous environment
-            if let Some(prev_cannon) = prev_env.as_ref().and_then(|e| e.cannons.get(&name)) {
-                instance.fired_txs = prev_cannon.fired_txs.clone();
-            }
-            instance.spawn_local(rx)?;
-            env.cannons.insert(name, Arc::new(instance));
-        }
-
         Ok(env_id)
-    }
-
-    pub async fn cleanup_timeline(
-        id: EnvId,
-        timeline_id: TimelineId,
-        state: &GlobalState,
-    ) -> Result<(), EnvError> {
-        // clear the env state
-        info!("clearing env {id} timeline {timeline_id} state...");
-
-        let env = state
-            .get_env(id)
-            .ok_or(CleanupError::EnvNotFound(id))?
-            .clone();
-
-        env.timelines
-            .remove(&timeline_id)
-            .ok_or(CleanupError::TimelineNotFound(id, timeline_id))?;
-
-        // stop the timeline if it's running
-        if let Some(handle) = &*env.timeline_handle.lock().await {
-            handle.abort();
-        }
-
-        Ok(())
     }
 
     pub async fn cleanup(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
@@ -523,43 +427,31 @@ impl Environment {
         if let Err(e) = state.db.envs.delete(&id) {
             error!("[env {id}] failed to delete persistence: {e}");
         }
-
-        match state.db.tx_drain_counts.delete_with_prefix(&id) {
-            Ok(count) => {
-                trace!("removed {count} transaction drains for env {id}");
-            }
-            Err(e) => {
-                error!("failed to remove transaction drains for env {id}: {e}");
-            }
+        if let Some(storage) = state.try_unload_storage(env.network, env.storage.id) {
+            info!("[env {id}] unloaded storage {}", storage.id);
         }
 
         trace!("[env {id}] marking prom as dirty");
         state.prom_httpsd.lock().await.set_dirty();
 
-        // stop the timeline if it's running
-        if let Some(handle) = &*env.timeline_handle.lock().await {
-            handle.abort();
-        }
-
         trace!("[env {id}] inventorying agents...");
 
-        if let Err(e) = reconcile_agents(
-            state,
-            env.node_peers
-                .right_values()
-                // find all agents associated with the env
-                .filter_map(|peer| match peer {
-                    EnvPeer::Internal(id) => Some(*id),
-                    _ => None,
-                })
-                // this collect is necessary because the iter sent to reconcile_agents
-                // must be owned by this thread. Without this, the iter would hold a reference
-                // to the env.node_peers.right_values(), which is NOT Send
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|id| (id, state.get_client(id), AgentState::Inventory)),
-        )
-        .await
+        if let Err(e) = state
+            .reconcile_agents(
+                env.node_peers
+                    .right_values()
+                    // find all agents associated with the env
+                    .filter_map(|peer| match peer {
+                        EnvPeer::Internal(id) => Some(*id),
+                        _ => None,
+                    })
+                    .map(|id| (id, state.get_client(id), AgentState::Inventory))
+                    // this collect is necessary because the iter sent to reconcile_agents
+                    // must be owned by this thread. Without this, the iter would hold a reference
+                    // to the env.node_peers.right_values(), which is NOT Send
+                    .collect::<Vec<_>>(),
+            )
+            .await
         {
             error!("an error occurred while attempting to inventory newly freed agents: {e}");
         }
@@ -573,6 +465,11 @@ impl Environment {
             EnvPeer::Internal(id) => Some(*id),
             EnvPeer::External(_) => None,
         })
+    }
+
+    pub fn get_node_key_by_agent(&self, id: AgentId) -> Option<&NodeKey> {
+        let peer = EnvPeer::Internal(id);
+        self.node_peers.get_by_right(&peer)
     }
 
     pub fn matching_nodes<'a>(
@@ -626,7 +523,7 @@ impl Environment {
     }
 
     pub fn get_cannon(&self, id: CannonId) -> Option<Arc<CannonInstance>> {
-        Some(Arc::clone(self.cannons.get(&id)?.value()))
+        self.cannons.get(&id).cloned()
     }
 
     pub fn info(&self) -> EnvInfo {
@@ -635,71 +532,91 @@ impl Environment {
             storage: self.storage.info(),
         }
     }
+
+    /// Resolve node's agent configuration given the context of the environment.
+    pub fn resolve_node_state(
+        &self,
+        state: &GlobalState,
+        id: AgentId,
+        key: &NodeKey,
+        node: &Node,
+    ) -> NodeState {
+        // base node state
+        let mut node_state = node.into_state(key.to_owned());
+
+        // resolve the private key from the storage
+        node_state.private_key = node
+            .key
+            .as_ref()
+            .map(|key| self.storage.lookup_keysource_pk(key))
+            .unwrap_or_default();
+
+        // a filter to exclude the current node from the list of peers
+        let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
+
+        // resolve the peers and validators from node targets
+        node_state.peers = self
+            .matching_nodes(&node.peers, &state.pool, PortType::Node)
+            .filter(not_me)
+            .collect();
+        node_state.peers.sort();
+
+        node_state.validators = self
+            .matching_nodes(&node.validators, &state.pool, PortType::Bft)
+            .filter(not_me)
+            .collect();
+        node_state.validators.sort();
+
+        node_state
+    }
 }
 
-/// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(
-    env_id: EnvId,
-    state: &GlobalState,
-    is_new_env: bool,
-) -> Result<(), EnvError> {
-    let mut pending_reconciliations = vec![];
-    {
-        let env = state
-            .get_env(env_id)
-            .ok_or(ReconcileError::EnvNotFound(env_id))?
-            .clone();
+// TODO remove this
+#[allow(clippy::type_complexity)]
+pub fn prepare_cannons(
+    state: Arc<GlobalState>,
+    storage: &LoadedStorage,
+    prev_env: Option<Arc<Environment>>,
+    cannons_ready: Arc<Semaphore>,
+    cannon_meta: CannonInstanceMeta,
+    pending_cannons: Vec<(CannonId, TxSource, TxSink)>,
+) -> Result<
+    (
+        HashMap<CannonId, Arc<CannonInstance>>,
+        HashMap<TxPipeId, Arc<TransactionSink>>,
+    ),
+    EnvError,
+> {
+    let mut cannons = HashMap::default();
+    let mut sinks = HashMap::default();
 
-        for entry in env.node_states.iter() {
-            let key = entry.key();
-            let node = entry.value();
-            let EnvNodeState::Internal(node) = node else {
-                continue;
-            };
-
-            // get the internal agent ID from the node key
-            let id = env
-                .get_agent_by_key(key)
-                .ok_or_else(|| ReconcileError::ExpectedInternalAgentPeer { key: key.clone() })?;
-
-            // resolve the peers and validators
-            let mut node_state = node.into_state(key.to_owned());
-            node_state.private_key = node
-                .key
-                .as_ref()
-                .map(|key| env.storage.lookup_keysource_pk(key))
-                .unwrap_or_default();
-
-            let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
-
-            node_state.peers = env
-                .matching_nodes(&node.peers, &state.pool, PortType::Node)
-                .filter(not_me)
-                .collect();
-
-            node_state.validators = env
-                .matching_nodes(&node.validators, &state.pool, PortType::Bft)
-                .filter(not_me)
-                .collect();
-
-            let agent_state = AgentState::Node(env_id, Box::new(node_state));
-            pending_reconciliations.push((id, state.get_client(id), agent_state));
+    for (name, source, sink) in pending_cannons.into_iter() {
+        // create file sinks for all the cannons that use files as output
+        if let TxSink::Record { file_name, .. } = &sink {
+            // prevent re-creating sinks that were in the previous env
+            if !sinks.contains_key(file_name) {
+                sinks.insert(
+                    *file_name,
+                    Arc::new(TransactionSink::new(storage.path(&state), *file_name)?),
+                );
+            }
         }
+
+        let (mut instance, rx) = CannonInstance::new(
+            Arc::clone(&state),
+            name, // instanced cannons use the same name as the config
+            cannon_meta.clone(),
+            source,
+            sink,
+        )?;
+
+        // instanced cannons receive the fired count from the previous environment
+        if let Some(prev_cannon) = prev_env.as_ref().and_then(|e| e.cannons.get(&name)) {
+            instance.fired_txs = prev_cannon.fired_txs.clone();
+        }
+        instance.spawn_local(rx, Arc::clone(&cannons_ready))?;
+        cannons.insert(name, Arc::new(instance));
     }
 
-    if let Err(e) = reconcile_agents(state, pending_reconciliations.into_iter()).await {
-        // if this is a patch to an existing environment, avoid inventorying the agents
-        if !is_new_env {
-            return Err(ReconcileError::Batch(e).into());
-        }
-
-        error!("an error occurred on initial reconciliation, inventorying all agents: {e}");
-        if let Err(e) = Environment::cleanup(env_id, state).await {
-            error!("an error occurred inventorying agents: {e}");
-        }
-
-        Err(ReconcileError::Batch(e).into())
-    } else {
-        Ok(())
-    }
+    Ok((cannons, sinks))
 }

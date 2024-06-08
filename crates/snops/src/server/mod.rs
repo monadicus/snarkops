@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use ::jwt::VerifyWithKey;
 use axum::{
@@ -10,7 +10,7 @@ use axum::{
     middleware,
     response::{IntoResponse, Response},
     routing::get,
-    Router,
+    Extension, Router,
 };
 use futures_util::stream::StreamExt;
 use http::StatusCode;
@@ -41,6 +41,7 @@ use crate::{
     state::{Agent, AgentFlags, AppState, GlobalState},
 };
 
+pub mod actions;
 mod api;
 mod content;
 pub mod error;
@@ -51,26 +52,29 @@ mod rpc;
 
 pub async fn start(cli: Cli) -> Result<(), StartError> {
     let db = db::Database::open(&cli.path.join("store"))?;
+    let socket_addr = SocketAddr::new(cli.bind_addr, cli.port);
 
     let prometheus = cli
         .prometheus
         .as_ref()
         .and_then(|p| PrometheusClient::try_from(p.as_str()).ok());
 
-    let state = Arc::new(GlobalState::load(cli, db, prometheus).await?);
+    let state = GlobalState::load(cli, db, prometheus).await?;
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())
         .nest("/prometheus", prometheus::routes())
         .nest("/content", content::init_routes(&state).await)
-        .with_state(state)
+        .with_state(Arc::clone(&state))
+        .layer(Extension(state))
         .layer(middleware::map_response(log_request))
         .layer(middleware::from_fn(req_stamp));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:1234")
+    let listener = tokio::net::TcpListener::bind(socket_addr)
         .await
         .map_err(StartError::TcpBind)?;
+
     axum::serve(listener, app)
         .await
         .map_err(StartError::Serve)?;

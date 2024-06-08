@@ -20,6 +20,16 @@ generate:
       aleo1u8lu8a9vqrw0m3wxph5v8hqj3m9vrzwwmt3d3e483468r5gy8qpsvgwjdl: 10000000000000
       # APrivateKey1zkp3gbZsmjfn3P2AVndY3AU9wu5kVkT5NetY6ztxCdEUgbP
       aleo1yy7yx4kvqp4hmnexa2lyrg7fdptuazwuv35976gsuv073m9lg5zs6d8sek: 10000000000000
+    bonded-commissions:
+      aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8: 0
+      aleo1pc5zapsghnp3r6qme0dhcvjslzgef89kggsvap8f7vxs3m38lqpsjn6v47: 30
+      aleo1u8lu8a9vqrw0m3wxph5v8hqj3m9vrzwwmt3d3e483468r5gy8qpsvgwjdl: 60
+      aleo1yy7yx4kvqp4hmnexa2lyrg7fdptuazwuv35976gsuv073m9lg5zs6d8sek: 100
+    bonded-withdrawal:
+      aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8: aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8
+      aleo1pc5zapsghnp3r6qme0dhcvjslzgef89kggsvap8f7vxs3m38lqpsjn6v47: aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8
+      aleo1u8lu8a9vqrw0m3wxph5v8hqj3m9vrzwwmt3d3e483468r5gy8qpsvgwjdl: aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8
+      aleo1yy7yx4kvqp4hmnexa2lyrg7fdptuazwuv35976gsuv073m9lg5zs6d8sek: aleo1yspxekr97q4fu9kkxk88f4874pl96r9zxqwtp7rtn2xc5wqgqggspjljf8
 
   # generate additional accounts, accessible via example.$, foo.0, or bar.1 in `key` fields
   accounts:
@@ -31,4 +41,4 @@ generate:
       count: 6 # the first 3 of these will be the same as the first 3 of `foo`
       seed: 1
 persist: false
-regen: 1
+regen: 2

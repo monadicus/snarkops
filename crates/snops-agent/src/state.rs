@@ -2,24 +2,31 @@ use std::{
     collections::HashMap,
     net::IpAddr,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
+use anyhow::bail;
+use dashmap::DashMap;
 use reqwest::Url;
 use snops_common::{
     api::EnvInfo,
     rpc::control::ControlServiceClient,
-    state::{AgentId, AgentPeer, AgentState, EnvId},
+    state::{AgentId, AgentPeer, AgentState, AgentStatus, EnvId},
 };
+use tarpc::{client::RpcError, context};
 use tokio::{
     process::Child,
     select,
-    sync::{Mutex as AsyncMutex, RwLock},
+    sync::{mpsc, Mutex as AsyncMutex, RwLock},
     task::AbortHandle,
 };
 use tracing::info;
 
-use crate::{api, cli::Cli, metrics::Metrics};
+use crate::{
+    cli::Cli,
+    metrics::Metrics,
+    transfers::{Transfer, TransferId, TransferTx},
+};
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -28,6 +35,8 @@ pub type AppState = Arc<GlobalState>;
 /// Global state for this agent runner.
 pub struct GlobalState {
     pub client: ControlServiceClient,
+    pub started: Instant,
+    pub connected: Mutex<Instant>,
 
     pub external_addr: Option<IpAddr>,
     pub internal_addrs: Vec<IpAddr>,
@@ -43,6 +52,9 @@ pub struct GlobalState {
     // Map of agent IDs to their resolved addresses.
     pub resolved_addrs: RwLock<HashMap<AgentId, IpAddr>>,
     pub metrics: RwLock<Metrics>,
+
+    pub transfer_tx: TransferTx,
+    pub transfers: Arc<DashMap<TransferId, Transfer>>,
 }
 
 impl GlobalState {
@@ -68,8 +80,9 @@ impl GlobalState {
             _ => {}
         }
 
-        let info =
-            api::get_env_info(format!("{}/api/v1/env/{env_id}/info", &self.endpoint)).await?;
+        let Some(info) = self.client.get_env_info(context::current(), env_id).await? else {
+            bail!("failed to get env info: env not found {env_id}");
+        };
 
         *self.env_info.write().await = Some((env_id, info.clone()));
 
@@ -101,5 +114,31 @@ impl GlobalState {
                 }
             }
         }
+    }
+
+    /// Derive an `AgentStatus` from the global state of this agent.
+    pub fn agent_status(&self) -> AgentStatus {
+        AgentStatus {
+            agent_version: Default::default(), // TODO
+            node_info: None,                   // TODO
+            node_status: Default::default(),   // TODO
+            online_secs: self.started.elapsed().as_secs(),
+            connected_secs: match self.connected.lock() {
+                Ok(instant) => instant.elapsed().as_secs(),
+                Err(_) => 0,
+            },
+            transfers: Default::default(), // TODO
+        }
+    }
+
+    // Post this agent's `AgentStatus` to the control plane.
+    pub async fn post_agent_status(&self) -> Result<(), RpcError> {
+        self.client
+            .post_agent_status(context::current(), self.agent_status())
+            .await
+    }
+
+    pub fn transfer_tx(&self) -> TransferTx {
+        self.transfer_tx.clone()
     }
 }
