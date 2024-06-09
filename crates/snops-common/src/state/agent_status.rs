@@ -1,7 +1,10 @@
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+use super::snarkos_status::SnarkOSStatus;
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeStatus {
     /// The last known status of the node is unknown
     #[default]
@@ -10,12 +13,10 @@ pub enum NodeStatus {
     Standby,
     /// The node waiting on other tasks to complete before starting
     PendingStart,
-    /// The node is starting up and not yet operational
-    Starting,
-    /// The node is online and operational
-    Online,
-    /// The node is online and unresponsive
-    Unresponsive,
+    /// The node is running
+    Running(SnarkOSStatus),
+    /// The node has exited with a status code
+    Exited(u8),
     /// The node was online and is in the process of shutting down
     Stopping,
     /// The node has been stopped and some extra time is needed before it can be
@@ -23,7 +24,7 @@ pub enum NodeStatus {
     LedgerWriting,
 }
 
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LatestBlockInfo {
     pub height: u32,
     /// Current block's state root
@@ -35,7 +36,7 @@ pub struct LatestBlockInfo {
     pub update_time: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransferStatusUpdate {
     /// The transfer has started.
     Start {
@@ -60,7 +61,7 @@ pub enum TransferStatusUpdate {
     Cleanup,
 }
 
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TransferStatus {
     /// Description of the transfer
     pub desc: String,
@@ -75,7 +76,7 @@ pub struct TransferStatus {
     pub interruption: Option<String>,
 }
 
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct AgentStatus {
     /// Version of the agent binary
     pub agent_version: Option<String>,

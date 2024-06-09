@@ -11,6 +11,7 @@ mod node_key;
 mod node_state;
 mod node_type;
 mod port_config;
+pub mod snarkos_status;
 mod strings;
 
 pub use agent_mode::*;

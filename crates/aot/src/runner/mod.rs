@@ -163,7 +163,7 @@ impl<N: Network> Runner<N> {
         }
         let shutdown = Arc::new(AtomicBool::new(false));
 
-        match self.node_type {
+        let _node = match self.node_type {
             NodeType::Validator => {
                 Node::new_validator(
                     node_ip,
