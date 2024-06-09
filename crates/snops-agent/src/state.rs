@@ -40,6 +40,7 @@ pub struct GlobalState {
 
     pub external_addr: Option<IpAddr>,
     pub internal_addrs: Vec<IpAddr>,
+    pub status_api_port: u16,
     pub cli: Cli,
     pub endpoint: String,
     pub jwt: Mutex<Option<String>>,

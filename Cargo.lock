@@ -4670,6 +4670,7 @@ name = "snops-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "bincode",
  "checkpoint",
  "chrono",

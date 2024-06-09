@@ -224,6 +224,8 @@ impl AgentService for AgentRpcServer {
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
+                        .arg("--agent-status-port")
+                        .arg(state.status_api_port.to_string())
                         .arg("--type")
                         .arg(node.node_key.ty.to_string())
                         .arg("--ledger")

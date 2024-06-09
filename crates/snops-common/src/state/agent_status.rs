@@ -24,6 +24,12 @@ pub enum NodeStatus {
     LedgerWriting,
 }
 
+impl From<SnarkOSStatus> for NodeStatus {
+    fn from(status: SnarkOSStatus) -> Self {
+        NodeStatus::Running(status)
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LatestBlockInfo {
     pub height: u32,

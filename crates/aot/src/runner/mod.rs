@@ -11,15 +11,20 @@ use checkpoint::{CheckpointManager, RetentionPolicy};
 use clap::Args;
 use snarkos_node::Node;
 use snarkvm::{
-    ledger::store::{helpers::rocksdb::CommitteeDB, CommitteeStorage},
+    ledger::store::{
+        helpers::rocksdb::{BlockDB, CommitteeDB},
+        BlockStorage, CommitteeStorage,
+    },
     prelude::Block,
     utilities::FromBytes,
 };
-use snops_common::state::NodeType;
+use snops_common::state::{snarkos_status::SnarkOSStatus, NodeType};
+use status::AgentStatusClient;
 
 use crate::{Account, DbLedger, Network, PrivateKey};
 
 mod metrics;
+mod status;
 
 #[derive(Debug, Args, Clone)]
 #[group(required = true, multiple = false)]
@@ -65,40 +70,51 @@ pub struct Runner<N: Network> {
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
     /// Specify the IP address and port for the node server
-    #[clap(long = "node", default_value_t = 4130)]
+    #[clap(long, default_value_t = 4130)]
     pub node: u16,
     /// Specify the IP address and port for the BFT
-    #[clap(long = "bft", default_value_t = 5000)]
+    #[clap(long, default_value_t = 5000)]
     pub bft: u16,
     /// Specify the IP address and port for the REST server
-    #[clap(long = "rest", default_value_t = 3030)]
+    #[clap(long, default_value_t = 3030)]
     pub rest: u16,
     /// Specify the port for the metrics server
-    #[clap(long = "metrics", default_value_t = 9000)]
+    #[clap(long, default_value_t = 9000)]
     pub metrics: u16,
 
     /// Specify the IP address and port of the peer(s) to connect to
-    #[clap(long = "peers", num_args = 1, value_delimiter = ',')]
+    #[clap(long, num_args = 1, value_delimiter = ',')]
     pub peers: Vec<SocketAddr>,
     /// Specify the IP address and port of the validator(s) to connect to
-    #[clap(long = "validators", num_args = 1, value_delimiter = ',')]
+    #[clap(long, num_args = 1, value_delimiter = ',')]
     pub validators: Vec<SocketAddr>,
     /// Specify the requests per second (RPS) rate limit per IP for the REST
     /// server
-    #[clap(long = "rest-rps", default_value_t = 1000)]
+    #[clap(long, default_value_t = 1000)]
     pub rest_rps: u32,
 
-    #[clap(long = "retention-policy")]
+    #[clap(long)]
     pub retention_policy: Option<RetentionPolicy>,
+
+    /// When present, emits the agent status on the given port.
+    #[clap(long)]
+    pub agent_status_port: Option<u16>,
 }
 
 impl<N: Network> Runner<N> {
     pub fn parse(self) -> Result<()> {
-        if std::env::var("DEFAULT_RUNTIME").ok().is_some() {
+        let agent = AgentStatusClient::from(self.agent_status_port);
+        agent.status(SnarkOSStatus::Starting);
+        let res = if std::env::var("DEFAULT_RUNTIME").ok().is_some() {
             self.start_without_runtime()
         } else {
             Self::runtime().block_on(async move { self.start().await })
+        };
+
+        if let Err(e) = &res {
+            agent.status(SnarkOSStatus::Halted(Some(e.to_string())));
         }
+        res
     }
 
     #[tokio::main]
@@ -112,6 +128,7 @@ impl<N: Network> Runner<N> {
         let rest_ip = SocketAddr::new(bind_addr, self.rest);
         let bft_ip = SocketAddr::new(bind_addr, self.bft);
         let metrics_ip = SocketAddr::new(bind_addr, self.metrics);
+        let agent = AgentStatusClient::from(self.agent_status_port);
 
         let account = Account::try_from(self.key.try_get()?)?;
 
@@ -130,8 +147,10 @@ impl<N: Network> Runner<N> {
 
         let storage_mode = StorageMode::Custom(self.ledger.clone());
 
+        agent.status(SnarkOSStatus::LedgerLoading);
         if let Err(e) = DbLedger::<N>::load(genesis.clone(), storage_mode.clone()) {
-            tracing::error!("aot failed to load ledger: {e}");
+            tracing::error!("aot failed to load ledger: {e:?}");
+            agent.status(SnarkOSStatus::LedgerFailure(e.to_string()));
             // L in binary = 01001100 = 76
             std::process::exit(76);
         }
@@ -209,12 +228,16 @@ impl<N: Network> Runner<N> {
             }
         };
 
-        // if we have a checkpoint manager, start the backup loop
-        if let Some(mut manager) = manager.take() {
-            // cull incompatible checkpoints
-            manager.cull_incompatible::<N>()?;
+        // only monitor block updates if we have a checkpoint manager or agent status
+        // API
+        if manager.is_some() || agent.is_enabled() {
+            // if we have a checkpoint manager, cull incompatible checkpoints
+            if let Some(manager) = &mut manager {
+                manager.cull_incompatible::<N>()?;
+            }
 
             let committee = CommitteeDB::<N>::open(storage_mode.clone())?;
+            let blocks = BlockDB::<N>::open(storage_mode.clone())?;
 
             // check for height changes and poll the manager when a new block comes in
             let mut last_height = committee.current_height()?;
@@ -225,10 +248,18 @@ impl<N: Network> Runner<N> {
                     };
 
                     if last_height != height {
+                        if last_height != 0 {
+                            agent.status(SnarkOSStatus::Started);
+                        }
+
                         last_height = height;
 
-                        if let Err(e) = manager.poll::<N>() {
-                            tracing::error!("backup loop error: {e:?}");
+                        agent.post_block(height, &blocks);
+
+                        if let Some(manager) = &mut manager {
+                            if let Err(e) = manager.poll::<N>() {
+                                tracing::error!("backup loop error: {e:?}");
+                            }
                         }
                     }
 
