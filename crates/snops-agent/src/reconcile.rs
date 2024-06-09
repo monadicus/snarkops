@@ -91,6 +91,10 @@ pub async fn check_files(
         return Ok(());
     }
 
+    tokio::fs::create_dir_all(&ledger_path.join(".aleo"))
+        .await
+        .map_err(|_| ReconcileError::StorageSetupError("create local aleo home".to_string()))?;
+
     // download the ledger file
     api::check_file(ledger_url, &ledger_path, state.transfer_tx())
         .await

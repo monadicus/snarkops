@@ -111,9 +111,6 @@ async fn main() {
         .await
         .ok();
 
-    // start transfer monitor
-    let (transfer_tx, transfers) = transfers::start_monitor();
-
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
     let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
@@ -121,6 +118,9 @@ async fn main() {
     // set up the client, facing the control plane
     let client =
         ControlServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
+
+    // start transfer monitor
+    let (transfer_tx, transfers) = transfers::start_monitor(client.clone());
 
     // create the client state
     let state = Arc::new(GlobalState {
@@ -204,6 +204,7 @@ async fn main() {
             };
 
             *state.connected.lock().unwrap() = Instant::now();
+
             info!("Connection established with the control plane");
 
             let mut terminating = false;

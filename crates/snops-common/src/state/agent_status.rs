@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -23,37 +24,69 @@ pub enum NodeStatus {
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
-pub struct LatestNodeInfo {
+pub struct LatestBlockInfo {
     pub height: u32,
+    /// Current block's state root
     pub state_root: String,
     pub block_hash: String,
+    /// Timestamp of the block
     pub block_timestamp: i64,
-    pub block_time: u32,
+    /// Time this block info was updated
+    pub update_time: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum TransferStatusUpdate {
+    /// The transfer has started.
+    Start {
+        /// A description of the transfer.
+        desc: String,
+        /// The number of bytes expected to transfer.
+        total: u64,
+        /// The time the transfer started.
+        time: DateTime<Utc>,
+    },
+    /// The transfer has made progress.
+    Progress {
+        /// The current number of bytes transferred.
+        downloaded: u64,
+    },
+    /// The transfer has ended.
+    End {
+        /// An interruption reason, if any.
+        interruption: Option<String>,
+    },
+    /// The transfer has been cleaned up.
+    Cleanup,
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TransferStatus {
+    /// Description of the transfer
+    pub desc: String,
     /// The time the transfer started (relative to the agent's startup time)
-    pub started_at: u32,
+    pub started_at: DateTime<Utc>,
+    /// The time the transfer was last updated (relative to the agent's startup)
+    pub updated_at: DateTime<Utc>,
     /// Amount of data transferred in bytes
     pub downloaded_bytes: u64,
     /// Total amount of data to be transferred in bytes
     pub total_bytes: u64,
+    pub interruption: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AgentStatus {
     /// Version of the agent binary
-    pub agent_version: String,
-    /// The latest node info
-    pub node_info: Option<LatestNodeInfo>,
+    pub agent_version: Option<String>,
+    /// The latest block info
+    pub block_info: Option<LatestBlockInfo>,
     /// The status of the node
     pub node_status: NodeStatus,
-    /// The number of seconds since this agent was started
-    pub online_secs: u64,
-    /// The number of seconds since this agent was last connected to the control
-    /// plane
-    pub connected_secs: u64,
+    /// The time the agent was stated
+    pub start_time: Option<DateTime<Utc>>,
+    /// The time the agent connected to the control plane
+    pub connected_time: Option<DateTime<Utc>>,
     /// A map of transfers in progress
-    pub transfers: IndexMap<String, TransferStatus>,
+    pub transfers: IndexMap<u32, TransferStatus>,
 }

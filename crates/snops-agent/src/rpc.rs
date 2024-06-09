@@ -64,6 +64,23 @@ impl AgentService for AgentRpcServer {
                 .replace(loki);
         }
 
+        // emit the transfer statuses
+        if let Err(err) = self
+            .state
+            .client
+            .post_transfer_statuses(
+                context,
+                self.state
+                    .transfers
+                    .iter()
+                    .map(|e| (*e.key(), e.value().clone()))
+                    .collect(),
+            )
+            .await
+        {
+            error!("failed to send transfer statuses: {err}");
+        }
+
         // reconcile if state has changed
         let needs_reconcile = *self.state.agent_state.read().await != handshake.state;
         if needs_reconcile {

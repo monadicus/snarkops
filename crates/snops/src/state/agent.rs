@@ -31,7 +31,7 @@ pub struct Agent {
     pub(crate) claims: Claims,
     pub(crate) connection: AgentConnection,
     pub(crate) state: AgentState,
-    pub(crate) status: Option<AgentStatus>,
+    pub(crate) status: AgentStatus,
 
     /// CLI provided information (mode, labels, local private key)
     pub(crate) flags: AgentFlags,
@@ -59,7 +59,7 @@ impl Agent {
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),
-            status: None,
+            status: Default::default(),
             ports: None,
             addrs: None,
         }
@@ -81,7 +81,7 @@ impl Agent {
             connection: AgentConnection::Offline {
                 since: Instant::now(),
             },
-            status: None,
+            status: Default::default(),
             state,
             ports,
             addrs,

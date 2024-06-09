@@ -12,6 +12,7 @@ mangen = ["anyhow", "clap_mangen"]
 [dependencies]
 anyhow = { workspace = true, optional = true }
 checkpoint = { workspace = true, features = ["serde"] }
+chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
 clap_mangen = { workspace = true, optional = true }
 clap-markdown = { workspace = true, optional = true }

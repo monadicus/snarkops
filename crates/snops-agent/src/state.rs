@@ -11,13 +11,13 @@ use reqwest::Url;
 use snops_common::{
     api::EnvInfo,
     rpc::control::ControlServiceClient,
-    state::{AgentId, AgentPeer, AgentState, AgentStatus, EnvId},
+    state::{AgentId, AgentPeer, AgentState, EnvId, TransferStatus},
 };
-use tarpc::{client::RpcError, context};
+use tarpc::context;
 use tokio::{
     process::Child,
     select,
-    sync::{mpsc, Mutex as AsyncMutex, RwLock},
+    sync::{Mutex as AsyncMutex, RwLock},
     task::AbortHandle,
 };
 use tracing::info;
@@ -25,7 +25,7 @@ use tracing::info;
 use crate::{
     cli::Cli,
     metrics::Metrics,
-    transfers::{Transfer, TransferId, TransferTx},
+    transfers::{TransferId, TransferTx},
 };
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -54,7 +54,7 @@ pub struct GlobalState {
     pub metrics: RwLock<Metrics>,
 
     pub transfer_tx: TransferTx,
-    pub transfers: Arc<DashMap<TransferId, Transfer>>,
+    pub transfers: Arc<DashMap<TransferId, TransferStatus>>,
 }
 
 impl GlobalState {
@@ -114,28 +114,6 @@ impl GlobalState {
                 }
             }
         }
-    }
-
-    /// Derive an `AgentStatus` from the global state of this agent.
-    pub fn agent_status(&self) -> AgentStatus {
-        AgentStatus {
-            agent_version: Default::default(), // TODO
-            node_info: None,                   // TODO
-            node_status: Default::default(),   // TODO
-            online_secs: self.started.elapsed().as_secs(),
-            connected_secs: match self.connected.lock() {
-                Ok(instant) => instant.elapsed().as_secs(),
-                Err(_) => 0,
-            },
-            transfers: Default::default(), // TODO
-        }
-    }
-
-    // Post this agent's `AgentStatus` to the control plane.
-    pub async fn post_agent_status(&self) -> Result<(), RpcError> {
-        self.client
-            .post_agent_status(context::current(), self.agent_status())
-            .await
     }
 
     pub fn transfer_tx(&self) -> TransferTx {
