@@ -20,6 +20,7 @@ use crate::{server::actions::execute::execute_status, state::AppState};
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
         .route("/:cannon/:network/latest/stateRoot", get(state_root))
+        .route("/:cannon/:network/stateRoot/latest", get(state_root))
         .route("/:cannon/:network/transaction/broadcast", post(transaction))
         .route("/:cannon/auth", post(authorization))
 }

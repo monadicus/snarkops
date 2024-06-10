@@ -14,11 +14,11 @@ use std::{
 
 use error::{AuthorizeError, SourceError};
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use rand::seq::SliceRandom;
+use lazysort::SortedBy;
 use serde::{Deserialize, Serialize};
 use snops_common::{
     aot_cmds::AotCmd,
-    state::{AgentPeer, CannonId, EnvId, NetworkId, StorageId},
+    state::{CannonId, EnvId, NetworkId, StorageId},
 };
 use status::{TransactionStatus, TransactionStatusSender};
 use tokio::{
@@ -38,7 +38,6 @@ use self::{
 };
 use crate::{
     cannon::source::{ComputeTarget, QueryTarget},
-    env::PortType,
     state::{GlobalState, REST_CLIENT},
 };
 
@@ -440,12 +439,7 @@ impl ExecutionContext {
                 let cannon_id = self.id;
                 let env_id = self.env_id;
 
-                let mut broadcast_nodes = self
-                    .state
-                    .get_env(env_id)
-                    .ok_or_else(|| ExecutionContextError::EnvDropped(env_id, cannon_id))?
-                    .matching_nodes(target, &self.state.pool, PortType::Rest)
-                    .collect::<Vec<_>>();
+                let broadcast_nodes = self.state.get_scored_peers(env_id, target);
 
                 if broadcast_nodes.is_empty() {
                     return Err(ExecutionContextError::NoAvailableAgents(
@@ -456,67 +450,60 @@ impl ExecutionContext {
                     .into());
                 }
 
-                // select nodes in a random order
-                broadcast_nodes.shuffle(&mut rand::thread_rng());
-
                 let network = self.network;
 
                 // broadcast to the first responding node
-                for node in broadcast_nodes {
-                    match node {
-                        AgentPeer::Internal(id, _) => {
-                            // ensure the client is connected
-                            let Some(client) = self.state.get_client(id) else {
-                                continue;
-                            };
+                for (_, _, agent, addr) in
+                    broadcast_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0))
+                {
+                    if let Some(id) = agent {
+                        // ensure the client is connected
+                        let Some(client) = self.state.get_client(id) else {
+                            continue;
+                        };
 
-                            // ensure the node state is online
-                            if !self.state.is_agent_node_online(id) {
-                                continue;
-                            };
+                        if let Err(e) = client.broadcast_tx(tx.clone()).await {
+                            warn!(
+                                "cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}"
+                            );
+                            continue;
+                        }
+                        return Ok(());
+                    }
 
-                            if let Err(e) = client.broadcast_tx(tx.clone()).await {
+                    if let Some(addr) = addr {
+                        let url = format!("http://{addr}/{network}/transaction/broadcast");
+                        let req = REST_CLIENT
+                            .post(url)
+                            .header("Content-Type", "application/json")
+                            .body(tx.clone())
+                            .send();
+                        let Ok(res) =
+                            tokio::time::timeout(std::time::Duration::from_secs(5), req).await
+                        else {
+                            warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: timeout");
+                            continue;
+                        };
+
+                        match res {
+                            Err(e) => {
                                 warn!(
-                                    "cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}"
+                                    "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}"
                                 );
                                 continue;
                             }
-                            return Ok(());
-                        }
-                        AgentPeer::External(addr) => {
-                            let url = format!("http://{addr}/{network}/transaction/broadcast");
-                            let req = REST_CLIENT
-                                .post(url)
-                                .header("Content-Type", "application/json")
-                                .body(tx.clone())
-                                .send();
-                            let Ok(res) =
-                                tokio::time::timeout(std::time::Duration::from_secs(5), req).await
-                            else {
-                                warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: timeout");
-                                continue;
-                            };
-
-                            match res {
-                                Err(e) => {
+                            Ok(req) => {
+                                if !req.status().is_success() {
                                     warn!(
-                                            "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}"
-                                        );
+                                        "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}",
+                                        req.status(),
+                                    );
                                     continue;
                                 }
-                                Ok(req) => {
-                                    if !req.status().is_success() {
-                                        warn!(
-                                                "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}",
-                                                req.status(),
-                                            );
-                                        continue;
-                                    }
-                                }
                             }
-
-                            return Ok(());
                         }
+
+                        return Ok(());
                     }
                 }
 

@@ -1,5 +1,5 @@
 use std::{
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     sync::{Arc, Weak},
     time::Instant,
 };
@@ -254,6 +254,11 @@ impl Agent {
     // not.
     pub fn rest_port(&self) -> u16 {
         self.ports.as_ref().map(|p| p.rest).unwrap_or_default()
+    }
+
+    /// Gets the node address of the agent. Assumes the agent is ready
+    pub fn rest_addr(&self) -> Option<SocketAddr> {
+        Some(SocketAddr::new(self.addrs()?.usable()?, self.rest_port()))
     }
 
     /// Gets the metrics port of the agent. Assumes the agent is ready, returns

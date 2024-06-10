@@ -241,6 +241,10 @@ impl<N: Network> Runner<N> {
 
             // check for height changes and poll the manager when a new block comes in
             let mut last_height = committee.current_height()?;
+
+            // emit the initial block status
+            agent.post_block(last_height, &blocks);
+
             tokio::spawn(async move {
                 loop {
                     let Ok(height) = committee.current_height() else {

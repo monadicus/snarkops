@@ -42,6 +42,49 @@ pub struct LatestBlockInfo {
     pub update_time: DateTime<Utc>,
 }
 
+/// Age to stop considering blocks for scoring
+const MAX_BLOCK_AGE: u32 = 3600;
+/// Age to stop considering updates for scoring
+const MAX_UPDATE_AGE: u32 = 30;
+/// Number of seconds before update time is worth comparing over
+///
+/// If two infos have the same block time, and they are both within this many
+/// seconds, they are considered equal. Any infos older than this time are
+/// penalized for being stale.
+const UPDATE_AGE_INDIFFERENCE: u32 = 5;
+
+impl LatestBlockInfo {
+    pub fn score(&self, now: &DateTime<Utc>) -> u32 {
+        // a score from 3600 to 0 based on the age of the block (3600 = block this
+        // second)
+        let block_age_score =
+            if let Some(block_time) = DateTime::from_timestamp(self.block_timestamp, 0) {
+                // the number of seconds since the block was created
+                let block_age = now
+                    .signed_duration_since(block_time)
+                    .num_seconds()
+                    .clamp(0, MAX_BLOCK_AGE as i64);
+                MAX_BLOCK_AGE.saturating_sub(block_age as u32)
+            } else {
+                0
+            };
+
+        // the number of seconds since the agent last updated the block info
+        let update_age = now
+            .signed_duration_since(self.update_time)
+            .num_seconds()
+            .clamp(0, MAX_UPDATE_AGE as i64);
+        // a score from 30 to 0 based on the age of the update (30 = update this second)
+        let update_age_score = MAX_UPDATE_AGE.saturating_sub(update_age as u32);
+
+        // prefer blocks that are newer and have been updated more recently
+        // never prefer a block that is older than the latest
+        // ignore a variance of
+        block_age_score * MAX_UPDATE_AGE
+            + update_age_score.clamp(0, MAX_UPDATE_AGE - UPDATE_AGE_INDIFFERENCE)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransferStatusUpdate {
     /// The transfer has started.
