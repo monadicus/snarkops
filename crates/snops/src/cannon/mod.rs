@@ -233,10 +233,19 @@ impl CannonInstance {
                     Err(CannonInstanceError::MissingQueryPort(cannon_id).into())
                 }
             }
-            QueryTarget::Node(target) => Ok(self
-                .global_state
-                .snarkos_get::<String>(env_id, "/stateRoot/latest", target)
-                .await?),
+            QueryTarget::Node(target) => {
+                // shortcut to cached state root if the target is all nodes
+                if target.is_all() {
+                    if let Some(info) = self.global_state.get_env_block_info(env_id) {
+                        return Ok(info.state_root);
+                    }
+                }
+
+                Ok(self
+                    .global_state
+                    .snarkos_get::<String>(env_id, "/stateRoot/latest", target)
+                    .await?)
+            }
         }
     }
 

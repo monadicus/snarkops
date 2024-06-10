@@ -60,6 +60,7 @@ pub(super) fn routes() -> Router<AppState> {
         // .route("/env/:env_id/metric/:prom_ql", get())
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/info", get(get_env_info))
+        .route("/env/:env_id/block_info", get(get_env_block_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
@@ -79,6 +80,13 @@ async fn get_env_info(Path(env_id): Path<String>, state: State<AppState>) -> Res
     let env = unwrap_or_not_found!(state.get_env(env_id));
 
     Json(env.info()).into_response()
+}
+
+async fn get_env_block_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let block_info = unwrap_or_not_found!(state.get_env_block_info(env_id));
+
+    Json(block_info).into_response()
 }
 
 async fn redirect_storage(

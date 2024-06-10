@@ -12,7 +12,10 @@ use snops_common::{
         error::ResolveError,
         MuxMessage,
     },
-    state::{AgentId, EnvId, LatestBlockInfo, NodeStatus, TransferStatus, TransferStatusUpdate},
+    state::{
+        AgentId, AgentState, EnvId, LatestBlockInfo, NodeStatus, TransferStatus,
+        TransferStatusUpdate,
+    },
 };
 use tarpc::{context, ClientMessage, Response};
 
@@ -124,13 +127,20 @@ impl ControlService for ControlRpcServer {
             return;
         };
 
-        agent.status.block_info = Some(LatestBlockInfo {
+        let AgentState::Node(env_id, _) = agent.state() else {
+            return;
+        };
+
+        let info = LatestBlockInfo {
             height,
             state_root,
             block_hash,
             block_timestamp: timestamp,
             update_time: Utc::now(),
-        });
+        };
+
+        self.state.update_env_block_info(*env_id, &info);
+        agent.status.block_info = Some(info);
     }
 
     async fn post_node_status(self, _: context::Context, status: NodeStatus) {

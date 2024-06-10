@@ -424,6 +424,8 @@ impl Environment {
             .remove(&id)
             .ok_or(CleanupError::EnvNotFound(id))?;
 
+        let _ = state.env_block_info.remove(&id);
+
         if let Err(e) = state.db.envs.delete(&id) {
             error!("[env {id}] failed to delete persistence: {e}");
         }

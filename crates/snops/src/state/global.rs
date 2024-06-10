@@ -39,6 +39,7 @@ pub struct GlobalState {
     pub pool: AgentPool,
     pub storage: StorageMap,
     pub envs: EnvMap,
+    pub env_block_info: DashMap<EnvId, LatestBlockInfo>,
 
     pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
@@ -75,6 +76,7 @@ impl GlobalState {
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db: OpaqueDebug(db),
+            env_block_info: Default::default(),
         });
 
         let env_meta = state.db.envs.read_all().collect::<Vec<_>>();
@@ -194,6 +196,20 @@ impl GlobalState {
 
     pub fn get_env(&self, id: EnvId) -> Option<Arc<Environment>> {
         Some(Arc::clone(self.envs.get(&id)?.value()))
+    }
+
+    pub fn get_env_block_info(&self, id: EnvId) -> Option<LatestBlockInfo> {
+        self.env_block_info.get(&id).map(|info| info.clone())
+    }
+
+    pub fn update_env_block_info(&self, id: EnvId, info: &LatestBlockInfo) {
+        let mut entry = self
+            .env_block_info
+            .entry(id)
+            .or_insert_with(|| info.clone());
+        if entry.block_timestamp < info.block_timestamp {
+            *entry = info.clone();
+        }
     }
 
     /// Get a vec of peers and their addresses, along with a score reflecting
