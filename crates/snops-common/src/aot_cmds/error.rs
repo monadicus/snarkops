@@ -1,5 +1,6 @@
 use std::process::ExitStatus;
 
+use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -43,14 +44,18 @@ impl CommandError {
 pub enum AotCmdError {
     #[error(transparent)]
     Command(#[from] CommandError),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 
 impl_into_status_code!(AotCmdError, |value| match value {
     Command(e) => e.into(),
+    Json(_) => StatusCode::UNPROCESSABLE_ENTITY,
 });
 
 impl_into_type_str!(AotCmdError, |value| match value {
     Command(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    Json(_) => "json".to_string(),
 });
 
 impl Serialize for AotCmdError {

@@ -66,6 +66,10 @@ pub enum Action {
         /// key
         #[clap(long, short)]
         private_key: Option<KeySource>,
+        /// Private key to use for the fee. Defaults to the same as
+        /// --private-key
+        #[clap(long, short)]
+        fee_private_key: Option<KeySource>,
         /// Desired cannon to fire the transaction
         #[clap(long, short)]
         cannon: Option<CannonId>,
@@ -120,6 +124,7 @@ impl Action {
 
             Execute {
                 private_key,
+                fee_private_key,
                 cannon,
                 priority_fee,
                 fee_record,
@@ -140,6 +145,9 @@ impl Action {
 
                 if let Some(private_key) = private_key {
                     json["private_key"] = private_key.to_string().into();
+                }
+                if let Some(fee_private_key) = fee_private_key {
+                    json["fee_private_key"] = fee_private_key.to_string().into();
                 }
                 if let Some(cannon) = cannon {
                     json["cannon"] = cannon.to_string().into();

@@ -5,7 +5,7 @@ use axum::{
 use serde_json::json;
 use snops_common::{
     action_models::{AleoValue, ExecuteAction},
-    aot_cmds::AotCmd,
+    aot_cmds::{AotCmd, Authorization},
     state::KeyState,
 };
 use tokio::{select, sync::mpsc};
@@ -15,7 +15,6 @@ use crate::{
     cannon::{
         error::AuthorizeError,
         status::{TransactionStatus, TransactionStatusSender},
-        Authorization,
     },
     env::{error::ExecutionError, Environment},
     server::error::{ActionError, ServerError},
@@ -86,6 +85,7 @@ pub async fn execute_inner(
     let ExecuteAction {
         cannon: cannon_id,
         private_key,
+        fee_private_key,
         program,
         function,
         inputs,
@@ -103,6 +103,19 @@ pub async fn execute_inner(
             private_key.to_string(),
         )
         .into());
+    };
+
+    let resolved_fee_pk = if let Some(fee_key) = fee_private_key {
+        let KeyState::Literal(pk) = env.storage.sample_keysource_pk(&fee_key) else {
+            return Err(AuthorizeError::MissingPrivateKey(
+                format!("{}.{cannon_id} {program}/{function}", env.id),
+                fee_key.to_string(),
+            )
+            .into());
+        };
+        Some(pk)
+    } else {
+        None
     };
 
     let resolved_inputs = inputs
@@ -124,6 +137,7 @@ pub async fn execute_inner(
     let auth_str = aot
         .authorize(
             &resolved_pk,
+            resolved_fee_pk.as_ref(),
             &program,
             &function,
             &resolved_inputs,
@@ -136,7 +150,7 @@ pub async fn execute_inner(
     let authorization: Authorization =
         serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
 
-    let tx_id = authorization.get_tx_id(&aot).await?;
+    let tx_id = aot.get_tx_id(&authorization).await?;
 
     // proxy it to a listen cannon
     cannon.proxy_auth(authorization, events)?;

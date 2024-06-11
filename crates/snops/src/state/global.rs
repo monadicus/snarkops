@@ -1,13 +1,16 @@
 use std::{collections::HashSet, fmt::Display, net::SocketAddr, path::PathBuf, sync::Arc};
 
+use chrono::Utc;
 use dashmap::DashMap;
+use lazysort::SortedBy;
 use prometheus_http_query::Client as PrometheusClient;
-use rand::seq::SliceRandom;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::json;
 use snops_common::{
     constant::ENV_AGENT_KEY,
     node_targets::NodeTargets,
-    state::{AgentId, AgentPeer, AgentState, EnvId, NetworkId, StorageId},
+    rpc::error::SnarkosRequestError,
+    state::{AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, StorageId},
 };
 use tokio::sync::{Mutex, Semaphore};
 use tracing::info;
@@ -36,10 +39,26 @@ pub struct GlobalState {
     pub pool: AgentPool,
     pub storage: StorageMap,
     pub envs: EnvMap,
+    pub env_block_info: DashMap<EnvId, LatestBlockInfo>,
 
     pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
 }
+
+/// A ranked peer item, with a score reflecting the freshness of the block info
+///
+/// (Score, BlockInfo, AgentId, SocketAddr)
+///
+/// Also contains a socket address in case the peer is external (or the agent is
+/// not responding)
+///
+/// To be used with a lazy sorted iterator to get the best peer
+type RankedPeerItem = (
+    u32,
+    Option<LatestBlockInfo>,
+    Option<AgentId>,
+    Option<SocketAddr>,
+);
 
 impl GlobalState {
     pub async fn load(
@@ -72,6 +91,7 @@ impl GlobalState {
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db: OpaqueDebug(db),
+            env_block_info: Default::default(),
         });
 
         let env_meta = state.db.envs.read_all().collect::<Vec<_>>();
@@ -189,16 +209,67 @@ impl GlobalState {
         Some(storage)
     }
 
-    pub fn get_agent_rest(&self, id: AgentId) -> Option<SocketAddr> {
-        let agent = self.pool.get(&id)?;
-        Some(SocketAddr::new(agent.addrs()?.usable()?, agent.rest_port()))
-    }
-
     pub fn get_env(&self, id: EnvId) -> Option<Arc<Environment>> {
         Some(Arc::clone(self.envs.get(&id)?.value()))
     }
 
-    pub async fn snarkos_get<T: DeserializeOwned>(
+    pub fn get_env_block_info(&self, id: EnvId) -> Option<LatestBlockInfo> {
+        self.env_block_info.get(&id).map(|info| info.clone())
+    }
+
+    pub fn update_env_block_info(&self, id: EnvId, info: &LatestBlockInfo) {
+        use dashmap::mapref::entry::Entry::*;
+        match self.env_block_info.entry(id) {
+            Occupied(ent) if ent.get().block_timestamp < info.block_timestamp => {
+                ent.replace_entry(info.clone());
+            }
+            Vacant(ent) => {
+                ent.insert(info.clone());
+            }
+            _ => {}
+        }
+    }
+
+    /// Get a vec of peers and their addresses, along with a score reflecting
+    /// the freshness of the block info
+    pub fn get_scored_peers(&self, env_id: EnvId, target: &NodeTargets) -> Vec<RankedPeerItem> {
+        let Some(env) = self.get_env(env_id) else {
+            return Vec::new();
+        };
+
+        let now = Utc::now();
+
+        env.matching_nodes(target, &self.pool, PortType::Rest)
+            .filter_map(|peer| {
+                let agent_id = match peer {
+                    AgentPeer::Internal(id, _) => id,
+                    // TODO: periodically get block info from external nodes
+                    AgentPeer::External(addr) => return Some((0u32, None, None, Some(addr))),
+                };
+
+                let agent = self.pool.get(&agent_id)?;
+
+                // ensure the node state is online
+                if !matches!(agent.state(), AgentState::Node(_, _)) {
+                    return None;
+                }
+
+                Some((
+                    agent
+                        .status
+                        .block_info
+                        .as_ref()
+                        .map(|info| info.score(&now))
+                        .unwrap_or_default(),
+                    agent.status.block_info.clone(),
+                    Some(agent_id),
+                    agent.rest_addr(),
+                ))
+            })
+            .collect()
+    }
+
+    pub async fn snarkos_get<T: DeserializeOwned + Clone>(
         &self,
         env_id: EnvId,
         route: impl Display,
@@ -210,53 +281,63 @@ impl GlobalState {
 
         let network = env.network;
 
-        let mut query_nodes = env
-            .matching_nodes(target, &self.pool, PortType::Rest)
-            // collecting here is required to avoid a long lived borrow on the agent
-            // pool if this collect is removed, the iterator
-            // will not be Send, and axum will be sad
-            .collect::<Vec<_>>();
-
+        let query_nodes = self.get_scored_peers(env_id, target);
         if query_nodes.is_empty() {
             return Err(EnvRequestError::NoMatchingNodes);
         }
 
-        // select nodes in a random order
-        query_nodes.shuffle(&mut rand::thread_rng());
+        let route_string = route.to_string();
+        let route_str = route_string.as_ref();
+        let is_state_root = matches!(route_str, "/latest/stateRoot" | "/stateRoot/latest");
+        let is_block_height = matches!(route_str, "/latest/height" | "/block/height/latest");
+        let is_block_hash = matches!(route_str, "/latest/hash" | "/block/hash/latest");
 
-        // walk through the nodes until we find one that responds
-        for peer in query_nodes {
-            let addr = match peer {
-                AgentPeer::Internal(agent_id, _) => {
-                    // ensure the node state is online
-                    if !self.is_agent_node_online(agent_id) {
-                        continue;
-                    };
+        /// I would rather reparse a string than use unsafe/dyn any here
+        // because we would be making a request anyway and it's not a big deal.
+        fn json_generics_bodge<T: DeserializeOwned>(
+            v: impl Serialize,
+        ) -> Result<T, EnvRequestError> {
+            serde_json::from_value(json!(&v)).map_err(|e| {
+                EnvRequestError::AgentRequestError(SnarkosRequestError::JsonParseError(
+                    e.to_string(),
+                ))
+            })
+        }
 
-                    // attempt to get the state root from the client via RPC
-                    if let Some(client) = self.get_client(agent_id) {
-                        match client.snarkos_get::<T>(&route).await {
-                            Ok(res) => return Ok(res),
-                            Err(e) => {
-                                tracing::error!(
-                                    "env {env_id} agent {agent_id} request failed: {e}"
-                                );
-                                continue;
-                            }
+        // walk through the nodes (lazily sorted by a score) until we find one that
+        // responds
+        for (_, info, agent_id, addr) in query_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0)) {
+            // if this route is a route with block info that we already track,
+            // we can return the info from the agent's status directly
+            if let Some(info) = info {
+                if is_state_root {
+                    return json_generics_bodge(info.state_root);
+                } else if is_block_height {
+                    return json_generics_bodge(info.height);
+                } else if is_block_hash {
+                    return json_generics_bodge(info.block_hash);
+                };
+            }
+
+            // attempt to make a request through the client via RPC if this is an agent
+            if let Some(agent_id) = agent_id {
+                if let Some(client) = self.get_client(agent_id) {
+                    match client.snarkos_get::<T>(&route).await {
+                        Ok(res) => return Ok(res),
+                        Err(e) => {
+                            tracing::error!("env {env_id} agent {agent_id} request failed: {e}");
+                            continue;
                         }
                     }
-
-                    // get the agent's rest address as a fallback for the client
-                    if let Some(sock_addr) = self.get_agent_rest(agent_id) {
-                        sock_addr
-                    } else {
-                        continue;
-                    }
                 }
-                AgentPeer::External(addr) => addr,
+            }
+
+            // if we have an address, we can try to make a request via REST
+            let Some(addr) = addr else {
+                continue;
             };
 
-            // attempt to get the state root from the internal or external node via REST
+            // attempt to make the request from the node via REST
             let url = format!("http://{addr}/{network}{route}");
             let Ok(res) = tokio::time::timeout(
                 std::time::Duration::from_secs(1),
@@ -271,12 +352,14 @@ impl GlobalState {
                 Ok(res) => match res.json().await {
                     Ok(e) => e,
                     Err(e) => {
-                        tracing::error!("env {env_id} peer {peer:?} failed to parse {url}: {e}");
+                        tracing::error!("env {env_id} request {addr:?} failed to parse {url}: {e}");
                         continue;
                     }
                 },
                 Err(e) => {
-                    tracing::error!("env {env_id} peer {peer:?} failed to make request {url}: {e}");
+                    tracing::error!(
+                        "env {env_id} request {addr:?} failed to make request {url}: {e}"
+                    );
                     continue;
                 }
             }

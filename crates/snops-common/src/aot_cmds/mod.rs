@@ -1,5 +1,6 @@
 use std::{io, path::PathBuf};
 
+use serde::{Deserialize, Serialize};
 use tokio::process::{Child, Command};
 
 pub mod error;
@@ -14,6 +15,12 @@ use crate::{
 pub struct AotCmd {
     bin: PathBuf,
     network: NetworkId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Authorization {
+    pub auth: serde_json::Value,
+    pub fee_auth: Option<serde_json::Value>,
 }
 
 type Output = io::Result<std::process::Output>;
@@ -58,9 +65,11 @@ impl AotCmd {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn authorize(
         &self,
         private_key: &str,
+        fee_private_key: Option<&String>,
         program_id: &str,
         function_name: &str,
         inputs: &[String],
@@ -76,6 +85,10 @@ impl AotCmd {
             .arg("authorize")
             .arg("--private-key")
             .arg(private_key);
+
+        if let Some(fee_private_key) = fee_private_key {
+            command.arg("--fee-private-key").arg(fee_private_key);
+        }
 
         if let Some(priority_fee) = priority_fee {
             command.arg("--priority-fee").arg(priority_fee.to_string());
@@ -138,7 +151,7 @@ impl AotCmd {
             .env("NETWORK", self.network.to_string())
             .arg("program")
             .arg("authorize-fee")
-            .arg("--authorization")
+            .arg("--auth")
             .arg(authorization)
             .arg("--private-key")
             .arg(private_key)
@@ -171,11 +184,11 @@ impl AotCmd {
             .arg("--broadcast")
             .arg("--query")
             .arg(query)
-            .arg("--authorization")
+            .arg("--auth")
             .arg(func);
 
         if let Some(fee) = fee {
-            command.arg("--fee").arg(fee);
+            command.arg("--fee-auth").arg(fee);
         }
 
         Self::handle_output(
@@ -186,22 +199,13 @@ impl AotCmd {
         )
     }
 
-    pub async fn get_tx_id(
-        &self,
-        auth: String,
-        fee_auth: Option<String>,
-    ) -> Result<String, AotCmdError> {
+    pub async fn get_tx_id(&self, auth: &Authorization) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
             .env("NETWORK", self.network.to_string())
             .arg("program")
             .arg("id")
-            .arg("--auth")
-            .arg(auth);
-
-        if let Some(fee) = fee_auth {
-            command.arg("--fee-auth").arg(fee);
-        }
+            .arg(serde_json::to_string(auth).map_err(AotCmdError::Json)?);
 
         Self::handle_output(
             command.output().await,

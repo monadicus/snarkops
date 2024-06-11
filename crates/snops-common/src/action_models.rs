@@ -47,6 +47,9 @@ pub struct ExecuteAction {
     /// transaction will be signed with the committee member 0's key.
     #[serde(default = "committee_0_key")]
     pub private_key: KeySource,
+    /// A private key to use for the fee. If not provided, the fee will be paid
+    /// from the `private_key`
+    pub fee_private_key: Option<KeySource>,
     /// The program to execute. Defaults to `credits.aleo`
     #[serde(default = "credits_aleo")]
     pub program: String,

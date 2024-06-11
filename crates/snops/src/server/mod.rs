@@ -206,6 +206,10 @@ async fn handle_socket(
                 // note: this may cause a reconciliation, so this *may* be non-instant
                 // unwrap safety: this agent was just `mark_connected` with a valid client
                 let client = agent.rpc().cloned().unwrap();
+
+                // drop agent ref to allow for mutable borrow in handhake requests
+                drop(agent);
+
                 tokio::spawn(async move {
                     // we do this in a separate task because we don't want to hold up pool insertion
                     let mut ctx = tarpc::context::current();

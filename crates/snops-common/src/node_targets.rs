@@ -152,6 +152,18 @@ impl fmt::Display for NodeTargets {
 
 impl NodeTargets {
     pub const ALL: Self = Self::One(NodeTarget::ALL);
+
+    pub fn is_all(&self) -> bool {
+        if matches!(self, NodeTargets::One(NodeTarget::ALL)) {
+            return true;
+        }
+
+        if let NodeTargets::Many(targets) = self {
+            return targets.iter().any(|target| target == &NodeTarget::ALL);
+        }
+
+        false
+    }
 }
 
 /// A **single** matched node target. Use [`NodeTargets`] when deserializing

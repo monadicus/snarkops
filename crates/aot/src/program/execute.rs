@@ -1,7 +1,6 @@
 use anyhow::{bail, Result};
 use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
-use serde_json::json;
 use snarkvm::{
     console::program::Network,
     ledger::{
@@ -11,7 +10,8 @@ use snarkvm::{
 };
 use tracing::error;
 
-use crate::{Authorization, DbLedger, MemVM, NetworkId, Transaction};
+use super::args::AuthArgs;
+use crate::{program::args::AuthBlob, Authorization, DbLedger, MemVM, NetworkId, Transaction};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum ExecMode {
@@ -21,37 +21,28 @@ pub enum ExecMode {
 
 #[derive(Debug, Args)]
 pub struct Execute<N: Network> {
-    /// The Authorization for the function.
-    #[arg(short, long)]
-    pub authorization: Authorization<N>,
     #[arg(short, long, value_enum, default_value_t = ExecMode::Local)]
     pub exec_mode: ExecMode,
     /// Query endpoint
     #[arg(short, long)]
     pub query: String,
     /// The authorization for the fee execution.
-    #[arg(short, long)]
-    pub fee: Option<Authorization<N>>,
     /// Whether to broadcast the transaction.
     #[arg(short, long, default_value_t = false)]
     pub broadcast: bool,
+    /// The Authorization for the function.
+    #[clap(flatten)]
+    pub auth: AuthArgs<N>,
 }
 
 /// Executes the authorization remotely
-pub fn execute_remote<N: Network>(
-    api_url: &str,
-    auth: Authorization<N>,
-    fee: Option<Authorization<N>>,
-) -> Result<()> {
+pub fn execute_remote<N: Network>(api_url: &str, auth: AuthBlob<N>) -> Result<()> {
     // Execute the authorization.
     let response = reqwest::blocking::Client::new()
         .post(format!("{api_url}/auth"))
         .header("Content-Type", "application/json")
         // not actually sure this is how we send the fee?
-        .json(&json!({
-                "auth": auth,
-                "fee_auth": fee,
-        }))
+        .json(&auth)
         .send()?;
 
     // TODO: this can properly return the transaction once snops auth proxy monitors
@@ -91,14 +82,17 @@ impl<N: Network> Execute<N> {
     pub fn parse(self) -> Result<()> {
         // execute the transaction
         let tx = match self.exec_mode {
-            ExecMode::Local => execute_local(
-                self.authorization,
-                self.fee,
-                None,
-                Some(self.query.to_owned()),
-                &mut rand::thread_rng(),
-            )?,
-            ExecMode::Remote => return execute_remote(&self.query, self.authorization, self.fee),
+            ExecMode::Local => {
+                let AuthBlob { auth, fee_auth } = self.auth.pick()?;
+                execute_local(
+                    auth,
+                    fee_auth,
+                    None,
+                    Some(self.query.to_owned()),
+                    &mut rand::thread_rng(),
+                )?
+            }
+            ExecMode::Remote => return execute_remote(&self.query, self.auth.pick()?),
         };
 
         if !self.broadcast {

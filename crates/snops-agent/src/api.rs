@@ -5,14 +5,15 @@ use std::{
 };
 
 use anyhow::bail;
+use chrono::Utc;
 use futures::StreamExt;
 use http::StatusCode;
 use reqwest::IntoUrl;
-use snops_common::state::EnvId;
+use snops_common::state::{EnvId, TransferStatusUpdate};
 use tokio::{fs::File, io::AsyncWriteExt};
 use tracing::info;
 
-use crate::transfers::{self, TransferMessage, TransferTx};
+use crate::transfers::{self, TransferTx};
 
 const TRANSFER_UPDATE_RATE: Duration = Duration::from_secs(2);
 
@@ -23,6 +24,7 @@ pub async fn download_file(
     to: impl AsRef<Path>,
     transfer_tx: TransferTx,
 ) -> anyhow::Result<Option<File>> {
+    let desc = url.as_str().to_owned();
     let req = client.get(url).send().await?;
     if req.status() == StatusCode::NOT_FOUND {
         return Ok(None);
@@ -30,56 +32,59 @@ pub async fn download_file(
 
     // create a new transfer
     let tx_id = transfers::next_id();
-    transfer_tx.send(TransferMessage::Start {
-        id: tx_id,
-        desc: None,
-        bytes: req.content_length().unwrap_or_default() as usize,
-    })?;
+    transfer_tx.send((
+        tx_id,
+        TransferStatusUpdate::Start {
+            desc,
+            time: Utc::now(),
+            total: req.content_length().unwrap_or_default(),
+        },
+    ))?;
 
     let mut stream = req.bytes_stream();
     let mut file = File::create(to).await.inspect_err(|_| {
-        let _ = transfer_tx.send(TransferMessage::End {
-            id: tx_id,
-            interruption: Some(()),
-        });
+        let _ = transfer_tx.send((
+            tx_id,
+            TransferStatusUpdate::End {
+                interruption: Some("failed to create file".to_string()),
+            },
+        ));
     })?;
 
-    let mut transferred = 0;
+    let mut downloaded = 0;
     let mut update_next = Instant::now() + TRANSFER_UPDATE_RATE;
 
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.inspect_err(|_| {
-            let _ = transfer_tx.send(TransferMessage::End {
-                id: tx_id,
-                interruption: Some(()),
-            });
+        let chunk = chunk.inspect_err(|e| {
+            let _ = transfer_tx.send((
+                tx_id,
+                TransferStatusUpdate::End {
+                    interruption: Some(format!("stream error: {e:?}")),
+                },
+            ));
         })?;
 
-        transferred += chunk.len();
+        downloaded += chunk.len() as u64;
 
         // update the transfer if the update interval has elapsed
         let now = Instant::now();
         if now > update_next {
             update_next = now + TRANSFER_UPDATE_RATE;
-            let _ = transfer_tx.send(TransferMessage::Progress {
-                id: tx_id,
-                bytes: transferred,
-            });
+            let _ = transfer_tx.send((tx_id, TransferStatusUpdate::Progress { downloaded }));
         }
 
-        file.write_all(&chunk).await.inspect_err(|_| {
-            let _ = transfer_tx.send(TransferMessage::End {
-                id: tx_id,
-                interruption: Some(()),
-            });
+        file.write_all(&chunk).await.inspect_err(|e| {
+            let _ = transfer_tx.send((
+                tx_id,
+                TransferStatusUpdate::End {
+                    interruption: Some(format!("write error: {e:?}")),
+                },
+            ));
         })?;
     }
 
     // mark the transfer as ended
-    transfer_tx.send(TransferMessage::End {
-        id: tx_id,
-        interruption: None,
-    })?;
+    transfer_tx.send((tx_id, TransferStatusUpdate::End { interruption: None }))?;
 
     Ok(Some(file))
 }

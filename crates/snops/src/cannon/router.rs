@@ -20,6 +20,7 @@ use crate::{server::actions::execute::execute_status, state::AppState};
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
         .route("/:cannon/:network/latest/stateRoot", get(state_root))
+        .route("/:cannon/:network/stateRoot/latest", get(state_root))
         .route("/:cannon/:network/transaction/broadcast", post(transaction))
         .route("/:cannon/auth", post(authorization))
 }
@@ -169,7 +170,7 @@ async fn authorization(
     };
 
     let aot = AotCmd::new(env.aot_bin.clone(), env.network);
-    let tx_id = match body.get_tx_id(&aot).await {
+    let tx_id = match aot.get_tx_id(&body).await {
         Ok(id) => id,
         Err(e) => {
             return (

@@ -3,6 +3,7 @@ use std::{
     net::IpAddr,
 };
 
+use chrono::Utc;
 use snops_common::{
     api::EnvInfo,
     rpc::{
@@ -11,7 +12,10 @@ use snops_common::{
         error::ResolveError,
         MuxMessage,
     },
-    state::{AgentId, AgentStatus, EnvId},
+    state::{
+        AgentId, AgentState, EnvId, LatestBlockInfo, NodeStatus, TransferStatus,
+        TransferStatusUpdate,
+    },
 };
 use tarpc::{context, ClientMessage, Response};
 
@@ -55,10 +59,96 @@ impl ControlService for ControlRpcServer {
         Some(self.state.get_env(env_id)?.info())
     }
 
-    async fn post_agent_status(self, _: context::Context, status: AgentStatus) {
-        if let Some(mut agent) = self.state.pool.get_mut(&self.agent) {
-            agent.status = Some(status);
+    async fn post_transfer_status(
+        self,
+        _: context::Context,
+        id: u32,
+        update: TransferStatusUpdate,
+    ) {
+        let Some(mut agent) = self.state.pool.get_mut(&self.agent) else {
+            return;
+        };
+
+        // patch the agent's transfer status
+        match (update, agent.status.transfers.get_mut(&id)) {
+            (TransferStatusUpdate::Start { desc, time, total }, None) => {
+                agent.status.transfers.insert(
+                    id,
+                    TransferStatus {
+                        desc,
+                        started_at: time,
+                        updated_at: Utc::now(),
+                        downloaded_bytes: 0,
+                        total_bytes: total,
+                        interruption: None,
+                    },
+                );
+            }
+            (TransferStatusUpdate::Progress { downloaded }, Some(transfer)) => {
+                transfer.downloaded_bytes = downloaded;
+                transfer.updated_at = Utc::now();
+            }
+            (TransferStatusUpdate::End { interruption }, Some(transfer)) => {
+                if interruption.is_none() {
+                    transfer.downloaded_bytes = transfer.total_bytes;
+                }
+                transfer.interruption = interruption;
+                transfer.updated_at = Utc::now();
+            }
+            (TransferStatusUpdate::Cleanup, mut status @ Some(_)) => {
+                status.take();
+            }
+
+            _ => {}
         }
+    }
+
+    async fn post_transfer_statuses(
+        self,
+        _: context::Context,
+        statuses: Vec<(u32, TransferStatus)>,
+    ) {
+        let Some(mut agent) = self.state.pool.get_mut(&self.agent) else {
+            return;
+        };
+
+        agent.status.transfers = statuses.into_iter().collect();
+    }
+
+    async fn post_block_status(
+        self,
+        _: context::Context,
+        height: u32,
+        timestamp: i64,
+        state_root: String,
+        block_hash: String,
+    ) {
+        let Some(mut agent) = self.state.pool.get_mut(&self.agent) else {
+            return;
+        };
+
+        let AgentState::Node(env_id, _) = agent.state() else {
+            return;
+        };
+
+        let info = LatestBlockInfo {
+            height,
+            state_root,
+            block_hash,
+            block_timestamp: timestamp,
+            update_time: Utc::now(),
+        };
+
+        self.state.update_env_block_info(*env_id, &info);
+        agent.status.block_info = Some(info);
+    }
+
+    async fn post_node_status(self, _: context::Context, status: NodeStatus) {
+        let Some(mut agent) = self.state.pool.get_mut(&self.agent) else {
+            return;
+        };
+
+        agent.status.node_status = status;
     }
 }
 

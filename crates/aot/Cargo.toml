@@ -29,6 +29,7 @@ bincode.workspace = true
 bech32.workspace = true
 checkpoint = { workspace = true, features = ["write"] }
 clap.workspace = true
+clap-stdin.workspace = true
 colored.workspace = true
 crossterm = { workspace = true, optional = true }
 indexmap.workspace = true

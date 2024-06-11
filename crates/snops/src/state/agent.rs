@@ -1,5 +1,5 @@
 use std::{
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     sync::{Arc, Weak},
     time::Instant,
 };
@@ -31,7 +31,7 @@ pub struct Agent {
     pub(crate) claims: Claims,
     pub(crate) connection: AgentConnection,
     pub(crate) state: AgentState,
-    pub(crate) status: Option<AgentStatus>,
+    pub(crate) status: AgentStatus,
 
     /// CLI provided information (mode, labels, local private key)
     pub(crate) flags: AgentFlags,
@@ -59,7 +59,7 @@ impl Agent {
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),
-            status: None,
+            status: Default::default(),
             ports: None,
             addrs: None,
         }
@@ -81,7 +81,7 @@ impl Agent {
             connection: AgentConnection::Offline {
                 since: Instant::now(),
             },
-            status: None,
+            status: Default::default(),
             state,
             ports,
             addrs,
@@ -254,6 +254,11 @@ impl Agent {
     // not.
     pub fn rest_port(&self) -> u16 {
         self.ports.as_ref().map(|p| p.rest).unwrap_or_default()
+    }
+
+    /// Gets the node address of the agent. Assumes the agent is ready
+    pub fn rest_addr(&self) -> Option<SocketAddr> {
+        Some(SocketAddr::new(self.addrs()?.usable()?, self.rest_port()))
     }
 
     /// Gets the metrics port of the agent. Assumes the agent is ready, returns

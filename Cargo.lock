@@ -570,6 +570,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap-stdin"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc126d12a0930c94c3548581294d5f19360ac02e408600b4d7619d7234e8b505"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "clap_builder"
 version = "4.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1826,6 +1835,12 @@ name = "lazycell"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
+
+[[package]]
+name = "lazysort"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0e22ff43b231e0e2f87d74984e53ebc73b90ae13397e041214fb07efc64168f"
 
 [[package]]
 name = "libc"
@@ -3439,6 +3454,7 @@ dependencies = [
  "bincode",
  "checkpoint",
  "clap",
+ "clap-stdin",
  "colored",
  "crossterm",
  "indexmap 2.2.6",
@@ -4638,6 +4654,7 @@ dependencies = [
  "indexmap 2.2.6",
  "jwt",
  "lazy_static",
+ "lazysort",
  "prometheus-http-query",
  "promql-parser",
  "rand",
@@ -4670,14 +4687,17 @@ name = "snops-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "bincode",
  "checkpoint",
+ "chrono",
  "clap",
  "dashmap",
  "futures",
  "futures-util",
  "http 1.1.0",
  "httpdate",
+ "indexmap 2.2.6",
  "local-ip-address",
  "nix",
  "reqwest 0.12.3",
@@ -4714,6 +4734,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "checkpoint",
+ "chrono",
  "clap",
  "clap-markdown",
  "clap_mangen",

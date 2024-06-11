@@ -4,11 +4,13 @@ mod metrics;
 mod net;
 mod reconcile;
 mod rpc;
+mod server;
 mod state;
 mod transfers;
 
 use std::{
     mem::size_of,
+    net::Ipv4Addr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -111,9 +113,6 @@ async fn main() {
         .await
         .ok();
 
-    // start transfer monitor
-    let (transfer_tx, transfers) = transfers::start_monitor();
-
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
     let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();
@@ -121,6 +120,17 @@ async fn main() {
     // set up the client, facing the control plane
     let client =
         ControlServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
+
+    // start transfer monitor
+    let (transfer_tx, transfers) = transfers::start_monitor(client.clone());
+
+    let status_api_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+        .await
+        .expect("failed to bind status server");
+    let status_api_port = status_api_listener
+        .local_addr()
+        .expect("failed to get status server port")
+        .port();
 
     // create the client state
     let state = Arc::new(GlobalState {
@@ -139,12 +149,23 @@ async fn main() {
         child: Default::default(),
         resolved_addrs: Default::default(),
         metrics: Default::default(),
+        status_api_port,
         transfer_tx,
         transfers,
     });
 
     // start the metrics watcher
     metrics::init(Arc::clone(&state));
+
+    // start the status server
+    let status_state = Arc::clone(&state);
+    tokio::spawn(async move {
+        info!("starting status API server on port {status_api_port}");
+        if let Err(e) = server::start(status_api_listener, status_state).await {
+            error!("status API server crashed: {e:?}");
+            std::process::exit(1);
+        }
+    });
 
     // initialize and start the rpc server
     let rpc_server = tarpc::server::BaseChannel::with_defaults(server_transport);
@@ -204,6 +225,7 @@ async fn main() {
             };
 
             *state.connected.lock().unwrap() = Instant::now();
+
             info!("Connection established with the control plane");
 
             let mut terminating = false;

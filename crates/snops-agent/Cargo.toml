@@ -11,14 +11,17 @@ mangen = ["snops-common/mangen"]
 
 [dependencies]
 anyhow.workspace = true
+axum = { workspace = true, features = ["http2", "json", "tokio"] }
 bincode.workspace = true
 checkpoint.workspace = true
+chrono.workspace = true
 clap.workspace = true
 dashmap.workspace = true
 futures.workspace = true
 futures-util.workspace = true
 http.workspace = true
 httpdate.workspace = true
+indexmap.workspace = true
 local-ip-address.workspace = true
 nix = { workspace = true, features = ["signal"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
