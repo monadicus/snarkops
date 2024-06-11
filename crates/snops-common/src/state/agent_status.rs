@@ -125,6 +125,7 @@ pub struct TransferStatus {
     pub downloaded_bytes: u64,
     /// Total amount of data to be transferred in bytes
     pub total_bytes: u64,
+    /// A transfer interruption reason, if any.
     pub interruption: Option<String>,
 }
 
