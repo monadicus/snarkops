@@ -30,13 +30,13 @@ pub struct AuthorizeFee<N: Network> {
     pub options: AuthFeeOptions<N>,
     /// The Authorization for the function.
     #[arg(short, long)]
-    pub authorization: Authorization<N>,
+    pub auth: Authorization<N>,
 }
 
 impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
         let fee = fee(
-            self.authorization,
+            self.auth,
             self.key.try_get()?,
             self.options.priority_fee,
             &mut rand::thread_rng(),

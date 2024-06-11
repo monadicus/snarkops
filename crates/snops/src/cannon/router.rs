@@ -170,7 +170,7 @@ async fn authorization(
     };
 
     let aot = AotCmd::new(env.aot_bin.clone(), env.network);
-    let tx_id = match body.get_tx_id(&aot).await {
+    let tx_id = match aot.get_tx_id(&body).await {
         Ok(id) => id,
         Err(e) => {
             return (

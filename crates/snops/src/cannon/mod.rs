@@ -1,4 +1,3 @@
-pub mod authorized;
 pub mod error;
 pub mod file;
 mod net;
@@ -12,12 +11,11 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 
-use error::{AuthorizeError, SourceError};
+use error::SourceError;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use lazysort::SortedBy;
-use serde::{Deserialize, Serialize};
 use snops_common::{
-    aot_cmds::AotCmd,
+    aot_cmds::{AotCmd, Authorization},
     state::{CannonId, EnvId, NetworkId, StorageId},
 };
 use status::{TransactionStatus, TransactionStatusSender};
@@ -70,27 +68,6 @@ burst mode??
 
 */
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Authorization {
-    pub auth: serde_json::Value,
-    pub fee_auth: Option<serde_json::Value>,
-}
-
-impl Authorization {
-    pub async fn get_tx_id(&self, aot: &AotCmd) -> Result<String, AuthorizeError> {
-        Ok(aot
-            .get_tx_id(
-                serde_json::to_string(&self.auth).map_err(AuthorizeError::Json)?,
-                self.fee_auth
-                    .as_ref()
-                    .map(|fee_auth| serde_json::to_string(&fee_auth).map_err(AuthorizeError::Json))
-                    .transpose()?,
-            )
-            .await?
-            .trim()
-            .to_owned())
-    }
-}
 /// Transaction cannon state
 /// using the `TxSource` and `TxSink` for configuration.
 #[derive(Debug)]

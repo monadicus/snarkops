@@ -6,7 +6,10 @@ use rand::{CryptoRng, Rng};
 use snarkvm::{console::program::Network, ledger::Block, utilities::FromBytes};
 
 use self::checkpoint::CheckpointCommand;
-use crate::program::execute::{execute_local, Execute};
+use crate::program::{
+    args::AuthBlob,
+    execute::{execute_local, Execute},
+};
 
 pub mod checkpoint;
 pub mod hash;
@@ -74,13 +77,9 @@ impl<N: Network> Ledger<N> {
             Commands::Truncate(truncate) => truncate.parse::<N>(genesis_block, ledger),
             Commands::Execute(execute) => {
                 let ledger = util::open_ledger(genesis_block, ledger)?;
-                let tx = execute_local(
-                    execute.authorization,
-                    execute.fee,
-                    Some(&ledger),
-                    None,
-                    &mut rand::thread_rng(),
-                )?;
+                let AuthBlob { auth, fee_auth } = execute.auth.pick()?;
+                let tx =
+                    execute_local(auth, fee_auth, Some(&ledger), None, &mut rand::thread_rng())?;
                 println!("{}", serde_json::to_string(&tx)?);
                 Ok(())
             }

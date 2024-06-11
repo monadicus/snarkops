@@ -570,6 +570,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap-stdin"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc126d12a0930c94c3548581294d5f19360ac02e408600b4d7619d7234e8b505"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "clap_builder"
 version = "4.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3445,6 +3454,7 @@ dependencies = [
  "bincode",
  "checkpoint",
  "clap",
+ "clap-stdin",
  "colored",
  "crossterm",
  "indexmap 2.2.6",
