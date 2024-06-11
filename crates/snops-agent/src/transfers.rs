@@ -7,12 +7,11 @@ use chrono::{TimeDelta, Utc};
 use dashmap::{mapref::entry::Entry, DashMap};
 use snops_common::{
     rpc::control::ControlServiceClient,
-    state::{TransferStatus, TransferStatusUpdate},
+    state::{TransferId, TransferStatus, TransferStatusUpdate},
 };
 use tarpc::context;
 use tokio::{select, sync::mpsc};
 
-pub type TransferId = u32;
 pub type TransferTx = mpsc::UnboundedSender<(TransferId, TransferStatusUpdate)>;
 
 // how long to wait before cleaning up a transfer that has ended

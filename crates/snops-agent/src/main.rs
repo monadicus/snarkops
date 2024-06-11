@@ -160,8 +160,10 @@ async fn main() {
     // start the status server
     let status_state = Arc::clone(&state);
     tokio::spawn(async move {
+        info!("starting status API server on port {status_api_port}");
         if let Err(e) = server::start(status_api_listener, status_state).await {
-            error!("failed to start the status API server: {e:?}");
+            error!("status API server crashed: {e:?}");
+            std::process::exit(1);
         }
     });
 

@@ -33,19 +33,16 @@ impl From<SnarkOSStatus> for NodeStatus {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LatestBlockInfo {
     pub height: u32,
-    /// Current block's state root
     pub state_root: String,
     pub block_hash: String,
-    /// Timestamp of the block
     pub block_timestamp: i64,
-    /// Time this block info was updated
     pub update_time: DateTime<Utc>,
 }
 
 /// Age to stop considering blocks for scoring
 const MAX_BLOCK_AGE: u32 = 3600;
 /// Age to stop considering updates for scoring
-const MAX_UPDATE_AGE: u32 = 30;
+const MAX_UPDATE_AGE: u32 = 60;
 /// Number of seconds before update time is worth comparing over
 ///
 /// If two infos have the same block time, and they are both within this many
@@ -54,6 +51,7 @@ const MAX_UPDATE_AGE: u32 = 30;
 const UPDATE_AGE_INDIFFERENCE: u32 = 5;
 
 impl LatestBlockInfo {
+    /// Ranking function for block info to sort competing nodes by "freshness"
     pub fn score(&self, now: &DateTime<Utc>) -> u32 {
         // a score from 3600 to 0 based on the age of the block (3600 = block this
         // second)
@@ -74,16 +72,21 @@ impl LatestBlockInfo {
             .signed_duration_since(self.update_time)
             .num_seconds()
             .clamp(0, MAX_UPDATE_AGE as i64);
-        // a score from 30 to 0 based on the age of the update (30 = update this second)
-        let update_age_score = MAX_UPDATE_AGE.saturating_sub(update_age as u32);
+        // a score from 60 to 0 based on the age of the update (60 = update this
+        // second). Ignore the top 5 seconds for indifference between "fresh" agents
+        let update_age_score = MAX_UPDATE_AGE
+            .saturating_sub(update_age as u32)
+            .clamp(0, MAX_UPDATE_AGE - UPDATE_AGE_INDIFFERENCE);
 
         // prefer blocks that are newer and have been updated more recently
         // never prefer a block that is older than the latest
-        // ignore a variance of
-        block_age_score * MAX_UPDATE_AGE
-            + update_age_score.clamp(0, MAX_UPDATE_AGE - UPDATE_AGE_INDIFFERENCE)
+        (block_age_score * (MAX_UPDATE_AGE >> 1) + update_age_score)
+            // Penalize agents that have not been updated in half the max update age
+            .saturating_sub(MAX_UPDATE_AGE >> 1)
     }
 }
+
+pub type TransferId = u32;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransferStatusUpdate {
@@ -138,5 +141,5 @@ pub struct AgentStatus {
     /// The time the agent connected to the control plane
     pub connected_time: Option<DateTime<Utc>>,
     /// A map of transfers in progress
-    pub transfers: IndexMap<u32, TransferStatus>,
+    pub transfers: IndexMap<TransferId, TransferStatus>,
 }

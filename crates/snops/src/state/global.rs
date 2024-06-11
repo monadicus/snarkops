@@ -45,6 +45,21 @@ pub struct GlobalState {
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
 }
 
+/// A ranked peer item, with a score reflecting the freshness of the block info
+///
+/// (Score, BlockInfo, AgentId, SocketAddr)
+///
+/// Also contains a socket address in case the peer is external (or the agent is
+/// not responding)
+///
+/// To be used with a lazy sorted iterator to get the best peer
+type RankedPeerItem = (
+    u32,
+    Option<LatestBlockInfo>,
+    Option<AgentId>,
+    Option<SocketAddr>,
+);
+
 impl GlobalState {
     pub async fn load(
         cli: Cli,
@@ -203,28 +218,21 @@ impl GlobalState {
     }
 
     pub fn update_env_block_info(&self, id: EnvId, info: &LatestBlockInfo) {
-        let mut entry = self
-            .env_block_info
-            .entry(id)
-            .or_insert_with(|| info.clone());
-        if entry.block_timestamp < info.block_timestamp {
-            *entry = info.clone();
+        use dashmap::mapref::entry::Entry::*;
+        match self.env_block_info.entry(id) {
+            Occupied(ent) if ent.get().block_timestamp < info.block_timestamp => {
+                ent.replace_entry(info.clone());
+            }
+            Vacant(ent) => {
+                ent.insert(info.clone());
+            }
+            _ => {}
         }
     }
 
     /// Get a vec of peers and their addresses, along with a score reflecting
     /// the freshness of the block info
-    #[allow(clippy::type_complexity)]
-    pub fn get_scored_peers(
-        &self,
-        env_id: EnvId,
-        target: &NodeTargets,
-    ) -> Vec<(
-        u32,
-        Option<LatestBlockInfo>,
-        Option<AgentId>,
-        Option<SocketAddr>,
-    )> {
+    pub fn get_scored_peers(&self, env_id: EnvId, target: &NodeTargets) -> Vec<RankedPeerItem> {
         let Some(env) = self.get_env(env_id) else {
             return Vec::new();
         };

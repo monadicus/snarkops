@@ -424,6 +424,8 @@ impl Environment {
             .remove(&id)
             .ok_or(CleanupError::EnvNotFound(id))?;
 
+        // as we're cleaning up the env, we are also removing the associated latest
+        // block info
         let _ = state.env_block_info.remove(&id);
 
         if let Err(e) = state.db.envs.delete(&id) {

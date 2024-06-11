@@ -11,7 +11,7 @@ use reqwest::Url;
 use snops_common::{
     api::EnvInfo,
     rpc::control::ControlServiceClient,
-    state::{AgentId, AgentPeer, AgentState, EnvId, TransferStatus},
+    state::{AgentId, AgentPeer, AgentState, EnvId, TransferId, TransferStatus},
 };
 use tarpc::context;
 use tokio::{
@@ -22,11 +22,7 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{
-    cli::Cli,
-    metrics::Metrics,
-    transfers::{TransferId, TransferTx},
-};
+use crate::{cli::Cli, metrics::Metrics, transfers::TransferTx};
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 

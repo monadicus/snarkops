@@ -95,7 +95,7 @@ impl ControlService for ControlRpcServer {
                 transfer.interruption = interruption;
                 transfer.updated_at = Utc::now();
             }
-            (TransferStatusUpdate::Cleanup, mut status) if status.is_some() => {
+            (TransferStatusUpdate::Cleanup, mut status @ Some(_)) => {
                 status.take();
             }
 
