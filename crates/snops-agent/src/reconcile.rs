@@ -91,10 +91,6 @@ pub async fn check_files(
         return Ok(());
     }
 
-    tokio::fs::create_dir_all(&ledger_path.join(".aleo"))
-        .await
-        .map_err(|_| ReconcileError::StorageSetupError("create local aleo home".to_string()))?;
-
     // download the ledger file
     api::check_file(ledger_url, &ledger_path, state.transfer_tx())
         .await
@@ -138,6 +134,10 @@ pub async fn load_ledger(
     };
 
     let ledger_dir = untar_base.join(untar_dir);
+
+    tokio::fs::create_dir_all(&ledger_dir.join(".aleo"))
+        .await
+        .map_err(|_| ReconcileError::StorageSetupError("create local aleo home".to_string()))?;
 
     // skip the top request if the persisted ledger already exists
     // this will prevent the ledger from getting wiped in the next step
