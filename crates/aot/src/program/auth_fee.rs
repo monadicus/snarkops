@@ -1,4 +1,4 @@
-use anyhow::{bail, Ok, Result};
+use anyhow::{anyhow, bail, Ok, Result};
 use clap::Args;
 use rand::{CryptoRng, Rng};
 use snarkvm::{

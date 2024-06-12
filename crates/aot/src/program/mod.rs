@@ -8,6 +8,7 @@ pub mod args;
 pub mod auth_fee;
 pub mod auth_id;
 pub mod auth_program;
+pub mod deploy;
 pub mod execute;
 mod macros;
 pub use macros::*;
@@ -24,6 +25,8 @@ pub enum Program<N: Network> {
     Authorize(Authorize<N>),
     /// Given an authorization (and fee), return the transaction ID
     Id(AuthArgs<N>),
+    /// Deploy a program to the network
+    Deploy(deploy::Deploy<N>),
 }
 
 #[derive(Debug, Args)]
@@ -78,6 +81,7 @@ impl<N: Network> Program<N> {
                 println!("{}", serde_json::to_string(&command.parse()?)?);
                 Ok(())
             }
+            Program::Deploy(command) => command.parse(),
         }
     }
 }

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Args;
 use snarkvm::{
     console::program::{Locator, Network},

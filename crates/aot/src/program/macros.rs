@@ -22,7 +22,6 @@ macro_rules! network_match {
         match N::ID {
             $(
                 <snarkvm::console::network::$network_id as Network>::ID => {
-                    use anyhow::anyhow;
                     type $circuit_ty = snarkvm::circuit::$circuit_id;
                     type $network_ty = snarkvm::console::network::$network_id;
                     $($additional);*
@@ -60,6 +59,27 @@ macro_rules! use_process {
             AleoCanaryV0 & CanaryV0 => {
                 let $process =
                 $crate::program::PROCESS_CANARY.get_or_init(|| snarkvm::synthesizer::Process::load().unwrap());
+            },
+            $e
+        )
+    };
+}
+
+/// Use the process for the network and return a non-network related value
+#[macro_export]
+macro_rules! use_process_mut {
+    ($a:ident, $n:ident, |$process:ident| $e:expr) => {
+
+        $crate::network_match!(
+            $a & $n =
+            AleoV0 & MainnetV0 => {
+                let mut $process = snarkvm::synthesizer::Process::<snarkvm::console::network::MainnetV0>::load().unwrap();
+            };
+            AleoTestnetV0 & TestnetV0 => {
+                let mut $process = snarkvm::synthesizer::Process::<snarkvm::console::network::TestnetV0>::load().unwrap();
+            };
+            AleoCanaryV0 & CanaryV0 => {
+                let mut $process = snarkvm::synthesizer::Process::<snarkvm::console::network::CanaryV0>::load().unwrap();
             },
             $e
         )
