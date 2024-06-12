@@ -13,6 +13,7 @@ use serde_json::json;
 use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     lasso::Spur,
+    node_targets::NodeTargets,
     rpc::agent::AgentMetric,
     state::{id_or_none, AgentModeOptions, AgentState, EnvId, NodeKey},
 };
@@ -62,6 +63,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/env/:env_id/info", get(get_env_info))
         .route("/env/:env_id/block_info", get(get_env_block_info))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
+        .route("/env/:env_id/program/:program", get(get_program))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
         .nest("/env/:env_id/action", actions::routes())
@@ -149,6 +151,20 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Respon
     {
         Ok(tps) => tps.to_string().into_response(),
         Err(_e) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn get_program(
+    Path((env_id, program)): Path<(String, String)>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    match state
+        .snarkos_get::<String>(env_id, format!("/program/{program}"), &NodeTargets::ALL)
+        .await
+    {
+        Ok(program) => program.into_response(),
+        Err(e) => ServerError::from(e).into_response(),
     }
 }
 

@@ -14,7 +14,7 @@ use snops_common::{
 };
 use tokio::sync::mpsc;
 
-use super::{status::TransactionStatusSender, Authorization};
+use super::{source::QueryTarget, status::TransactionStatusSender, Authorization};
 use crate::{server::actions::execute::execute_status, state::AppState};
 
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
@@ -22,6 +22,7 @@ pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
         .route("/:cannon/:network/latest/stateRoot", get(state_root))
         .route("/:cannon/:network/stateRoot/latest", get(state_root))
         .route("/:cannon/:network/transaction/broadcast", post(transaction))
+        .route("/:cannon/:network/program/:program", get(get_program_json))
         .route("/:cannon/auth", post(authorization))
 }
 
@@ -81,16 +82,60 @@ async fn state_root(
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
+}
 
-    // match cannon.proxy_state_root().await {
-    //     // the nodes expect this state root to be string escaped json
-    //     Ok(root) => Json(root).into_response(),
-    //     Err(e) => (
-    //         StatusCode::INTERNAL_SERVER_ERROR,
-    //         Json(json!({ "error": format!("{e}")})),
-    //     )
-    //         .into_response(),
-    // }
+async fn get_program_json(
+    Path((env_id, cannon_id, network, program)): Path<(String, String, NetworkId, String)>,
+    state: State<AppState>,
+) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "unknown cannon or environment" })),
+        )
+            .into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "environment not found" })),
+        )
+            .into_response();
+    };
+
+    if env.network != network {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "error": "network mismatch" })),
+        )
+            .into_response();
+    }
+
+    let Some(cannon) = env.get_cannon(cannon_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "cannon not found" })),
+        )
+            .into_response();
+    };
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<String>(env_id, format!("/program/{program}"), target)
+                .await
+            {
+                Ok(program) => Json(program).into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("{e}") })),
+                )
+                    .into_response(),
+            }
+        }
+    }
 }
 
 async fn transaction(

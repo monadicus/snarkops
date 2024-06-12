@@ -33,6 +33,24 @@ impl_into_status_code!(EnvRequestError, |value| match value {
     _ => StatusCode::NOT_FOUND,
 });
 
+impl_into_type_str!(EnvRequestError, |value| match value {
+    AgentRequestError(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
+    _ => value.as_ref().to_string(),
+});
+
+impl Serialize for EnvRequestError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Error", 2)?;
+        state.serialize_field("type", self.as_ref())?;
+        state.serialize_field("error", &self.to_string())?;
+
+        state.end()
+    }
+}
+
 #[derive(Debug, Error, AsRefStr)]
 pub enum ExecutionError {
     #[error(transparent)]
