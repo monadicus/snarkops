@@ -7,10 +7,7 @@ use snarkvm::{ledger::Block, utilities::FromBytes};
 
 use self::checkpoint::CheckpointCommand;
 use crate::{
-    program::{
-        args::AuthBlob,
-        execute::{execute_local, Execute},
-    },
+    auth::execute::{execute_local, Execute},
     Network,
 };
 
@@ -80,9 +77,12 @@ impl<N: Network> Ledger<N> {
             Commands::Truncate(truncate) => truncate.parse::<N>(genesis_block, ledger),
             Commands::Execute(execute) => {
                 let ledger = util::open_ledger(genesis_block, ledger)?;
-                let AuthBlob { auth, fee_auth } = execute.auth.pick()?;
-                let tx =
-                    execute_local(auth, fee_auth, Some(&ledger), None, &mut rand::thread_rng())?;
+                let tx = execute_local(
+                    execute.auth.pick()?,
+                    Some(&ledger),
+                    None,
+                    &mut rand::thread_rng(),
+                )?;
                 println!("{}", serde_json::to_string(&tx)?);
                 Ok(())
             }

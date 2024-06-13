@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
 use snarkvm::ledger::{
@@ -8,9 +8,7 @@ use snarkvm::ledger::{
 use tracing::error;
 
 use super::args::AuthArgs;
-use crate::{
-    program::args::AuthBlob, Authorization, DbLedger, MemVM, Network, NetworkId, Transaction,
-};
+use crate::{auth::args::AuthBlob, DbLedger, MemVM, Network, NetworkId, Transaction};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum ExecMode {
@@ -58,8 +56,7 @@ pub fn execute_remote<N: Network>(api_url: &str, auth: AuthBlob<N>) -> Result<()
 
 /// Executes the authorization locally, returning the resulting transaction.
 pub fn execute_local<R: Rng + CryptoRng, N: Network>(
-    auth: Authorization<N>,
-    fee: Option<Authorization<N>>,
+    auth: AuthBlob<N>,
     ledger: Option<&DbLedger<N>>,
     query: Option<String>,
     rng: &mut R,
@@ -68,12 +65,44 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
     if let Some(ledger) = ledger {
         let query = query.map(Query::REST);
 
-        ledger.vm().execute_authorization(auth, fee, query, rng)
+        match auth {
+            AuthBlob::Program { auth, fee_auth } => ledger
+                .vm()
+                .execute_authorization(auth, fee_auth, query, rng),
+            AuthBlob::Deploy {
+                deployment,
+                owner,
+                fee_auth,
+            } => {
+                let fee = ledger.vm().execute_fee_authorization(
+                    fee_auth.ok_or(anyhow!("expected fee for deployment"))?,
+                    query,
+                    rng,
+                )?;
+                Ok(Transaction::from_deployment(owner, deployment, fee)?)
+            }
+        }
     } else {
         let query = query.map(Query::REST);
 
         let store = ConsensusStore::<N, ConsensusMemory<_>>::open(None)?;
-        MemVM::from(store)?.execute_authorization(auth, fee, query, rng)
+        match auth {
+            AuthBlob::Program { auth, fee_auth } => {
+                MemVM::from(store)?.execute_authorization(auth, fee_auth, query, rng)
+            }
+            AuthBlob::Deploy {
+                deployment,
+                owner,
+                fee_auth,
+            } => {
+                let fee = MemVM::from(store)?.execute_fee_authorization(
+                    fee_auth.ok_or(anyhow!("expected fee for deployment"))?,
+                    query,
+                    rng,
+                )?;
+                Ok(Transaction::from_deployment(owner, deployment, fee)?)
+            }
+        }
     }
 }
 
@@ -81,16 +110,12 @@ impl<N: Network> Execute<N> {
     pub fn parse(self) -> Result<()> {
         // execute the transaction
         let tx = match self.exec_mode {
-            ExecMode::Local => {
-                let AuthBlob { auth, fee_auth } = self.auth.pick()?;
-                execute_local(
-                    auth,
-                    fee_auth,
-                    None,
-                    Some(self.query.to_owned()),
-                    &mut rand::thread_rng(),
-                )?
-            }
+            ExecMode::Local => execute_local(
+                self.auth.pick()?,
+                None,
+                Some(self.query.to_owned()),
+                &mut rand::thread_rng(),
+            )?,
             ExecMode::Remote => return execute_remote(&self.query, self.auth.pick()?),
         };
 

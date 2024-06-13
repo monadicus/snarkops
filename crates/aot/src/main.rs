@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     let network: NetworkId = env::var("NETWORK")
         .unwrap_or(NetworkId::Mainnet.to_string())
         .parse()
-        .expect("Invalid network ID. Use 'mainnet' or 'testnet'.");
+        .expect("Invalid network ID. Use 'mainnet', 'testnet', or 'canary'.");
 
     match network {
         NetworkId::Mainnet => parse::<MainnetV0>(),

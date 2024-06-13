@@ -6,10 +6,11 @@ use crate::{runner::Key, Authorization, Network, Value};
 
 #[derive(Debug, Args)]
 pub struct AuthProgramOptions<N: Network> {
+    #[clap(group = "program")]
     /// Program ID and function name (eg. credits.aleo/transfer_public)
     locator: Locator<N>,
     /// Program inputs (eg. 1u64 5field)
-    #[clap(num_args = 1, value_delimiter = ' ')]
+    #[clap(group = "program", num_args = 1, value_delimiter = ' ')]
     inputs: Vec<Value<N>>,
 }
 

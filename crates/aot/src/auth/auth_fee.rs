@@ -1,7 +1,12 @@
 use anyhow::{bail, Ok, Result};
 use clap::Args;
 use rand::{CryptoRng, Rng};
-use snarkvm::{synthesizer::process::cost_in_microcredits, utilities::ToBytes};
+use snarkvm::{
+    ledger::Deployment,
+    prelude::Field,
+    synthesizer::process::{cost_in_microcredits, deployment_cost},
+    utilities::ToBytes,
+};
 
 // use tracing::error;
 use crate::{runner::Key, Authorization, Network, PTRecord, PrivateKey};
@@ -22,15 +27,34 @@ pub struct AuthorizeFee<N: Network> {
     pub key: Key<N>,
     #[clap(flatten)]
     pub options: AuthFeeOptions<N>,
-    /// The Authorization for the function.
-    #[arg(short, long)]
-    pub auth: Authorization<N>,
+    /// The Authorization for the program program execution
+    #[arg(short, long, group = "program")]
+    pub auth: Option<Authorization<N>>,
+    #[arg(short, long, group = "deployment")]
+    pub deployment: Option<Deployment<N>>,
+    /// The ID of the deployment or program execution
+    #[arg(short, long, group = "manual")]
+    pub id: Option<Field<N>>,
+    /// Estimated cost of the deployment or program execution
+    #[arg(short, long, group = "manual")]
+    pub cost: Option<u64>,
 }
 
 impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
-        let fee = fee(
-            self.auth,
+        let (id, base_fee) = match (self.auth, self.deployment, self.id, self.cost) {
+            (Some(auth), None, None, None) => (auth.to_execution_id()?, estimate_cost(&auth)?),
+            (None, Some(deployment), None, None) => (
+                deployment.to_deployment_id()?,
+                deployment_cost(&deployment)?.0,
+            ),
+            (None, None, Some(id), Some(cost)) => (id, cost),
+            _ => bail!("Exactly one of auth, deployment, or id and cost must be provided"),
+        };
+
+        let fee = fee_auth(
+            id,
+            base_fee,
             self.key.try_get()?,
             self.options.priority_fee,
             &mut rand::thread_rng(),
@@ -41,18 +65,14 @@ impl<N: Network> AuthorizeFee<N> {
     }
 }
 
-pub fn fee<N: Network>(
-    auth: Authorization<N>,
+pub fn fee_auth<N: Network>(
+    execution_id: Field<N>,
+    base_fee_in_microcredits: u64,
     private_key: PrivateKey<N>,
     priority_fee_in_microcredits: u64,
     rng: &mut (impl Rng + CryptoRng),
     record: Option<PTRecord<N>>,
 ) -> Result<Option<Authorization<N>>> {
-    // Retrieve the execution ID.
-    let execution_id: snarkvm::prelude::Field<N> = auth.to_execution_id()?;
-    // Determine the base fee in microcredits.
-    let base_fee_in_microcredits = estimate_cost(&auth)?;
-
     if base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
         return Ok(None);
     }
@@ -80,34 +100,6 @@ pub fn fee<N: Network>(
     };
 
     Ok(Some(fee))
-}
-
-pub fn fee_private<N: Network>(
-    auth: Authorization<N>,
-    private_key: PrivateKey<N>,
-    credits: PTRecord<N>,
-    priority_fee_in_microcredits: u64,
-    rng: &mut (impl Rng + CryptoRng),
-) -> Result<Option<Authorization<N>>> {
-    // Retrieve the execution ID.
-    let execution_id: snarkvm::prelude::Field<N> = auth.to_execution_id()?;
-    // Determine the base fee in microcredits.
-    let base_fee_in_microcredits = estimate_cost(&auth)?;
-
-    // Authorize the fee.
-    let fee = match base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
-        true => None,
-        false => Some(N::process().authorize_fee_private::<N::Circuit, _>(
-            &private_key,
-            credits,
-            base_fee_in_microcredits,
-            priority_fee_in_microcredits,
-            execution_id,
-            rng,
-        )?),
-    };
-
-    Ok(fee)
 }
 
 fn estimate_cost<N: Network>(func: &Authorization<N>) -> Result<u64> {
