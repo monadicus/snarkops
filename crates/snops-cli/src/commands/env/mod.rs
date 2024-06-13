@@ -60,6 +60,9 @@ enum EnvCommands {
         spec: PathBuf,
     },
 
+    /// Lookup a program by its id.
+    Program { id: String },
+
     /// Get an env's storage info.
     #[clap(alias = "store")]
     Storage,
@@ -105,6 +108,12 @@ impl Env {
                 let file: String = std::fs::read_to_string(spec)?;
 
                 client.post(ep).body(file).send()?
+            }
+            Program { id } => {
+                let ep = format!("{url}/api/v1/env/{}/program/{}", self.id, id);
+
+                println!("{}", client.get(ep).send()?.text()?);
+                std::process::exit(0);
             }
             Storage => {
                 let ep = format!("{url}/api/v1/env/{}/storage", self.id);
