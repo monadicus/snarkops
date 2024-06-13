@@ -380,14 +380,7 @@ impl ExecutionContext {
         match self
             .source
             .compute
-            .execute(
-                &self.state,
-                &env,
-                query_path,
-                &auth.auth,
-                auth.fee_auth.as_ref(),
-                &events,
-            )
+            .execute(&self.state, &env, query_path, &auth, &events)
             .await
         {
             // requeue the auth if no agents are available

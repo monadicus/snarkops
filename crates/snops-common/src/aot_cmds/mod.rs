@@ -134,7 +134,7 @@ impl AotCmd {
         let mut command = Command::new(&self.bin);
         command
             .stdin(Stdio::piped())
-            .stdout(std::io::stdout())
+            .stdout(Stdio::piped())
             .stderr(std::io::stderr())
             .env("NETWORK", self.network.to_string())
             .arg("auth")
@@ -154,6 +154,8 @@ impl AotCmd {
             command.arg("--record").arg(fee_record);
         }
 
+        command.arg("-");
+
         let mut child = command
             .spawn()
             .map_err(|e| CommandError::action("spawning", "aot auth deploy", e))?;
@@ -168,7 +170,7 @@ impl AotCmd {
         Self::handle_output(
             child.wait_with_output().await,
             "output",
-            "aot auth program",
+            "aot auth deploy",
             Self::parse_string,
         )
     }

@@ -12,6 +12,7 @@ use snops_common::state::{id_or_none, EnvId};
 use crate::{env::Environment, state::AppState};
 
 mod config;
+pub mod deploy;
 pub mod execute;
 mod power;
 
@@ -94,4 +95,5 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/reboot", post(power::reboot))
         .route("/config", post(config::config))
         .route("/execute", post(execute::execute))
+        .route("/deploy", post(deploy::deploy))
 }

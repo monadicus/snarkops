@@ -135,7 +135,7 @@ pub async fn execute_inner(
     // authorize the transaction
     let aot = AotCmd::new(env.aot_bin.clone(), env.network);
     let auth_str = aot
-        .authorize(
+        .authorize_program(
             &resolved_pk,
             resolved_fee_pk.as_ref(),
             &program,

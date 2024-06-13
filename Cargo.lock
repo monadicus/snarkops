@@ -4691,6 +4691,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap-markdown",
+ "clap-stdin",
  "clap_complete",
  "clap_mangen",
  "reqwest 0.12.3",

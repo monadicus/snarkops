@@ -16,13 +16,13 @@ use crate::{runner::Key, Network};
 #[derive(Clone, Debug, Parser)]
 pub struct AuthArgs<N: Network> {
     /// Authorization of the program function
-    #[clap(short, long, group = "auth")]
+    #[clap(short, long)]
     pub auth: Option<Authorization<N>>,
-    #[clap(short, long, conflicts_with = "json")]
+    #[clap(short, long)]
     pub fee_auth: Option<Authorization<N>>,
-    #[clap(short, long, group = "deploy")]
+    #[clap(short, long)]
     pub owner: Option<ProgramOwner<N>>,
-    #[clap(short, long, group = "deploy")]
+    #[clap(short, long)]
     pub deployment: Option<Deployment<N>>,
     /// Authorization flags as json
     ///
