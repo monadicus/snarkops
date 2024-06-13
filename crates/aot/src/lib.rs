@@ -21,6 +21,7 @@ use snarkvm::{
         store::helpers::{memory::ConsensusMemory, rocksdb::ConsensusDB},
         Ledger,
     },
+    prelude::ProgramID,
     synthesizer::Process,
 };
 
@@ -64,7 +65,7 @@ impl From<NetworkId> for u16 {
 }
 
 impl NetworkId {
-    pub fn from_network<N: NetworkTrait>() -> Self {
+    pub fn from_network<N: Network>() -> Self {
         match N::ID {
             <MainnetV0 as NetworkTrait>::ID => Self::Mainnet,
             <TestnetV0 as NetworkTrait>::ID => Self::Testnet,
@@ -76,7 +77,9 @@ impl NetworkId {
 
 pub trait Network: NetworkTrait {
     type Circuit: Aleo<Network = Self>;
+    fn str_id() -> NetworkId;
     fn process<'a>() -> &'a Process<Self>;
+    fn credits() -> ProgramID<Self>;
 }
 
 macro_rules! network_to_circuit {
@@ -87,6 +90,14 @@ macro_rules! network_to_circuit {
             fn process<'a>() -> &'a Process<$net_name> {
                 static PROCESS: OnceLock<Process<$net_name>> = OnceLock::new();
                 PROCESS.get_or_init(|| Process::load().unwrap())
+            }
+
+            fn credits() -> ProgramID<$net_name> {
+                std::str::FromStr::from_str("credits.aleo").unwrap()
+            }
+
+            fn str_id() -> NetworkId {
+                NetworkId::from_network::<$net_name>()
             }
         }
     };

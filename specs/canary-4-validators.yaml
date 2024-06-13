@@ -8,6 +8,9 @@ regen: 3
 generate:
   genesis:
     seed: 1
+    accounts:
+      extra: 10
+      seed: 2
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1

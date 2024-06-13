@@ -7,8 +7,10 @@ use snarkvm::ledger::{
 };
 use tracing::error;
 
-use super::args::AuthArgs;
-use crate::{auth::args::AuthBlob, DbLedger, MemVM, Network, NetworkId, Transaction};
+use super::{args::AuthArgs, query};
+use crate::{
+    auth::args::AuthBlob, Authorization, DbLedger, MemVM, Network, NetworkId, Transaction,
+};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum ExecMode {
@@ -58,24 +60,28 @@ pub fn execute_remote<N: Network>(api_url: &str, auth: AuthBlob<N>) -> Result<()
 pub fn execute_local<R: Rng + CryptoRng, N: Network>(
     auth: AuthBlob<N>,
     ledger: Option<&DbLedger<N>>,
-    query: Option<String>,
+    query_raw: Option<String>,
     rng: &mut R,
 ) -> Result<Transaction<N>> {
     // Execute the transaction.
     if let Some(ledger) = ledger {
-        let query = query.map(Query::REST);
+        let query = query_raw.map(Query::REST);
 
         match auth {
-            AuthBlob::Program { auth, fee_auth } => ledger
-                .vm()
-                .execute_authorization(auth, fee_auth, query, rng),
+            AuthBlob::Program { auth, fee_auth } => {
+                ledger
+                    .vm()
+                    .execute_authorization(auth.into(), fee_auth.map(Into::into), query, rng)
+            }
             AuthBlob::Deploy {
                 deployment,
                 owner,
                 fee_auth,
             } => {
                 let fee = ledger.vm().execute_fee_authorization(
-                    fee_auth.ok_or(anyhow!("expected fee for deployment"))?,
+                    fee_auth
+                        .map(Into::into)
+                        .ok_or(anyhow!("expected fee for deployment"))?,
                     query,
                     rng,
                 )?;
@@ -83,19 +89,43 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
             }
         }
     } else {
-        let query = query.map(Query::REST);
+        let query = query_raw.clone().map(Query::REST);
 
         let store = ConsensusStore::<N, ConsensusMemory<_>>::open(None)?;
+        let vm = MemVM::from(store)?;
+
         match auth {
             AuthBlob::Program { auth, fee_auth } => {
-                MemVM::from(store)?.execute_authorization(auth, fee_auth, query, rng)
+                let auth: Authorization<N> = auth.into();
+                let fee_auth: Option<Authorization<N>> = fee_auth.map(Into::into);
+
+                {
+                    let guard = vm.process();
+                    let process = &mut *guard.write();
+                    if let Some(query_raw) = query_raw.as_deref() {
+                        let programs = query::get_programs_from_auth(&auth);
+                        query::add_many_programs_to_process(process, programs, query_raw)?;
+                    }
+                }
+
+                eprintln!(
+                    "[debug] exec auth id {} -> fee id {:?}",
+                    auth.to_execution_id()?,
+                    fee_auth
+                        .as_ref()
+                        .map(|f| f.get(0).unwrap().inputs()[2].clone())
+                );
+
+                vm.execute_authorization(auth, fee_auth, query, rng)
             }
             AuthBlob::Deploy {
                 deployment,
                 owner,
                 fee_auth,
             } => {
-                let fee = MemVM::from(store)?.execute_fee_authorization(
+                let fee_auth: Option<Authorization<N>> = fee_auth.map(Into::into);
+
+                let fee = vm.execute_fee_authorization(
                     fee_auth.ok_or(anyhow!("expected fee for deployment"))?,
                     query,
                     rng,

@@ -5,8 +5,8 @@ use clap::{Args, Parser};
 use clap_stdin::MaybeStdin;
 use serde::{Deserialize, Serialize};
 use snarkvm::{
-    ledger::Deployment,
-    prelude::{PrivateKey, ProgramOwner},
+    ledger::{Deployment, Transition},
+    prelude::{PrivateKey, ProgramOwner, Request},
     synthesizer::Authorization,
     utilities::DeserializeExt,
 };
@@ -17,9 +17,9 @@ use crate::{runner::Key, Network};
 pub struct AuthArgs<N: Network> {
     /// Authorization of the program function
     #[clap(short, long)]
-    pub auth: Option<Authorization<N>>,
+    pub auth: Option<ProxyAuthorization<N>>,
     #[clap(short, long)]
-    pub fee_auth: Option<Authorization<N>>,
+    pub fee_auth: Option<ProxyAuthorization<N>>,
     #[clap(short, long)]
     pub owner: Option<ProgramOwner<N>>,
     #[clap(short, long)]
@@ -64,14 +64,14 @@ impl<N: Network> AuthArgs<N> {
 #[serde(untagged)]
 pub enum AuthBlob<N: Network> {
     Program {
-        auth: Authorization<N>,
-        fee_auth: Option<Authorization<N>>,
+        auth: ProxyAuthorization<N>,
+        fee_auth: Option<ProxyAuthorization<N>>,
     },
     Deploy {
         owner: ProgramOwner<N>,
         deployment: Deployment<N>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        fee_auth: Option<Authorization<N>>,
+        fee_auth: Option<ProxyAuthorization<N>>,
     },
 }
 
@@ -103,6 +103,71 @@ impl<N: Network> FromStr for AuthBlob<N> {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         serde_json::from_str(s)
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+/// This type exists because aleo's Authorization::try_from((Vec<Request>,
+/// Vec<Transition>)) has a bug that prevents deserialization from working on
+/// programs with multiple transitions
+///
+/// This is a wrapper that converts to and from authorizations
+pub struct ProxyAuthorization<N: Network> {
+    pub requests: Vec<Request<N>>,
+    pub transitions: Vec<Transition<N>>,
+}
+
+impl<'de, N: Network> Deserialize<'de> for ProxyAuthorization<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let mut value = serde_json::Value::deserialize(deserializer)?;
+        Ok(Self {
+            requests: DeserializeExt::take_from_value::<D>(&mut value, "requests")?,
+            transitions: DeserializeExt::take_from_value::<D>(&mut value, "transitions")?,
+        })
+    }
+}
+
+impl<N: Network> FromStr for ProxyAuthorization<N> {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s)
+    }
+}
+
+impl<N: Network> From<ProxyAuthorization<N>> for Authorization<N> {
+    fn from(auth: ProxyAuthorization<N>) -> Self {
+        let new_auth = Authorization::try_from((vec![], vec![])).unwrap();
+        for req in auth.requests {
+            new_auth.push(req);
+        }
+        for transition in auth.transitions {
+            let _ = new_auth.insert_transition(transition);
+        }
+
+        new_auth
+    }
+}
+
+impl<N: Network> From<Authorization<N>> for ProxyAuthorization<N> {
+    fn from(auth: Authorization<N>) -> Self {
+        let mut requests = vec![];
+        let mut transitions = vec![];
+
+        for req in auth.to_vec_deque() {
+            requests.push(req.clone());
+        }
+        for transition in auth.transitions().values() {
+            transitions.push(transition.clone());
+        }
+
+        Self {
+            requests,
+            transitions,
+        }
     }
 }
 

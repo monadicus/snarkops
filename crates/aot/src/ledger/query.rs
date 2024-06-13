@@ -17,10 +17,9 @@ use axum::{
 use clap::Args;
 use reqwest::StatusCode;
 use serde_json::json;
-use snarkvm::console::program::Network;
 use tracing_appender::non_blocking::NonBlocking;
 
-use crate::{Block, DbLedger, NetworkId, Transaction};
+use crate::{Block, DbLedger, Network, Transaction};
 
 #[derive(Debug, Args, Clone)]
 /// Receive inquiries on /<network>/latest/stateRoot
@@ -80,7 +79,7 @@ impl<N: Network> LedgerQuery<N> {
             appender,
         };
 
-        let network = NetworkId::from_network::<N>();
+        let network = N::str_id();
 
         let app = Router::new()
             .route(

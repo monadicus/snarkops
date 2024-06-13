@@ -4,7 +4,10 @@ use rand::{CryptoRng, Rng};
 use snarkvm::{
     ledger::Deployment,
     prelude::Field,
-    synthesizer::process::{cost_in_microcredits, deployment_cost},
+    synthesizer::{
+        process::{cost_in_microcredits, deployment_cost},
+        Process,
+    },
     utilities::ToBytes,
 };
 
@@ -43,7 +46,9 @@ pub struct AuthorizeFee<N: Network> {
 impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
         let (id, base_fee) = match (self.auth, self.deployment, self.id, self.cost) {
-            (Some(auth), None, None, None) => (auth.to_execution_id()?, estimate_cost(&auth)?),
+            (Some(auth), None, None, None) => {
+                (auth.to_execution_id()?, estimate_cost(N::process(), &auth)?)
+            }
             (None, Some(deployment), None, None) => (
                 deployment.to_deployment_id()?,
                 deployment_cost(&deployment)?.0,
@@ -102,7 +107,7 @@ pub fn fee_auth<N: Network>(
     Ok(Some(fee))
 }
 
-fn estimate_cost<N: Network>(func: &Authorization<N>) -> Result<u64> {
+pub fn estimate_cost<N: Network>(process: &Process<N>, func: &Authorization<N>) -> Result<u64> {
     let transitions = func.transitions();
 
     let storage_cost = {
@@ -147,7 +152,7 @@ fn estimate_cost<N: Network>(func: &Authorization<N>) -> Result<u64> {
     for (_key, transition) in transitions {
         // Retrieve the function name, program id, and program.
         let function_name = *transition.function_name();
-        let stack = N::process().get_stack(transition.program_id().to_string())?;
+        let stack = process.get_stack(transition.program_id())?;
         let cost = cost_in_microcredits(stack, &function_name)?;
 
         // Accumulate the finalize cost.

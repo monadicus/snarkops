@@ -69,7 +69,9 @@ pub async fn execute_status(
 pub async fn execute(Env { env, .. }: Env, Json(action): Json<ExecuteAction>) -> Response {
     let (tx, rx) = mpsc::channel(10);
 
-    let tx_id = match execute_inner(action, &env, TransactionStatusSender::new(tx)).await {
+    let query = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
+
+    let tx_id = match execute_inner(action, &env, TransactionStatusSender::new(tx), query).await {
         Ok(tx_id) => tx_id,
         Err(e) => return ServerError::from(e).into_response(),
     };
@@ -81,6 +83,7 @@ pub async fn execute_inner(
     action: ExecuteAction,
     env: &Environment,
     events: TransactionStatusSender,
+    query: Option<String>,
 ) -> Result<String, ExecutionError> {
     let ExecuteAction {
         cannon: cannon_id,
@@ -141,6 +144,7 @@ pub async fn execute_inner(
             &program,
             &function,
             &resolved_inputs,
+            query.as_ref(),
             priority_fee,
             fee_record.as_ref(),
         )

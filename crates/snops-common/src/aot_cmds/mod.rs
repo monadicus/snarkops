@@ -85,6 +85,7 @@ impl AotCmd {
         program_id: &str,
         function_name: &str,
         inputs: &[String],
+        query: Option<&String>,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
     ) -> Result<String, AotCmdError> {
@@ -97,6 +98,10 @@ impl AotCmd {
             .arg("program")
             .arg("--private-key")
             .arg(private_key);
+
+        if let Some(query) = query {
+            command.arg("--query").arg(query);
+        }
 
         if let Some(fee_private_key) = fee_private_key {
             command.arg("--fee-private-key").arg(fee_private_key);
@@ -128,6 +133,7 @@ impl AotCmd {
         private_key: &str,
         fee_private_key: Option<&String>,
         program: &str,
+        query: Option<&String>,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
     ) -> Result<String, AotCmdError> {
@@ -141,6 +147,10 @@ impl AotCmd {
             .arg("deploy")
             .arg("--private-key")
             .arg(private_key);
+
+        if let Some(query) = query {
+            command.arg("--query").arg(query);
+        }
 
         if let Some(fee_private_key) = fee_private_key {
             command.arg("--fee-private-key").arg(fee_private_key);

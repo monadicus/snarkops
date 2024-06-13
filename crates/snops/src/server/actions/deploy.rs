@@ -19,7 +19,9 @@ use crate::{
 pub async fn deploy(Env { env, .. }: Env, Json(action): Json<DeployAction>) -> Response {
     let (tx, rx) = mpsc::channel(10);
 
-    let tx_id = match deploy_inner(action, &env, TransactionStatusSender::new(tx)).await {
+    let query = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
+
+    let tx_id = match deploy_inner(action, &env, TransactionStatusSender::new(tx), query).await {
         Ok(tx_id) => tx_id,
         Err(e) => return ServerError::from(e).into_response(),
     };
@@ -31,6 +33,7 @@ pub async fn deploy_inner(
     action: DeployAction,
     env: &Environment,
     events: TransactionStatusSender,
+    query: Option<String>,
 ) -> Result<String, ExecutionError> {
     let DeployAction {
         cannon: cannon_id,
@@ -73,6 +76,7 @@ pub async fn deploy_inner(
             &resolved_pk,
             resolved_fee_pk.as_ref(),
             &program,
+            query.as_ref(),
             priority_fee,
             fee_record.as_ref(),
         )
