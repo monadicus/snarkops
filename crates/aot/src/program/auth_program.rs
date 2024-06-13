@@ -1,11 +1,8 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Args;
-use snarkvm::{
-    console::program::{Locator, Network},
-    synthesizer::cast_ref,
-};
+use snarkvm::console::program::Locator;
 
-use crate::{runner::Key, use_process_downcast, Authorization, PrivateKey, Value};
+use crate::{runner::Key, Authorization, Network, Value};
 
 #[derive(Debug, Args)]
 pub struct AuthProgramOptions<N: Network> {
@@ -28,15 +25,13 @@ impl<N: Network> AuthorizeProgram<N> {
     /// Initializes a new authorization.
     pub fn parse(self) -> Result<Authorization<N>> {
         let private_key = self.key.try_get()?;
-        let auth = use_process_downcast!(A, N, |process| {
-            process.authorize::<A, _>(
-                cast_ref!((private_key) as PrivateKey<N>),
-                self.options.locator.program_id().to_string(),
-                self.options.locator.resource().to_string(),
-                cast_ref!((self.options.inputs) as Vec<Value<N>>).iter(),
-                &mut rand::thread_rng(),
-            )?
-        });
+        let auth = N::process().authorize::<N::Circuit, _>(
+            &private_key,
+            self.options.locator.program_id().to_string(),
+            self.options.locator.resource().to_string(),
+            self.options.inputs.iter(),
+            &mut rand::thread_rng(),
+        )?;
 
         Ok(auth)
     }

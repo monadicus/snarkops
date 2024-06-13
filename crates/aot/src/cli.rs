@@ -10,13 +10,12 @@ use clap::CommandFactory;
 use clap::Parser;
 use crossterm::tty::IsTty;
 use reqwest::Url;
-use snarkvm::console::program::Network;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
-use crate::{accounts::GenAccounts, genesis::Genesis, ledger::Ledger, program::Program};
+use crate::{accounts::GenAccounts, genesis::Genesis, ledger::Ledger, program::Program, Network};
 
 #[derive(Debug, Parser)]
 #[clap(author = "MONADIC.US")]

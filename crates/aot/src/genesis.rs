@@ -9,19 +9,18 @@ use rand::{CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use serde::{de::DeserializeOwned, Serialize};
 use snarkvm::{
-    console::program::Network,
     ledger::{
         committee::MIN_VALIDATOR_STAKE,
         store::{helpers::memory::ConsensusMemory, ConsensusStore},
         Header, Ratify, Solutions,
     },
-    synthesizer::{cast_ref, program::FinalizeGlobalState},
+    synthesizer::program::FinalizeGlobalState,
     utilities::ToBytes,
 };
 
 use crate::{
-    ledger::util::public_transaction, use_aleo_network_downcast, Address, Block, CTRecord,
-    Committee, DbLedger, MemVM, NetworkId, PTRecord, PrivateKey, Transaction, ViewKey,
+    ledger::util::public_transaction, Address, Block, CTRecord, Committee, DbLedger, MemVM,
+    Network, NetworkId, PTRecord, PrivateKey, Transaction, ViewKey,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -353,18 +352,15 @@ impl<N: Network> Genesis<N> {
             accounts = accounts
                 .into_iter()
                 .map(|(addr, (key, balance, _))| {
-                    let record_tx: Transaction<N> = use_aleo_network_downcast!(
-                        A,
-                        N,
-                        public_transaction::<_, _, A>(
+                    let record_tx: Transaction<N> =
+                        public_transaction::<N, ConsensusMemory<_>, N::Circuit>(
                             "transfer_public_to_private",
-                            cast_ref!(vm as MemVM<N>),
-                            *cast_ref!(addr as Address<N>),
+                            &vm,
+                            addr,
                             record_balance,
-                            *cast_ref!(key as PrivateKey<N>),
+                            key,
                             None,
-                        )?
-                    );
+                        )?;
                     // Cannot fail because transfer_public_to_private always emits a
                     // record.
                     let record_enc: CTRecord<N> = record_tx.records().next().unwrap().1.clone();

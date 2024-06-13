@@ -4,13 +4,9 @@ use anyhow::anyhow;
 use clap::{Args, Parser};
 use clap_stdin::MaybeStdin;
 use serde::{Deserialize, Serialize};
-use snarkvm::{
-    prelude::{Network, PrivateKey},
-    synthesizer::Authorization,
-    utilities::DeserializeExt,
-};
+use snarkvm::{prelude::PrivateKey, synthesizer::Authorization, utilities::DeserializeExt};
 
-use crate::runner::Key;
+use crate::{runner::Key, Network};
 
 #[derive(Clone, Debug, Parser)]
 pub struct AuthArgs<N: Network> {

@@ -1,16 +1,10 @@
-use anyhow::{anyhow, bail, Ok, Result};
+use anyhow::{bail, Ok, Result};
 use clap::Args;
 use rand::{CryptoRng, Rng};
-use snarkvm::{
-    console::{program::Identifier, types::Field},
-    synthesizer::{cast_ref, process::cost_in_microcredits},
-    utilities::ToBytes,
-};
+use snarkvm::{synthesizer::process::cost_in_microcredits, utilities::ToBytes};
 
 // use tracing::error;
-use crate::{
-    runner::Key, use_process, use_process_downcast, Authorization, Network, PTRecord, PrivateKey,
-};
+use crate::{runner::Key, Authorization, Network, PTRecord, PrivateKey};
 
 #[derive(Debug, Args)]
 pub struct AuthFeeOptions<N: Network> {
@@ -63,28 +57,26 @@ pub fn fee<N: Network>(
         return Ok(None);
     }
 
+    let process = N::process();
+
     // Authorize the fee.
     let fee = if record.is_some() {
-        use_process_downcast!(A, N, |process| {
-            process.authorize_fee_private::<A, _>(
-                cast_ref!(private_key as PrivateKey<N>),
-                cast_ref!((record.unwrap()) as PTRecord<N>).clone(),
-                base_fee_in_microcredits,
-                priority_fee_in_microcredits,
-                *cast_ref!(execution_id as Field<N>),
-                rng,
-            )?
-        })
+        process.authorize_fee_private::<N::Circuit, _>(
+            &private_key,
+            record.unwrap(),
+            base_fee_in_microcredits,
+            priority_fee_in_microcredits,
+            execution_id,
+            rng,
+        )?
     } else {
-        use_process_downcast!(A, N, |process| {
-            process.authorize_fee_public::<A, _>(
-                cast_ref!(private_key as PrivateKey<N>),
-                base_fee_in_microcredits,
-                priority_fee_in_microcredits,
-                *cast_ref!(execution_id as Field<N>),
-                rng,
-            )?
-        })
+        process.authorize_fee_public::<N::Circuit, _>(
+            &private_key,
+            base_fee_in_microcredits,
+            priority_fee_in_microcredits,
+            execution_id,
+            rng,
+        )?
     };
 
     Ok(Some(fee))
@@ -105,16 +97,14 @@ pub fn fee_private<N: Network>(
     // Authorize the fee.
     let fee = match base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {
         true => None,
-        false => Some(use_process_downcast!(A, N, |process| {
-            process.authorize_fee_private::<A, _>(
-                cast_ref!(private_key as PrivateKey<N>),
-                cast_ref!(credits as PTRecord<N>).clone(),
-                base_fee_in_microcredits,
-                priority_fee_in_microcredits,
-                *cast_ref!(execution_id as Field<N>),
-                rng,
-            )?
-        })),
+        false => Some(N::process().authorize_fee_private::<N::Circuit, _>(
+            &private_key,
+            credits,
+            base_fee_in_microcredits,
+            priority_fee_in_microcredits,
+            execution_id,
+            rng,
+        )?),
     };
 
     Ok(fee)
@@ -165,10 +155,8 @@ fn estimate_cost<N: Network>(func: &Authorization<N>) -> Result<u64> {
     for (_key, transition) in transitions {
         // Retrieve the function name, program id, and program.
         let function_name = *transition.function_name();
-        let cost = use_process!(_A, N, |process| {
-            let stack = process.get_stack(transition.program_id().to_string())?;
-            cost_in_microcredits(stack, cast_ref!(function_name as Identifier<N>))?
-        });
+        let stack = N::process().get_stack(transition.program_id().to_string())?;
+        let cost = cost_in_microcredits(stack, &function_name)?;
 
         // Accumulate the finalize cost.
         if let Some(cost) = finalize_cost.checked_add(cost) {

@@ -3,12 +3,15 @@ use std::{path::PathBuf, str::FromStr};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use rand::{CryptoRng, Rng};
-use snarkvm::{console::program::Network, ledger::Block, utilities::FromBytes};
+use snarkvm::{ledger::Block, utilities::FromBytes};
 
 use self::checkpoint::CheckpointCommand;
-use crate::program::{
-    args::AuthBlob,
-    execute::{execute_local, Execute},
+use crate::{
+    program::{
+        args::AuthBlob,
+        execute::{execute_local, Execute},
+    },
+    Network,
 };
 
 pub mod checkpoint;

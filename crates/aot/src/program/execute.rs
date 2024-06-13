@@ -1,17 +1,16 @@
 use anyhow::{bail, Result};
 use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
-use snarkvm::{
-    console::program::Network,
-    ledger::{
-        query::Query,
-        store::{helpers::memory::ConsensusMemory, ConsensusStore},
-    },
+use snarkvm::ledger::{
+    query::Query,
+    store::{helpers::memory::ConsensusMemory, ConsensusStore},
 };
 use tracing::error;
 
 use super::args::AuthArgs;
-use crate::{program::args::AuthBlob, Authorization, DbLedger, MemVM, NetworkId, Transaction};
+use crate::{
+    program::args::AuthBlob, Authorization, DbLedger, MemVM, Network, NetworkId, Transaction,
+};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum ExecMode {

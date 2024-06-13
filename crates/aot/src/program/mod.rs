@@ -10,8 +10,6 @@ pub mod auth_id;
 pub mod auth_program;
 pub mod deploy;
 pub mod execute;
-mod macros;
-pub use macros::*;
 
 #[derive(Debug, Subcommand)]
 pub enum Program<N: Network> {
