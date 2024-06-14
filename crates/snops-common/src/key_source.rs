@@ -111,7 +111,14 @@ impl FromStr for KeySource {
             static ref NAMED_KEYSOURCE_REGEX: regex::Regex =
                 regex::Regex::new(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9\-_.]{0,63})\.(?P<idx>\d+|\$)$")
                     .unwrap();
+            static ref NAMED_PROGRAM_REGEX: regex::Regex =
+                regex::Regex::new(r"^[A-Za-z0-9_]{1,256}\.aleo$").unwrap();
         }
+
+        if NAMED_PROGRAM_REGEX.is_match(s) {
+            return Ok(KeySource::ProgramLiteral(s.to_string()));
+        }
+
         let groups = NAMED_KEYSOURCE_REGEX
             .captures(s)
             .ok_or(KeySourceError::InvalidKeySource)?;
