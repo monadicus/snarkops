@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use reqwest::blocking::{Client, Response};
-use snops_common::state::NodeKey;
+use snops_common::{key_source::KeySource, state::NodeKey};
 
 mod action;
 
@@ -33,6 +33,10 @@ enum EnvCommands {
 
     /// List an env's agents
     Agents,
+
+    /// Lookup an account's balance
+    #[clap(alias = "bal")]
+    Balance { key: KeySource },
 
     /// Clean a specific environment.
     #[clap(alias = "c")]
@@ -82,6 +86,11 @@ impl Env {
                 let ep = format!("{url}/api/v1/env/{}/agents", self.id);
 
                 client.get(ep).send()?
+            }
+            Balance { key } => {
+                let ep = format!("{url}/api/v1/env/{}/balance/{key}", self.id);
+
+                client.get(ep).json(&key).send()?
             }
             Clean => {
                 let ep = format!("{url}/api/v1/env/{}", self.id);

@@ -30,6 +30,8 @@ pub enum KeySource {
     PrivateKeyLiteral(String),
     /// aleo1...
     PublicKeyLiteral(String),
+    /// program_name1.aleo
+    ProgramLiteral(String),
     /// committee.0 or committee.$ (for replicas)
     Committee(Option<usize>),
     /// accounts.0 or accounts.$ (for replicas)
@@ -131,6 +133,7 @@ impl fmt::Display for KeySource {
             match self {
                 KeySource::Local => "local".to_owned(),
                 KeySource::PrivateKeyLiteral(key) => key.to_owned(),
+                KeySource::ProgramLiteral(key) => key.to_owned(),
                 KeySource::PublicKeyLiteral(key) => key.to_owned(),
                 KeySource::Committee(None) => "committee.$".to_owned(),
                 KeySource::Committee(Some(idx)) => {
@@ -171,6 +174,7 @@ impl DataFormat for KeySource {
             KeySource::PublicKeyLiteral(key) => {
                 writer.write_data(&6u8)? + writer.write_data(key)?
             }
+            KeySource::ProgramLiteral(key) => writer.write_data(&7u8)? + writer.write_data(key)?,
         })
     }
 
@@ -197,6 +201,7 @@ impl DataFormat for KeySource {
                 Some(reader.read_data(&())?),
             )),
             6u8 => Ok(KeySource::PublicKeyLiteral(reader.read_data(&())?)),
+            7u8 => Ok(KeySource::ProgramLiteral(reader.read_data(&())?)),
             n => Err(DataReadError::Custom(format!("invalid KeySource tag {n}"))),
         }
     }

@@ -1,21 +1,26 @@
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use reqwest::StatusCode;
+use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
     aot_cmds::AotCmd,
-    state::{id_or_none, NetworkId},
+    key_source::KeySource,
+    state::{id_or_none, KeyState, NetworkId},
 };
 use tokio::sync::mpsc;
 
 use super::{source::QueryTarget, status::TransactionStatusSender, Authorization};
-use crate::{server::actions::execute::execute_status, state::AppState};
+use crate::{
+    server::{actions::execute::execute_status, error::ServerError},
+    state::AppState,
+};
 
 pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
     Router::new()
@@ -23,6 +28,14 @@ pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
         .route("/:cannon/:network/stateRoot/latest", get(state_root))
         .route("/:cannon/:network/transaction/broadcast", post(transaction))
         .route("/:cannon/:network/program/:program", get(get_program_json))
+        .route(
+            "/:cannon/:network/program/:program/mappings",
+            get(get_mappings_json),
+        )
+        .route(
+            "/:cannon/:network/program/:program/mapping/:mapping/:value",
+            get(get_mapping_json),
+        )
         .route("/:cannon/auth", post(authorization))
 }
 
@@ -31,35 +44,19 @@ async fn state_root(
     state: State<AppState>,
 ) -> Response {
     let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "unknown cannon or environment" })),
-        )
-            .into_response();
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
     };
 
     let Some(env) = state.get_env(env_id) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "environment not found" })),
-        )
-            .into_response();
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
     };
 
     if env.network != network {
-        return (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({ "error": "network mismatch" })),
-        )
-            .into_response();
+        return ServerError::NotFound("network mismatch".to_owned()).into_response();
     }
 
     let Some(cannon) = env.get_cannon(cannon_id) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "cannon not found" })),
-        )
-            .into_response();
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
     };
 
     // TODO: lock this with a mutex or something so that multiple route callers
@@ -89,35 +86,19 @@ async fn get_program_json(
     state: State<AppState>,
 ) -> Response {
     let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "unknown cannon or environment" })),
-        )
-            .into_response();
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
     };
 
     let Some(env) = state.get_env(env_id) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "environment not found" })),
-        )
-            .into_response();
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
     };
 
     if env.network != network {
-        return (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({ "error": "network mismatch" })),
-        )
-            .into_response();
+        return ServerError::NotFound("network mismatch".to_owned()).into_response();
     }
 
     let Some(cannon) = env.get_cannon(cannon_id) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "cannon not found" })),
-        )
-            .into_response();
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
     };
 
     match &cannon.source.query {
@@ -128,6 +109,118 @@ async fn get_program_json(
                 .await
             {
                 Ok(program) => Json(program).into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("{e}") })),
+                )
+                    .into_response(),
+            }
+        }
+    }
+}
+
+async fn get_mappings_json(
+    Path((env_id, cannon_id, network, program)): Path<(String, String, NetworkId, String)>,
+    state: State<AppState>,
+) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
+    };
+
+    if env.network != network {
+        return ServerError::NotFound("network mismatch".to_owned()).into_response();
+    }
+
+    let Some(cannon) = env.get_cannon(cannon_id) else {
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
+    };
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Vec<String>>(env_id, format!("/program/{program}/mappings"), target)
+                .await
+            {
+                Ok(res) => Json(res).into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("{e}") })),
+                )
+                    .into_response(),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MappingQuery {
+    keysource: Option<bool>,
+}
+
+async fn get_mapping_json(
+    Path((env_id, cannon_id, network, program, mapping, mut mapping_key)): Path<(
+        String,
+        String,
+        NetworkId,
+        String,
+        String,
+        String,
+    )>,
+    query: Query<MappingQuery>,
+    state: State<AppState>,
+) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
+    };
+
+    if query.keysource.unwrap_or_default() {
+        let keysource = match KeySource::from_str(&mapping_key) {
+            Ok(ks) => ks,
+            Err(e) => {
+                return (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(json!({ "error": format!("invalid keysource: {e}") })),
+                )
+                    .into_response()
+            }
+        };
+
+        let KeyState::Literal(found) = env.storage.sample_keysource_addr(&keysource) else {
+            return ServerError::NotFound(format!("keysource pubkey {mapping_key}"))
+                .into_response();
+        };
+        mapping_key = found;
+    }
+
+    if env.network != network {
+        return ServerError::NotFound("network mismatch".to_owned()).into_response();
+    }
+
+    let Some(cannon) = env.get_cannon(cannon_id) else {
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
+    };
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Option<String>>(
+                    env_id,
+                    format!("/program/{program}/mapping/{mapping}/{mapping_key}"),
+                    target,
+                )
+                .await
+            {
+                Ok(res) => Json(res).into_response(),
                 Err(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({ "error": format!("{e}") })),
