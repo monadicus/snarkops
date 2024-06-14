@@ -19,9 +19,6 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::{api, metrics::MetricComputer, reconcile, state::AppState};
 
-/// The JWT file name.
-pub const JWT_FILE: &str = "jwt";
-
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
     MuxMessage<Response<ControlServiceResponse>, ClientMessage<AgentServiceRequest>>;
@@ -53,14 +50,9 @@ impl AgentService for AgentRpcServer {
         if let Some(token) = handshake.jwt {
             // cache the JWT in the state JWT mutex
             self.state
-                .jwt
-                .lock()
-                .expect("failed to acquire JWT lock")
-                .replace(token.to_owned());
-
-            tokio::fs::write(self.state.cli.path.join(JWT_FILE), token)
-                .await
-                .expect("failed to write jwt file");
+                .db
+                .set_jwt(Some(token))
+                .map_err(|_| ReconcileError::Database)?;
         }
 
         // store loki server URL

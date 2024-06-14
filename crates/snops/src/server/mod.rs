@@ -18,6 +18,7 @@ use prometheus_http_query::Client as PrometheusClient;
 use serde::Deserialize;
 use snops_common::{
     constant::HEADER_AGENT_KEY,
+    db::Database,
     prelude::*,
     rpc::{
         agent::{AgentServiceClient, Handshake},

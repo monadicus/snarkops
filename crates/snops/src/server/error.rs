@@ -2,12 +2,13 @@ use axum::{response::IntoResponse, Json};
 use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
-use snops_common::{aot_cmds::AotCmdError, impl_into_status_code, impl_into_type_str};
+use snops_common::{
+    aot_cmds::AotCmdError, db::error::DatabaseError, impl_into_status_code, impl_into_type_str,
+};
 use thiserror::Error;
 
 use crate::{
     cannon::error::CannonError,
-    db::error::DatabaseError,
     env::error::{EnvError, EnvRequestError, ExecutionError},
     error::DeserializeError,
     schema::error::SchemaError,

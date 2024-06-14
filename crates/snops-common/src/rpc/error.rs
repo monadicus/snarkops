@@ -122,6 +122,8 @@ pub enum ReconcileError {
     CheckpointLoadError,
     #[error("agent did not provide a local private key")]
     NoLocalPrivateKey,
+    #[error("generic database error")]
+    Database,
     #[error("unknown error")]
     Unknown,
 }

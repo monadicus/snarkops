@@ -4499,6 +4499,7 @@ dependencies = [
  "reqwest 0.12.5",
  "serde_json",
  "simple_moving_average",
+ "sled",
  "snops-common",
  "tarpc",
  "tokio",
@@ -4530,6 +4531,8 @@ name = "snops-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
+ "bytes",
  "checkpoint",
  "chrono",
  "clap",
@@ -4545,10 +4548,12 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "sled",
  "strum_macros",
  "tarpc",
  "thiserror",
  "tokio",
+ "tracing",
  "url",
  "wildmatch",
 ]

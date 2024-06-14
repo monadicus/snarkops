@@ -15,7 +15,6 @@ pub mod persist;
 pub mod schema;
 pub mod server;
 pub mod state;
-pub mod util;
 
 #[tokio::main]
 async fn main() {

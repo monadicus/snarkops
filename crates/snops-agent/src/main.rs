@@ -1,5 +1,6 @@
 mod api;
 mod cli;
+mod db;
 mod metrics;
 mod net;
 mod reconcile;
@@ -22,7 +23,9 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::HeaderValue;
 use snops_common::{
     constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
+    db::Database,
     rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport},
+    util::OpaqueDebug,
 };
 use tarpc::server::Channel;
 use tokio::{
@@ -36,7 +39,7 @@ use tokio_tungstenite::{
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing, JWT_FILE};
+use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing};
 use crate::state::GlobalState;
 
 const PING_HEADER: &[u8] = b"snops-agent";
@@ -108,10 +111,8 @@ async fn main() {
         .await
         .expect("failed to create data path");
 
-    // get the JWT from the file, if possible
-    let jwt = tokio::fs::read_to_string(args.path.join(JWT_FILE))
-        .await
-        .ok();
+    // open the database
+    let db = db::Database::open(&args.path.join("store")).expect("failed to open database");
 
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
@@ -134,14 +135,14 @@ async fn main() {
 
     // create the client state
     let state = Arc::new(GlobalState {
+        client,
+        db: OpaqueDebug(db),
         started: Instant::now(),
         connected: Mutex::new(Instant::now()),
-        client,
         external_addr,
         internal_addrs,
         cli: args,
         endpoint,
-        jwt: Mutex::new(jwt),
         loki: Default::default(),
         env_info: Default::default(),
         agent_state: Default::default(),
@@ -193,15 +194,12 @@ async fn main() {
             state.env_info.write().await.take();
 
             // attach JWT if we have one
-            {
-                let jwt = state.jwt.lock().expect("failed to acquire jwt");
-                if let Some(jwt) = jwt.as_deref() {
-                    req.headers_mut().insert(
-                        "Authorization",
-                        HeaderValue::from_bytes(format!("Bearer {jwt}").as_bytes())
-                            .expect("attach authorization header"),
-                    );
-                }
+            if let Some(jwt) = state.db.jwt() {
+                req.headers_mut().insert(
+                    "Authorization",
+                    HeaderValue::from_bytes(format!("Bearer {jwt}").as_bytes())
+                        .expect("attach authorization header"),
+                );
             }
 
             // attach agent key if one is set in env vars
