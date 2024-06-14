@@ -7,9 +7,11 @@ pub mod state;
 pub use lasso;
 pub mod api;
 pub mod constant;
+pub mod db;
 pub mod format;
 pub mod key_source;
 pub mod node_targets;
+pub mod util;
 
 #[cfg(feature = "clipages")]
 pub mod clipages;
@@ -20,6 +22,7 @@ pub mod prelude {
     pub use crate::rpc::*;
     pub use crate::set::*;
     pub use crate::state::*;
+    pub use crate::util::*;
 }
 
 lazy_static::lazy_static! {

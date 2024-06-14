@@ -11,6 +11,8 @@ mangen = ["anyhow", "clap_mangen"]
 
 [dependencies]
 anyhow = { workspace = true, optional = true }
+bincode.workspace = true
+bytes.workspace = true
 checkpoint = { workspace = true, features = ["serde"] }
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
@@ -26,10 +28,12 @@ regex.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sled.workspace = true
 strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 url.workspace = true
 wildmatch.workspace = true
 

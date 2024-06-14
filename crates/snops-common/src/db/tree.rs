@@ -1,14 +1,14 @@
 use bytes::Buf;
-use snops_common::format::{read_dataformat, write_dataformat, DataFormat};
 
 use super::error::DatabaseError;
+use crate::format::{read_dataformat, write_dataformat, DataFormat};
 
-pub struct DbTree<Key: DataFormat, Value: DataFormat> {
+pub struct DbTree<K, V> {
     tree: sled::Tree,
-    _phantom: std::marker::PhantomData<(Key, Value)>,
+    _phantom: std::marker::PhantomData<(K, V)>,
 }
 
-impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
+impl<K: DataFormat, V: DataFormat> DbTree<K, V> {
     pub fn new(tree: sled::Tree) -> Self {
         Self {
             tree,
@@ -16,7 +16,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
         }
     }
 
-    pub fn read_all(&self) -> impl Iterator<Item = (Key, Value)> {
+    pub fn read_all(&self) -> impl Iterator<Item = (K, V)> {
         self.tree.iter().filter_map(|row| {
             let (key_bytes, value_bytes) = match row {
                 Ok((key, value)) => (key, value),
@@ -26,7 +26,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
                 }
             };
 
-            let key = match Key::read_data(&mut key_bytes.reader(), &Key::LATEST_HEADER) {
+            let key = match K::read_data(&mut key_bytes.reader(), &K::LATEST_HEADER) {
                 Ok(key) => key,
                 Err(e) => {
                     tracing::error!("Error parsing key from store: {e}");
@@ -49,7 +49,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
     pub fn read_with_prefix<Prefix: DataFormat>(
         &self,
         prefix: &Prefix,
-    ) -> Result<impl Iterator<Item = (Key, Value)>, DatabaseError> {
+    ) -> Result<impl Iterator<Item = (K, V)>, DatabaseError> {
         Ok(self
             .tree
             .scan_prefix(prefix.to_byte_vec()?)
@@ -62,7 +62,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
                     }
                 };
 
-                let key = match Key::read_data(&mut key_bytes.reader(), &Key::LATEST_HEADER) {
+                let key = match K::read_data(&mut key_bytes.reader(), &K::LATEST_HEADER) {
                     Ok(key) => key,
                     Err(e) => {
                         tracing::error!("Error parsing key from store: {e}");
@@ -82,7 +82,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
             }))
     }
 
-    pub fn restore(&self, key: &Key) -> Result<Option<Value>, DatabaseError> {
+    pub fn restore(&self, key: &K) -> Result<Option<V>, DatabaseError> {
         Ok(self
             .tree
             .get(key.to_byte_vec()?)?
@@ -90,7 +90,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
             .transpose()?)
     }
 
-    pub fn save(&self, key: &Key, value: &Value) -> Result<(), DatabaseError> {
+    pub fn save(&self, key: &K, value: &V) -> Result<(), DatabaseError> {
         let key_bytes = key.to_byte_vec()?;
         let mut value_bytes = Vec::new();
         write_dataformat(&mut value_bytes, value)?;
@@ -98,7 +98,14 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
         Ok(())
     }
 
-    pub fn delete(&self, key: &Key) -> Result<bool, DatabaseError> {
+    pub fn save_option(&self, key: &K, value: Option<&V>) -> Result<(), DatabaseError> {
+        match value {
+            Some(value) => self.save(key, value),
+            None => self.delete(key).map(|_| ()),
+        }
+    }
+
+    pub fn delete(&self, key: &K) -> Result<bool, DatabaseError> {
         Ok(self.tree.remove(key.to_byte_vec()?)?.is_some())
     }
 
@@ -118,7 +125,7 @@ impl<Key: DataFormat, Value: DataFormat> DbTree<Key, Value> {
                     }
                 };
 
-                let key = match Key::read_data(&mut key_bytes.reader(), &Key::LATEST_HEADER) {
+                let key = match K::read_data(&mut key_bytes.reader(), &K::LATEST_HEADER) {
                     Ok(key) => key,
                     Err(e) => {
                         tracing::error!("Error parsing key from store: {e}");

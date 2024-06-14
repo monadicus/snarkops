@@ -1,15 +1,14 @@
 use std::path::PathBuf;
 
-use snops_common::state::{AgentId, EnvId, NetworkId, StorageId};
+use snops_common::{
+    db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
+    state::{AgentId, EnvId, NetworkId, StorageId},
+};
 
-use self::{error::DatabaseError, tree::DbTree};
 use crate::{
     persist::{PersistEnv, PersistStorage},
     state::Agent,
 };
-
-pub mod error;
-pub mod tree;
 
 pub struct Database {
     #[allow(unused)]
@@ -23,16 +22,18 @@ pub struct Database {
     pub(crate) agents: DbTree<AgentId, Agent>,
 }
 
-impl Database {
-    pub fn open(path: &PathBuf) -> Result<Self, DatabaseError> {
+impl DatabaseTrait for Database {
+    fn open(path: &PathBuf) -> Result<Self, DatabaseError> {
         let db = sled::open(path)?;
+        let envs = DbTree::new(db.open_tree(b"v2/envs")?);
+        let storage = DbTree::new(db.open_tree(b"v2/storage")?);
+        let agents = DbTree::new(db.open_tree(b"v2/agents")?);
 
         Ok(Self {
-            envs: DbTree::new(db.open_tree(b"v2/envs")?),
-            storage: DbTree::new(db.open_tree(b"v2/storage")?),
-            agents: DbTree::new(db.open_tree(b"v2/agents")?),
-
             db,
+            envs,
+            storage,
+            agents,
         })
     }
 }
