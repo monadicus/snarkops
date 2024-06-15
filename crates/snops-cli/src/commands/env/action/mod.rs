@@ -69,14 +69,14 @@ pub enum Action {
         private_key: Option<KeySource>,
         /// Private key to use for the fee. Defaults to the same as
         /// --private-key
-        #[clap(long, short)]
+        #[clap(long)]
         fee_private_key: Option<KeySource>,
         /// Desired cannon to fire the transaction
         #[clap(long, short)]
         cannon: Option<CannonId>,
         #[clap(long)]
         priority_fee: Option<u32>,
-        #[clap(long, short)]
+        #[clap(long)]
         fee_record: Option<String>,
         /// `transfer_public` OR `credits.aleo/transfer_public`
         locator: String,
@@ -91,14 +91,14 @@ pub enum Action {
         private_key: Option<KeySource>,
         /// Private key to use for the fee. Defaults to the same as
         /// --private-key
-        #[clap(long, short)]
+        #[clap(long)]
         fee_private_key: Option<KeySource>,
         /// Desired cannon to fire the transaction
         #[clap(long, short)]
         cannon: Option<CannonId>,
         #[clap(long)]
         priority_fee: Option<u32>,
-        #[clap(long, short)]
+        #[clap(long)]
         fee_record: Option<String>,
         /// Path to program or program content in stdin
         program: FileOrStdin<String>,

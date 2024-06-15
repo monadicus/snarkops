@@ -17,14 +17,17 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli env action online`↴](#snops-cli-env-action-online)
 * [`snops-cli env action reboot`↴](#snops-cli-env-action-reboot)
 * [`snops-cli env action execute`↴](#snops-cli-env-action-execute)
+* [`snops-cli env action deploy`↴](#snops-cli-env-action-deploy)
 * [`snops-cli env action config`↴](#snops-cli-env-action-config)
 * [`snops-cli env agent`↴](#snops-cli-env-agent)
 * [`snops-cli env agents`↴](#snops-cli-env-agents)
+* [`snops-cli env balance`↴](#snops-cli-env-balance)
 * [`snops-cli env clean`↴](#snops-cli-env-clean)
 * [`snops-cli env list`↴](#snops-cli-env-list)
 * [`snops-cli env topology`↴](#snops-cli-env-topology)
 * [`snops-cli env topology-resolved`↴](#snops-cli-env-topology-resolved)
 * [`snops-cli env prepare`↴](#snops-cli-env-prepare)
+* [`snops-cli env program`↴](#snops-cli-env-program)
 * [`snops-cli env storage`↴](#snops-cli-env-storage)
 * [`snops-cli man`↴](#snops-cli-man)
 * [`snops-cli md`↴](#snops-cli-md)
@@ -161,11 +164,13 @@ For interacting with snop environments
 * `action` — For interacting with snop environments
 * `agent` — Get an env's specific agent by
 * `agents` — List an env's agents
+* `balance` — Lookup an account's balance
 * `clean` — Clean a specific environment
 * `list` — List all environments. Ignores the env id
 * `topology` — Show the current topology of a specific environment
 * `topology-resolved` — Show the resolved topology of a specific environment. Shows only internal agents
 * `prepare` — Prepare a (test) environment
+* `program` — Lookup a program by its id
 * `storage` — Get an env's storage info
 
 ###### **Arguments:**
@@ -188,6 +193,7 @@ For interacting with snop environments
 * `online` — 
 * `reboot` — 
 * `execute` — 
+* `deploy` — 
 * `config` — 
 
 
@@ -234,9 +240,28 @@ For interacting with snop environments
 ###### **Options:**
 
 * `-p`, `--private-key <PRIVATE_KEY>` — Private key to use, can be `committee.0` to use committee member 0's key
+* `--fee-private-key <FEE_PRIVATE_KEY>` — Private key to use for the fee. Defaults to the same as --private-key
 * `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
 * `--priority-fee <PRIORITY_FEE>`
-* `-f`, `--fee-record <FEE_RECORD>`
+* `--fee-record <FEE_RECORD>`
+
+
+
+## `snops-cli env action deploy`
+
+**Usage:** `snops-cli env action deploy [OPTIONS] <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Path to program or program content in stdin
+
+###### **Options:**
+
+* `-p`, `--private-key <PRIVATE_KEY>` — Private key to use, can be `committee.0` to use committee member 0's key
+* `--fee-private-key <FEE_PRIVATE_KEY>` — Private key to use for the fee. Defaults to the same as --private-key
+* `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
+* `--priority-fee <PRIORITY_FEE>`
+* `--fee-record <FEE_RECORD>`
 
 
 
@@ -277,6 +302,18 @@ Get an env's specific agent by
 List an env's agents
 
 **Usage:** `snops-cli env agents`
+
+
+
+## `snops-cli env balance`
+
+Lookup an account's balance
+
+**Usage:** `snops-cli env balance <KEY>`
+
+###### **Arguments:**
+
+* `<KEY>`
 
 
 
@@ -321,6 +358,18 @@ Prepare a (test) environment
 ###### **Arguments:**
 
 * `<SPEC>` — The test spec file
+
+
+
+## `snops-cli env program`
+
+Lookup a program by its id
+
+**Usage:** `snops-cli env program <ID>`
+
+###### **Arguments:**
+
+* `<ID>`
 
 
 

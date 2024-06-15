@@ -33,7 +33,7 @@ pub struct AuthorizeFee<N: Network> {
     /// The Authorization for the program program execution
     #[arg(short, long, group = "program")]
     pub auth: Option<Authorization<N>>,
-    #[arg(short, long, group = "deployment")]
+    #[arg(short, long, group = "deploy")]
     pub deployment: Option<Deployment<N>>,
     /// The ID of the deployment or program execution
     #[arg(short, long, group = "manual")]
