@@ -1,9 +1,9 @@
-use anyhow::Result;
+use anyhow::{ensure, Result};
 use clap::Args;
 use clap_stdin::FileOrStdin;
 use snarkvm::{
     prelude::{Identifier, Value},
-    synthesizer::{Process, Program},
+    synthesizer::{process::deployment_cost, Process, Program},
 };
 
 use crate::{
@@ -19,8 +19,9 @@ pub struct CostCommand<N: Network> {
     pub query: Option<String>,
     /// Program to estimate the cost of.
     pub program: FileOrStdin<Program<N>>,
-    /// Program ID and function name (eg. credits.aleo/transfer_public)
-    function: Identifier<N>,
+    /// Program ID and function name (eg. credits.aleo/transfer_public). When
+    /// not specified, the cost of deploying the program is estimated.
+    function: Option<Identifier<N>>,
     /// Program inputs (eg. 1u64 5field)
     #[clap(num_args = 1, value_delimiter = ' ')]
     inputs: Vec<Value<N>>,
@@ -37,19 +38,29 @@ impl<N: Network> CostCommand<N> {
 
         let program = program.contents()?;
         let mut process = Process::load()?;
-        process.add_program(&program)?;
         query::get_process_imports(&mut process, &program, query.as_deref())?;
 
-        let auth = process
-            .get_stack(program.id())?
-            .authorize::<N::Circuit, _>(
-                &PrivateKey::new(&mut rand::thread_rng())?,
-                function,
-                inputs.iter(),
-                &mut rand::thread_rng(),
-            )?;
+        if let Some(function) = function {
+            process.add_program(&program)?;
+            ensure!(
+                program.functions().contains_key(&function),
+                "Function {} not found in program",
+                function
+            );
 
-        let cost = estimate_cost(&process, &auth)?;
-        Ok(cost)
+            let auth = process
+                .get_stack(program.id())?
+                .authorize::<N::Circuit, _>(
+                    &PrivateKey::new(&mut rand::thread_rng())?,
+                    function,
+                    inputs.iter(),
+                    &mut rand::thread_rng(),
+                )?;
+
+            estimate_cost(&process, &auth)
+        } else {
+            let deployment = process.deploy::<N::Circuit, _>(&program, &mut rand::thread_rng())?;
+            Ok(deployment_cost(&deployment)?.0)
+        }
     }
 }
