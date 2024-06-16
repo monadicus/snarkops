@@ -97,8 +97,6 @@ impl<N: Network> AuthCommand<N> {
             }
             AuthCommand::Cost(CostCommand { query, auth }) => {
                 let cost = match auth.pick()? {
-                    // TODO: fetch programs from the query based on the auth's transitions and
-                    // populate the process
                     AuthBlob::Program { auth, .. } => {
                         let mut process = Process::load()?;
                         let auth = auth.into();
@@ -108,7 +106,7 @@ impl<N: Network> AuthCommand<N> {
                             query::add_many_programs_to_process(&mut process, programs, query)?;
                         }
 
-                        estimate_cost(N::process(), &auth)?
+                        estimate_cost(&process, &auth)?
                     }
                     AuthBlob::Deploy { deployment, .. } => deployment_cost(&deployment)?.0,
                 };
@@ -122,6 +120,8 @@ impl<N: Network> AuthCommand<N> {
                 program_opts,
                 fee_opts,
             }) => {
+                let query = program_opts.query.clone();
+
                 let (auth, cost) = auth_program::AuthorizeProgram {
                     key: key.clone(),
                     options: program_opts,
@@ -138,6 +138,7 @@ impl<N: Network> AuthCommand<N> {
                     auth: None,
                     options: fee_opts,
                     deployment: None,
+                    query,
                     id: Some(auth.to_execution_id()?),
                     cost: Some(cost),
                 }
@@ -186,9 +187,10 @@ impl<N: Network> AuthCommand<N> {
                     key: fee_key.as_key().unwrap_or(key),
                     auth: None,
                     options: fee_opts,
-                    deployment: Some(deployment.clone()),
-                    id: None,
-                    cost: None,
+                    deployment: None,
+                    query: None,
+                    id: Some(deployment.to_deployment_id()?),
+                    cost: Some(deployment_cost(&deployment)?.0),
                 }
                 .parse()?
                 .map(Into::into);

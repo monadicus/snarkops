@@ -90,7 +90,11 @@ impl<'de, N: Network> Deserialize<'de> for AuthBlob<N> {
         D: serde::Deserializer<'de>,
     {
         let mut value = serde_json::Value::deserialize(deserializer)?;
-        let fee_auth = DeserializeExt::take_from_value::<D>(&mut value, "fee_auth")?;
+        let fee_auth = value
+            .get("fee_auth")
+            .is_some()
+            .then(|| DeserializeExt::take_from_value::<D>(&mut value, "fee_auth"))
+            .transpose()?;
 
         if value.get("auth").is_some() {
             Ok(Self::Program {

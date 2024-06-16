@@ -1,5 +1,6 @@
 use anyhow::{bail, Ok, Result};
 use clap::Args;
+use clap_stdin::MaybeStdin;
 use rand::{CryptoRng, Rng};
 use snarkvm::{
     ledger::Deployment,
@@ -11,6 +12,7 @@ use snarkvm::{
     utilities::ToBytes,
 };
 
+use super::query;
 // use tracing::error;
 use crate::{runner::Key, Authorization, Network, PTRecord, PrivateKey};
 
@@ -32,11 +34,15 @@ pub struct AuthorizeFee<N: Network> {
     pub key: Key<N>,
     #[clap(flatten)]
     pub options: AuthFeeOptions<N>,
-    /// The Authorization for the program program execution
+    /// The query to use for the program execution cost lookup
+    #[clap(long, group = "program")]
+    pub query: Option<String>,
+    /// The Authorization for the program execution
     #[arg(short, long, group = "program")]
-    pub auth: Option<Authorization<N>>,
+    pub auth: Option<MaybeStdin<Authorization<N>>>,
+    /// The Authorization for a deployment
     #[arg(short, long, group = "deploy")]
-    pub deployment: Option<Deployment<N>>,
+    pub deployment: Option<MaybeStdin<Deployment<N>>>,
     /// The ID of the deployment or program execution
     #[arg(short, long, group = "manual")]
     pub id: Option<Field<N>>,
@@ -49,12 +55,22 @@ impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
         let (id, base_fee) = match (self.auth, self.deployment, self.id, self.cost) {
             (Some(auth), None, None, None) => {
-                (auth.to_execution_id()?, estimate_cost(N::process(), &auth)?)
+                let auth = auth.into_inner();
+                let mut process = Process::load()?;
+                if let Some(query) = self.query.as_deref() {
+                    let programs = query::get_programs_from_auth(&auth);
+                    query::add_many_programs_to_process(&mut process, programs, query)?;
+                }
+
+                (auth.to_execution_id()?, estimate_cost(&process, &auth)?)
             }
-            (None, Some(deployment), None, None) => (
-                deployment.to_deployment_id()?,
-                deployment_cost(&deployment)?.0,
-            ),
+            (None, Some(deployment), None, None) => {
+                let deployment = deployment.into_inner();
+                (
+                    deployment.to_deployment_id()?,
+                    deployment_cost(&deployment)?.0,
+                )
+            }
             (None, None, Some(id), Some(cost)) => (id, cost),
             _ => bail!("Exactly one of auth, deployment, or id and cost must be provided"),
         };
@@ -143,6 +159,13 @@ pub fn estimate_cost<N: Network>(process: &Process<N>, func: &Authorization<N>) 
         )?
         .to_bytes_le()?
         .len() as u64; */
+
+        // storage cost multipliers.... snarkvm#2456
+        if cost > N::EXECUTION_STORAGE_PENALTY_THRESHOLD {
+            cost = cost
+                .saturating_mul(cost)
+                .saturating_div(N::EXECUTION_STORAGE_FEE_SCALING_FACTOR);
+        }
 
         cost
     };

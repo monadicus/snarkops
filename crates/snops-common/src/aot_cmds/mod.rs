@@ -31,6 +31,7 @@ pub enum Authorization {
     Deploy {
         owner: Value,
         deployment: Value,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
         fee_auth: Option<Value>,
     },
 }
