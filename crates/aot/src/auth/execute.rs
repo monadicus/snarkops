@@ -109,14 +109,6 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
                     }
                 }
 
-                eprintln!(
-                    "[debug] exec auth id {} -> fee id {:?}",
-                    auth.to_execution_id()?,
-                    fee_auth
-                        .as_ref()
-                        .map(|f| f.get(0).unwrap().inputs()[2].clone())
-                );
-
                 vm.execute_authorization(auth, fee_auth, query, rng)
             }
             AuthBlob::Deploy {

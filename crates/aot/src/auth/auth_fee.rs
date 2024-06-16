@@ -103,10 +103,10 @@ pub fn fee_auth<N: Network>(
     let process = N::process();
 
     // Authorize the fee.
-    let fee = if record.is_some() {
+    let fee = if let Some(record) = record {
         process.authorize_fee_private::<N::Circuit, _>(
             &private_key,
-            record.unwrap(),
+            record,
             base_fee_in_microcredits,
             priority_fee_in_microcredits,
             execution_id,

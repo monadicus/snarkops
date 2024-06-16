@@ -13,12 +13,6 @@ pub fn fetch_program<N: Network>(id: ProgramID<N>, query: &str) -> Result<Progra
     Ok(reqwest::blocking::get(format!("{query}/{}/program/{id}", N::str_id()))?.json()?)
 }
 
-/// Insert a program into the process
-pub fn insert_program<N: Network>(process: &mut Process<N>, program: Program<N>) -> Result<()> {
-    process.add_stack(Stack::new(process, &program)?);
-    Ok(())
-}
-
 /// Walks the program's imports and fetches them all.
 pub fn load_program<N: Network>(
     process: &mut Process<N>,
@@ -110,7 +104,7 @@ pub fn add_program_to_process<N: Network>(
         .map_err(|e| anyhow!("failed to fetch program {program_id}: {e:?}"))?;
 
     get_process_imports(process, &program, Some(query))?;
-    insert_program(process, program)?;
+    process.add_program(&program);
 
     Ok(())
 }
