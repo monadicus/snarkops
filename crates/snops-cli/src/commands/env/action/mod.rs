@@ -126,7 +126,7 @@ pub enum Action {
         /// Configure the validators of the target nodes, or `none`.
         #[clap(long, short)]
         validators: Option<NodesOption>,
-        /// The nodes to configure.zs
+        /// The nodes to configure.
         #[clap(num_args = 1, value_delimiter = ' ')]
         nodes: Vec<NodeTarget>,
     },

@@ -11,12 +11,13 @@ use crate::{
     Network, PrivateKey,
 };
 
+/// Compute the cost to execute a function in a given program.
 #[derive(Debug, Args)]
 pub struct CostCommand<N: Network> {
     /// Query to load the program with.
     #[clap(short, long)]
     pub query: Option<String>,
-    /// Program to estimate the cost of
+    /// Program to estimate the cost of.
     pub program: FileOrStdin<Program<N>>,
     /// Program ID and function name (eg. credits.aleo/transfer_public)
     function: Identifier<N>,

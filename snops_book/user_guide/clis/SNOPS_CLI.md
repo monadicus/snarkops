@@ -283,7 +283,7 @@ Configure the state of the target nodes
 
 ###### **Arguments:**
 
-* `<NODES>` — The nodes to configure
+* `<NODES>` — The nodes to configure.
 
 ###### **Options:**
 

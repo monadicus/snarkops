@@ -375,7 +375,7 @@ impl<N: Network> Genesis<N> {
                 .collect::<Result<_>>()?;
         }
 
-        // endregion: Genesis Recordszs
+        // endregion: Genesis Records
 
         // Initialize the genesis block.
         let block = genesis_quorum(

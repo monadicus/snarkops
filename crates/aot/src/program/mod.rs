@@ -11,9 +11,12 @@ pub mod cost;
 /// imports.
 #[derive(Debug, Subcommand)]
 pub enum ProgramCommand<N: Network> {
+    /// Get the ID of a given program.
     Id(ProgramInfo<N>),
+    /// List the functions and their inputs/outputs of a given program.
     #[clap(alias = "fn")]
     Functions(ProgramInfo<N>),
+    /// List the inputs of a given program.
     Imports(ProgramInfo<N>),
     Cost(cost::CostCommand<N>),
 }

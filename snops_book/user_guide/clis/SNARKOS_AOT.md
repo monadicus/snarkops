@@ -32,6 +32,11 @@ This document contains the help content for the `snarkos-aot` command-line progr
 * [`snarkos-aot auth id`↴](#snarkos-aot-auth-id)
 * [`snarkos-aot auth cost`↴](#snarkos-aot-auth-cost)
 * [`snarkos-aot auth deploy`↴](#snarkos-aot-auth-deploy)
+* [`snarkos-aot program`↴](#snarkos-aot-program)
+* [`snarkos-aot program id`↴](#snarkos-aot-program-id)
+* [`snarkos-aot program functions`↴](#snarkos-aot-program-functions)
+* [`snarkos-aot program imports`↴](#snarkos-aot-program-imports)
+* [`snarkos-aot program cost`↴](#snarkos-aot-program-cost)
 * [`snarkos-aot man`↴](#snarkos-aot-man)
 * [`snarkos-aot md`↴](#snarkos-aot-md)
 
@@ -48,6 +53,7 @@ The different AOT commands
 * `ledger` — Commands for interacting with the ledger
 * `run` — A wrapper around the snarkos node run commands that provide additional logging and configurability
 * `auth` — A command to help generate various different types of authorizations and execute them
+* `program` — A command to help gather information about a program, including its cost and imports
 * `man` — For generating cli manpages. Only with the mangen feature enabled
 * `md` — For generating cli markdown. Only with the clipages feature enabled
 
@@ -516,8 +522,9 @@ Authorize the fee for a program execution
 
   Default value: `0`
 * `--record <RECORD>` — The record for a private fee
-* `-a`, `--auth <AUTH>` — The Authorization for the program program execution
-* `-d`, `--deployment <DEPLOYMENT>`
+* `--query <QUERY>` — The query to use for the program execution cost lookup
+* `-a`, `--auth <AUTH>` — The Authorization for the program execution
+* `-d`, `--deployment <DEPLOYMENT>` — The Authorization for a deployment
 * `-i`, `--id <ID>` — The ID of the deployment or program execution
 * `-c`, `--cost <COST>` — Estimated cost of the deployment or program execution
 
@@ -587,6 +594,96 @@ Deploy a program to the network
   Default value: `0`
 * `--record <RECORD>` — The record for a private fee
 * `-q`, `--query <QUERY>` — The query to use for the program
+
+
+
+## `snarkos-aot program`
+
+A command to help gather information about a program, including its cost and imports
+
+**Usage:** `snarkos-aot program <COMMAND>`
+
+###### **Subcommands:**
+
+* `id` — Get the ID of a given program
+* `functions` — List the functions and their inputs/outputs of a given program
+* `imports` — List the inputs of a given program
+* `cost` — Compute the cost to execute a function in a given program
+
+
+
+## `snarkos-aot program id`
+
+Get the ID of a given program
+
+**Usage:** `snarkos-aot program id [OPTIONS] <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Path to .aleo program to get information about, or `-` for stdin
+
+###### **Options:**
+
+* `-j`, `--json` — Output as JSON
+
+  Possible values: `true`, `false`
+
+
+
+
+## `snarkos-aot program functions`
+
+List the functions and their inputs/outputs of a given program
+
+**Usage:** `snarkos-aot program functions [OPTIONS] <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Path to .aleo program to get information about, or `-` for stdin
+
+###### **Options:**
+
+* `-j`, `--json` — Output as JSON
+
+  Possible values: `true`, `false`
+
+
+
+
+## `snarkos-aot program imports`
+
+List the inputs of a given program
+
+**Usage:** `snarkos-aot program imports [OPTIONS] <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Path to .aleo program to get information about, or `-` for stdin
+
+###### **Options:**
+
+* `-j`, `--json` — Output as JSON
+
+  Possible values: `true`, `false`
+
+
+
+
+## `snarkos-aot program cost`
+
+Compute the cost to execute a function in a given program
+
+**Usage:** `snarkos-aot program cost [OPTIONS] <PROGRAM> <FUNCTION> [INPUTS]...`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Program to estimate the cost of
+* `<FUNCTION>` — Program ID and function name (eg. credits.aleo/transfer_public)
+* `<INPUTS>` — Program inputs (eg. 1u64 5field)
+
+###### **Options:**
+
+* `-q`, `--query <QUERY>` — Query to load the program with
 
 
 
