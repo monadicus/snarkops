@@ -15,7 +15,10 @@ use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
-use crate::{accounts::GenAccounts, auth::AuthCommand, genesis::Genesis, ledger::Ledger, Network};
+use crate::{
+    accounts::GenAccounts, auth::AuthCommand, genesis::Genesis, ledger::Ledger,
+    program::ProgramCommand, Network,
+};
 
 #[derive(Debug, Parser)]
 #[clap(author = "MONADIC.US")]
@@ -47,6 +50,8 @@ pub enum Command<N: Network> {
     Run(Runner<N>),
     #[clap(subcommand)]
     Auth(AuthCommand<N>),
+    #[clap(subcommand)]
+    Program(ProgramCommand<N>),
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
     #[cfg(feature = "clipages")]
@@ -247,6 +252,7 @@ impl<N: Network> Cli<N> {
             #[cfg(feature = "node")]
             Command::Run(command) => command.parse(),
             Command::Auth(command) => command.parse(),
+            Command::Program(command) => command.parse(),
             #[cfg(feature = "mangen")]
             Command::Man(mangen) => mangen.run(
                 Cli::<N>::command(),
