@@ -349,16 +349,18 @@ impl GlobalState {
                 continue;
             };
             match res {
-                Ok(res) => match res.json().await {
-                    Ok(e) => e,
+                Ok(res) => match res.json::<T>().await {
+                    Ok(e) => return Ok(e),
                     Err(e) => {
-                        tracing::error!("env {env_id} request {addr:?} failed to parse {url}: {e}");
+                        tracing::error!(
+                            "env {env_id} request {addr:?} failed to parse {url}: {e:?}"
+                        );
                         continue;
                     }
                 },
                 Err(e) => {
                     tracing::error!(
-                        "env {env_id} request {addr:?} failed to make request {url}: {e}"
+                        "env {env_id} request {addr:?} failed to make request {url}: {e:?}"
                     );
                     continue;
                 }

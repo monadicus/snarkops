@@ -104,7 +104,7 @@ pub fn add_program_to_process<N: Network>(
         .map_err(|e| anyhow!("failed to fetch program {program_id}: {e:?}"))?;
 
     get_process_imports(process, &program, Some(query))?;
-    process.add_program(&program);
+    process.add_program(&program)?;
 
     Ok(())
 }

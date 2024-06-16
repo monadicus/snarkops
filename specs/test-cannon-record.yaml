@@ -12,8 +12,8 @@ version: cannon.snarkos.testing.monadic.us/v1
 name: committee-tx-public
 
 source:
-  query: { mode: local }
-  compute: { labels: [local] }
+  query: "*/*" # node targets
+  labels: [local] # compute labels
 
 sink:
   tx-request-delay-ms: 1000
