@@ -13,15 +13,19 @@ use snarkvm::{
 
 use crate::{runner::Key, Network};
 
+/// The authorization arguments.
 #[derive(Clone, Debug, Parser)]
 pub struct AuthArgs<N: Network> {
-    /// Authorization of the program function
+    /// Authorization for an execution of some kind.
     #[clap(short, long)]
     pub auth: Option<ProxyAuthorization<N>>,
+    /// The optional fee authorization for said execution.
     #[clap(short, long)]
     pub fee_auth: Option<ProxyAuthorization<N>>,
+    /// The owner of the program if deploying.
     #[clap(short, long)]
     pub owner: Option<ProgramOwner<N>>,
+    /// The deployment of the program if deploying.
     #[clap(short, long)]
     pub deployment: Option<Deployment<N>>,
     /// Authorization flags as json
@@ -64,12 +68,17 @@ impl<N: Network> AuthArgs<N> {
 #[serde(untagged)]
 pub enum AuthBlob<N: Network> {
     Program {
+        /// The authorization for the program.
         auth: ProxyAuthorization<N>,
+        /// The optional fee authorization for the program.
         fee_auth: Option<ProxyAuthorization<N>>,
     },
     Deploy {
+        /// The owner of the program.
         owner: ProgramOwner<N>,
+        /// The deployment of the program.
         deployment: Deployment<N>,
+        /// The optional fee authorization for the deployment.
         #[serde(skip_serializing_if = "Option::is_none")]
         fee_auth: Option<ProxyAuthorization<N>>,
     },
@@ -106,12 +115,12 @@ impl<N: Network> FromStr for AuthBlob<N> {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
 /// This type exists because aleo's Authorization::try_from((Vec<Request>,
 /// Vec<Transition>)) has a bug that prevents deserialization from working on
 /// programs with multiple transitions
 ///
 /// This is a wrapper that converts to and from authorizations
+#[derive(Clone, Debug, Serialize)]
 pub struct ProxyAuthorization<N: Network> {
     pub requests: Vec<Request<N>>,
     pub transitions: Vec<Transition<N>>,
@@ -171,6 +180,8 @@ impl<N: Network> From<Authorization<N>> for ProxyAuthorization<N> {
     }
 }
 
+/// A private key for the fee account.
+/// Either a private key or a file containing the private key.
 #[derive(Debug, Args, Clone)]
 #[group(multiple = false)]
 pub struct FeeKey<N: Network> {

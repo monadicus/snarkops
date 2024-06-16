@@ -26,6 +26,8 @@ use crate::{Account, DbLedger, Network, PrivateKey};
 mod metrics;
 mod status;
 
+/// A command line argument for specifying the account private key of the node.
+/// Done by a private key or a private key file.
 #[derive(Debug, Args, Clone)]
 #[group(required = true, multiple = false)]
 pub struct Key<N: Network> {
@@ -51,6 +53,8 @@ impl<N: Network> Key<N> {
     }
 }
 
+/// A wrapper around the snarkos node run commands that provide additional
+/// logging and configurability.
 #[derive(Debug, Args)]
 pub struct Runner<N: Network> {
     /// A path to the genesis block to initialize the ledger from.
@@ -61,38 +65,42 @@ pub struct Runner<N: Network> {
     #[arg(required = true, short, long, default_value = "./ledger")]
     pub ledger: PathBuf,
 
+    /// The type of node to run: validator, prover, or client.
     #[arg(required = true, name = "type", short, long)]
     pub node_type: NodeType,
 
     #[clap(flatten)]
     pub key: Key<N>,
 
+    /// Specify the IP(v4 or v6) address to bind to.
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
-    /// Specify the IP address and port for the node server
+    /// Specify the IP address and port for the node server.
     #[clap(long, default_value_t = 4130)]
     pub node: u16,
-    /// Specify the IP address and port for the BFT
+    /// Specify the IP address and port for the BFT.
     #[clap(long, default_value_t = 5000)]
     pub bft: u16,
-    /// Specify the IP address and port for the REST server
+    /// Specify the IP address and port for the REST server.
     #[clap(long, default_value_t = 3030)]
     pub rest: u16,
-    /// Specify the port for the metrics server
+    /// Specify the port for the metrics server.
     #[clap(long, default_value_t = 9000)]
     pub metrics: u16,
 
-    /// Specify the IP address and port of the peer(s) to connect to
+    /// Specify the IP address and port of the peer(s) to connect to.
     #[clap(long, num_args = 1, value_delimiter = ',')]
     pub peers: Vec<SocketAddr>,
-    /// Specify the IP address and port of the validator(s) to connect to
+    /// Specify the IP address and port of the validator(s) to connect to.
     #[clap(long, num_args = 1, value_delimiter = ',')]
     pub validators: Vec<SocketAddr>,
     /// Specify the requests per second (RPS) rate limit per IP for the REST
-    /// server
+    /// server.
     #[clap(long, default_value_t = 1000)]
     pub rest_rps: u32,
 
+    /// The retention policy for the checkpoint manager. i.e. how often to
+    /// create checkpoints.
     #[clap(long)]
     pub retention_policy: Option<RetentionPolicy>,
 

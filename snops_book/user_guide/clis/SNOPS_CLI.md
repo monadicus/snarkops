@@ -161,7 +161,7 @@ For interacting with snop environments
 
 ###### **Subcommands:**
 
-* `action` — For interacting with snop environments
+* `action` — Actions you can apply on a specific environment
 * `agent` — Get an env's specific agent by
 * `agents` — List an env's agents
 * `balance` — Lookup an account's balance
@@ -175,7 +175,7 @@ For interacting with snop environments
 
 ###### **Arguments:**
 
-* `<ID>` — Show a specific env
+* `<ID>` — Work with a specific env
 
   Default value: `default`
 
@@ -183,22 +183,24 @@ For interacting with snop environments
 
 ## `snops-cli env action`
 
-For interacting with snop environments
+Actions you can apply on a specific environment
 
 **Usage:** `snops-cli env action <COMMAND>`
 
 ###### **Subcommands:**
 
-* `offline` — 
-* `online` — 
-* `reboot` — 
-* `execute` — 
-* `deploy` — 
-* `config` — 
+* `offline` — Turn the specified agents(and nodes) offline
+* `online` — Turn the specified agents(and nodes) online
+* `reboot` — Reboot the specified agents(and nodes)
+* `execute` — Execute an aleo program function on the environment. i.e. credits.aleo/transfer_public
+* `deploy` — Deploy an aleo program to the environment
+* `config` — Configure the state of the target nodes
 
 
 
 ## `snops-cli env action offline`
+
+Turn the specified agents(and nodes) offline
 
 **Usage:** `snops-cli env action offline [NODES]...`
 
@@ -210,6 +212,8 @@ For interacting with snop environments
 
 ## `snops-cli env action online`
 
+Turn the specified agents(and nodes) online
+
 **Usage:** `snops-cli env action online [NODES]...`
 
 ###### **Arguments:**
@@ -220,6 +224,8 @@ For interacting with snop environments
 
 ## `snops-cli env action reboot`
 
+Reboot the specified agents(and nodes)
+
 **Usage:** `snops-cli env action reboot [NODES]...`
 
 ###### **Arguments:**
@@ -229,6 +235,8 @@ For interacting with snop environments
 
 
 ## `snops-cli env action execute`
+
+Execute an aleo program function on the environment. i.e. credits.aleo/transfer_public
 
 **Usage:** `snops-cli env action execute [OPTIONS] <LOCATOR> [INPUTS]...`
 
@@ -242,12 +250,14 @@ For interacting with snop environments
 * `-p`, `--private-key <PRIVATE_KEY>` — Private key to use, can be `committee.0` to use committee member 0's key
 * `--fee-private-key <FEE_PRIVATE_KEY>` — Private key to use for the fee. Defaults to the same as --private-key
 * `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
-* `--priority-fee <PRIORITY_FEE>`
-* `--fee-record <FEE_RECORD>`
+* `--priority-fee <PRIORITY_FEE>` — The optional priority fee to use
+* `--fee-record <FEE_RECORD>` — The fee record to use if you want to pay the fee privately
 
 
 
 ## `snops-cli env action deploy`
+
+Deploy an aleo program to the environment
 
 **Usage:** `snops-cli env action deploy [OPTIONS] <PROGRAM>`
 
@@ -260,12 +270,14 @@ For interacting with snop environments
 * `-p`, `--private-key <PRIVATE_KEY>` — Private key to use, can be `committee.0` to use committee member 0's key
 * `--fee-private-key <FEE_PRIVATE_KEY>` — Private key to use for the fee. Defaults to the same as --private-key
 * `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
-* `--priority-fee <PRIORITY_FEE>`
-* `--fee-record <FEE_RECORD>`
+* `--priority-fee <PRIORITY_FEE>` — The optional priority fee to use
+* `--fee-record <FEE_RECORD>` — The fee record to use if you want to pay the fee privately
 
 
 
 ## `snops-cli env action config`
+
+Configure the state of the target nodes
 
 **Usage:** `snops-cli env action config [OPTIONS] [NODES]...`
 
@@ -389,7 +401,7 @@ For generating cli manpages. Only with the mangen feature enabled
 
 ###### **Arguments:**
 
-* `<DIRECTORY>`
+* `<DIRECTORY>` — Directory to write manpages to
 
   Default value: `target/man/snops-cli`
 
@@ -403,7 +415,7 @@ For generating cli markdown. Only with the clipages feature enabled
 
 ###### **Arguments:**
 
-* `<DIRECTORY>`
+* `<DIRECTORY>` — Directory to write markdown to
 
   Default value: `snops_book/user_guide/clis`
 

@@ -4,6 +4,7 @@ use snarkvm::console::program::Network;
 
 use crate::DbLedger;
 
+/// Used to initialize a new ledger given a genesis block.
 #[derive(Debug, Args)]
 pub struct Init;
 

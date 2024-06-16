@@ -21,28 +21,28 @@ use tracing_appender::non_blocking::NonBlocking;
 
 use crate::{Block, DbLedger, Network, Transaction};
 
+/// Receive inquiries on `/<network>/latest/stateRoot`.
 #[derive(Debug, Args, Clone)]
-/// Receive inquiries on /<network>/latest/stateRoot
 pub struct LedgerQuery<N: Network> {
+    /// Port to listen on for incoming messages.
     #[arg(long, default_value = "3030")]
-    /// Port to listen on for incoming messages
     pub port: u16,
 
+    // IP address to bind to.
     #[arg(long, default_value = "0.0.0.0")]
-    // IP address to bind to
     pub bind: IpAddr,
 
+    /// When true, the POST `/block` endpoint will not be available.
     #[arg(long)]
-    /// When true, the POST /block endpoint will not be available
     pub readonly: bool,
 
+    /// Receive messages from `/<network>/transaction/broadcast` and record them
+    /// to the output.
     #[arg(long)]
-    /// Receive messages from /<network>/transaction/broadcast and record them
-    /// to the output
     pub record: bool,
 
+    /// Path to the directory containing the stored data.
     #[arg(long, short, default_value = "transactions.json")]
-    /// Path to the directory containing the stored data
     pub output: PathBuf,
 
     #[clap(skip)]

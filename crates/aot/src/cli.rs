@@ -23,11 +23,13 @@ pub struct Cli<N: Network> {
     #[arg(long)]
     pub enable_profiling: bool,
 
+    /// The path to the log file.
     #[arg(long)]
     pub log: Option<PathBuf>,
+    /// The verbosity level of the logs.
     #[arg(long, default_value_t = 4)]
     pub verbosity: u8,
-
+    /// The optional loki url to send logs to.
     #[arg(long)]
     pub loki: Option<Url>,
 
@@ -35,6 +37,7 @@ pub struct Cli<N: Network> {
     pub command: Command<N>,
 }
 
+/// The different AOT commands.
 #[derive(Debug, Parser)]
 pub enum Command<N: Network> {
     Genesis(Genesis<N>),

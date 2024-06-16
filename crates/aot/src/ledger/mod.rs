@@ -19,6 +19,7 @@ pub mod truncate;
 pub mod util;
 pub mod view;
 
+/// Commands for interacting with the ledger.
 #[derive(Debug, Args)]
 pub struct Ledger<N: Network> {
     #[arg(long)]
@@ -45,6 +46,7 @@ pub enum Commands<N: Network> {
     Truncate(truncate::Truncate),
     Execute(Execute<N>),
     Query(query::LedgerQuery<N>),
+    /// Hash the ledger.
     Hash,
     #[clap(subcommand)]
     Checkpoint(CheckpointCommand),

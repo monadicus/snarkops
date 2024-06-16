@@ -7,6 +7,7 @@ use crate::{runner::Key, Authorization, Network, Value};
 
 #[derive(Debug, Args)]
 pub struct AuthProgramOptions<N: Network> {
+    /// Query to load the program with.
     #[clap(short, long)]
     pub query: Option<String>,
     /// Program ID and function name (eg. credits.aleo/transfer_public)

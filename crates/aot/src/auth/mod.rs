@@ -14,30 +14,31 @@ pub mod auth_program;
 pub mod execute;
 pub mod query;
 
+/// A command to help generate various different types of authorizations and
+/// execute them.
 #[derive(Debug, Subcommand)]
 pub enum AuthCommand<N: Network> {
-    /// Execute an authorization
     Execute(execute::Execute<N>),
-    /// Authorize a program execution
     Program(AuthProgramCommand<N>),
-    /// Authorize the fee for a program execution
     Fee(auth_fee::AuthorizeFee<N>),
-    /// Given an authorization (and fee), return the transaction ID
+    /// Given an authorization (and fee), return the transaction ID.
     Id(AuthArgs<N>),
-    /// Estimate the cost of a program execution or deployment
     Cost(CostCommand<N>),
-    /// Deploy a program to the network
     Deploy(AuthDeployCommand<N>),
 }
 
+/// Estimate the cost of a program execution or deployment.
+
 #[derive(Debug, Args)]
 pub struct CostCommand<N: Network> {
+    /// The query to use for the program.
     #[clap(long)]
     query: Option<String>,
     #[clap(flatten)]
     auth: AuthArgs<N>,
 }
 
+/// Authorize a program execution.
 #[derive(Debug, Args)]
 pub struct AuthProgramCommand<N: Network> {
     #[clap(flatten)]
@@ -53,6 +54,7 @@ pub struct AuthProgramCommand<N: Network> {
     pub program_opts: auth_program::AuthProgramOptions<N>,
 }
 
+/// Deploy a program to the network.
 #[derive(Debug, Args)]
 pub struct AuthDeployCommand<N: Network> {
     #[clap(flatten)]

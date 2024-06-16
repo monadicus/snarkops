@@ -9,22 +9,23 @@ use tracing::{info, trace};
 use super::truncate::Truncate;
 use crate::{ledger::util, DbLedger};
 
+/// A command to interact with checkpoints.
 #[derive(Debug, Parser)]
 pub enum CheckpointCommand {
-    /// Create a checkpoint for the given ledger
+    /// Create a checkpoint for the given ledger.
     Create,
-    /// Apply a checkpoint to the given ledger
+    /// Apply a checkpoint to the given ledger.
     Apply {
-        /// Checkpoint file to apply
+        /// Checkpoint file to apply.
         checkpoint: PathBuf,
         /// When present, clean up old checkpoints that are no longer applicable
-        /// after applying the checkpoint
+        /// after applying the checkpoint.
         #[clap(long, short, default_value = "false")]
         clean: bool,
     },
-    /// View the available checkpoints
+    /// View the available checkpoints.
     View,
-    /// Cleanup old checkpoints
+    /// Cleanup old checkpoints.
     Clean,
 }
 

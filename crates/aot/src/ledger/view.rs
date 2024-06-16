@@ -10,12 +10,26 @@ use snarkvm::{
 
 use crate::{ledger::util, Address, DbLedger, PrivateKey, ViewKey};
 
+/// Used to view information about the ledger.
 #[derive(Debug, Subcommand)]
 pub enum View<N: Network> {
+    /// View the top block of the ledger.
     Top,
-    Block { block_height: u32 },
-    Balance { address: String },
-    Records { private_key: PrivateKey<N> },
+    /// View a specific block in the ledger.
+    Block {
+        /// The height of the block to view.
+        block_height: u32,
+    },
+    /// View the balance of an address.
+    Balance {
+        /// The address to view the balance of.
+        address: Address<N>,
+    },
+    /// View records associated with a private key.
+    Records {
+        /// The private key to view records for.
+        private_key: PrivateKey<N>,
+    },
 }
 
 impl<N: Network> View<N> {
@@ -29,9 +43,7 @@ impl<N: Network> View<N> {
                 println!("{:#?}", ledger.latest_block());
             }
             View::Balance { address } => {
-                let addr = Address::from_str(&address)?;
-
-                println!("{address} balance {}", util::get_balance(addr, ledger)?);
+                println!("{address} balance {}", util::get_balance(address, ledger)?);
             }
             View::Records { private_key } => {
                 let view_key = ViewKey::try_from(private_key)?;

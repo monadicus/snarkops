@@ -18,14 +18,15 @@ pub enum ExecMode {
     Remote,
 }
 
+/// A command to execute an authorization.
 #[derive(Debug, Args)]
 pub struct Execute<N: Network> {
+    /// The execution mode: local(local ledgr) or remote(api to another node).
     #[arg(short, long, value_enum, default_value_t = ExecMode::Local)]
     pub exec_mode: ExecMode,
-    /// Query endpoint
+    /// Query endpoint.
     #[arg(short, long)]
     pub query: String,
-    /// The authorization for the fee execution.
     /// Whether to broadcast the transaction.
     #[arg(short, long, default_value_t = false)]
     pub broadcast: bool,

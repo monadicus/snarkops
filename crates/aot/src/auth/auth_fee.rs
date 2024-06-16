@@ -14,6 +14,7 @@ use snarkvm::{
 // use tracing::error;
 use crate::{runner::Key, Authorization, Network, PTRecord, PrivateKey};
 
+/// The authorization arguments for a fee.
 #[derive(Debug, Args)]
 pub struct AuthFeeOptions<N: Network> {
     /// The priority fee in microcredits.
@@ -24,6 +25,7 @@ pub struct AuthFeeOptions<N: Network> {
     pub record: Option<PTRecord<N>>,
 }
 
+/// Authorize the fee for a program execution.
 #[derive(Debug, Args)]
 pub struct AuthorizeFee<N: Network> {
     #[clap(flatten)]

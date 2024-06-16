@@ -10,14 +10,14 @@ mod action;
 /// For interacting with snop environments.
 #[derive(Debug, Parser)]
 pub struct Env {
-    /// Show a specific env.
+    /// Work with a specific env.
     #[clap(default_value = "default", value_hint = ValueHint::Other)]
     id: String,
     #[clap(subcommand)]
     command: EnvCommands,
 }
 
-/// Env commands
+/// Env commands.
 #[derive(Debug, Parser)]
 enum EnvCommands {
     #[clap(subcommand)]

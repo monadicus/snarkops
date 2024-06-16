@@ -33,6 +33,8 @@ impl<N: Network, T: DeserializeOwned> FromStr for AddressMap<N, T> {
     }
 }
 
+/// This command helps generate a custom genesis block given an initial private
+/// key, seed, and committee size.
 #[derive(Debug, Clone, Parser)]
 pub struct Genesis<N: Network> {
     /// The private key to use when generating the genesis block. Generates one
