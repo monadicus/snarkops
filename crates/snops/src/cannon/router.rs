@@ -27,6 +27,10 @@ pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
         .route("/:cannon/:network/latest/stateRoot", get(state_root))
         .route("/:cannon/:network/stateRoot/latest", get(state_root))
         .route("/:cannon/:network/transaction/broadcast", post(transaction))
+        .route(
+            "/:cannon/:network/find/blockHash/:tx",
+            get(get_tx_blockhash),
+        )
         .route("/:cannon/:network/program/:program", get(get_program_json))
         .route(
             "/:cannon/:network/program/:program/mappings",
@@ -144,6 +148,48 @@ async fn get_mappings_json(
         QueryTarget::Node(target) => {
             match state
                 .snarkos_get::<Vec<String>>(env_id, format!("/program/{program}/mappings"), target)
+                .await
+            {
+                Ok(res) => Json(res).into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("{e}") })),
+                )
+                    .into_response(),
+            }
+        }
+    }
+}
+
+async fn get_tx_blockhash(
+    Path((env_id, cannon_id, network, transaction)): Path<(String, String, NetworkId, String)>,
+    state: State<AppState>,
+) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
+    };
+
+    if env.network != network {
+        return ServerError::NotFound("network mismatch".to_owned()).into_response();
+    }
+
+    let Some(cannon) = env.get_cannon(cannon_id) else {
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
+    };
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Option<String>>(
+                    env_id,
+                    format!("/find/blockHash/{transaction}"),
+                    target,
+                )
                 .await
             {
                 Ok(res) => Json(res).into_response(),
