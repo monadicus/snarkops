@@ -269,6 +269,7 @@ pub async fn load_ledger(
     command
         .stdout(std::io::stdout())
         .stderr(std::io::stderr())
+        .env("NETWORK", info.network.to_string())
         .arg("ledger")
         .arg("--ledger")
         .arg(&ledger_dir);
