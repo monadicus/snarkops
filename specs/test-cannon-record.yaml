@@ -16,5 +16,4 @@ source:
   labels: [local] # compute labels
 
 sink:
-  tx-request-delay-ms: 1000
   file-name: txs.json
