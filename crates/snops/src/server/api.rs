@@ -12,15 +12,20 @@ use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
     constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
+    key_source::KeySource,
     lasso::Spur,
+    node_targets::NodeTargets,
     rpc::agent::AgentMetric,
-    state::{id_or_none, AgentModeOptions, AgentState, EnvId, NodeKey},
+    state::{id_or_none, AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
 
 use super::{actions, error::ServerError, models::AgentStatusResponse, AppState};
-use crate::{cannon::router::redirect_cannon_routes, schema::storage::DEFAULT_AOT_BIN};
+use crate::{
+    cannon::{router::redirect_cannon_routes, source::QueryTarget},
+    schema::storage::DEFAULT_AOT_BIN,
+};
 use crate::{
     env::{EnvPeer, Environment},
     state::AgentFlags,
@@ -61,7 +66,9 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/info", get(get_env_info))
         .route("/env/:env_id/block_info", get(get_env_block_info))
+        .route("/env/:env_id/balance/:key", get(get_env_balance))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
+        .route("/env/:env_id/program/:program", get(get_program))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
         .nest("/env/:env_id/action", actions::routes())
@@ -87,6 +94,56 @@ async fn get_env_block_info(Path(env_id): Path<String>, state: State<AppState>) 
     let block_info = unwrap_or_not_found!(state.get_env_block_info(env_id));
 
     Json(block_info).into_response()
+}
+
+async fn get_env_balance(
+    Path((env_id, keysource)): Path<(String, KeySource)>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
+
+    let KeyState::Literal(key) = env.storage.sample_keysource_addr(&keysource) else {
+        return ServerError::NotFound(format!("keysource pubkey {keysource}")).into_response();
+    };
+
+    let Some(cannon) = env.get_cannon(CannonId::default()) else {
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
+    };
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Option<String>>(
+                    env_id,
+                    format!("/program/credits.aleo/mapping/account/{key}"),
+                    target,
+                )
+                .await
+            {
+                Ok(None) => "0".to_string().into_response(),
+                Ok(Some(value)) => if let Some(balance) = value
+                    .strip_suffix("u64")
+                    .and_then(|s| u64::from_str(s).ok())
+                {
+                    balance.to_string().into_response()
+                } else {
+                    (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        Json(json!({ "error": format!("unexpected value '{value}'") })),
+                    )
+                        .into_response()
+                }
+                .into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("{e}") })),
+                )
+                    .into_response(),
+            }
+        }
+    }
 }
 
 async fn redirect_storage(
@@ -149,6 +206,20 @@ async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Respon
     {
         Ok(tps) => tps.to_string().into_response(),
         Err(_e) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn get_program(
+    Path((env_id, program)): Path<(String, String)>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    match state
+        .snarkos_get::<String>(env_id, format!("/program/{program}"), &NodeTargets::ALL)
+        .await
+    {
+        Ok(program) => program.into_response(),
+        Err(e) => ServerError::from(e).into_response(),
     }
 }
 

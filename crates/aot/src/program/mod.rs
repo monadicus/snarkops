@@ -1,83 +1,94 @@
 use anyhow::Result;
-use args::{AuthArgs, AuthBlob, FeeKey};
 use clap::{Args, Subcommand};
+use clap_stdin::FileOrStdin;
+use serde_json::json;
+use snarkvm::synthesizer::Program;
 
-use crate::{runner::Key, Network};
+use crate::Network;
+pub mod cost;
 
-pub mod args;
-pub mod auth_fee;
-pub mod auth_id;
-pub mod auth_program;
-pub mod execute;
-mod macros;
-pub use macros::*;
-
+/// A command to help gather information about a program, including its cost and
+/// imports.
 #[derive(Debug, Subcommand)]
-pub enum Program<N: Network> {
-    /// Execute an authorization
-    Execute(execute::Execute<N>),
-    /// Authorize a program execution
-    AuthorizeProgram(auth_program::AuthorizeProgram<N>),
-    /// Authorize the fee for a program execution
-    AuthorizeFee(auth_fee::AuthorizeFee<N>),
-    /// Authorize a program execution and its fee
-    Authorize(Authorize<N>),
-    /// Given an authorization (and fee), return the transaction ID
-    Id(AuthArgs<N>),
+pub enum ProgramCommand<N: Network> {
+    /// Get the ID of a given program.
+    Id(ProgramInfo<N>),
+    /// List the functions and their inputs/outputs of a given program.
+    #[clap(alias = "fn")]
+    Functions(ProgramInfo<N>),
+    /// List the inputs of a given program.
+    Imports(ProgramInfo<N>),
+    Cost(cost::CostCommand<N>),
 }
 
-#[derive(Debug, Args)]
-pub struct Authorize<N: Network> {
-    #[clap(flatten)]
-    pub key: Key<N>,
-    #[clap(flatten)]
-    pub fee_key: FeeKey<N>,
-    #[clap(flatten)]
-    pub fee_opts: auth_fee::AuthFeeOptions<N>,
-    #[clap(flatten)]
-    pub program_opts: auth_program::AuthProgramOptions<N>,
-}
-
-impl<N: Network> Program<N> {
-    pub(crate) fn parse(self) -> Result<()> {
+impl<N: Network> ProgramCommand<N> {
+    pub fn parse(self) -> Result<()> {
         match self {
-            Program::Execute(command) => command.parse(),
-            Program::Id(args) => {
-                let AuthBlob { auth, fee_auth } = args.pick()?;
-                let id = auth_id::auth_tx_id(&auth, fee_auth.as_ref())?;
-                println!("{id}");
-                Ok(())
-            }
-            Program::Authorize(Authorize {
-                key,
-                fee_key,
-                program_opts,
-                fee_opts,
-            }) => {
-                let auth = auth_program::AuthorizeProgram {
-                    key: key.clone(),
-                    options: program_opts,
+            ProgramCommand::Id(ProgramInfo { program, json }) => {
+                if json {
+                    println!("{}", serde_json::to_string(&program.contents()?.id())?);
+                } else {
+                    println!("{}", program.contents()?.id());
                 }
-                .parse()?;
-
-                let fee_auth = auth_fee::AuthorizeFee {
-                    key: fee_key.as_key().unwrap_or(key),
-                    auth: auth.clone(),
-                    options: fee_opts,
+                Ok(())
+            }
+            ProgramCommand::Functions(ProgramInfo { program, json }) => {
+                let program = program.contents()?;
+                if json {
+                    let mut functions = indexmap::IndexMap::new();
+                    for (id, function) in program.functions() {
+                        functions.insert(
+                            id,
+                            json!({
+                                "inputs": function.input_types(),
+                                "outputs": function.output_types(),
+                            }),
+                        );
+                    }
+                    println!("{}", serde_json::to_string(&functions)?);
+                } else {
+                    for (id, function) in program.functions() {
+                        println!("name: {id}");
+                        println!("inputs:");
+                        for input in function.input_types() {
+                            println!("  {input}");
+                        }
+                        println!("outputs:");
+                        for output in &function.output_types() {
+                            println!("  {output}");
+                        }
+                        println!();
+                    }
                 }
-                .parse()?;
-
-                println!("{}", serde_json::to_string(&AuthBlob { auth, fee_auth })?);
                 Ok(())
             }
-            Program::AuthorizeProgram(command) => {
-                println!("{}", serde_json::to_string(&command.parse()?)?);
+            ProgramCommand::Imports(ProgramInfo { program, json }) => {
+                let program = program.contents()?;
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&program.imports().keys().collect::<Vec<_>>())?
+                    );
+                } else {
+                    for (id, _import) in program.imports() {
+                        println!("{id}");
+                    }
+                }
                 Ok(())
             }
-            Program::AuthorizeFee(command) => {
-                println!("{}", serde_json::to_string(&command.parse()?)?);
+            ProgramCommand::Cost(command) => {
+                println!("{}", command.parse()?);
                 Ok(())
             }
         }
     }
+}
+
+#[derive(Debug, Args)]
+pub struct ProgramInfo<N: Network> {
+    /// Path to .aleo program to get information about, or `-` for stdin.
+    pub program: FileOrStdin<Program<N>>,
+    /// Output as JSON
+    #[clap(long, short)]
+    pub json: bool,
 }

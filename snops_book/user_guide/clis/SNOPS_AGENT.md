@@ -76,7 +76,7 @@ For generating cli manpages. Only with the mangen feature enabled
 
 ###### **Arguments:**
 
-* `<DIRECTORY>`
+* `<DIRECTORY>` — Directory to write manpages to
 
   Default value: `target/man/snops-cli`
 
@@ -90,7 +90,7 @@ For generating cli markdown. Only with the clipages feature enabled
 
 ###### **Arguments:**
 
-* `<DIRECTORY>`
+* `<DIRECTORY>` — Directory to write markdown to
 
   Default value: `snops_book/user_guide/clis`
 

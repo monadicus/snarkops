@@ -10,13 +10,15 @@ use clap::CommandFactory;
 use clap::Parser;
 use crossterm::tty::IsTty;
 use reqwest::Url;
-use snarkvm::console::program::Network;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
-use crate::{accounts::GenAccounts, genesis::Genesis, ledger::Ledger, program::Program};
+use crate::{
+    accounts::GenAccounts, auth::AuthCommand, genesis::Genesis, ledger::Ledger,
+    program::ProgramCommand, Network,
+};
 
 #[derive(Debug, Parser)]
 #[clap(author = "MONADIC.US")]
@@ -24,11 +26,13 @@ pub struct Cli<N: Network> {
     #[arg(long)]
     pub enable_profiling: bool,
 
+    /// The path to the log file.
     #[arg(long)]
     pub log: Option<PathBuf>,
+    /// The verbosity level of the logs.
     #[arg(long, default_value_t = 4)]
     pub verbosity: u8,
-
+    /// The optional loki url to send logs to.
     #[arg(long)]
     pub loki: Option<Url>,
 
@@ -36,6 +40,7 @@ pub struct Cli<N: Network> {
     pub command: Command<N>,
 }
 
+/// The different AOT commands.
 #[derive(Debug, Parser)]
 pub enum Command<N: Network> {
     Genesis(Genesis<N>),
@@ -44,7 +49,9 @@ pub enum Command<N: Network> {
     #[cfg(feature = "node")]
     Run(Runner<N>),
     #[clap(subcommand)]
-    Program(Program<N>),
+    Auth(AuthCommand<N>),
+    #[clap(subcommand)]
+    Program(ProgramCommand<N>),
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
     #[cfg(feature = "clipages")]
@@ -244,6 +251,7 @@ impl<N: Network> Cli<N> {
             Command::Ledger(command) => command.parse(),
             #[cfg(feature = "node")]
             Command::Run(command) => command.parse(),
+            Command::Auth(command) => command.parse(),
             Command::Program(command) => command.parse(),
             #[cfg(feature = "mangen")]
             Command::Man(mangen) => mangen.run(

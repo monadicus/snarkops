@@ -13,6 +13,7 @@ mangen = ["snops-common/mangen"]
 anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
+clap-stdin.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
 serde.workspace = true
 serde_json.workspace = true

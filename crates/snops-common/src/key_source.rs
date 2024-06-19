@@ -30,6 +30,8 @@ pub enum KeySource {
     PrivateKeyLiteral(String),
     /// aleo1...
     PublicKeyLiteral(String),
+    /// program_name1.aleo
+    ProgramLiteral(String),
     /// committee.0 or committee.$ (for replicas)
     Committee(Option<usize>),
     /// accounts.0 or accounts.$ (for replicas)
@@ -109,7 +111,14 @@ impl FromStr for KeySource {
             static ref NAMED_KEYSOURCE_REGEX: regex::Regex =
                 regex::Regex::new(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9\-_.]{0,63})\.(?P<idx>\d+|\$)$")
                     .unwrap();
+            static ref NAMED_PROGRAM_REGEX: regex::Regex =
+                regex::Regex::new(r"^[A-Za-z0-9_]{1,256}\.aleo$").unwrap();
         }
+
+        if NAMED_PROGRAM_REGEX.is_match(s) {
+            return Ok(KeySource::ProgramLiteral(s.to_string()));
+        }
+
         let groups = NAMED_KEYSOURCE_REGEX
             .captures(s)
             .ok_or(KeySourceError::InvalidKeySource)?;
@@ -131,6 +140,7 @@ impl fmt::Display for KeySource {
             match self {
                 KeySource::Local => "local".to_owned(),
                 KeySource::PrivateKeyLiteral(key) => key.to_owned(),
+                KeySource::ProgramLiteral(key) => key.to_owned(),
                 KeySource::PublicKeyLiteral(key) => key.to_owned(),
                 KeySource::Committee(None) => "committee.$".to_owned(),
                 KeySource::Committee(Some(idx)) => {
@@ -171,6 +181,7 @@ impl DataFormat for KeySource {
             KeySource::PublicKeyLiteral(key) => {
                 writer.write_data(&6u8)? + writer.write_data(key)?
             }
+            KeySource::ProgramLiteral(key) => writer.write_data(&7u8)? + writer.write_data(key)?,
         })
     }
 
@@ -197,6 +208,7 @@ impl DataFormat for KeySource {
                 Some(reader.read_data(&())?),
             )),
             6u8 => Ok(KeySource::PublicKeyLiteral(reader.read_data(&())?)),
+            7u8 => Ok(KeySource::ProgramLiteral(reader.read_data(&())?)),
             n => Err(DataReadError::Custom(format!("invalid KeySource tag {n}"))),
         }
     }

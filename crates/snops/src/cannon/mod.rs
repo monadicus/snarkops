@@ -195,6 +195,16 @@ impl CannonInstance {
         self.ctx().spawn(rx).await
     }
 
+    /// Get an expected local query address for this cannon
+    pub fn get_local_query(&self) -> String {
+        format!(
+            "http://{}/api/v1/env/{}/cannons/{}",
+            self.global_state.cli.get_local_addr(),
+            self.env_id,
+            self.id
+        )
+    }
+
     /// Called by axum to forward /cannon/<id>/<network>/latest/stateRoot
     /// to the ledger query service's /<network>/latest/stateRoot
     pub async fn proxy_state_root(&self) -> Result<String, CannonError> {
@@ -380,14 +390,7 @@ impl ExecutionContext {
         match self
             .source
             .compute
-            .execute(
-                &self.state,
-                &env,
-                query_path,
-                &auth.auth,
-                auth.fee_auth.as_ref(),
-                &events,
-            )
+            .execute(&self.state, &env, query_path, &auth, &events)
             .await
         {
             // requeue the auth if no agents are available

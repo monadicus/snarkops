@@ -69,6 +69,29 @@ pub struct ExecuteAction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct DeployAction {
+    /// The private key to use for the transaction. If not provided, the
+    /// transaction will be signed with the committee member 0's key.
+    #[serde(default = "committee_0_key")]
+    pub private_key: KeySource,
+    /// A private key to use for the fee. If not provided, the fee will be paid
+    /// from the `private_key`
+    pub fee_private_key: Option<KeySource>,
+    /// The program to deploy
+    pub program: String,
+    /// The cannon id of who to execute the transaction
+    #[serde(default)]
+    pub cannon: CannonId,
+    /// The optional priority fee
+    #[serde(default)]
+    pub priority_fee: Option<u64>,
+    /// The optional fee record for a private fee
+    #[serde(default)]
+    pub fee_record: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AleoValue {
     // Public keys

@@ -3,21 +3,21 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use reqwest::blocking::{Client, Response};
-use snops_common::state::NodeKey;
+use snops_common::{key_source::KeySource, state::NodeKey};
 
 mod action;
 
 /// For interacting with snop environments.
 #[derive(Debug, Parser)]
 pub struct Env {
-    /// Show a specific env.
+    /// Work with a specific env.
     #[clap(default_value = "default", value_hint = ValueHint::Other)]
     id: String,
     #[clap(subcommand)]
     command: EnvCommands,
 }
 
-/// Env commands
+/// Env commands.
 #[derive(Debug, Parser)]
 enum EnvCommands {
     #[clap(subcommand)]
@@ -33,6 +33,10 @@ enum EnvCommands {
 
     /// List an env's agents
     Agents,
+
+    /// Lookup an account's balance
+    #[clap(alias = "bal")]
+    Balance { key: KeySource },
 
     /// Clean a specific environment.
     #[clap(alias = "c")]
@@ -60,6 +64,9 @@ enum EnvCommands {
         spec: PathBuf,
     },
 
+    /// Lookup a program by its id.
+    Program { id: String },
+
     /// Get an env's storage info.
     #[clap(alias = "store")]
     Storage,
@@ -79,6 +86,11 @@ impl Env {
                 let ep = format!("{url}/api/v1/env/{}/agents", self.id);
 
                 client.get(ep).send()?
+            }
+            Balance { key } => {
+                let ep = format!("{url}/api/v1/env/{}/balance/{key}", self.id);
+
+                client.get(ep).json(&key).send()?
             }
             Clean => {
                 let ep = format!("{url}/api/v1/env/{}", self.id);
@@ -105,6 +117,12 @@ impl Env {
                 let file: String = std::fs::read_to_string(spec)?;
 
                 client.post(ep).body(file).send()?
+            }
+            Program { id } => {
+                let ep = format!("{url}/api/v1/env/{}/program/{}", self.id, id);
+
+                println!("{}", client.get(ep).send()?.text()?);
+                std::process::exit(0);
             }
             Storage => {
                 let ep = format!("{url}/api/v1/env/{}/storage", self.id);

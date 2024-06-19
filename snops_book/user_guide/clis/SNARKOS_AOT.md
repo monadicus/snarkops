@@ -25,26 +25,35 @@ This document contains the help content for the `snarkos-aot` command-line progr
 * [`snarkos-aot ledger checkpoint view`↴](#snarkos-aot-ledger-checkpoint-view)
 * [`snarkos-aot ledger checkpoint clean`↴](#snarkos-aot-ledger-checkpoint-clean)
 * [`snarkos-aot run`↴](#snarkos-aot-run)
+* [`snarkos-aot auth`↴](#snarkos-aot-auth)
+* [`snarkos-aot auth execute`↴](#snarkos-aot-auth-execute)
+* [`snarkos-aot auth program`↴](#snarkos-aot-auth-program)
+* [`snarkos-aot auth fee`↴](#snarkos-aot-auth-fee)
+* [`snarkos-aot auth id`↴](#snarkos-aot-auth-id)
+* [`snarkos-aot auth cost`↴](#snarkos-aot-auth-cost)
+* [`snarkos-aot auth deploy`↴](#snarkos-aot-auth-deploy)
 * [`snarkos-aot program`↴](#snarkos-aot-program)
-* [`snarkos-aot program execute`↴](#snarkos-aot-program-execute)
-* [`snarkos-aot program authorize-program`↴](#snarkos-aot-program-authorize-program)
-* [`snarkos-aot program authorize-fee`↴](#snarkos-aot-program-authorize-fee)
-* [`snarkos-aot program authorize`↴](#snarkos-aot-program-authorize)
 * [`snarkos-aot program id`↴](#snarkos-aot-program-id)
+* [`snarkos-aot program functions`↴](#snarkos-aot-program-functions)
+* [`snarkos-aot program imports`↴](#snarkos-aot-program-imports)
+* [`snarkos-aot program cost`↴](#snarkos-aot-program-cost)
 * [`snarkos-aot man`↴](#snarkos-aot-man)
 * [`snarkos-aot md`↴](#snarkos-aot-md)
 
 ## `snarkos-aot`
 
+The different AOT commands
+
 **Usage:** `snarkos-aot [OPTIONS] <COMMAND>`
 
 ###### **Subcommands:**
 
-* `genesis` — 
-* `accounts` — 
-* `ledger` — 
-* `run` — 
-* `program` — 
+* `genesis` — This command helps generate a custom genesis block given an initial private key, seed, and committee size
+* `accounts` — Given a seed and a count, generate a number of accounts
+* `ledger` — Commands for interacting with the ledger
+* `run` — A wrapper around the snarkos node run commands that provide additional logging and configurability
+* `auth` — A command to help generate various different types of authorizations and execute them
+* `program` — A command to help gather information about a program, including its cost and imports
 * `man` — For generating cli manpages. Only with the mangen feature enabled
 * `md` — For generating cli markdown. Only with the clipages feature enabled
 
@@ -54,74 +63,88 @@ This document contains the help content for the `snarkos-aot` command-line progr
 
   Possible values: `true`, `false`
 
-* `--log <LOG>`
-* `--verbosity <VERBOSITY>`
+* `--log <LOG>` — The path to the log file
+* `--verbosity <VERBOSITY>` — The verbosity level of the logs
 
   Default value: `4`
-* `--loki <LOKI>`
+* `--loki <LOKI>` — The optional loki url to send logs to
 
 
 
 ## `snarkos-aot genesis`
 
+This command helps generate a custom genesis block given an initial private key, seed, and committee size
+
 **Usage:** `snarkos-aot genesis [OPTIONS]`
 
 ###### **Options:**
 
-* `-g`, `--genesis-key <genesis-key>` — The private key to use when generating the genesis block. Generates one randomly if not passed
-* `-o`, `--output <output>` — Where to write the genesis block to
+* `-g`, `--genesis-key <GENESIS_KEY>` — The private key to use when generating the genesis block. Generates one randomly if not passed
+* `-o`, `--output <OUTPUT>` — Where to write the genesis block to
 
   Default value: `genesis.block`
-* `--committee-size <committee-size>` — The committee size. Not used if --bonded-balances is set
+* `--committee-size <COMMITTEE_SIZE>` — The committee size. Not used if --bonded-balances is set
 
   Default value: `4`
-* `--committee-output <committee-output>` — A place to optionally write out the generated committee private keys JSON
-* `--additional-accounts <additional-accounts>` — Additional number of accounts that aren't validators to add balances to
+* `--committee-output <COMMITTEE_OUTPUT>` — A place to optionally write out the generated committee private keys JSON
+* `--additional-accounts <ADDITIONAL_ACCOUNTS>` — Additional number of accounts that aren't validators to add balances to
 
   Default value: `0`
 * `--additional-accounts-balance <additional-accounts-balance>` — The balance to add to the number of accounts specified by additional-accounts
 
   Default value: `100000000`
-* `--additional-accounts-record-balance <additional-accounts-record-balance>` — If --additional-accounts is passed you can additionally add an amount to give them in a record
-* `--additional-accounts-output <additional-accounts-output>` — A place to write out the additionally generated accounts by --additional-accounts
-* `--seed <seed>` — The seed to use when generating committee private keys and the genesis block. If unpassed, uses DEVELOPMENT_MODE_RNG_SEED (1234567890u64)
-* `--bonded-balance <bonded-balance>` — The bonded balance each bonded address receives. Not used if `--bonded-balances` is passed
+* `--additional-accounts-record-balance <ADDITIONAL_ACCOUNTS_RECORD_BALANCE>` — If --additional-accounts is passed you can additionally add an amount to give them in a record
+* `--additional-accounts-output <ADDITIONAL_ACCOUNTS_OUTPUT>` — A place to write out the additionally generated accounts by --additional-accounts
+* `--seed <SEED>` — The seed to use when generating committee private keys and the genesis block. If unpassed, uses DEVELOPMENT_MODE_RNG_SEED (1234567890u64)
+* `--bonded-balance <BONDED_BALANCE>` — The bonded balance each bonded address receives. Not used if `--bonded-balances` is passed
 
   Default value: `10000000000000`
-* `--bonded-balances <bonded-balances>` — An optional map from address to bonded balance. Overrides `--bonded-balance` and `--committee-size`
-* `--ledger <ledger>` — Optionally initialize a ledger as well
+* `--bonded-balances <BONDED_BALANCES>` — An optional map from address to bonded balance. Overrides `--bonded-balance` and `--committee-size`
+* `--bonded-withdrawal <BONDED_WITHDRAWAL>` — An optional to specify withdrawal addresses for the genesis committee
+* `--bonded-commission <BONDED_COMMISSION>` — The bonded commission each bonded address uses. Not used if `--bonded-commissions` is passed. Defaults to 0. Must be 100 or less
+
+  Default value: `0`
+* `--bonded-commissions <BONDED_COMMISSIONS>` — An optional map from address to bonded commission. Overrides `--bonded-commission`. Defaults to 0. Must be 100 or less
+* `--ledger <LEDGER>` — Optionally initialize a ledger as well
 
 
 
 ## `snarkos-aot accounts`
 
-**Usage:** `snarkos-aot accounts [OPTIONS] <COUNT>`
+Given a seed and a count, generate a number of accounts
+
+**Usage:** `snarkos-aot accounts [OPTIONS] [COUNT]`
 
 ###### **Arguments:**
 
 * `<COUNT>` — Number of accounts to generate
 
+  Default value: `1`
+
 ###### **Options:**
 
+* `-v`, `--vanity <VANITY>` — Vanity prefix for addresses
 * `-o`, `--output <OUTPUT>` — Where to write the output to
-* `-s`, `--seed <seed>` — The seed to use when generating private keys If unpassed, uses a random seed
+* `-s`, `--seed <seed>` — The seed to use when generating private keys If unpassed or used with --vanity, uses a random seed
 
 
 
 ## `snarkos-aot ledger`
 
+Commands for interacting with the ledger
+
 **Usage:** `snarkos-aot ledger [OPTIONS] --ledger <LEDGER> <COMMAND>`
 
 ###### **Subcommands:**
 
-* `init` — 
-* `view` — 
-* `rewind` — 
-* `replay` — 
-* `execute` — 
-* `query` — Receive inquiries on /<network>/latest/stateRoot
-* `hash` — 
-* `checkpoint` — 
+* `init` — Used to initialize a new ledger given a genesis block
+* `view` — Used to view information about the ledger
+* `rewind` — Rewind the ledger to a specific checkpoint
+* `replay` — Replays blocks from a ledger to a specific height or amount to rollback to
+* `execute` — A command to execute an authorization
+* `query` — Receive inquiries on `/<network>/latest/stateRoot`
+* `hash` — Hash the ledger
+* `checkpoint` — A command to interact with checkpoints
 
 ###### **Options:**
 
@@ -140,24 +163,30 @@ This document contains the help content for the `snarkos-aot` command-line progr
 
 ## `snarkos-aot ledger init`
 
+Used to initialize a new ledger given a genesis block
+
 **Usage:** `snarkos-aot ledger init`
 
 
 
 ## `snarkos-aot ledger view`
 
+Used to view information about the ledger
+
 **Usage:** `snarkos-aot ledger view <COMMAND>`
 
 ###### **Subcommands:**
 
-* `top` — 
-* `block` — 
-* `balance` — 
-* `records` — 
+* `top` — View the top block of the ledger
+* `block` — View a specific block in the ledger
+* `balance` — View the balance of an address
+* `records` — View records associated with a private key
 
 
 
 ## `snarkos-aot ledger view top`
+
+View the top block of the ledger
 
 **Usage:** `snarkos-aot ledger view top`
 
@@ -165,52 +194,62 @@ This document contains the help content for the `snarkos-aot` command-line progr
 
 ## `snarkos-aot ledger view block`
 
+View a specific block in the ledger
+
 **Usage:** `snarkos-aot ledger view block <BLOCK_HEIGHT>`
 
 ###### **Arguments:**
 
-* `<BLOCK_HEIGHT>`
+* `<BLOCK_HEIGHT>` — The height of the block to view
 
 
 
 ## `snarkos-aot ledger view balance`
 
+View the balance of an address
+
 **Usage:** `snarkos-aot ledger view balance <ADDRESS>`
 
 ###### **Arguments:**
 
-* `<ADDRESS>`
+* `<ADDRESS>` — The address to view the balance of
 
 
 
 ## `snarkos-aot ledger view records`
 
+View records associated with a private key
+
 **Usage:** `snarkos-aot ledger view records <PRIVATE_KEY>`
 
 ###### **Arguments:**
 
-* `<PRIVATE_KEY>`
+* `<PRIVATE_KEY>` — The private key to view records for
 
 
 
 ## `snarkos-aot ledger rewind`
 
+Rewind the ledger to a specific checkpoint
+
 **Usage:** `snarkos-aot ledger rewind <CHECKPOINT>`
 
 ###### **Arguments:**
 
-* `<CHECKPOINT>`
+* `<CHECKPOINT>` — The checkpoint to rewind to
 
 
 
 ## `snarkos-aot ledger replay`
 
+Replays blocks from a ledger to a specific height or amount to rollback to
+
 **Usage:** `snarkos-aot ledger replay [OPTIONS]`
 
 ###### **Options:**
 
-* `--height <HEIGHT>`
-* `--amount <AMOUNT>`
+* `--height <HEIGHT>` — The height to replay to
+* `--amount <AMOUNT>` — The amount of blocks to rollback to
 * `--skip <SKIP>` — How many blocks to skip when reading
 
   Default value: `1`
@@ -225,31 +264,39 @@ This document contains the help content for the `snarkos-aot` command-line progr
 
 ## `snarkos-aot ledger execute`
 
-**Usage:** `snarkos-aot ledger execute [OPTIONS] --authorization <AUTHORIZATION> --query <QUERY>`
+A command to execute an authorization
+
+**Usage:** `snarkos-aot ledger execute [OPTIONS] --query <QUERY> [JSON]`
+
+###### **Arguments:**
+
+* `<JSON>` — Authorization flags as json
 
 ###### **Options:**
 
-* `-a`, `--authorization <AUTHORIZATION>` — The Authorization for the function
-* `-e`, `--exec-mode <EXEC_MODE>`
+* `-e`, `--exec-mode <EXEC_MODE>` — The execution mode: local(local ledgr) or remote(api to another node)
 
   Default value: `local`
 
   Possible values: `local`, `remote`
 
 * `-q`, `--query <QUERY>` — Query endpoint
-* `-f`, `--fee <FEE>` — The authorization for the fee execution
 * `-b`, `--broadcast` — Whether to broadcast the transaction
 
   Default value: `false`
 
   Possible values: `true`, `false`
 
+* `-a`, `--auth <AUTH>` — Authorization for an execution of some kind
+* `-f`, `--fee-auth <FEE_AUTH>` — The optional fee authorization for said execution
+* `-o`, `--owner <OWNER>` — The owner of the program if deploying
+* `-d`, `--deployment <DEPLOYMENT>` — The deployment of the program if deploying
 
 
 
 ## `snarkos-aot ledger query`
 
-Receive inquiries on /<network>/latest/stateRoot
+Receive inquiries on `/<network>/latest/stateRoot`
 
 **Usage:** `snarkos-aot ledger query [OPTIONS]`
 
@@ -261,11 +308,11 @@ Receive inquiries on /<network>/latest/stateRoot
 * `--bind <BIND>`
 
   Default value: `0.0.0.0`
-* `--readonly` — When true, the POST /block endpoint will not be available
+* `--readonly` — When true, the POST `/block` endpoint will not be available
 
   Possible values: `true`, `false`
 
-* `--record` — Receive messages from /<network>/transaction/broadcast and record them to the output
+* `--record` — Receive messages from `/<network>/transaction/broadcast` and record them to the output
 
   Possible values: `true`, `false`
 
@@ -277,11 +324,15 @@ Receive inquiries on /<network>/latest/stateRoot
 
 ## `snarkos-aot ledger hash`
 
+Hash the ledger
+
 **Usage:** `snarkos-aot ledger hash`
 
 
 
 ## `snarkos-aot ledger checkpoint`
+
+A command to interact with checkpoints
 
 **Usage:** `snarkos-aot ledger checkpoint <COMMAND>`
 
@@ -341,6 +392,8 @@ Cleanup old checkpoints
 
 ## `snarkos-aot run`
 
+A wrapper around the snarkos node run commands that provide additional logging and configurability
+
 **Usage:** `snarkos-aot run [OPTIONS] --ledger <LEDGER> --type <type> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
 
 ###### **Options:**
@@ -349,10 +402,10 @@ Cleanup old checkpoints
 * `-l`, `--ledger <LEDGER>` — The ledger from which to view a block
 
   Default value: `./ledger`
-* `-t`, `--type <type>`
+* `-t`, `--type <type>` — The type of node to run: validator, prover, or client
 * `--private-key <PRIVATE_KEY>` — Specify the account private key of the node
 * `--private-key-file <PRIVATE_KEY_FILE>` — Specify the account private key of the node
-* `--bind <BIND_ADDR>`
+* `--bind <BIND_ADDR>` — Specify the IP(v4 or v6) address to bind to
 
   Default value: `0.0.0.0`
 * `--node <NODE>` — Specify the IP address and port for the node server
@@ -372,55 +425,65 @@ Cleanup old checkpoints
 * `--rest-rps <REST_RPS>` — Specify the requests per second (RPS) rate limit per IP for the REST server
 
   Default value: `1000`
-* `--retention-policy <RETENTION_POLICY>`
+* `--retention-policy <RETENTION_POLICY>` — The retention policy for the checkpoint manager. i.e. how often to create checkpoints
+* `--agent-status-port <AGENT_STATUS_PORT>` — When present, emits the agent status on the given port
 
 
 
-## `snarkos-aot program`
+## `snarkos-aot auth`
 
-**Usage:** `snarkos-aot program <COMMAND>`
+A command to help generate various different types of authorizations and execute them
+
+**Usage:** `snarkos-aot auth <COMMAND>`
 
 ###### **Subcommands:**
 
-* `execute` — Execute an authorization
-* `authorize-program` — Authorize a program execution
-* `authorize-fee` — Authorize the fee for a program execution
-* `authorize` — Authorize a program execution and its fee
+* `execute` — A command to execute an authorization
+* `program` — Authorize a program execution
+* `fee` — Authorize the fee for a program execution
 * `id` — Given an authorization (and fee), return the transaction ID
+* `cost` — Estimate the cost of a program execution or deployment
+* `deploy` — Deploy a program to the network
 
 
 
-## `snarkos-aot program execute`
+## `snarkos-aot auth execute`
 
-Execute an authorization
+A command to execute an authorization
 
-**Usage:** `snarkos-aot program execute [OPTIONS] --authorization <AUTHORIZATION> --query <QUERY>`
+**Usage:** `snarkos-aot auth execute [OPTIONS] --query <QUERY> [JSON]`
+
+###### **Arguments:**
+
+* `<JSON>` — Authorization flags as json
 
 ###### **Options:**
 
-* `-a`, `--authorization <AUTHORIZATION>` — The Authorization for the function
-* `-e`, `--exec-mode <EXEC_MODE>`
+* `-e`, `--exec-mode <EXEC_MODE>` — The execution mode: local(local ledgr) or remote(api to another node)
 
   Default value: `local`
 
   Possible values: `local`, `remote`
 
 * `-q`, `--query <QUERY>` — Query endpoint
-* `-f`, `--fee <FEE>` — The authorization for the fee execution
 * `-b`, `--broadcast` — Whether to broadcast the transaction
 
   Default value: `false`
 
   Possible values: `true`, `false`
 
+* `-a`, `--auth <AUTH>` — Authorization for an execution of some kind
+* `-f`, `--fee-auth <FEE_AUTH>` — The optional fee authorization for said execution
+* `-o`, `--owner <OWNER>` — The owner of the program if deploying
+* `-d`, `--deployment <DEPLOYMENT>` — The deployment of the program if deploying
 
 
 
-## `snarkos-aot program authorize-program`
+## `snarkos-aot auth program`
 
 Authorize a program execution
 
-**Usage:** `snarkos-aot program authorize-program <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>> <LOCATOR> [INPUTS]...`
+**Usage:** `snarkos-aot auth program [OPTIONS] <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>> <LOCATOR> [INPUTS]...`
 
 ###### **Arguments:**
 
@@ -431,14 +494,25 @@ Authorize a program execution
 
 * `--private-key <PRIVATE_KEY>` — Specify the account private key of the node
 * `--private-key-file <PRIVATE_KEY_FILE>` — Specify the account private key of the node
+* `--fee-private-key <FEE_PRIVATE_KEY>` — Specify the account private key of the node
+* `--fee-private-key-file <FEE_PRIVATE_KEY_FILE>` — Specify the account private key of the node
+* `--skip-fee` — Prevent the fee from being included in the authorization
+
+  Possible values: `true`, `false`
+
+* `--priority-fee <PRIORITY_FEE>` — The priority fee in microcredits
+
+  Default value: `0`
+* `--record <RECORD>` — The record for a private fee
+* `-q`, `--query <QUERY>` — Query to load the program with
 
 
 
-## `snarkos-aot program authorize-fee`
+## `snarkos-aot auth fee`
 
 Authorize the fee for a program execution
 
-**Usage:** `snarkos-aot program authorize-fee [OPTIONS] --authorization <AUTHORIZATION> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
+**Usage:** `snarkos-aot auth fee [OPTIONS] <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
 
 ###### **Options:**
 
@@ -448,42 +522,168 @@ Authorize the fee for a program execution
 
   Default value: `0`
 * `--record <RECORD>` — The record for a private fee
-* `-a`, `--authorization <AUTHORIZATION>` — The Authorization for the function
+* `--query <QUERY>` — The query to use for the program execution cost lookup
+* `-a`, `--auth <AUTH>` — The Authorization for the program execution
+* `-d`, `--deployment <DEPLOYMENT>` — The Authorization for a deployment
+* `-i`, `--id <ID>` — The ID of the deployment or program execution
+* `-c`, `--cost <COST>` — Estimated cost of the deployment or program execution
 
 
 
-## `snarkos-aot program authorize`
+## `snarkos-aot auth id`
 
-Authorize a program execution and its fee
+Given an authorization (and fee), return the transaction ID
 
-**Usage:** `snarkos-aot program authorize [OPTIONS] <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>> <LOCATOR> [INPUTS]...`
+**Usage:** `snarkos-aot auth id [OPTIONS] [JSON]`
 
 ###### **Arguments:**
 
-* `<LOCATOR>` — Program ID and function name (eg. credits.aleo/transfer_public)
-* `<INPUTS>` — Program inputs (eg. 1u64 5field)
+* `<JSON>` — Authorization flags as json
+
+###### **Options:**
+
+* `-a`, `--auth <AUTH>` — Authorization for an execution of some kind
+* `-f`, `--fee-auth <FEE_AUTH>` — The optional fee authorization for said execution
+* `-o`, `--owner <OWNER>` — The owner of the program if deploying
+* `-d`, `--deployment <DEPLOYMENT>` — The deployment of the program if deploying
+
+
+
+## `snarkos-aot auth cost`
+
+Estimate the cost of a program execution or deployment
+
+**Usage:** `snarkos-aot auth cost [OPTIONS] [JSON]`
+
+###### **Arguments:**
+
+* `<JSON>` — Authorization flags as json
+
+###### **Options:**
+
+* `--query <QUERY>` — The query to use for the program
+* `-a`, `--auth <AUTH>` — Authorization for an execution of some kind
+* `-f`, `--fee-auth <FEE_AUTH>` — The optional fee authorization for said execution
+* `-o`, `--owner <OWNER>` — The owner of the program if deploying
+* `-d`, `--deployment <DEPLOYMENT>` — The deployment of the program if deploying
+
+
+
+## `snarkos-aot auth deploy`
+
+Deploy a program to the network
+
+**Usage:** `snarkos-aot auth deploy [OPTIONS] <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>> <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — The program to deploy. This can be a file or stdin
 
 ###### **Options:**
 
 * `--private-key <PRIVATE_KEY>` — Specify the account private key of the node
 * `--private-key-file <PRIVATE_KEY_FILE>` — Specify the account private key of the node
+* `--fee-private-key <FEE_PRIVATE_KEY>` — Specify the account private key of the node
+* `--fee-private-key-file <FEE_PRIVATE_KEY_FILE>` — Specify the account private key of the node
+* `--skip-fee` — Prevent the fee from being included in the authorization
+
+  Possible values: `true`, `false`
+
 * `--priority-fee <PRIORITY_FEE>` — The priority fee in microcredits
 
   Default value: `0`
 * `--record <RECORD>` — The record for a private fee
+* `-q`, `--query <QUERY>` — The query to use for the program
+
+
+
+## `snarkos-aot program`
+
+A command to help gather information about a program, including its cost and imports
+
+**Usage:** `snarkos-aot program <COMMAND>`
+
+###### **Subcommands:**
+
+* `id` — Get the ID of a given program
+* `functions` — List the functions and their inputs/outputs of a given program
+* `imports` — List the inputs of a given program
+* `cost` — Compute the cost to execute a function in a given program
 
 
 
 ## `snarkos-aot program id`
 
-Given an authorization (and fee), return the transaction ID
+Get the ID of a given program
 
-**Usage:** `snarkos-aot program id [OPTIONS] --auth <AUTH>`
+**Usage:** `snarkos-aot program id [OPTIONS] <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Path to .aleo program to get information about, or `-` for stdin
 
 ###### **Options:**
 
-* `-a`, `--auth <AUTH>`
-* `-f`, `--fee-auth <FEE_AUTH>`
+* `-j`, `--json` — Output as JSON
+
+  Possible values: `true`, `false`
+
+
+
+
+## `snarkos-aot program functions`
+
+List the functions and their inputs/outputs of a given program
+
+**Usage:** `snarkos-aot program functions [OPTIONS] <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Path to .aleo program to get information about, or `-` for stdin
+
+###### **Options:**
+
+* `-j`, `--json` — Output as JSON
+
+  Possible values: `true`, `false`
+
+
+
+
+## `snarkos-aot program imports`
+
+List the inputs of a given program
+
+**Usage:** `snarkos-aot program imports [OPTIONS] <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Path to .aleo program to get information about, or `-` for stdin
+
+###### **Options:**
+
+* `-j`, `--json` — Output as JSON
+
+  Possible values: `true`, `false`
+
+
+
+
+## `snarkos-aot program cost`
+
+Compute the cost to execute a function in a given program
+
+**Usage:** `snarkos-aot program cost [OPTIONS] <PROGRAM> <FUNCTION> [INPUTS]...`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — Program to estimate the cost of
+* `<FUNCTION>` — Program ID and function name (eg. credits.aleo/transfer_public)
+* `<INPUTS>` — Program inputs (eg. 1u64 5field)
+
+###### **Options:**
+
+* `-q`, `--query <QUERY>` — Query to load the program with
 
 
 
@@ -495,7 +695,7 @@ For generating cli manpages. Only with the mangen feature enabled
 
 ###### **Arguments:**
 
-* `<DIRECTORY>`
+* `<DIRECTORY>` — Directory to write manpages to
 
   Default value: `target/man/snops-cli`
 
@@ -509,7 +709,7 @@ For generating cli markdown. Only with the clipages feature enabled
 
 ###### **Arguments:**
 
-* `<DIRECTORY>`
+* `<DIRECTORY>` — Directory to write markdown to
 
   Default value: `snops_book/user_guide/clis`
 

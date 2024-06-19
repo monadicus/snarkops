@@ -19,7 +19,7 @@ pub struct Agent {
     command: AgentCommands,
 }
 
-/// Env commands
+/// Agent commands.
 #[derive(Debug, Parser)]
 enum AgentCommands {
     /// Find agents by set criteria.

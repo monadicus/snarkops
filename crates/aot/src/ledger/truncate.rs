@@ -17,25 +17,33 @@ use tracing::info;
 
 use crate::{ledger::util, DbLedger};
 
+/// Replays blocks from a ledger to a specific height or amount to rollback to.
 #[derive(Debug, Args)]
 pub struct Replay {
+    /// The height to replay to.
     #[arg(long)]
     height: Option<u32>,
+    /// The amount of blocks to rollback to.
     #[arg(long)]
     amount: Option<u32>,
-    /// How many blocks to skip when reading
+    /// How many blocks to skip when reading.
     #[arg(long, default_value_t = 1)]
     skip: u32,
-    /// When checkpoint is enabled, checkpoints
+    /// When checkpoint is enabled, checkpoints.
     #[arg(short, long, default_value_t = false)]
     checkpoint: bool,
     // TODO: duration based truncation (blocks within a duration before now)
     // TODO: timestamp based truncation (blocks after a certain date)
 }
 
+/// A command to truncate the ledger to a specific height.
 #[derive(Debug, Parser)]
 pub enum Truncate {
-    Rewind { checkpoint: PathBuf },
+    /// Rewind the ledger to a specific checkpoint.
+    Rewind {
+        /// The checkpoint to rewind to.
+        checkpoint: PathBuf,
+    },
     Replay(Replay),
 }
 

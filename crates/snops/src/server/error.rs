@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::{
     cannon::error::CannonError,
     db::error::DatabaseError,
-    env::error::{EnvError, ExecutionError},
+    env::error::{EnvError, EnvRequestError, ExecutionError},
     error::DeserializeError,
     schema::error::SchemaError,
     state::error::BatchReconcileError,
@@ -30,6 +30,10 @@ pub enum ServerError {
     Execute(#[from] ExecutionError),
     #[error(transparent)]
     Schema(#[from] SchemaError),
+    #[error(transparent)]
+    EnvRequest(#[from] EnvRequestError),
+    #[error("{0}")]
+    NotFound(String),
 }
 
 impl_into_status_code!(ServerError, |value| match value {
@@ -40,6 +44,8 @@ impl_into_status_code!(ServerError, |value| match value {
     Env(e) => e.into(),
     Execute(e) => e.into(),
     Schema(e) => e.into(),
+    EnvRequest(e) => e.into(),
+    NotFound(_) => axum::http::StatusCode::NOT_FOUND,
 });
 
 impl_into_type_str!(ServerError, |value| match value {
@@ -48,6 +54,7 @@ impl_into_type_str!(ServerError, |value| match value {
     Env(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Execute(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Schema(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    EnvRequest(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     _ => value.as_ref().to_string(),
 });
 
