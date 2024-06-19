@@ -73,23 +73,30 @@ pub struct AuthDeployCommand<N: Network> {
 impl<N: Network> AuthCommand<N> {
     pub(crate) fn parse(self) -> Result<()> {
         match self {
+            // execute command consumes authorizations and outputs a transaction
             AuthCommand::Execute(command) => command.parse(),
+            // fee command consumes an authorization and a private key to pay a fee. outputs a fee
+            // authorization
             AuthCommand::Fee(fee) => {
                 println!("{}", serde_json::to_string(&fee.parse()?)?);
                 Ok(())
             }
+            // id command consumes an authorization or deployment and outputs the predicted
+            // transaction id
             AuthCommand::Id(args) => {
                 let id = match args.pick()? {
                     AuthBlob::Program { auth, fee_auth } => {
                         let auth = auth.into();
                         let fee_auth = fee_auth.map(Into::into);
 
+                        // calculate the transaction id for the program based off of the authorization and fee
                         auth_id::auth_tx_id(&auth, fee_auth.as_ref())?
                     }
                     AuthBlob::Deploy {
                         deployment,
                         fee_auth,
                         ..
+                        // calculate the transaction id for the deployment based off of the deployment and fee
                     } => auth_id::deploy_tx_id(&deployment, fee_auth.map(Into::into).as_ref())?,
                 };
                 println!("{id}");
@@ -98,9 +105,12 @@ impl<N: Network> AuthCommand<N> {
             AuthCommand::Cost(CostCommand { query, auth }) => {
                 let cost = match auth.pick()? {
                     AuthBlob::Program { auth, .. } => {
-                        let mut process = Process::load()?;
                         let auth = auth.into();
 
+                        // load the programs the auth references into the process
+                        // as cost estimation measures the size of values from within the auth's
+                        // transitions
+                        let mut process = Process::load()?;
                         if let Some(query) = query.as_deref() {
                             let programs = query::get_programs_from_auth(&auth);
                             query::add_many_programs_to_process(&mut process, programs, query)?;
@@ -122,6 +132,7 @@ impl<N: Network> AuthCommand<N> {
             }) => {
                 let query = program_opts.query.clone();
 
+                // authorize the program execution without a fee
                 let (auth, cost) = auth_program::AuthorizeProgram {
                     key: key.clone(),
                     options: program_opts,
@@ -133,6 +144,7 @@ impl<N: Network> AuthCommand<N> {
                     return Ok(());
                 };
 
+                // authorize the fee using the authorization's execution ID and estimated cost
                 let fee_auth = auth_fee::AuthorizeFee {
                     key: fee_key.as_key().unwrap_or(key),
                     auth: None,
@@ -160,6 +172,7 @@ impl<N: Network> AuthCommand<N> {
                 deploy_opts,
                 fee_opts,
             }) => {
+                // authorize the deployment without a fee
                 let AuthBlob::Deploy {
                     deployment, owner, ..
                 } = auth_deploy::AuthorizeDeploy {
@@ -183,6 +196,7 @@ impl<N: Network> AuthCommand<N> {
                     return Ok(());
                 };
 
+                // authorize the fee using the deployment's ID and estimated cost
                 let fee_auth = auth_fee::AuthorizeFee {
                     key: fee_key.as_key().unwrap_or(key),
                     auth: None,

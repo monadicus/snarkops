@@ -77,11 +77,10 @@ pub fn get_process_imports<N: Network>(
     program: &Program<N>,
     query: Option<&str>,
 ) -> Result<()> {
-    let imports = if let Some(query) = query {
-        get_imports(process, program, query)?
-    } else {
-        HashMap::new()
-    };
+    let imports = query
+        .map(|query| get_imports(process, program, query))
+        .transpose()?
+        .unwrap_or_default();
 
     for (_, import) in imports {
         process.add_stack(Stack::new(process, &import)?);

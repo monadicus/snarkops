@@ -21,12 +21,10 @@ pub async fn deploy(Env { env, .. }: Env, Json(action): Json<DeployAction>) -> R
 
     let query = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
 
-    let tx_id = match deploy_inner(action, &env, TransactionStatusSender::new(tx), query).await {
-        Ok(tx_id) => tx_id,
-        Err(e) => return ServerError::from(e).into_response(),
-    };
-
-    execute_status(tx_id, rx).await.into_response()
+    match deploy_inner(action, &env, TransactionStatusSender::new(tx), query).await {
+        Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
+        Err(e) => ServerError::from(e).into_response(),
+    }
 }
 
 pub async fn deploy_inner(

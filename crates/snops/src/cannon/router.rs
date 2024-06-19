@@ -113,11 +113,7 @@ async fn get_program_json(
                 .await
             {
                 Ok(program) => Json(program).into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": format!("{e}") })),
-                )
-                    .into_response(),
+                Err(e) => ServerError::from(e).into_response(),
             }
         }
     }
@@ -369,10 +365,6 @@ async fn authorization(
 
     match cannon.proxy_auth(body, TransactionStatusSender::new(tx)) {
         Ok(_) => execute_status(tx_id, rx).await.into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("{e}")})),
-        )
-            .into_response(),
+        Err(e) => ServerError::from(e).into_response(),
     }
 }

@@ -71,12 +71,10 @@ pub async fn execute(Env { env, .. }: Env, Json(action): Json<ExecuteAction>) ->
 
     let query = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
 
-    let tx_id = match execute_inner(action, &env, TransactionStatusSender::new(tx), query).await {
-        Ok(tx_id) => tx_id,
-        Err(e) => return ServerError::from(e).into_response(),
-    };
-
-    execute_status(tx_id, rx).await.into_response()
+    match execute_inner(action, &env, TransactionStatusSender::new(tx), query).await {
+        Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
+        Err(e) => ServerError::from(e).into_response(),
+    }
 }
 
 pub async fn execute_inner(
