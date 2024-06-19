@@ -15,7 +15,6 @@ node = [
 	"snarkos-node-metrics",
 	"metrics-exporter-prometheus",
 	"num_cpus",
-	"rayon",
 ]
 docpages = ["clipages", "mangen"]
 clipages = ["snops-common/clipages"]
@@ -38,7 +37,7 @@ lazy_static.workspace = true
 metrics-exporter-prometheus = { workspace = true, optional = true }
 nix.workspace = true
 num_cpus = { optional = true, workspace = true }
-rayon = { workspace = true, optional = true }
+rayon = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }

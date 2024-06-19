@@ -6,7 +6,7 @@ use snarkvm::synthesizer::{Process, Program};
 
 use super::args::AuthBlob;
 use super::query;
-use crate::runner::Key;
+use crate::Key;
 use crate::Network;
 
 /// Options for authorizing a program deployment.

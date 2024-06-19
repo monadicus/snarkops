@@ -2,8 +2,11 @@ pub mod accounts;
 pub mod auth;
 pub mod cli;
 pub mod genesis;
+mod key;
 pub mod ledger;
 pub mod program;
+
+pub use key::Key;
 
 #[cfg(feature = "node")]
 pub mod runner;

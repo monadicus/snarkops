@@ -11,7 +11,7 @@ use snarkvm::{
     utilities::DeserializeExt,
 };
 
-use crate::{runner::Key, Network};
+use crate::{Key, Network};
 
 /// The authorization arguments.
 #[derive(Clone, Debug, Parser)]

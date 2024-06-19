@@ -14,7 +14,7 @@ use snarkvm::{
 
 use super::query;
 // use tracing::error;
-use crate::{runner::Key, Authorization, Network, PTRecord, PrivateKey};
+use crate::{Authorization, Key, Network, PTRecord, PrivateKey};
 
 /// The authorization arguments for a fee.
 #[derive(Debug, Args)]

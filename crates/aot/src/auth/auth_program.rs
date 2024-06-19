@@ -3,7 +3,7 @@ use clap::Args;
 use snarkvm::{console::program::Locator, synthesizer::Process};
 
 use super::{auth_fee::estimate_cost, query};
-use crate::{runner::Key, Authorization, Network, Value};
+use crate::{Authorization, Key, Network, Value};
 
 #[derive(Debug, Args)]
 pub struct AuthProgramOptions<N: Network> {
