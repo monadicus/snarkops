@@ -41,7 +41,7 @@ jobs:
   #     - name: Install nightly and cranelift
   #       uses: dtolnay/rust-toolchain@nightly
   #       with:
-  #         toolchain: nightly-2024-04-01
+  #         toolchain: nightly
   #         components: rustc-codegen-cranelift-preview
 
   #     - uses: Swatinem/rust-cache@v2
@@ -51,7 +51,7 @@ jobs:
   #     - name: Build
   #       env:
   #         RUSTFLAGS: -Zcodegen-backend=cranelift -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
-  #       run: cargo +nightly-2024-04-01 build --verbose
+  #       run: cargo +nightly build --verbose
 
   fmt:
     runs-on: ubuntu-latest
@@ -101,7 +101,7 @@ jobs:
       # - name: 📋 Clippy Check
       #   env:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
-      #   run: cargo +nightly-2024-04-01 clippy --all --all-targets -- -D warnings
+      #   run: cargo +nightly clippy --all --all-targets -- -D warnings
 
       # - name: 📋 Check Unused Deps
       #   if: always()
@@ -131,28 +131,28 @@ jobs:
 
       - name: 🧪 Test All
         if:  steps.changes.outputs.top_toml == 'true'
-        run: cargo +nightly-2024-04-01 nextest run --all --verbose --fail-fast --all-features
+        run: cargo +nightly nextest run --all --verbose --fail-fast --all-features
 
       - name: 🧪 Test Aot
         if:  steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly-2024-04-01 nextest run -p snarkos-aot --verbose --fail-fast --all-features
+        run: cargo +nightly nextest run -p snarkos-aot --verbose --fail-fast --all-features
 
       - name: 🧪 Test Checkpoint
         if:  steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly-2024-04-01 nextest run -p checkpoint --verbose --fail-fast --all-features
+        run: cargo +nightly nextest run -p checkpoint --verbose --fail-fast --all-features
 
       - name: 🧪 Test Common
         if:  steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly-2024-04-01 nextest run -p snops-common --verbose --fail-fast --all-features
+        run: cargo +nightly nextest run -p snops-common --verbose --fail-fast --all-features
 
       - name: 🧪 Test Control Plane
         if:  (steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly-2024-04-01 nextest run -p snops --verbose --fail-fast --all-features
+        run: cargo +nightly nextest run -p snops --verbose --fail-fast --all-features
 
       - name: 🧪 Test Agent
         if:  (steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly-2024-04-01 nextest run -p snops-agent --verbose --fail-fast --all-features
+        run: cargo +nightly nextest run -p snops-agent --verbose --fail-fast --all-features
 
       - name: 🧪 Test Scli
         if:  (steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly-2024-04-01 nextest run -p snops-cli --verbose --fail-fast --all-features
+        run: cargo +nightly nextest run -p snops-cli --verbose --fail-fast --all-features
