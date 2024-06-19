@@ -84,7 +84,6 @@ jobs:
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly-2024-04-01
           components: rustc-codegen-cranelift-preview clippy
 
       - name: 🫙 Cache
