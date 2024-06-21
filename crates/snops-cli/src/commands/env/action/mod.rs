@@ -9,7 +9,7 @@ use snops_common::{
     action_models::{AleoValue, WithTargets},
     key_source::KeySource,
     node_targets::{NodeTarget, NodeTargetError, NodeTargets},
-    state::{CannonId, DocHeightRequest},
+    state::{CannonId, DocHeightRequest, EnvId},
 };
 
 //scli env canary action online client/*
@@ -133,7 +133,7 @@ pub enum Action {
 }
 
 impl Action {
-    pub fn execute(self, url: &str, env_id: &str, client: Client) -> Result<Response> {
+    pub fn execute(self, url: &str, env_id: EnvId, client: Client) -> Result<Response> {
         use Action::*;
         Ok(match self {
             Offline(Nodes { nodes }) => {

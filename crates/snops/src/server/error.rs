@@ -2,7 +2,7 @@ use axum::{response::IntoResponse, Json};
 use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
-use snops_common::{impl_into_status_code, impl_into_type_str};
+use snops_common::{aot_cmds::AotCmdError, impl_into_status_code, impl_into_type_str};
 use thiserror::Error;
 
 use crate::{
@@ -34,6 +34,8 @@ pub enum ServerError {
     EnvRequest(#[from] EnvRequestError),
     #[error("{0}")]
     NotFound(String),
+    #[error(transparent)]
+    AotCmd(#[from] AotCmdError),
 }
 
 impl_into_status_code!(ServerError, |value| match value {
@@ -45,6 +47,7 @@ impl_into_status_code!(ServerError, |value| match value {
     Execute(e) => e.into(),
     Schema(e) => e.into(),
     EnvRequest(e) => e.into(),
+    AotCmd(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     NotFound(_) => axum::http::StatusCode::NOT_FOUND,
 });
 
