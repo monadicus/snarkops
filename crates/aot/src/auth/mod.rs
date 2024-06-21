@@ -4,7 +4,7 @@ use auth_fee::estimate_cost;
 use clap::{Args, Subcommand};
 use snarkvm::synthesizer::{process::deployment_cost, Process};
 
-use crate::{runner::Key, Network};
+use crate::{Key, Network};
 
 pub mod args;
 pub mod auth_deploy;

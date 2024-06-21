@@ -8,6 +8,7 @@ use anyhow::Result;
 #[cfg(any(feature = "clipages", feature = "mangen"))]
 use clap::CommandFactory;
 use clap::Parser;
+#[cfg(feature = "node")]
 use crossterm::tty::IsTty;
 use reqwest::Url;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -198,19 +199,22 @@ impl<N: Network> Cli<N> {
 
         // Initialize tracing.
         // Add layer using LogWriter for stdout / terminal
-        if matches!(self.command, Command::Run(_)) {
-            non_blocking_appender!(stdout = (io::stdout()));
-
-            layers.push(
-                tracing_subscriber::fmt::layer()
-                    .with_ansi(io::stdout().is_tty())
-                    .with_thread_ids(true)
-                    .with_writer(stdout)
-                    .boxed(),
-            );
-        } else {
-            non_blocking_appender!(stderr = (io::stderr()));
-            layers.push(tracing_subscriber::fmt::layer().with_writer(stderr).boxed());
+        match self.command {
+            #[cfg(feature = "node")]
+            Command::Run(_) => {
+                non_blocking_appender!(stdout = (io::stdout()));
+                layers.push(
+                    tracing_subscriber::fmt::layer()
+                        .with_ansi(io::stdout().is_tty())
+                        .with_thread_ids(true)
+                        .with_writer(stdout)
+                        .boxed(),
+                );
+            }
+            _ => {
+                non_blocking_appender!(stderr = (io::stderr()));
+                layers.push(tracing_subscriber::fmt::layer().with_writer(stderr).boxed());
+            }
         }
 
         if let Some(loki) = &self.loki {
