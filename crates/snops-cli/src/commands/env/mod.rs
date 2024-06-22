@@ -161,7 +161,7 @@ impl Env {
                 client.get(ep).send()?
             }
             Transaction { id: hash } => {
-                let ep = format!("{url}/api/v1/env/{id}/find/blockHash/{hash}");
+                let ep = format!("{url}/api/v1/env/{id}/transaction_block/{hash}");
 
                 client.get(ep).send()?
             }
