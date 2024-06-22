@@ -101,26 +101,30 @@ impl AgentService for AgentRpcServer {
         // perform the reconcilation
         let state = Arc::clone(&self.state);
         let handle = tokio::spawn(async move {
-            // previous state cleanup
-            let old_state = {
-                let agent_state_lock = state.agent_state.read().await;
-                match agent_state_lock.deref() {
-                    // kill existing child if running
-                    AgentState::Node(_, node) if node.online => {
-                        info!("cleaning up snarkos process...");
-                        state.node_graceful_shutdown().await;
-                    }
-
-                    _ => (),
-                }
-
-                agent_state_lock.deref().clone()
-            };
-
             // download new storage if storage_id changed
             'storage: {
+                // previous state cleanup
+                let old_state = {
+                    let agent_state_lock = state.agent_state.read().await;
+
+                    agent_state_lock.deref().clone()
+                };
+
                 let (is_same_env, is_same_index) = match (&old_state, &target) {
                     (AgentState::Node(old_env, old_node), AgentState::Node(new_env, new_node)) => {
+                        {
+                            let agent_state_lock = state.agent_state.read().await;
+
+                            match agent_state_lock.deref() {
+                                // kill existing child if running
+                                AgentState::Node(_, node) if node.online => {
+                                    info!("cleaning up snarkos process...");
+                                    state.node_graceful_shutdown().await;
+                                }
+
+                                _ => (),
+                            }
+                        }
                         (old_env == new_env, old_node.height.0 == new_node.height.0)
                     }
                     _ => (false, false),
@@ -170,7 +174,6 @@ impl AgentService for AgentRpcServer {
 
                 // start snarkOS node when node
                 AgentState::Node(env_id, node) => {
-                    let mut child_lock = state.child.write().await;
                     let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
 
                     // get the storage info for this environment if we don't have it cached
@@ -326,8 +329,14 @@ impl AgentService for AgentRpcServer {
                         tracing::trace!("spawning node process...");
                         tracing::debug!("node command: {command:?}");
                         let child = command.spawn().expect("failed to start child");
+                        let child_pid = child.id();
+                        tracing::debug!("child pid: {child_pid:?}");
 
-                        *child_lock = Some(child);
+                        state
+                            .db
+                            .set_pid(child_pid)
+                            .await
+                            .map_err(|_| ReconcileError::Database)?;
 
                         // todo: check to ensure the node actually comes online
                         // by hitting the REST latest block

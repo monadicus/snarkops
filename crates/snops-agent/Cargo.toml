@@ -23,7 +23,7 @@ http.workspace = true
 httpdate.workspace = true
 indexmap.workspace = true
 local-ip-address.workspace = true
-nix = { workspace = true, features = ["signal"] }
+nix = { workspace = true, features = ["signal", "user"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
 serde_json.workspace = true
 simple_moving_average.workspace = true

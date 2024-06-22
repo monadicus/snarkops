@@ -137,7 +137,7 @@ async fn main() {
     let state = Arc::new(GlobalState {
         client,
         db: OpaqueDebug(db),
-        started: Instant::now(),
+        _started: Instant::now(),
         connected: Mutex::new(Instant::now()),
         external_addr,
         internal_addrs,
@@ -147,7 +147,6 @@ async fn main() {
         env_info: Default::default(),
         agent_state: Default::default(),
         reconcilation_handle: Default::default(),
-        child: Default::default(),
         resolved_addrs: Default::default(),
         metrics: Default::default(),
         status_api_port,
@@ -356,7 +355,6 @@ async fn main() {
         }
     }
 
-    state.node_graceful_shutdown().await;
     info!("snops agent has shut down gracefully :)");
 }
 

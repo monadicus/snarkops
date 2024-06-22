@@ -30,7 +30,7 @@ pub fn init(state: Arc<GlobalState>) {
 
             // TODO: this could probably be improved, but we want to avoid scraping metrics
             // if the child doesn't exist
-            if state.child.read().await.is_none() {
+            if state.db.pid_mutex.lock().await.is_none() {
                 continue;
             }
 

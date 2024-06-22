@@ -16,12 +16,10 @@ use snops_common::{
 };
 use tarpc::context;
 use tokio::{
-    process::Child,
     select,
     sync::{Mutex as AsyncMutex, RwLock},
     task::AbortHandle,
 };
-use tracing::info;
 
 use crate::{cli::Cli, db::Database, metrics::Metrics, transfers::TransferTx};
 
@@ -33,7 +31,7 @@ pub type AppState = Arc<GlobalState>;
 pub struct GlobalState {
     pub client: ControlServiceClient,
     pub db: OpaqueDebug<Database>,
-    pub started: Instant,
+    pub _started: Instant,
     pub connected: Mutex<Instant>,
 
     pub external_addr: Option<IpAddr>,
@@ -45,8 +43,6 @@ pub struct GlobalState {
     pub agent_state: RwLock<AgentState>,
     pub env_info: RwLock<Option<(EnvId, EnvInfo)>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,
-    pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
-                                       * not sure yet */
     // Map of agent IDs to their resolved addresses.
     pub resolved_addrs: RwLock<HashMap<AgentId, IpAddr>>,
     pub metrics: RwLock<Metrics>,
@@ -89,26 +85,39 @@ impl GlobalState {
 
     /// Attempt to gracefully shutdown the node if one is running.
     pub async fn node_graceful_shutdown(&self) {
-        if let Some((mut child, id)) = self.child.write().await.take().and_then(|ch| {
-            let id = ch.id()?;
-            Some((ch, id))
-        }) {
+        if let Some(id) = *self.db.pid_mutex.lock().await {
             use nix::{
                 sys::signal::{self, Signal},
                 unistd::Pid,
             };
 
+            let pid = Pid::from_raw(id as i32);
+
             // send SIGINT to the child process
-            signal::kill(Pid::from_raw(id as i32), Signal::SIGINT).unwrap();
+            signal::kill(pid, Signal::SIGINT).unwrap();
 
             // wait for graceful shutdown or kill process after 10 seconds
-            let timeout = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT);
+            let mut timeout = Box::pin(tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT));
 
-            select! {
-                _ = child.wait() => (),
-                _ = timeout => {
-                    info!("snarkos process did not gracefully shut down, killing...");
-                    child.kill().await.unwrap();
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+
+            loop {
+                select! {
+                    _ = interval.tick() => {
+                        // check if killed
+                        if nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)).is_ok() {
+                            tracing::info!("Node gracefully shutdown");
+                            break;
+                        }
+
+                    }
+                    _ = &mut timeout => {
+                        // force kill the node
+                        if let Err(e) = signal::kill(pid, Signal::SIGKILL) {
+                            tracing::error!("Failed to kill node: {:?}", e);
+                            break;
+                        }
+                    }
                 }
             }
         }

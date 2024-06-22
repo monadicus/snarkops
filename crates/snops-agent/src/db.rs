@@ -48,6 +48,7 @@ pub struct Database {
     pub db: sled::Db,
 
     pub jwt_mutex: Mutex<Option<String>>,
+    pub pid_mutex: tokio::sync::Mutex<Option<u32>>,
     pub strings: DbTree<AgentDbString, String>,
 }
 
@@ -56,10 +57,16 @@ impl DatabaseTrait for Database {
         let db = sled::open(path)?;
         let strings = DbTree::new(db.open_tree(b"v1/strings")?);
         let jwt_mutex = Mutex::new(strings.restore(&AgentDbString::Jwt)?);
+        let pid_mutex = tokio::sync::Mutex::new(
+            strings
+                .restore(&AgentDbString::NodePid)?
+                .map(|i: String| i.parse().unwrap()),
+        );
 
         Ok(Self {
             db,
             jwt_mutex,
+            pid_mutex,
             strings,
         })
     }
@@ -75,6 +82,14 @@ impl Database {
         self.strings
             .save_option(&AgentDbString::Jwt, jwt.as_ref())?;
         *lock = jwt;
+        Ok(())
+    }
+
+    pub async fn set_pid(&self, pid: Option<u32>) -> Result<(), DatabaseError> {
+        let mut lock = self.pid_mutex.lock().await;
+        self.strings
+            .save_option(&AgentDbString::NodePid, pid.map(|p| p.to_string()).as_ref())?;
+        *lock = pid;
         Ok(())
     }
 }
