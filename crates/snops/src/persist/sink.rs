@@ -71,8 +71,6 @@ impl DataFormat for TxSink {
         match reader.read_data(&())? {
             0u8 => {
                 let file_name = reader.read_data(&())?;
-                // TODO USEME
-                reader.read_data(&())?;
                 Ok(TxSink::Record { file_name })
             }
             1u8 => {
