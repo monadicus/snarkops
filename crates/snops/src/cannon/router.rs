@@ -31,6 +31,7 @@ pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
             "/:cannon/:network/find/blockHash/:tx",
             get(get_tx_blockhash),
         )
+        .route("/:cannon/:network/block/:height_or_hash", get(get_block))
         .route("/:cannon/:network/program/:program", get(get_program_json))
         .route(
             "/:cannon/:network/program/:program/mappings",
@@ -73,7 +74,7 @@ async fn state_root(
 
             Err(e) if attempts > 5 => {
                 break (
-                    StatusCode::INTERNAL_SERVER_ERROR,
+                    StatusCode::REQUEST_TIMEOUT,
                     Json(json!({ "error": "non-responsive query node", "inner": format!("{e}") })),
                 )
                     .into_response()
@@ -147,11 +148,7 @@ async fn get_mappings_json(
                 .await
             {
                 Ok(res) => Json(res).into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": format!("{e}") })),
-                )
-                    .into_response(),
+                Err(e) => ServerError::from(e).into_response(),
             }
         }
     }
@@ -189,11 +186,45 @@ async fn get_tx_blockhash(
                 .await
             {
                 Ok(res) => Json(res).into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": format!("{e}") })),
+                Err(e) => ServerError::from(e).into_response(),
+            }
+        }
+    }
+}
+
+async fn get_block(
+    Path((env_id, cannon_id, network, height_or_hash)): Path<(String, String, NetworkId, String)>,
+    state: State<AppState>,
+) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
+    };
+
+    if env.network != network {
+        return ServerError::NotFound("network mismatch".to_owned()).into_response();
+    }
+
+    let Some(cannon) = env.get_cannon(cannon_id) else {
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
+    };
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Option<serde_json::Value>>(
+                    env_id,
+                    format!("/block/{height_or_hash}"),
+                    target,
                 )
-                    .into_response(),
+                .await
+            {
+                Ok(res) => Json(res).into_response(),
+                Err(e) => ServerError::from(e).into_response(),
             }
         }
     }
@@ -263,11 +294,7 @@ async fn get_mapping_json(
                 .await
             {
                 Ok(res) => Json(res).into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": format!("{e}") })),
-                )
-                    .into_response(),
+                Err(e) => ServerError::from(e).into_response(),
             }
         }
     }
@@ -279,44 +306,24 @@ async fn transaction(
     body: String,
 ) -> Response {
     let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "unknown cannon or environment" })),
-        )
-            .into_response();
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
     };
 
     let Some(env) = state.get_env(env_id) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "environment not found" })),
-        )
-            .into_response();
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
     };
 
     if env.network != network {
-        return (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({ "error": "network mismatch" })),
-        )
-            .into_response();
+        return ServerError::NotFound("network mismatch".to_owned()).into_response();
     }
 
     let Some(cannon) = env.get_cannon(cannon_id) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "cannon not found" })),
-        )
-            .into_response();
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
     };
 
     match cannon.proxy_broadcast(body) {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("{e}")})),
-        )
-            .into_response(),
+        Err(e) => ServerError::from(e).into_response(),
     }
 }
 
@@ -326,38 +333,22 @@ async fn authorization(
     Json(body): Json<Authorization>,
 ) -> Response {
     let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "unknown cannon or environment" })),
-        )
-            .into_response();
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
     };
 
     let Some(env) = state.get_env(env_id) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "environment not found" })),
-        )
-            .into_response();
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
     };
 
     let Some(cannon) = env.get_cannon(cannon_id) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": "cannon not found" })),
-        )
-            .into_response();
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
     };
 
     let aot = AotCmd::new(env.aot_bin.clone(), env.network);
     let tx_id = match aot.get_tx_id(&body).await {
         Ok(id) => id,
         Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("{e}")})),
-            )
-                .into_response()
+            return ServerError::from(e).into_response();
         }
     };
 

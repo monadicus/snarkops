@@ -1,7 +1,10 @@
 use checkpoint::RetentionPolicy;
 use serde::{Deserialize, Serialize};
 
-use crate::{prelude::StorageId, state::NetworkId};
+use crate::{
+    prelude::StorageId,
+    state::{LatestBlockInfo, NetworkId},
+};
 
 /// Metadata about a checkpoint file
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -15,6 +18,7 @@ pub struct CheckpointMeta {
 pub struct EnvInfo {
     pub network: NetworkId,
     pub storage: StorageInfo,
+    pub block: Option<LatestBlockInfo>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

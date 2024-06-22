@@ -530,10 +530,11 @@ impl Environment {
         self.cannons.get(&id).cloned()
     }
 
-    pub fn info(&self) -> EnvInfo {
+    pub fn info(&self, state: &GlobalState) -> EnvInfo {
         EnvInfo {
             network: self.network,
             storage: self.storage.info(),
+            block: state.get_env_block_info(self.id),
         }
     }
 
