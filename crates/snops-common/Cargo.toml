@@ -32,11 +32,11 @@ sled.workspace = true
 strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["process"] }
 tracing.workspace = true
 url.workspace = true
 wildmatch.workspace = true
 
 [dev-dependencies]
 indexmap = { workspace = true, features = ["std"] }
-tokio = { workspace = true, features = ["io-util", "process"] }
+tokio = { workspace = true, features = ["io-util"] }
