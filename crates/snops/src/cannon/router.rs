@@ -329,8 +329,8 @@ async fn transaction(
 
 #[derive(Debug, Deserialize)]
 pub struct AuthQuery {
+    /// When present, the response will contain only the transaction ID
     #[serde(rename = "async")]
-    // when present, the response will contain only the transaction
     async_mode: Option<bool>,
 }
 
