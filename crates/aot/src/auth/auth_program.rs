@@ -23,6 +23,9 @@ pub struct AuthorizeProgram<N: Network> {
     pub key: Key<N>,
     #[clap(flatten)]
     pub options: AuthProgramOptions<N>,
+    /// The seed to use for the authorization generation
+    #[clap(long)]
+    pub seed: Option<u64>,
 }
 
 impl<N: Network> AuthorizeProgram<N> {
@@ -45,7 +48,7 @@ impl<N: Network> AuthorizeProgram<N> {
                 &private_key,
                 self.options.locator.resource(),
                 self.options.inputs.iter(),
-                &mut rand::thread_rng(),
+                &mut super::rng_from_seed(self.seed),
             )?;
 
         let cost = estimate_cost(&process, &auth)?;

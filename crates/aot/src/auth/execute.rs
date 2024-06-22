@@ -33,6 +33,9 @@ pub struct Execute<N: Network> {
     /// The Authorization for the function.
     #[clap(flatten)]
     pub auth: AuthArgs<N>,
+    /// The seed to use for the execution
+    #[clap(long)]
+    pub seed: Option<u64>,
 }
 
 /// Executes the authorization remotely
@@ -137,7 +140,7 @@ impl<N: Network> Execute<N> {
                 self.auth.pick()?,
                 None,
                 Some(self.query.to_owned()),
-                &mut rand::thread_rng(),
+                &mut super::rng_from_seed(self.seed),
             )?,
             ExecMode::Remote => return execute_remote(&self.query, self.auth.pick()?),
         };

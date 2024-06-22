@@ -49,6 +49,9 @@ pub struct AuthorizeFee<N: Network> {
     /// Estimated cost of the deployment or program execution
     #[arg(short, long, group = "manual")]
     pub cost: Option<u64>,
+    /// The seed to use for the authorization generation
+    #[clap(long)]
+    pub seed: Option<u64>,
 }
 
 impl<N: Network> AuthorizeFee<N> {
@@ -80,7 +83,7 @@ impl<N: Network> AuthorizeFee<N> {
             base_fee,
             self.key.try_get()?,
             self.options.priority_fee,
-            &mut rand::thread_rng(),
+            &mut super::rng_from_seed(self.seed),
             self.options.record,
         )?;
 

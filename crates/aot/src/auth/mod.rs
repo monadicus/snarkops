@@ -2,6 +2,8 @@ use anyhow::Result;
 use args::{AuthArgs, AuthBlob, FeeKey};
 use auth_fee::estimate_cost;
 use clap::{Args, Subcommand};
+use rand::SeedableRng;
+use rand_chacha::ChaChaRng;
 use snarkvm::synthesizer::{process::deployment_cost, Process};
 
 use crate::{runner::Key, Network};
@@ -13,6 +15,14 @@ pub mod auth_id;
 pub mod auth_program;
 pub mod execute;
 pub mod query;
+
+pub fn rng_from_seed(seed: Option<u64>) -> ChaChaRng {
+    if let Some(seed) = seed {
+        ChaChaRng::seed_from_u64(seed)
+    } else {
+        ChaChaRng::from_entropy()
+    }
+}
 
 /// A command to help generate various different types of authorizations and
 /// execute them.
@@ -52,6 +62,9 @@ pub struct AuthProgramCommand<N: Network> {
     pub fee_opts: auth_fee::AuthFeeOptions<N>,
     #[clap(flatten)]
     pub program_opts: auth_program::AuthProgramOptions<N>,
+    /// The seed to use for the authorization generation
+    #[clap(long)]
+    pub seed: Option<u64>,
 }
 
 /// Deploy a program to the network.
@@ -68,6 +81,9 @@ pub struct AuthDeployCommand<N: Network> {
     pub fee_opts: auth_fee::AuthFeeOptions<N>,
     #[clap(flatten)]
     pub deploy_opts: auth_deploy::AuthDeployOptions<N>,
+    /// The seed to use for the authorization generation
+    #[clap(long)]
+    pub seed: Option<u64>,
 }
 
 impl<N: Network> AuthCommand<N> {
@@ -129,6 +145,7 @@ impl<N: Network> AuthCommand<N> {
                 fee_key,
                 program_opts,
                 fee_opts,
+                seed,
             }) => {
                 let query = program_opts.query.clone();
 
@@ -136,6 +153,7 @@ impl<N: Network> AuthCommand<N> {
                 let (auth, cost) = auth_program::AuthorizeProgram {
                     key: key.clone(),
                     options: program_opts,
+                    seed,
                 }
                 .parse()?;
 
@@ -153,6 +171,7 @@ impl<N: Network> AuthCommand<N> {
                     query,
                     id: Some(auth.to_execution_id()?),
                     cost: Some(cost),
+                    seed,
                 }
                 .parse()?;
 
@@ -160,7 +179,7 @@ impl<N: Network> AuthCommand<N> {
                     "{}",
                     serde_json::to_string(&AuthBlob::Program {
                         auth: auth.into(),
-                        fee_auth: fee_auth.map(Into::into)
+                        fee_auth: fee_auth.map(Into::into),
                     })?
                 );
                 Ok(())
@@ -171,6 +190,7 @@ impl<N: Network> AuthCommand<N> {
                 fee_key,
                 deploy_opts,
                 fee_opts,
+                seed,
             }) => {
                 // authorize the deployment without a fee
                 let AuthBlob::Deploy {
@@ -178,6 +198,7 @@ impl<N: Network> AuthCommand<N> {
                 } = auth_deploy::AuthorizeDeploy {
                     key: key.clone(),
                     options: deploy_opts,
+                    seed,
                 }
                 .parse()?
                 else {
@@ -205,6 +226,7 @@ impl<N: Network> AuthCommand<N> {
                     query: None,
                     id: Some(deployment.to_deployment_id()?),
                     cost: Some(deployment_cost(&deployment)?.0),
+                    seed,
                 }
                 .parse()?
                 .map(Into::into);
