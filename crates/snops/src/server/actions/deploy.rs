@@ -1,7 +1,9 @@
 use axum::{
+    extract::Query,
     response::{IntoResponse, Response},
     Json,
 };
+use http::StatusCode;
 use snops_common::{
     action_models::DeployAction,
     aot_cmds::{AotCmd, Authorization},
@@ -11,17 +13,28 @@ use tokio::sync::mpsc;
 
 use super::{execute::execute_status, Env};
 use crate::{
-    cannon::{error::AuthorizeError, status::TransactionStatusSender},
+    cannon::{error::AuthorizeError, router::AuthQuery, status::TransactionStatusSender},
     env::{error::ExecutionError, Environment},
     server::error::ServerError,
 };
 
-pub async fn deploy(Env { env, .. }: Env, Json(action): Json<DeployAction>) -> Response {
+pub async fn deploy(
+    Env { env, .. }: Env,
+    Query(query): Query<AuthQuery>,
+    Json(action): Json<DeployAction>,
+) -> Response {
+    let query_addr = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
+
+    if query.is_async() {
+        return match deploy_inner(action, &env, TransactionStatusSender::empty(), query_addr).await
+        {
+            Ok(tx_id) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
+            Err(e) => ServerError::from(e).into_response(),
+        };
+    }
+
     let (tx, rx) = mpsc::channel(10);
-
-    let query = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
-
-    match deploy_inner(action, &env, TransactionStatusSender::new(tx), query).await {
+    match deploy_inner(action, &env, TransactionStatusSender::new(tx), query_addr).await {
         Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }

@@ -1,7 +1,9 @@
 use axum::{
+    extract::Query,
     response::{IntoResponse, Response},
     Json,
 };
+use http::StatusCode;
 use serde_json::json;
 use snops_common::{
     action_models::{AleoValue, ExecuteAction},
@@ -14,6 +16,7 @@ use super::Env;
 use crate::{
     cannon::{
         error::AuthorizeError,
+        router::AuthQuery,
         status::{TransactionStatus, TransactionStatusSender},
     },
     env::{error::ExecutionError, Environment},
@@ -66,12 +69,23 @@ pub async fn execute_status(
     }
 }
 
-pub async fn execute(Env { env, .. }: Env, Json(action): Json<ExecuteAction>) -> Response {
+pub async fn execute(
+    Env { env, .. }: Env,
+    Query(query): Query<AuthQuery>,
+    Json(action): Json<ExecuteAction>,
+) -> Response {
+    let query_addr = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
+
+    if query.is_async() {
+        return match execute_inner(action, &env, TransactionStatusSender::empty(), query_addr).await
+        {
+            Ok(tx_id) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
+            Err(e) => ServerError::from(e).into_response(),
+        };
+    }
+
     let (tx, rx) = mpsc::channel(10);
-
-    let query = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
-
-    match execute_inner(action, &env, TransactionStatusSender::new(tx), query).await {
+    match execute_inner(action, &env, TransactionStatusSender::new(tx), query_addr).await {
         Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }

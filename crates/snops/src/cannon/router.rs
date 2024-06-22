@@ -327,9 +327,23 @@ async fn transaction(
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AuthQuery {
+    #[serde(rename = "async")]
+    // when present, the response will contain only the transaction
+    async_mode: Option<bool>,
+}
+
+impl AuthQuery {
+    pub fn is_async(&self) -> bool {
+        self.async_mode.unwrap_or_default()
+    }
+}
+
 async fn authorization(
     Path((env_id, cannon_id)): Path<(String, String)>,
     state: State<AppState>,
+    Query(query): Query<AuthQuery>,
     Json(body): Json<Authorization>,
 ) -> Response {
     let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
@@ -351,6 +365,13 @@ async fn authorization(
             return ServerError::from(e).into_response();
         }
     };
+
+    if query.is_async() {
+        return match cannon.proxy_auth(body, TransactionStatusSender::empty()) {
+            Ok(_) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
+            Err(e) => ServerError::from(e).into_response(),
+        };
+    }
 
     let (tx, rx) = mpsc::channel(10);
 
