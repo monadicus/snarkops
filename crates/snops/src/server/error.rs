@@ -9,7 +9,6 @@ use thiserror::Error;
 
 use crate::{
     cannon::error::CannonError,
-    db::error::DatabaseError,
     env::error::{EnvError, EnvRequestError, ExecutionError},
     error::DeserializeError,
     schema::error::SchemaError,

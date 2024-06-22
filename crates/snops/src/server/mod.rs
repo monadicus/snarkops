@@ -52,7 +52,7 @@ pub mod prometheus;
 mod rpc;
 
 pub async fn start(cli: Cli) -> Result<(), StartError> {
-    let db = db::Database::open(&cli.path.join("store"))?;
+    let db = db::Database::open(cli.path.join("store"))?;
     let socket_addr = SocketAddr::new(cli.bind_addr, cli.port);
 
     let prometheus = cli

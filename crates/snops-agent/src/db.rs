@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    path::PathBuf,
+    path::Path,
     sync::Mutex,
 };
 
@@ -52,7 +52,7 @@ pub struct Database {
 }
 
 impl DatabaseTrait for Database {
-    fn open(path: &PathBuf) -> Result<Self, DatabaseError> {
+    fn open<P: AsRef<Path>>(path: P) -> Result<Self, DatabaseError> {
         let db = sled::open(path)?;
         let strings = DbTree::new(db.open_tree(b"v1/strings")?);
         let jwt_mutex = Mutex::new(strings.restore(&AgentDbString::Jwt)?);

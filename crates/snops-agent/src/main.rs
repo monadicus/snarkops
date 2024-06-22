@@ -112,7 +112,7 @@ async fn main() {
         .expect("failed to create data path");
 
     // open the database
-    let db = db::Database::open(&args.path.join("store")).expect("failed to open database");
+    let db = db::Database::open(args.path.join("store")).expect("failed to open database");
 
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
