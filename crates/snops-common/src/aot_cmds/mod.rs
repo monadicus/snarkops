@@ -1,10 +1,14 @@
-use std::{io, path::PathBuf};
+use std::{io, path::PathBuf, process::Stdio};
 
-use serde::{Deserialize, Serialize};
-use tokio::process::{Child, Command};
+use tokio::{
+    io::AsyncWriteExt,
+    process::{Child, Command},
+};
 
 pub mod error;
 pub use error::AotCmdError;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use self::error::CommandError;
 use crate::{
@@ -18,9 +22,18 @@ pub struct AotCmd {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Authorization {
-    pub auth: serde_json::Value,
-    pub fee_auth: Option<serde_json::Value>,
+#[serde(untagged)]
+pub enum Authorization {
+    Program {
+        auth: Value,
+        fee_auth: Option<Value>,
+    },
+    Deploy {
+        owner: Value,
+        deployment: Value,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        fee_auth: Option<Value>,
+    },
 }
 
 type Output = io::Result<std::process::Output>;
@@ -66,13 +79,14 @@ impl AotCmd {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn authorize(
+    pub async fn authorize_program(
         &self,
         private_key: &str,
         fee_private_key: Option<&String>,
         program_id: &str,
         function_name: &str,
         inputs: &[String],
+        query: Option<&String>,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
     ) -> Result<String, AotCmdError> {
@@ -81,10 +95,14 @@ impl AotCmd {
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
             .env("NETWORK", self.network.to_string())
+            .arg("auth")
             .arg("program")
-            .arg("authorize")
             .arg("--private-key")
             .arg(private_key);
+
+        if let Some(query) = query {
+            command.arg("--query").arg(query);
+        }
 
         if let Some(fee_private_key) = fee_private_key {
             command.arg("--fee-private-key").arg(fee_private_key);
@@ -105,12 +123,70 @@ impl AotCmd {
         Self::handle_output(
             command.output().await,
             "output",
-            "aot program authorize",
+            "aot auth program",
             Self::parse_string,
         )
     }
 
-    pub async fn authorize_program(
+    #[allow(clippy::too_many_arguments)]
+    pub async fn authorize_deploy(
+        &self,
+        private_key: &str,
+        fee_private_key: Option<&String>,
+        program: &str,
+        query: Option<&String>,
+        priority_fee: Option<u64>,
+        fee_record: Option<&String>,
+    ) -> Result<String, AotCmdError> {
+        let mut command = Command::new(&self.bin);
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(std::io::stderr())
+            .env("NETWORK", self.network.to_string())
+            .arg("auth")
+            .arg("deploy")
+            .arg("--private-key")
+            .arg(private_key);
+
+        if let Some(query) = query {
+            command.arg("--query").arg(query);
+        }
+
+        if let Some(fee_private_key) = fee_private_key {
+            command.arg("--fee-private-key").arg(fee_private_key);
+        }
+
+        if let Some(priority_fee) = priority_fee {
+            command.arg("--priority-fee").arg(priority_fee.to_string());
+        }
+
+        if let Some(fee_record) = fee_record {
+            command.arg("--record").arg(fee_record);
+        }
+
+        command.arg("-");
+
+        let mut child = command
+            .spawn()
+            .map_err(|e| CommandError::action("spawning", "aot auth deploy", e))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(program.as_bytes())
+                .await
+                .map_err(|e| CommandError::action("writing to", "aot auth deploy stdin", e))?;
+        }
+
+        Self::handle_output(
+            child.wait_with_output().await,
+            "output",
+            "aot auth deploy",
+            Self::parse_string,
+        )
+    }
+
+    pub async fn authorize_program_only(
         &self,
         private_key: &str,
         program_id: &str,
@@ -122,8 +198,8 @@ impl AotCmd {
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
             .env("NETWORK", self.network.to_string())
+            .arg("auth")
             .arg("program")
-            .arg("authorize-program")
             .arg("--private-key")
             .arg(private_key)
             .arg(format!("{program_id}/{function_name}"))
@@ -132,12 +208,12 @@ impl AotCmd {
         Self::handle_output(
             command.output().await,
             "output",
-            "aot program authorize",
+            "aot auth program",
             Self::parse_string,
         )
     }
 
-    pub async fn authorize_fee(
+    pub async fn authorize_program_fee(
         &self,
         private_key: &str,
         authorization: &str,
@@ -149,8 +225,8 @@ impl AotCmd {
             .stdout(std::io::stdout())
             .stderr(std::io::stderr())
             .env("NETWORK", self.network.to_string())
-            .arg("program")
-            .arg("authorize-fee")
+            .arg("auth")
+            .arg("fee")
             .arg("--auth")
             .arg(authorization)
             .arg("--private-key")
@@ -165,36 +241,45 @@ impl AotCmd {
         Self::handle_output(
             command.output().await,
             "output",
-            "aot program authorize-fee",
+            "aot auth fee",
             Self::parse_string,
         )
     }
 
-    pub async fn execute(
-        &self,
-        func: String,
-        fee: Option<String>,
-        query: String,
-    ) -> Result<String, AotCmdError> {
+    pub async fn execute(&self, auth: Authorization, query: String) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
             .env("NETWORK", self.network.to_string())
-            .arg("program")
+            .arg("auth")
             .arg("execute")
             .arg("--broadcast")
             .arg("--query")
-            .arg(query)
-            .arg("--auth")
-            .arg(func);
+            .arg(query);
 
-        if let Some(fee) = fee {
-            command.arg("--fee-auth").arg(fee);
+        match auth {
+            Authorization::Program { auth, fee_auth } => {
+                command.arg("--auth").arg(auth.to_string());
+                if let Some(fee_auth) = fee_auth {
+                    command.arg("--fee-auth").arg(fee_auth.to_string());
+                }
+            }
+            Authorization::Deploy {
+                owner,
+                deployment,
+                fee_auth,
+            } => {
+                command.arg("--owner").arg(owner.to_string());
+                command.arg("--deployment").arg(deployment.to_string());
+                if let Some(fee_auth) = fee_auth {
+                    command.arg("--fee-auth").arg(fee_auth.to_string());
+                }
+            }
         }
 
         Self::handle_output(
             command.output().await,
             "output",
-            "aot program execute",
+            "aot auth execute",
             Self::parse_string,
         )
     }
@@ -203,14 +288,14 @@ impl AotCmd {
         let mut command = Command::new(&self.bin);
         command
             .env("NETWORK", self.network.to_string())
-            .arg("program")
+            .arg("auth")
             .arg("id")
             .arg(serde_json::to_string(auth).map_err(AotCmdError::Json)?);
 
         Self::handle_output(
             command.output().await,
             "output",
-            "aot program tx id",
+            "aot auth id",
             Self::parse_string,
         )
     }

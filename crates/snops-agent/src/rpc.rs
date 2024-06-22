@@ -469,7 +469,6 @@ impl AgentService for AgentRpcServer {
         network: NetworkId,
         query: String,
         auth: String,
-        fee_auth: Option<String>,
     ) -> Result<String, AgentError> {
         info!("executing authorization...");
 
@@ -493,7 +492,10 @@ impl AgentService for AgentRpcServer {
 
         let start = std::time::Instant::now();
         match AotCmd::new(aot_bin, network)
-            .execute(auth, fee_auth, format!("{}{query}", self.state.endpoint))
+            .execute(
+                serde_json::from_str(&auth).map_err(|_| AgentError::FailedToParseJson)?,
+                format!("{}{query}", self.state.endpoint),
+            )
             .await
         {
             Ok(exec) => {

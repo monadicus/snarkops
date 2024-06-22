@@ -1,4 +1,3 @@
-use core::str::FromStr;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
@@ -6,7 +5,7 @@ use std::{
 };
 
 use aleo_std::StorageMode;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use clap::Args;
 use snarkos_node::Node;
@@ -21,36 +20,13 @@ use snarkvm::{
 use snops_common::state::{snarkos_status::SnarkOSStatus, NodeType};
 use status::AgentStatusClient;
 
-use crate::{Account, DbLedger, Network, PrivateKey};
+use crate::{Account, DbLedger, Key, Network};
 
 mod metrics;
 mod status;
 
-#[derive(Debug, Args, Clone)]
-#[group(required = true, multiple = false)]
-pub struct Key<N: Network> {
-    /// Specify the account private key of the node
-    #[clap(long = "private-key")]
-    pub private_key: Option<PrivateKey<N>>,
-    /// Specify the account private key of the node
-    #[clap(long = "private-key-file")]
-    pub private_key_file: Option<PathBuf>,
-}
-
-impl<N: Network> Key<N> {
-    pub fn try_get(self) -> Result<PrivateKey<N>> {
-        match (self.private_key, self.private_key_file) {
-            (Some(key), None) => Ok(key),
-            (None, Some(file)) => {
-                let raw = std::fs::read_to_string(file)?.trim().to_string();
-                Ok(PrivateKey::from_str(&raw)?)
-            }
-            // clap should make this unreachable, but serde might not
-            _ => bail!("Either `private-key` or `private-key-file` must be set"),
-        }
-    }
-}
-
+/// A wrapper around the snarkos node run commands that provide additional
+/// logging and configurability.
 #[derive(Debug, Args)]
 pub struct Runner<N: Network> {
     /// A path to the genesis block to initialize the ledger from.
@@ -61,38 +37,42 @@ pub struct Runner<N: Network> {
     #[arg(required = true, short, long, default_value = "./ledger")]
     pub ledger: PathBuf,
 
+    /// The type of node to run: validator, prover, or client.
     #[arg(required = true, name = "type", short, long)]
     pub node_type: NodeType,
 
     #[clap(flatten)]
     pub key: Key<N>,
 
+    /// Specify the IP(v4 or v6) address to bind to.
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
-    /// Specify the IP address and port for the node server
+    /// Specify the IP address and port for the node server.
     #[clap(long, default_value_t = 4130)]
     pub node: u16,
-    /// Specify the IP address and port for the BFT
+    /// Specify the IP address and port for the BFT.
     #[clap(long, default_value_t = 5000)]
     pub bft: u16,
-    /// Specify the IP address and port for the REST server
+    /// Specify the IP address and port for the REST server.
     #[clap(long, default_value_t = 3030)]
     pub rest: u16,
-    /// Specify the port for the metrics server
+    /// Specify the port for the metrics server.
     #[clap(long, default_value_t = 9000)]
     pub metrics: u16,
 
-    /// Specify the IP address and port of the peer(s) to connect to
+    /// Specify the IP address and port of the peer(s) to connect to.
     #[clap(long, num_args = 1, value_delimiter = ',')]
     pub peers: Vec<SocketAddr>,
-    /// Specify the IP address and port of the validator(s) to connect to
+    /// Specify the IP address and port of the validator(s) to connect to.
     #[clap(long, num_args = 1, value_delimiter = ',')]
     pub validators: Vec<SocketAddr>,
     /// Specify the requests per second (RPS) rate limit per IP for the REST
-    /// server
+    /// server.
     #[clap(long, default_value_t = 1000)]
     pub rest_rps: u32,
 
+    /// The retention policy for the checkpoint manager. i.e. how often to
+    /// create checkpoints.
     #[clap(long)]
     pub retention_policy: Option<RetentionPolicy>,
 

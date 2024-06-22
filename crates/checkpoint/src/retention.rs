@@ -2,11 +2,11 @@ use std::{collections::BinaryHeap, fmt::Write, num::NonZeroU8, str::FromStr};
 
 use chrono::{DateTime, TimeDelta, Utc};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// A comma separated list of retention rules ordered by duration,
 /// with the first rule being the shortest
 ///
 /// eg. 4h:1h,1W:U,4W:1D,6M:1W,1Y:1M,U:6M
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetentionPolicy {
     pub rules: Vec<RetentionRule>,
 }

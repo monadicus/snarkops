@@ -69,18 +69,19 @@ pub async fn execute_status(
 pub async fn execute(Env { env, .. }: Env, Json(action): Json<ExecuteAction>) -> Response {
     let (tx, rx) = mpsc::channel(10);
 
-    let tx_id = match execute_inner(action, &env, TransactionStatusSender::new(tx)).await {
-        Ok(tx_id) => tx_id,
-        Err(e) => return ServerError::from(e).into_response(),
-    };
+    let query = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
 
-    execute_status(tx_id, rx).await.into_response()
+    match execute_inner(action, &env, TransactionStatusSender::new(tx), query).await {
+        Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
+        Err(e) => ServerError::from(e).into_response(),
+    }
 }
 
 pub async fn execute_inner(
     action: ExecuteAction,
     env: &Environment,
     events: TransactionStatusSender,
+    query: Option<String>,
 ) -> Result<String, ExecutionError> {
     let ExecuteAction {
         cannon: cannon_id,
@@ -135,12 +136,13 @@ pub async fn execute_inner(
     // authorize the transaction
     let aot = AotCmd::new(env.aot_bin.clone(), env.network);
     let auth_str = aot
-        .authorize(
+        .authorize_program(
             &resolved_pk,
             resolved_fee_pk.as_ref(),
             &program,
             &function,
             &resolved_inputs,
+            query.as_ref(),
             priority_fee,
             fee_record.as_ref(),
         )

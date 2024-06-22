@@ -7,6 +7,7 @@ use clap::{Command, Parser, ValueHint};
 /// Only with the mangen feature enabled.
 #[derive(Debug, Parser)]
 pub struct Mangen {
+    /// Directory to write manpages to.
     #[clap(value_hint = ValueHint::Other, default_value = "target/man/snops-cli")]
     directory: PathBuf,
 }

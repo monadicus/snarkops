@@ -3,12 +3,12 @@ use std::{path::PathBuf, str::FromStr};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use rand::{CryptoRng, Rng};
-use snarkvm::{console::program::Network, ledger::Block, utilities::FromBytes};
+use snarkvm::{ledger::Block, utilities::FromBytes};
 
 use self::checkpoint::CheckpointCommand;
-use crate::program::{
-    args::AuthBlob,
-    execute::{execute_local, Execute},
+use crate::{
+    auth::execute::{execute_local, Execute},
+    Network,
 };
 
 pub mod checkpoint;
@@ -19,6 +19,7 @@ pub mod truncate;
 pub mod util;
 pub mod view;
 
+/// Commands for interacting with the ledger.
 #[derive(Debug, Args)]
 pub struct Ledger<N: Network> {
     #[arg(long)]
@@ -45,6 +46,7 @@ pub enum Commands<N: Network> {
     Truncate(truncate::Truncate),
     Execute(Execute<N>),
     Query(query::LedgerQuery<N>),
+    /// Hash the ledger.
     Hash,
     #[clap(subcommand)]
     Checkpoint(CheckpointCommand),
@@ -77,9 +79,12 @@ impl<N: Network> Ledger<N> {
             Commands::Truncate(truncate) => truncate.parse::<N>(genesis_block, ledger),
             Commands::Execute(execute) => {
                 let ledger = util::open_ledger(genesis_block, ledger)?;
-                let AuthBlob { auth, fee_auth } = execute.auth.pick()?;
-                let tx =
-                    execute_local(auth, fee_auth, Some(&ledger), None, &mut rand::thread_rng())?;
+                let tx = execute_local(
+                    execute.auth.pick()?,
+                    Some(&ledger),
+                    None,
+                    &mut rand::thread_rng(),
+                )?;
                 println!("{}", serde_json::to_string(&tx)?);
                 Ok(())
             }

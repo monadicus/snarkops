@@ -7,6 +7,7 @@ use clap::{CommandFactory, Parser, ValueHint};
 /// Only with the clipages feature enabled.
 #[derive(Debug, Parser)]
 pub struct Clipages {
+    /// Directory to write markdown to.
     #[clap(value_hint = ValueHint::Other, default_value = "snops_book/user_guide/clis")]
     directory: PathBuf,
 }

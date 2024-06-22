@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snops_common::{lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN};
+use snops_common::{
+    aot_cmds::Authorization, lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN,
+};
 
 use super::{
     error::{CannonError, SourceError},
@@ -168,8 +170,7 @@ impl ComputeTarget {
         state: &GlobalState,
         env: &Environment,
         query_path: &str,
-        auth: &serde_json::Value,
-        fee_auth: Option<&serde_json::Value>,
+        auth: &Authorization,
         events: &TransactionStatusSender,
     ) -> Result<(), CannonError> {
         match self {
@@ -189,12 +190,6 @@ impl ComputeTarget {
                         query_path.to_owned(),
                         serde_json::to_string(&auth)
                             .map_err(|e| SourceError::Json("authorize tx", e))?,
-                        fee_auth
-                            .map(|f| {
-                                serde_json::to_string(&f)
-                                    .map_err(|e| SourceError::Json("authorize fee", e))
-                            })
-                            .transpose()?,
                     )
                     .await?;
 
@@ -202,21 +197,30 @@ impl ComputeTarget {
 
                 Ok(())
             }
-            ComputeTarget::Demox { demox_api: url } => {
-                let _body = json!({
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "generateTransaction",
-                    "params": {
-                        "authorization": serde_json::to_string(&auth).map_err(|e| SourceError::Json("authorize tx", e))?,
-                        "fee": serde_json::to_string(&fee_auth).map_err(|e| SourceError::Json("authorize fee", e))?,
-                        "url": query_path,
-                        "broadcast": true,
-                    }
-                });
+            ComputeTarget::Demox { demox_api: url } => match auth {
+                Authorization::Program { auth, fee_auth } => {
+                    let _body = json!({
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "generateTransaction",
+                        "params": {
+                            "authorization": serde_json::to_string(&auth).map_err(|e| SourceError::Json("authorize tx", e))?,
+                            "fee": serde_json::to_string(&fee_auth).map_err(|e| SourceError::Json("authorize fee", e))?,
+                            "url": query_path,
+                            "broadcast": true,
+                        }
+                    });
 
-                todo!("post on {url}")
-            }
+                    todo!("post on {url}")
+                }
+                Authorization::Deploy {
+                    owner: _,
+                    deployment: _,
+                    fee_auth: _,
+                } => {
+                    unimplemented!()
+                }
+            },
         }
     }
 }

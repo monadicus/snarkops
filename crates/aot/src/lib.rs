@@ -1,23 +1,32 @@
 pub mod accounts;
+pub mod auth;
 pub mod cli;
 pub mod genesis;
+mod key;
 pub mod ledger;
 pub mod program;
+
+pub use key::Key;
 
 #[cfg(feature = "node")]
 pub mod runner;
 
+use std::sync::OnceLock;
+
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use snarkvm::{
+    circuit::{Aleo, AleoCanaryV0, AleoTestnetV0, AleoV0},
     console::{
         network::{CanaryV0, MainnetV0, TestnetV0},
-        program::Network,
+        program::Network as NetworkTrait,
     },
     ledger::{
         store::helpers::{memory::ConsensusMemory, rocksdb::ConsensusDB},
         Ledger,
     },
+    prelude::ProgramID,
+    synthesizer::Process,
 };
 
 pub enum NetworkId {
@@ -52,9 +61,9 @@ impl std::fmt::Display for NetworkId {
 impl From<NetworkId> for u16 {
     fn from(id: NetworkId) -> Self {
         match id {
-            NetworkId::Mainnet => <MainnetV0 as Network>::ID,
-            NetworkId::Testnet => <TestnetV0 as Network>::ID,
-            NetworkId::Canary => <CanaryV0 as Network>::ID,
+            NetworkId::Mainnet => <MainnetV0 as NetworkTrait>::ID,
+            NetworkId::Testnet => <TestnetV0 as NetworkTrait>::ID,
+            NetworkId::Canary => <CanaryV0 as NetworkTrait>::ID,
         }
     }
 }
@@ -62,13 +71,45 @@ impl From<NetworkId> for u16 {
 impl NetworkId {
     pub fn from_network<N: Network>() -> Self {
         match N::ID {
-            <MainnetV0 as Network>::ID => Self::Mainnet,
-            <TestnetV0 as Network>::ID => Self::Testnet,
-            <CanaryV0 as Network>::ID => Self::Canary,
+            <MainnetV0 as NetworkTrait>::ID => Self::Mainnet,
+            <TestnetV0 as NetworkTrait>::ID => Self::Testnet,
+            <CanaryV0 as NetworkTrait>::ID => Self::Canary,
             _ => unreachable!(),
         }
     }
 }
+
+pub trait Network: NetworkTrait {
+    type Circuit: Aleo<Network = Self>;
+    fn str_id() -> NetworkId;
+    fn process<'a>() -> &'a Process<Self>;
+    fn credits() -> ProgramID<Self>;
+}
+
+macro_rules! network_to_circuit {
+    ($net_name:ident = $circuit_name:ident) => {
+        impl Network for $net_name {
+            type Circuit = $circuit_name;
+
+            fn process<'a>() -> &'a Process<$net_name> {
+                static PROCESS: OnceLock<Process<$net_name>> = OnceLock::new();
+                PROCESS.get_or_init(|| Process::load().unwrap())
+            }
+
+            fn credits() -> ProgramID<$net_name> {
+                std::str::FromStr::from_str("credits.aleo").unwrap()
+            }
+
+            fn str_id() -> NetworkId {
+                NetworkId::from_network::<$net_name>()
+            }
+        }
+    };
+}
+
+network_to_circuit!(MainnetV0 = AleoV0);
+network_to_circuit!(TestnetV0 = AleoTestnetV0);
+network_to_circuit!(CanaryV0 = AleoCanaryV0);
 
 // The db.
 pub type Db<N> = ConsensusDB<N>;
@@ -82,7 +123,7 @@ pub type MemVM<N> = snarkvm::synthesizer::VM<N, ConsensusMemory<N>>;
 pub type VM<N> = snarkvm::synthesizer::VM<N, Db<N>>;
 
 // Tx types.
-pub type TransactionID<N> = <N as Network>::TransactionID;
+pub type TransactionID<N> = <N as NetworkTrait>::TransactionID;
 pub type Transaction<N> = snarkvm::ledger::Transaction<N>;
 
 // Account types.

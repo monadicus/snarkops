@@ -56,7 +56,7 @@ impl ControlService for ControlRpcServer {
     }
 
     async fn get_env_info(self, _: context::Context, env_id: EnvId) -> Option<EnvInfo> {
-        Some(self.state.get_env(env_id)?.info())
+        Some(self.state.get_env(env_id)?.info(&self.state))
     }
 
     async fn post_transfer_status(

@@ -2,12 +2,15 @@ use axum::{response::IntoResponse, Json};
 use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
-use snops_common::{db::error::DatabaseError, impl_into_status_code, impl_into_type_str};
+use snops_common::{
+    aot_cmds::AotCmdError, db::error::DatabaseError, impl_into_status_code, impl_into_type_str,
+};
 use thiserror::Error;
 
 use crate::{
     cannon::error::CannonError,
-    env::error::{EnvError, ExecutionError},
+    db::error::DatabaseError,
+    env::error::{EnvError, EnvRequestError, ExecutionError},
     error::DeserializeError,
     schema::error::SchemaError,
     state::error::BatchReconcileError,
@@ -29,6 +32,12 @@ pub enum ServerError {
     Execute(#[from] ExecutionError),
     #[error(transparent)]
     Schema(#[from] SchemaError),
+    #[error(transparent)]
+    EnvRequest(#[from] EnvRequestError),
+    #[error("{0}")]
+    NotFound(String),
+    #[error(transparent)]
+    AotCmd(#[from] AotCmdError),
 }
 
 impl_into_status_code!(ServerError, |value| match value {
@@ -39,6 +48,9 @@ impl_into_status_code!(ServerError, |value| match value {
     Env(e) => e.into(),
     Execute(e) => e.into(),
     Schema(e) => e.into(),
+    EnvRequest(e) => e.into(),
+    AotCmd(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+    NotFound(_) => axum::http::StatusCode::NOT_FOUND,
 });
 
 impl_into_type_str!(ServerError, |value| match value {
@@ -47,6 +59,7 @@ impl_into_type_str!(ServerError, |value| match value {
     Env(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Execute(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Schema(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    EnvRequest(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     _ => value.as_ref().to_string(),
 });
 

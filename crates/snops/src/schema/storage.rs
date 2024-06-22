@@ -646,6 +646,7 @@ impl LoadedStorage {
             KeySource::Local => KeyState::Local,
             KeySource::PrivateKeyLiteral(pk) => KeyState::Literal(pk.clone()),
             KeySource::PublicKeyLiteral(_) => KeyState::None,
+            KeySource::ProgramLiteral(_) => KeyState::None,
             KeySource::Committee(Some(i)) => self
                 .committee
                 .get_index(*i)
@@ -666,6 +667,7 @@ impl LoadedStorage {
             KeySource::Local => KeyState::Local,
             KeySource::PrivateKeyLiteral(_) => KeyState::None,
             KeySource::PublicKeyLiteral(addr) => KeyState::Literal(addr.clone()),
+            KeySource::ProgramLiteral(addr) => KeyState::Literal(addr.clone()),
             KeySource::Committee(Some(i)) => self
                 .committee
                 .get_index(*i)
@@ -686,6 +688,7 @@ impl LoadedStorage {
             KeySource::Local => KeyState::Local,
             KeySource::PrivateKeyLiteral(pk) => KeyState::Literal(pk.clone()),
             KeySource::PublicKeyLiteral(_) => KeyState::None,
+            KeySource::ProgramLiteral(_) => KeyState::None,
             KeySource::Committee(Some(i)) => self
                 .committee
                 .get_index(*i)
@@ -715,6 +718,7 @@ impl LoadedStorage {
             KeySource::Local => KeyState::Local,
             KeySource::PrivateKeyLiteral(_) => KeyState::None,
             KeySource::PublicKeyLiteral(addr) => KeyState::Literal(addr.clone()),
+            KeySource::ProgramLiteral(addr) => KeyState::Literal(addr.clone()),
             KeySource::Committee(Some(i)) => self
                 .committee
                 .get_index(*i)

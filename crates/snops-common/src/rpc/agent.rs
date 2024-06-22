@@ -43,7 +43,6 @@ pub trait AgentService {
         network: NetworkId,
         query: String,
         auth: String,
-        fee_auth: Option<String>,
     ) -> Result<String, AgentError>;
 
     async fn get_metric(metric: AgentMetric) -> f64;

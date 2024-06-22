@@ -12,6 +12,7 @@ use snarkvm::{console::program::Network, prelude::Itertools, utilities::ToBytes}
 
 use crate::{Address, PrivateKey};
 
+/// Given a seed and a count, generate a number of accounts.
 #[derive(Debug, Clone, Parser)]
 pub struct GenAccounts {
     /// Number of accounts to generate

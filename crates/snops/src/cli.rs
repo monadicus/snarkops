@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
     str::FromStr,
 };
@@ -79,6 +79,15 @@ impl Cli {
         }
 
         std::process::exit(0);
+    }
+
+    pub fn get_local_addr(&self) -> SocketAddr {
+        let ip = if self.bind_addr.is_unspecified() {
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        } else {
+            self.bind_addr
+        };
+        SocketAddr::new(ip, self.port)
     }
 }
 

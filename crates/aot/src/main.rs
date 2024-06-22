@@ -2,11 +2,8 @@ use std::{env, process::exit};
 
 use anyhow::Result;
 use clap::Parser;
-use snarkos_aot::{cli::Cli, NetworkId};
-use snarkvm::console::{
-    network::{CanaryV0, MainnetV0, TestnetV0},
-    program::Network,
-};
+use snarkos_aot::{cli::Cli, Network, NetworkId};
+use snarkvm::console::network::{CanaryV0, MainnetV0, TestnetV0};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[global_allocator]
@@ -16,7 +13,7 @@ fn main() -> Result<()> {
     let network: NetworkId = env::var("NETWORK")
         .unwrap_or(NetworkId::Mainnet.to_string())
         .parse()
-        .expect("Invalid network ID. Use 'mainnet' or 'testnet'.");
+        .expect("Invalid network ID. Use 'mainnet', 'testnet', or 'canary'.");
 
     match network {
         NetworkId::Mainnet => parse::<MainnetV0>(),
