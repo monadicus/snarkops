@@ -26,6 +26,9 @@ pub struct AuthorizeDeploy<N: Network> {
     pub key: Key<N>,
     #[clap(flatten)]
     pub options: AuthDeployOptions<N>,
+    /// The seed to use for the authorization generation
+    #[clap(long)]
+    pub seed: Option<u64>,
 }
 
 impl<N: Network> AuthorizeDeploy<N> {
@@ -35,15 +38,18 @@ impl<N: Network> AuthorizeDeploy<N> {
         let mut process = Process::load()?;
         query::get_process_imports(&mut process, &program, self.options.query.as_deref())?;
 
-        let rng = &mut rand::thread_rng();
-
-        let deployment = process.deploy::<N::Circuit, _>(&program, rng)?;
+        let deployment =
+            process.deploy::<N::Circuit, _>(&program, &mut super::rng_from_seed(self.seed))?;
         let deployment_id = deployment.to_deployment_id()?;
 
         let private_key = self.key.try_get()?;
 
         // Construct the owner.
-        let owner = ProgramOwner::new(&private_key, deployment_id, rng)?;
+        let owner = ProgramOwner::new(
+            &private_key,
+            deployment_id,
+            &mut super::rng_from_seed(self.seed),
+        )?;
 
         Ok(AuthBlob::Deploy {
             owner,

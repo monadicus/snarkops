@@ -84,6 +84,9 @@ pub enum Action {
         /// The fee record to use if you want to pay the fee privately.
         #[clap(long)]
         fee_record: Option<String>,
+        /// When present, don't wait for transaction execution before returning
+        #[clap(long = "async")]
+        async_mode: bool,
         /// `transfer_public` OR `credits.aleo/transfer_public`.
         locator: String,
         /// list of program inputs.
@@ -109,6 +112,9 @@ pub enum Action {
         /// The fee record to use if you want to pay the fee privately.
         #[clap(long)]
         fee_record: Option<String>,
+        /// When present, don't wait for transaction execution before returning
+        #[clap(long = "async")]
+        async_mode: bool,
         /// Path to program or program content in stdin
         program: FileOrStdin<String>,
     },
@@ -160,6 +166,7 @@ impl Action {
                 fee_record,
                 locator,
                 inputs,
+                async_mode,
             } => {
                 let ep = format!("{url}/api/v1/env/{}/action/execute", env_id);
 
@@ -193,7 +200,12 @@ impl Action {
                     json["program"] = program.into();
                 }
 
-                client.post(ep).json(&json).send()?
+                let mut builder = client.post(ep);
+                if async_mode {
+                    let query = [("async", "true")];
+                    builder = builder.query(&query);
+                }
+                builder.json(&json).send()?
             }
             Deploy {
                 private_key,
@@ -201,6 +213,7 @@ impl Action {
                 cannon,
                 priority_fee,
                 fee_record,
+                async_mode,
                 program,
             } => {
                 let ep = format!("{url}/api/v1/env/{}/action/deploy", env_id);
@@ -225,7 +238,12 @@ impl Action {
                     json["fee_record"] = fee_record.into();
                 }
 
-                client.post(ep).json(&json).send()?
+                let mut builder = client.post(ep);
+                if async_mode {
+                    let query = [("async", "true")];
+                    builder = builder.query(&query);
+                }
+                builder.json(&json).send()?
             }
             Config {
                 online,

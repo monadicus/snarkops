@@ -68,6 +68,10 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/env/:env_id/block_info", get(get_env_block_info))
         .route("/env/:env_id/balance/:key", get(get_env_balance))
         .route("/env/:env_id/block/:height_or_hash", get(get_block))
+        .route(
+            "/env/:env_id/transaction_block/:tx_id",
+            get(get_tx_blockhash),
+        )
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .route("/env/:env_id/program/:program", get(get_program))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
@@ -158,6 +162,32 @@ async fn get_block(
                 .snarkos_get::<Option<serde_json::Value>>(
                     env_id,
                     format!("/block/{height_or_hash}"),
+                    target,
+                )
+                .await
+            {
+                Ok(res) => Json(res).into_response(),
+                Err(e) => ServerError::from(e).into_response(),
+            }
+        }
+    }
+}
+
+async fn get_tx_blockhash(
+    Path((env_id, transaction)): Path<(String, String)>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Option<String>>(
+                    env_id,
+                    format!("/find/blockHash/{transaction}"),
                     target,
                 )
                 .await

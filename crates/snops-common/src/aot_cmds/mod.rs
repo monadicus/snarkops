@@ -298,6 +298,7 @@ impl AotCmd {
             "aot auth id",
             Self::parse_string,
         )
+        .map(|s| s.trim().to_string())
     }
 
     pub fn ledger_query(&self, storage_path: PathBuf, port: u16) -> Result<Child, CommandError> {
