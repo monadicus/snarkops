@@ -39,7 +39,10 @@ pub struct AgentRpcServer {
 impl AgentService for AgentRpcServer {
     async fn kill(self, _: context::Context) {
         self.state.node_graceful_shutdown().await;
-        std::thread::spawn(|| std::process::exit(0));
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            std::process::exit(0)
+        });
     }
 
     async fn handshake(
