@@ -59,6 +59,8 @@ enum AgentCommands {
     /// Get the specific agent.
     #[clap(alias = "i")]
     Info,
+    /// Kill the specific agent
+    Kill,
 
     /// List all agents.
     /// Ignores the agent id.
@@ -120,6 +122,11 @@ impl Agent {
                 let ep = format!("{url}/api/v1/agents/{}", self.id);
 
                 client.get(ep).send()?
+            }
+            Kill => {
+                let ep = format!("{url}/api/v1/agents/{}/kill", self.id);
+
+                client.post(ep).send()?
             }
             Tps => {
                 let ep = format!("{url}/api/v1/agents/{}/tps", self.id);

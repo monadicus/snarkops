@@ -35,6 +35,9 @@ pub trait AgentService {
     /// Make a GET request to the snarkos server
     async fn snarkos_get(route: String) -> Result<String, SnarkosRequestError>;
 
+    /// Close the agent process
+    async fn kill();
+
     /// Locally execute an authorization, using the given query
     /// environment id is passed so the agent can determine which aot binary to
     /// use
