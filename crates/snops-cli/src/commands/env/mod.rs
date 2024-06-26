@@ -2,10 +2,12 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, ValueHint};
+use clap_stdin::FileOrStdin;
 use reqwest::blocking::{Client, Response};
 use snops_common::{
+    aot_cmds::Authorization,
     key_source::KeySource,
-    state::{InternedId, NodeKey},
+    state::{CannonId, InternedId, NodeKey},
 };
 
 mod action;
@@ -36,6 +38,17 @@ enum EnvCommands {
 
     /// List an env's agents
     Agents,
+    // execute and broadcast
+    Auth {
+        /// When present, don't wait for transaction execution before returning
+        #[clap(long = "async")]
+        async_mode: bool,
+        /// Desired cannon to fire the transaction
+        #[clap(long, short, default_value = "default")]
+        cannon: CannonId,
+        /// Authorization to execute and broadcast
+        auth: FileOrStdin<Authorization>,
+    },
 
     /// Lookup an account's balance
     #[clap(alias = "bal")]
@@ -107,6 +120,21 @@ impl Env {
                 let ep = format!("{url}/api/v1/env/{id}/agents");
 
                 client.get(ep).send()?
+            }
+            Auth {
+                async_mode,
+                cannon,
+                auth,
+            } => {
+                let ep = format!("{url}/api/v1/env/{id}/cannons/{cannon}/auth");
+
+                let mut req = client.post(ep).json(&auth.contents()?);
+
+                if async_mode {
+                    req = req.query(&[("async", "true")]);
+                }
+
+                req.send()?
             }
             Balance { address: key } => {
                 let ep = format!("{url}/api/v1/env/{id}/balance/{key}");

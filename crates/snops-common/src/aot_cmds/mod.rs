@@ -1,4 +1,4 @@
-use std::{io, path::PathBuf, process::Stdio};
+use std::{io, path::PathBuf, process::Stdio, str::FromStr};
 
 use tokio::{
     io::AsyncWriteExt,
@@ -34,6 +34,14 @@ pub enum Authorization {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         fee_auth: Option<Value>,
     },
+}
+
+impl FromStr for Authorization {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s)
+    }
 }
 
 type Output = io::Result<std::process::Output>;
