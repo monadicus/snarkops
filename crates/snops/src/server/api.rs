@@ -18,6 +18,7 @@ use snops_common::{
     rpc::agent::AgentMetric,
     state::{id_or_none, AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey},
 };
+use tarpc::context;
 use tower::Service;
 use tower_http::services::ServeFile;
 
@@ -45,6 +46,7 @@ pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/agents", get(get_agents))
         .route("/agents/:id", get(get_agent))
+        .route("/agents/:id/kill", post(kill_agent))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/agents/find", post(find_agents))
         .route("/env/list", get(get_env_list))
@@ -243,6 +245,22 @@ async fn get_agent(state: State<AppState>, Path(id): Path<String>) -> Response {
     let agent = unwrap_or_not_found!(state.pool.get(&id));
 
     Json(AgentStatusResponse::from(agent.value())).into_response()
+}
+
+async fn kill_agent(state: State<AppState>, Path(id): Path<String>) -> Response {
+    let id = unwrap_or_not_found!(id_or_none(&id));
+    let client = unwrap_or_not_found!(state.pool.get(&id).and_then(|a| a.client_owned()));
+
+    if let Err(e) = client.0.kill(context::current()).await {
+        tracing::error!("failed to kill agent {id}: {e}");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "rpc error"})),
+        )
+            .into_response();
+    }
+
+    Json("ok").into_response()
 }
 
 async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Response {

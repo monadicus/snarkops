@@ -13,7 +13,7 @@ use tarpc::{client::RpcError, context};
 use crate::error::StateError;
 
 #[derive(Clone)]
-pub struct AgentClient(pub(super) AgentServiceClient);
+pub struct AgentClient(pub(crate) AgentServiceClient);
 
 impl AgentClient {
     pub async fn reconcile(

@@ -29,7 +29,7 @@ serde_json.workspace = true
 strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["process"] }
 url.workspace = true
 wildmatch.workspace = true
 
