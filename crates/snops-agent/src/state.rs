@@ -33,7 +33,7 @@ pub type AppState = Arc<GlobalState>;
 pub struct GlobalState {
     pub client: ControlServiceClient,
     pub db: OpaqueDebug<Database>,
-    pub started: Instant,
+    pub _started: Instant,
     pub connected: Mutex<Instant>,
 
     pub external_addr: Option<IpAddr>,

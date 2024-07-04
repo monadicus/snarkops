@@ -137,7 +137,7 @@ async fn main() {
     let state = Arc::new(GlobalState {
         client,
         db: OpaqueDebug(db),
-        started: Instant::now(),
+        _started: Instant::now(),
         connected: Mutex::new(Instant::now()),
         external_addr,
         internal_addrs,

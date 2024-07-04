@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use snops_common::{
     db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
@@ -23,7 +23,7 @@ pub struct Database {
 }
 
 impl DatabaseTrait for Database {
-    fn open(path: &PathBuf) -> Result<Self, DatabaseError> {
+    fn open(path: &Path) -> Result<Self, DatabaseError> {
         let db = sled::open(path)?;
         let envs = DbTree::new(db.open_tree(b"v2/envs")?);
         let storage = DbTree::new(db.open_tree(b"v2/storage")?);
