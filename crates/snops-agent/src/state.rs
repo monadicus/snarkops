@@ -12,6 +12,7 @@ use snops_common::{
     api::EnvInfo,
     rpc::control::ControlServiceClient,
     state::{AgentId, AgentPeer, AgentState, EnvId, TransferId, TransferStatus},
+    util::OpaqueDebug,
 };
 use tarpc::context;
 use tokio::{
@@ -22,7 +23,7 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{cli::Cli, metrics::Metrics, transfers::TransferTx};
+use crate::{cli::Cli, db::Database, metrics::Metrics, transfers::TransferTx};
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -31,6 +32,7 @@ pub type AppState = Arc<GlobalState>;
 /// Global state for this agent runner.
 pub struct GlobalState {
     pub client: ControlServiceClient,
+    pub db: OpaqueDebug<Database>,
     pub started: Instant,
     pub connected: Mutex<Instant>,
 
@@ -39,7 +41,6 @@ pub struct GlobalState {
     pub status_api_port: u16,
     pub cli: Cli,
     pub endpoint: String,
-    pub jwt: Mutex<Option<String>>,
     pub loki: Mutex<Option<Url>>,
     pub agent_state: RwLock<AgentState>,
     pub env_info: RwLock<Option<(EnvId, EnvInfo)>>,

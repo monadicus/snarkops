@@ -11,6 +11,7 @@ use snops_common::{
     node_targets::NodeTargets,
     rpc::error::SnarkosRequestError,
     state::{AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, StorageId},
+    util::OpaqueDebug,
 };
 use tokio::sync::{Mutex, Semaphore};
 use tracing::info;
@@ -23,7 +24,6 @@ use crate::{
     error::StateError,
     schema::storage::{LoadedStorage, STORAGE_DIR},
     server::{error::StartError, prometheus::HttpsdResponse},
-    util::OpaqueDebug,
 };
 
 lazy_static::lazy_static! {

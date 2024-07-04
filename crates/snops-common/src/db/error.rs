@@ -19,7 +19,7 @@ pub enum DatabaseError {
     #[error("transaction error: {0}")]
     TransactionError(#[from] sled::transaction::TransactionError),
     #[error("error writing data: {0}")]
-    DataWriteError(#[from] snops_common::format::DataWriteError),
+    DataWriteError(#[from] crate::format::DataWriteError),
     #[error("error reading data: {0}")]
-    DataReadError(#[from] snops_common::format::DataReadError),
+    DataReadError(#[from] crate::format::DataReadError),
 }
