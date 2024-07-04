@@ -92,7 +92,7 @@ pub async fn log_request(uri: Uri, method: Method, req_stamp: ReqStamp, res: Res
     };
 
     // TODO: send to logging services
-    // debug!("REQUEST LOG LINE:\n{}", json!(log_line));
+    // tracing::debug!("REQUEST LOG LINE:\n{}", serde_json::json!(_log_line));
 
     res
 }
