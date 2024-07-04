@@ -25,6 +25,7 @@ use tower_http::services::ServeFile;
 use super::{actions, error::ServerError, models::AgentStatusResponse, AppState};
 use crate::{
     cannon::{router::redirect_cannon_routes, source::QueryTarget},
+    make_env_filter,
     schema::storage::DEFAULT_AOT_BIN,
 };
 use crate::{
@@ -44,10 +45,12 @@ macro_rules! unwrap_or_not_found {
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .route("/log/:level", post(set_log_level))
         .route("/agents", get(get_agents))
         .route("/agents/:id", get(get_agent))
         .route("/agents/:id/kill", post(kill_agent))
         .route("/agents/:id/tps", get(get_agent_tps))
+        .route("/agents/:id/log/:level", post(set_agent_log_level))
         .route("/agents/find", post(find_agents))
         .route("/env/list", get(get_env_list))
         .route("/env/:env_id/topology", get(get_env_topology))
@@ -79,6 +82,41 @@ pub(super) fn routes() -> Router<AppState> {
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
         .nest("/env/:env_id/action", actions::routes())
+}
+
+async fn set_agent_log_level(
+    state: State<AppState>,
+    Path((id, level)): Path<(String, String)>,
+) -> Response {
+    let id = unwrap_or_not_found!(id_or_none(&id));
+    let agent = unwrap_or_not_found!(state.pool.get(&id));
+
+    tracing::debug!("attempting to set log level to {level} for agent {id}");
+    let Some(rpc) = agent.rpc() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+
+    let Err(e) = rpc.set_log_level(tarpc::context::current(), level).await else {
+        return status_ok();
+    };
+
+    ServerError::from(e).into_response()
+}
+
+async fn set_log_level(Path(level): Path<String>, state: State<AppState>) -> Response {
+    tracing::debug!("attempting to set log level to {level}");
+    let Ok(level) = level.parse() else {
+        return ServerError::InvalidLogLevel(level).into_response();
+    };
+    tracing::info!("Setting log level to {level}");
+    let Ok(_) = state
+        .log_level_handler
+        .modify(|filter| *filter = make_env_filter(level))
+    else {
+        return ServerError::FailedToChangeLogLevel.into_response();
+    };
+
+    status_ok()
 }
 
 #[derive(Deserialize)]

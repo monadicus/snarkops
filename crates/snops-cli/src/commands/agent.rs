@@ -69,6 +69,11 @@ enum AgentCommands {
 
     /// Get the specific agent's TPS.
     Tps,
+
+    SetLogLevel {
+        /// The log level to set.
+        level: String,
+    },
 }
 
 impl Agent {
@@ -132,6 +137,11 @@ impl Agent {
                 let ep = format!("{url}/api/v1/agents/{}/tps", self.id);
 
                 client.get(ep).send()?
+            }
+            SetLogLevel { level } => {
+                let ep = format!("{url}/api/v1/agents/{}/log/{}", self.id, level);
+
+                client.post(ep).send()?
             }
         })
     }

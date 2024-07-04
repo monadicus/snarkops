@@ -520,6 +520,7 @@ impl AgentService for AgentRpcServer {
     }
 
     async fn set_log_level(self, _: context::Context, level: String) -> Result<(), AgentError> {
+        tracing::debug!("setting log level to {level}");
         let level: tracing_subscriber::filter::LevelFilter = level
             .parse()
             .map_err(|_| AgentError::InvalidLogLevel(level.clone()))?;
