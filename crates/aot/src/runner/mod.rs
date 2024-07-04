@@ -20,7 +20,7 @@ use snarkvm::{
 };
 use snops_common::state::{snarkos_status::SnarkOSStatus, NodeType};
 
-use crate::{Account, DbLedger, Key, Network};
+use crate::{cli::ReloadHandler, Account, DbLedger, Key, Network};
 
 mod metrics;
 mod rpc;
@@ -82,7 +82,8 @@ pub struct Runner<N: Network> {
 }
 
 impl<N: Network> Runner<N> {
-    pub fn parse(self) -> Result<()> {
+    // TODO we need a way to communicate to AOT from the CP.
+    pub fn parse(self, _log_level_handler: ReloadHandler) -> Result<()> {
         let agent = RpcClient::new(self.agent_rpc_port);
         agent.status(SnarkOSStatus::Starting);
 
