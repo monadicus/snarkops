@@ -3,7 +3,7 @@ use std::io;
 use clap::Parser;
 use cli::Cli;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{prelude::*, reload, EnvFilter};
 
 pub mod cannon;
 pub mod cli;
@@ -16,16 +16,12 @@ pub mod schema;
 pub mod server;
 pub mod state;
 
-#[tokio::main]
-async fn main() {
-    let env_filter = if cfg!(debug_assertions) {
-        tracing_subscriber::EnvFilter::builder().with_default_directive(LevelFilter::TRACE.into())
-    } else {
-        tracing_subscriber::EnvFilter::builder().with_default_directive(LevelFilter::INFO.into())
-    };
+type ReloadHandler = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
 
-    let env_filter = env_filter
+fn make_env_filter(level: LevelFilter) -> EnvFilter {
+    EnvFilter::builder()
         .with_env_var("SNOPS_LOG")
+        .with_default_directive(level.into())
         .from_env_lossy()
         .add_directive("hyper_util=off".parse().unwrap())
         .add_directive("hyper=off".parse().unwrap())
@@ -35,7 +31,18 @@ async fn main() {
         .add_directive("tarpc::client=ERROR".parse().unwrap())
         .add_directive("tarpc::server=ERROR".parse().unwrap())
         .add_directive("tower_http::trace::on_request=off".parse().unwrap())
-        .add_directive("tower_http::trace::on_response=off".parse().unwrap());
+        .add_directive("tower_http::trace::on_response=off".parse().unwrap())
+}
+
+#[tokio::main]
+async fn main() {
+    let filter_level = if cfg!(debug_assertions) {
+        LevelFilter::TRACE
+    } else {
+        LevelFilter::INFO
+    };
+
+    let (env_filter, reload_handler) = reload::Layer::new(make_env_filter(filter_level));
 
     let (stdout, _guard) = tracing_appender::non_blocking(io::stdout());
 
@@ -58,5 +65,7 @@ async fn main() {
     Cli::parse().run();
     let cli = Cli::parse();
 
-    server::start(cli).await.expect("start server");
+    server::start(cli, reload_handler)
+        .await
+        .expect("start server");
 }

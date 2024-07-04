@@ -40,6 +40,7 @@ use crate::{
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
     state::{Agent, AgentFlags, AppState, GlobalState},
+    ReloadHandler,
 };
 
 pub mod actions;
@@ -51,7 +52,7 @@ pub mod models;
 pub mod prometheus;
 mod rpc;
 
-pub async fn start(cli: Cli) -> Result<(), StartError> {
+pub async fn start(cli: Cli, log_level_handler: ReloadHandler) -> Result<(), StartError> {
     let db = db::Database::open(&cli.path.join("store"))?;
     let socket_addr = SocketAddr::new(cli.bind_addr, cli.port);
 
@@ -60,7 +61,7 @@ pub async fn start(cli: Cli) -> Result<(), StartError> {
         .as_ref()
         .and_then(|p| PrometheusClient::try_from(p.as_str()).ok());
 
-    let state = GlobalState::load(cli, db, prometheus).await?;
+    let state = GlobalState::load(cli, db, prometheus, log_level_handler).await?;
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))

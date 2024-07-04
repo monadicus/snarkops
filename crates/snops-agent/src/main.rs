@@ -50,8 +50,10 @@ type ReloadHandler = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
 
 fn make_env_filter(level: LevelFilter) -> EnvFilter {
     EnvFilter::builder()
+        .with_env_var("SNOPS_AGENT_LOG")
         .with_default_directive(level.into())
         .from_env_lossy()
+        .add_directive(level.into())
         .add_directive("neli=off".parse().unwrap())
         .add_directive("hyper_util=off".parse().unwrap())
         .add_directive("reqwest=off".parse().unwrap())
@@ -79,19 +81,13 @@ async fn main() {
         output
     };
 
-    let env_filter = tracing_subscriber::EnvFilter::builder()
-        .with_env_var("SNOPS_AGENT_LOG")
-        .with_default_directive(LevelFilter::TRACE.into())
-        .from_env_lossy()
-        .add_directive("neli=off".parse().unwrap())
-        .add_directive("hyper_util=off".parse().unwrap())
-        .add_directive("reqwest=off".parse().unwrap())
-        .add_directive("tungstenite=off".parse().unwrap())
-        .add_directive("tokio_tungstenite=off".parse().unwrap())
-        .add_directive("tarpc::client=ERROR".parse().unwrap())
-        .add_directive("tarpc::server=ERROR".parse().unwrap());
+    let filter_level = if cfg!(debug_assertions) {
+        LevelFilter::TRACE
+    } else {
+        LevelFilter::INFO
+    };
 
-    let (env_filter, reload_handler) = reload::Layer::new(env_filter);
+    let (env_filter, reload_handler) = reload::Layer::new(make_env_filter(filter_level));
 
     tracing_subscriber::registry()
         .with(env_filter)
