@@ -49,6 +49,8 @@ pub trait AgentService {
     ) -> Result<String, AgentError>;
 
     async fn get_metric(metric: AgentMetric) -> f64;
+
+    async fn set_log_level(level: String) -> Result<(), AgentError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

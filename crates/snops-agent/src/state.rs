@@ -23,7 +23,7 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{cli::Cli, db::Database, metrics::Metrics, transfers::TransferTx};
+use crate::{cli::Cli, db::Database, metrics::Metrics, transfers::TransferTx, ReloadHandler};
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -53,6 +53,8 @@ pub struct GlobalState {
 
     pub transfer_tx: TransferTx,
     pub transfers: Arc<DashMap<TransferId, TransferStatus>>,
+
+    pub log_level_handler: ReloadHandler,
 }
 
 impl GlobalState {

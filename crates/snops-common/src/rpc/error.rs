@@ -72,6 +72,10 @@ pub enum AgentError {
     FailedToSpawnProcess,
     #[error("process failed")]
     ProcessFailed,
+    #[error("invalid log level: `{0}`")]
+    InvalidLogLevel(String),
+    #[error("failed to change log level")]
+    FailedToChangeLogLevel,
 }
 
 #[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
