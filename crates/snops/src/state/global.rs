@@ -327,7 +327,6 @@ impl GlobalState {
             // attempt to make a request through the client via RPC if this is an agent
             if let Some(agent_id) = agent_id {
                 if let Some(client) = self.get_client(agent_id) {
-                    tracing::debug!("route: {route}");
                     match client.snarkos_get::<T>(&route).await {
                         Ok(res) => return Ok(res),
                         Err(e) => {
