@@ -1,10 +1,11 @@
-use std::{path::PathBuf, str::FromStr};
+use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use clap_stdin::FileOrStdin;
 use reqwest::blocking::{Client, Response};
 use snops_common::{
+    action_models::AleoValue,
     aot_cmds::Authorization,
     key_source::KeySource,
     state::{CannonId, InternedId, NodeKey},
@@ -20,29 +21,6 @@ pub struct Env {
     id: InternedId,
     #[clap(subcommand)]
     command: EnvCommands,
-}
-
-#[derive(Debug, Parser, Clone)]
-struct KeySourceOrString {
-    key: Option<String>,
-    source: Option<KeySource>,
-}
-
-impl FromStr for KeySourceOrString {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        Ok(match KeySource::from_str(s) {
-            Ok(source) => Self {
-                key: None,
-                source: Some(source),
-            },
-            Err(_) => Self {
-                key: Some(s.to_string()),
-                source: None,
-            },
-        })
-    }
 }
 
 /// Env commands.
@@ -87,9 +65,16 @@ enum EnvCommands {
         height_or_hash: String,
     },
 
-    /// Lookup a transaction's block by a transaction id
+    /// Get the latest height from all agents in the env.
+    Height,
+
+    /// Lookup a transaction's block by a transaction id.
     #[clap(alias = "tx")]
     Transaction { id: String },
+
+    /// Lookup a transaction's details by a transaction id.
+    #[clap(alias = "tx-details")]
+    TransactionDetails { id: String },
 
     /// Clean a specific environment.
     #[clap(alias = "c")]
@@ -127,7 +112,7 @@ enum EnvCommands {
         /// The mapping name.
         mapping: String,
         /// The key to lookup.
-        key: KeySourceOrString,
+        key: AleoValue,
     },
     /// Lookup a program's mappings only.
     Mappings {
@@ -222,18 +207,17 @@ impl Env {
                 mapping,
                 key,
             } => {
-                let ep = match (key.key, key.source) {
-                    (Some(key), None) => {
+                let ep = match key {
+                    AleoValue::Other(key) => {
                         format!(
                             "{url}/api/v1/env/{id}/program/{program}/mapping/{mapping}?key={key}"
                         )
                     }
-                    (None, Some(source)) => {
+                    AleoValue::Key(source) => {
                         format!(
                             "{url}/api/v1/env/{id}/program/{program}/mapping/{mapping}?keysource={source}"
                         )
                     }
-                    _ => unreachable!(),
                 };
 
                 client.get(ep).send()?
@@ -261,6 +245,16 @@ impl Env {
             }
             Transaction { id: hash } => {
                 let ep = format!("{url}/api/v1/env/{id}/transaction_block/{hash}");
+
+                client.get(ep).send()?
+            }
+            TransactionDetails { id: hash } => {
+                let ep = format!("{url}/api/v1/env/{id}/transaction/{hash}");
+
+                client.get(ep).send()?
+            }
+            Height => {
+                let ep = format!("{url}/api/v1/env/{id}/height");
 
                 client.get(ep).send()?
             }
