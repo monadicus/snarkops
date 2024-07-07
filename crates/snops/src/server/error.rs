@@ -37,6 +37,12 @@ pub enum ServerError {
     NotFound(String),
     #[error(transparent)]
     AotCmd(#[from] AotCmdError),
+    #[error("invalid log level: `{0}`")]
+    InvalidLogLevel(String),
+    #[error("failed to change log level")]
+    FailedToChangeLogLevel,
+    #[error(transparent)]
+    RpcError(#[from] tarpc::client::RpcError),
 }
 
 impl_into_status_code!(ServerError, |value| match value {
@@ -50,6 +56,9 @@ impl_into_status_code!(ServerError, |value| match value {
     EnvRequest(e) => e.into(),
     AotCmd(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     NotFound(_) => axum::http::StatusCode::NOT_FOUND,
+    InvalidLogLevel(_) => axum::http::StatusCode::BAD_REQUEST,
+    FailedToChangeLogLevel => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+    RpcError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
 });
 
 impl_into_type_str!(ServerError, |value| match value {

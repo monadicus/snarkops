@@ -22,6 +22,9 @@ pub enum Commands {
     Agent(agent::Agent),
     #[clap(alias = "e")]
     Env(env::Env),
+    SetLogLevel {
+        level: String,
+    },
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
     #[cfg(feature = "clipages")]
@@ -41,8 +44,11 @@ impl Commands {
                 return Ok(());
             }
             Commands::Agent(agent) => agent.run(url, client),
-
             Commands::Env(env) => env.run(url, client),
+            Commands::SetLogLevel { level } => {
+                client.post(format!("{url}/api/v1/log/{level}")).send()?;
+                return Ok(());
+            }
             #[cfg(feature = "mangen")]
             Commands::Man(mangen) => {
                 mangen.run(

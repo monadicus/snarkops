@@ -37,7 +37,7 @@ use tokio_tungstenite::{
     tungstenite::{self, client::IntoClientRequest},
 };
 use tracing::{error, info, level_filters::LevelFilter, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
 
 use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing};
 use crate::state::GlobalState;
@@ -45,6 +45,23 @@ use crate::state::GlobalState;
 const PING_HEADER: &[u8] = b"snops-agent";
 const PING_LENGTH: usize = size_of::<u32>() + size_of::<u128>();
 const PING_INTERVAL_SEC: u64 = 10;
+
+type ReloadHandler = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
+
+fn make_env_filter(level: LevelFilter) -> EnvFilter {
+    EnvFilter::builder()
+        .with_env_var("SNOPS_AGENT_LOG")
+        .with_default_directive(level.into())
+        .from_env_lossy()
+        .add_directive(level.into())
+        .add_directive("neli=off".parse().unwrap())
+        .add_directive("hyper_util=off".parse().unwrap())
+        .add_directive("reqwest=off".parse().unwrap())
+        .add_directive("tungstenite=off".parse().unwrap())
+        .add_directive("tokio_tungstenite=off".parse().unwrap())
+        .add_directive("tarpc::client=ERROR".parse().unwrap())
+        .add_directive("tarpc::server=ERROR".parse().unwrap())
+}
 
 #[tokio::main]
 async fn main() {
@@ -64,20 +81,16 @@ async fn main() {
         output
     };
 
+    let filter_level = if cfg!(debug_assertions) {
+        LevelFilter::TRACE
+    } else {
+        LevelFilter::INFO
+    };
+
+    let (env_filter, reload_handler) = reload::Layer::new(make_env_filter(filter_level));
+
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::builder()
-                .with_env_var("SNOPS_AGENT_LOG")
-                .with_default_directive(LevelFilter::TRACE.into())
-                .from_env_lossy()
-                .add_directive("neli=off".parse().unwrap())
-                .add_directive("hyper_util=off".parse().unwrap())
-                .add_directive("reqwest=off".parse().unwrap())
-                .add_directive("tungstenite=off".parse().unwrap())
-                .add_directive("tokio_tungstenite=off".parse().unwrap())
-                .add_directive("tarpc::client=ERROR".parse().unwrap())
-                .add_directive("tarpc::server=ERROR".parse().unwrap()),
-        )
+        .with(env_filter)
         .with(output)
         .try_init()
         .unwrap();
@@ -137,7 +150,7 @@ async fn main() {
     let state = Arc::new(GlobalState {
         client,
         db: OpaqueDebug(db),
-        started: Instant::now(),
+        _started: Instant::now(),
         connected: Mutex::new(Instant::now()),
         external_addr,
         internal_addrs,
@@ -153,6 +166,7 @@ async fn main() {
         status_api_port,
         transfer_tx,
         transfers,
+        log_level_handler: reload_handler,
     });
 
     // start the metrics watcher

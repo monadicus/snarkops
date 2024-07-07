@@ -23,7 +23,7 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{cli::Cli, db::Database, metrics::Metrics, transfers::TransferTx};
+use crate::{cli::Cli, db::Database, metrics::Metrics, transfers::TransferTx, ReloadHandler};
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -33,7 +33,7 @@ pub type AppState = Arc<GlobalState>;
 pub struct GlobalState {
     pub client: ControlServiceClient,
     pub db: OpaqueDebug<Database>,
-    pub started: Instant,
+    pub _started: Instant,
     pub connected: Mutex<Instant>,
 
     pub external_addr: Option<IpAddr>,
@@ -53,6 +53,8 @@ pub struct GlobalState {
 
     pub transfer_tx: TransferTx,
     pub transfers: Arc<DashMap<TransferId, TransferStatus>>,
+
+    pub log_level_handler: ReloadHandler,
 }
 
 impl GlobalState {

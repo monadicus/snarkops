@@ -17,7 +17,7 @@ use tarpc::{context, ClientMessage, Response};
 use tokio::process::Command;
 use tracing::{debug, error, info, trace, warn};
 
-use crate::{api, metrics::MetricComputer, reconcile, state::AppState};
+use crate::{api, make_env_filter, metrics::MetricComputer, reconcile, state::AppState};
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -517,5 +517,18 @@ impl AgentService for AgentRpcServer {
                 Err(AgentError::ProcessFailed)
             }
         }
+    }
+
+    async fn set_log_level(self, _: context::Context, level: String) -> Result<(), AgentError> {
+        tracing::debug!("setting log level to {level}");
+        let level: tracing_subscriber::filter::LevelFilter = level
+            .parse()
+            .map_err(|_| AgentError::InvalidLogLevel(level.clone()))?;
+        self.state
+            .log_level_handler
+            .modify(|filter| *filter = make_env_filter(level))
+            .map_err(|_| AgentError::FailedToChangeLogLevel)?;
+
+        Ok(())
     }
 }

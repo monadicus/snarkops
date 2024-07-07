@@ -24,6 +24,7 @@ use crate::{
     error::StateError,
     schema::storage::{LoadedStorage, STORAGE_DIR},
     server::{error::StartError, prometheus::HttpsdResponse},
+    ReloadHandler,
 };
 
 lazy_static::lazy_static! {
@@ -43,6 +44,8 @@ pub struct GlobalState {
 
     pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
+
+    pub log_level_handler: ReloadHandler,
 }
 
 /// A ranked peer item, with a score reflecting the freshness of the block info
@@ -65,6 +68,7 @@ impl GlobalState {
         cli: Cli,
         db: Database,
         prometheus: Option<PrometheusClient>,
+        log_level_handler: ReloadHandler,
     ) -> Result<Arc<Self>, StartError> {
         // Load storage meta from persistence, then read the storage data from FS
         let storage_meta = db.storage.read_all();
@@ -92,6 +96,7 @@ impl GlobalState {
             prometheus: OpaqueDebug(prometheus),
             db: OpaqueDebug(db),
             env_block_info: Default::default(),
+            log_level_handler,
         });
 
         let env_meta = state.db.envs.read_all().collect::<Vec<_>>();
