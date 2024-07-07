@@ -1,7 +1,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use axum::{
-    extract::{self, Path, Request, State},
+    extract::{self, Path, Query, Request, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
@@ -79,6 +79,12 @@ pub(super) fn routes() -> Router<AppState> {
         )
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .route("/env/:env_id/program/:program", get(get_program))
+        .route(
+            "/env/:env_id/program/:program/mapping/:mapping",
+            get(get_mapping_value),
+        )
+        .route("/env/:env_id/program/:program/mappings", get(get_mappings))
+        .route("/env/:env_id/network", get(get_network))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
         .nest("/env/:env_id/action", actions::routes())
@@ -330,6 +336,75 @@ async fn get_program(
         Ok(program) => program.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct MappingValueQuery {
+    key: Option<String>,
+    keysource: Option<KeySource>,
+}
+
+async fn get_mapping_value(
+    Path((env_id, program, mapping)): Path<(String, String, String)>,
+    Query(query): Query<MappingValueQuery>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
+
+    let url = match (query.key, query.keysource) {
+        (Some(key), None) => {
+            format!("/program/{program}/mapping/{mapping}/{key}",)
+        }
+        (None, Some(keysource)) => {
+            let KeyState::Literal(key) = env.storage.sample_keysource_addr(&keysource) else {
+                return ServerError::NotFound(format!("keysource pubkey {keysource}"))
+                    .into_response();
+            };
+            format!("/program/{program}/mapping/{mapping}/{key}",)
+        }
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "either key or key_source must be provided"})),
+            )
+                .into_response();
+        }
+    };
+
+    match state
+        .snarkos_get::<Option<String>>(env_id, url, &NodeTargets::ALL)
+        .await
+    {
+        Ok(value) => Json(json!({"value": value})).into_response(),
+        Err(e) => ServerError::from(e).into_response(),
+    }
+}
+
+async fn get_mappings(
+    Path((env_id, program)): Path<(String, String)>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    match state
+        .snarkos_get::<Vec<String>>(
+            env_id,
+            format!("/program/{program}/mappings"),
+            &NodeTargets::ALL,
+        )
+        .await
+    {
+        Ok(mappings) => Json(mappings).into_response(),
+        Err(e) => ServerError::from(e).into_response(),
+    }
+}
+
+async fn get_network(Path(env_id): Path<String>, state: State<AppState>) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+
+    let env = unwrap_or_not_found!(state.get_env(env_id));
+
+    Json(json!({"network": env.network})).into_response()
 }
 
 #[derive(Debug, Deserialize)]

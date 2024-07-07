@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use clap::{Parser, ValueHint};
@@ -20,6 +20,29 @@ pub struct Env {
     id: InternedId,
     #[clap(subcommand)]
     command: EnvCommands,
+}
+
+#[derive(Debug, Parser, Clone)]
+struct KeySourceOrString {
+    key: Option<String>,
+    source: Option<KeySource>,
+}
+
+impl FromStr for KeySourceOrString {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        Ok(match KeySource::from_str(s) {
+            Ok(source) => Self {
+                key: None,
+                source: Some(source),
+            },
+            Err(_) => Self {
+                key: Some(s.to_string()),
+                source: None,
+            },
+        })
+    }
 }
 
 /// Env commands.
@@ -97,8 +120,25 @@ enum EnvCommands {
         spec: PathBuf,
     },
 
+    /// Lookup a mapping by program id and mapping name.
+    Mapping {
+        /// The program name.
+        program: String,
+        /// The mapping name.
+        mapping: String,
+        /// The key to lookup.
+        key: KeySourceOrString,
+    },
+    /// Lookup a program's mappings only.
+    Mappings {
+        /// The program name.
+        program: String,
+    },
     /// Lookup a program by its id.
     Program { id: String },
+
+    /// Get an env's snarkos network.
+    Network,
 
     /// Get an env's storage info.
     #[clap(alias = "store")]
@@ -177,11 +217,42 @@ impl Env {
 
                 client.post(ep).body(file).send()?
             }
+            Mapping {
+                program,
+                mapping,
+                key,
+            } => {
+                let ep = match (key.key, key.source) {
+                    (Some(key), None) => {
+                        format!(
+                            "{url}/api/v1/env/{id}/program/{program}/mapping/{mapping}?key={key}"
+                        )
+                    }
+                    (None, Some(source)) => {
+                        format!(
+                            "{url}/api/v1/env/{id}/program/{program}/mapping/{mapping}?keysource={source}"
+                        )
+                    }
+                    _ => unreachable!(),
+                };
+
+                client.get(ep).send()?
+            }
+            Mappings { program } => {
+                let ep = format!("{url}/api/v1/env/{id}/program/{program}/mappings");
+
+                client.get(ep).send()?
+            }
             Program { id: prog } => {
                 let ep = format!("{url}/api/v1/env/{id}/program/{prog}");
 
                 println!("{}", client.get(ep).send()?.text()?);
                 std::process::exit(0);
+            }
+            Network => {
+                let ep = format!("{url}/api/v1/env/{id}/network");
+
+                client.get(ep).send()?
             }
             Storage => {
                 let ep = format!("{url}/api/v1/env/{id}/storage");
