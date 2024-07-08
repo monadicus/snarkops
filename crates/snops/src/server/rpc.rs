@@ -6,18 +6,20 @@ use std::{
 use chrono::Utc;
 use snops_common::{
     api::EnvInfo,
+    define_rpc_mux,
     rpc::{
-        agent::{AgentServiceRequest, AgentServiceResponse},
-        control::{ControlService, ControlServiceRequest, ControlServiceResponse},
+        control::{
+            agent::{AgentServiceRequest, AgentServiceResponse},
+            ControlService, ControlServiceRequest, ControlServiceResponse,
+        },
         error::ResolveError,
-        MuxMessage,
     },
     state::{
         AgentId, AgentState, EnvId, LatestBlockInfo, NodeStatus, TransferStatus,
         TransferStatusUpdate,
     },
 };
-use tarpc::{context, ClientMessage, Response};
+use tarpc::context;
 
 use super::AppState;
 use crate::{
@@ -25,13 +27,10 @@ use crate::{
     state::{AddrMap, AgentAddrs},
 };
 
-/// A multiplexed message, incoming on the websocket.
-pub type MuxedMessageIncoming =
-    MuxMessage<ClientMessage<ControlServiceRequest>, Response<AgentServiceResponse>>;
-
-/// A multiplexed message, outgoing on the websocket.
-pub type MuxedMessageOutgoing =
-    MuxMessage<Response<ControlServiceResponse>, ClientMessage<AgentServiceRequest>>;
+define_rpc_mux!(parent;
+    ControlServiceRequest => ControlServiceResponse;
+    AgentServiceRequest => AgentServiceResponse;
+);
 
 #[derive(Clone)]
 pub struct ControlRpcServer {

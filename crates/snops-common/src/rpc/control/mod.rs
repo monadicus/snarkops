@@ -1,3 +1,5 @@
+pub mod agent;
+
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,

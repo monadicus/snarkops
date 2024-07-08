@@ -21,10 +21,14 @@ use cli::Cli;
 use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::HeaderValue;
+use rpc::control::{self, AgentRpcServer};
 use snops_common::{
     constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
     db::Database,
-    rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport},
+    rpc::{
+        control::{agent::AgentService, ControlServiceClient},
+        RpcTransport,
+    },
     util::OpaqueDebug,
 };
 use tarpc::server::Channel;
@@ -39,7 +43,6 @@ use tokio_tungstenite::{
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
 
-use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing};
 use crate::state::GlobalState;
 
 const PING_HEADER: &[u8] = b"snops-agent";
@@ -166,6 +169,7 @@ async fn main() {
         status_api_port,
         transfer_tx,
         transfers,
+        node_client: Default::default(),
         log_level_handler: reload_handler,
     });
 
@@ -268,7 +272,7 @@ async fn main() {
                     // handle outgoing responses
                     msg = server_response_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
-                        let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize response");
+                        let bin = bincode::serialize(&control::MuxedMessageOutgoing::Child(msg)).expect("failed to serialize response");
                         let send = ws_stream.send(tungstenite::Message::Binary(bin));
                         if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
                             error!("The connection to the control plane was interrupted while sending agent message");
@@ -279,7 +283,7 @@ async fn main() {
                     // handle outgoing requests
                     msg = client_request_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
-                        let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize request");
+                        let bin = bincode::serialize(&control::MuxedMessageOutgoing::Parent(msg)).expect("failed to serialize request");
                         let send = ws_stream.send(tungstenite::Message::Binary(bin));
                         if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
                             error!("The connection to the control plane was interrupted while sending control message");
@@ -337,8 +341,8 @@ async fn main() {
                             };
 
                             match msg {
-                                MuxedMessageIncoming::Agent(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
-                                MuxedMessageIncoming::Control(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
+                                control::MuxedMessageIncoming::Child(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
+                                control::MuxedMessageIncoming::Parent(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
                             }
                         }
 

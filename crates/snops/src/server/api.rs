@@ -15,7 +15,7 @@ use snops_common::{
     key_source::KeySource,
     lasso::Spur,
     node_targets::NodeTargets,
-    rpc::agent::AgentMetric,
+    rpc::control::agent::AgentMetric,
     state::{id_or_none, AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey},
 };
 use tarpc::context;

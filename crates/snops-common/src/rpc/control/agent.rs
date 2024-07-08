@@ -2,7 +2,7 @@ use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
 
-use super::error::*;
+use crate::rpc::error::*;
 use crate::{
     prelude::EnvId,
     state::{AgentState, NetworkId, PortConfig},

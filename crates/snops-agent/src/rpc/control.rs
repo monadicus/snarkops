@@ -1,3 +1,5 @@
+//! Control plane-to-agent RPC.
+
 use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
 use snops_common::{
@@ -5,29 +7,29 @@ use snops_common::{
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
+    define_rpc_mux,
     rpc::{
-        agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake},
-        control::{ControlServiceRequest, ControlServiceResponse},
+        control::{
+            agent::{
+                AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake,
+            },
+            ControlServiceRequest, ControlServiceResponse,
+        },
         error::{AgentError, ReconcileError, SnarkosRequestError},
-        MuxMessage,
     },
     state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, NetworkId, PortConfig},
 };
-use tarpc::{context, ClientMessage, Response};
+use tarpc::context;
 use tokio::process::Command;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{api, make_env_filter, metrics::MetricComputer, reconcile, state::AppState};
 
-/// A multiplexed message, incoming on the websocket.
-pub type MuxedMessageIncoming =
-    MuxMessage<Response<ControlServiceResponse>, ClientMessage<AgentServiceRequest>>;
+define_rpc_mux!(child;
+    ControlServiceRequest => ControlServiceResponse;
+    AgentServiceRequest => AgentServiceResponse;
+);
 
-/// A multiplexed message, outgoing on the websocket.
-pub type MuxedMessageOutgoing =
-    MuxMessage<ClientMessage<ControlServiceRequest>, Response<AgentServiceResponse>>;
-
-// TODO: include agent state (process, JWT, etc.)
 #[derive(Clone)]
 pub struct AgentRpcServer {
     pub state: AppState,
