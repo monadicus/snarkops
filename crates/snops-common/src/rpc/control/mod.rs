@@ -11,6 +11,8 @@ use crate::{
     state::{AgentId, EnvId, NodeStatus, TransferStatus, TransferStatusUpdate},
 };
 
+pub const PING_HEADER: &[u8] = b"snops-agent";
+
 #[tarpc::service]
 pub trait ControlService {
     /// Resolve the addresses of the given agents.

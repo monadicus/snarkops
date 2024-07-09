@@ -60,6 +60,9 @@ macro_rules! define_rpc_mux {
     };
 }
 
+pub const PING_LENGTH: usize = size_of::<u32>() + size_of::<u128>();
+pub const PING_INTERVAL_SEC: u64 = 10;
+
 pub struct RpcTransport<In, Out> {
     tx: mpsc::UnboundedSender<Out>,
     rx: mpsc::UnboundedReceiver<In>,

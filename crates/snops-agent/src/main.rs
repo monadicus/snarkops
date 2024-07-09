@@ -26,8 +26,8 @@ use snops_common::{
     constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
     db::Database,
     rpc::{
-        control::{agent::AgentService, ControlServiceClient},
-        RpcTransport,
+        control::{agent::AgentService, ControlServiceClient, PING_HEADER},
+        RpcTransport, PING_INTERVAL_SEC, PING_LENGTH,
     },
     util::OpaqueDebug,
 };
@@ -44,10 +44,6 @@ use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
 
 use crate::state::GlobalState;
-
-const PING_HEADER: &[u8] = b"snops-agent";
-const PING_LENGTH: usize = size_of::<u32>() + size_of::<u128>();
-const PING_INTERVAL_SEC: u64 = 10;
 
 type ReloadHandler = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
 
@@ -350,10 +346,8 @@ async fn main() {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
-                        Some(Ok(o)) => {
 
-                            println!("{o:#?}");
-                        }
+                        Some(Ok(o)) => println!("{o:#?}"),
                     },
                 };
             }

@@ -15,6 +15,9 @@ node = [
 	"snarkos-node-metrics",
 	"metrics-exporter-prometheus",
 	"num_cpus",
+	"futures-util",
+	"tokio-tungstenite",
+	"http",
 ]
 docpages = ["clipages", "mangen"]
 clipages = ["snops-common/clipages"]
@@ -31,6 +34,8 @@ clap.workspace = true
 clap-stdin.workspace = true
 colored.workspace = true
 crossterm = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
 indexmap.workspace = true
 indicatif.workspace = true
 lazy_static.workspace = true
@@ -49,7 +54,9 @@ snarkos-node = { workspace = true, optional = true }
 snarkos-node-metrics = { workspace = true, optional = true }
 snarkvm = { workspace = true, features = ["ledger"] }
 snops-common.workspace = true
+tarpc.workspace = true
 tokio.workspace = true
+tokio-tungstenite = { workspace = true, optional = true }
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-flame = { workspace = true, optional = true }
