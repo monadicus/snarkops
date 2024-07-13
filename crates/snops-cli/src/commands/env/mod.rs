@@ -122,9 +122,6 @@ enum EnvCommands {
     /// Lookup a program by its id.
     Program { id: String },
 
-    /// Get an env's snarkos network.
-    Network,
-
     /// Get an env's storage info.
     #[clap(alias = "store")]
     Storage,
@@ -232,11 +229,6 @@ impl Env {
 
                 println!("{}", client.get(ep).send()?.text()?);
                 std::process::exit(0);
-            }
-            Network => {
-                let ep = format!("{url}/api/v1/env/{id}/network");
-
-                client.get(ep).send()?
             }
             Storage => {
                 let ep = format!("{url}/api/v1/env/{id}/storage");

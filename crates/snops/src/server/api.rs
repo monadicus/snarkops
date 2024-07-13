@@ -86,7 +86,6 @@ pub(super) fn routes() -> Router<AppState> {
             get(get_mapping_value),
         )
         .route("/env/:env_id/program/:program/mappings", get(get_mappings))
-        .route("/env/:env_id/network", get(get_network))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
         .nest("/env/:env_id/action", actions::routes())
@@ -455,14 +454,6 @@ async fn get_mappings(
             }
         }
     }
-}
-
-async fn get_network(Path(env_id): Path<String>, state: State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-
-    Json(json!({"network": env.network})).into_response()
 }
 
 #[derive(Debug, Deserialize)]
