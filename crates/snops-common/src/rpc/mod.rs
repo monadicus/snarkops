@@ -11,6 +11,7 @@
 //! responsible for *listening* for new websocket connections.
 
 use std::{
+    mem::size_of,
     pin::Pin,
     task::{Context, Poll},
 };

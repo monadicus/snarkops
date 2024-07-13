@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    mem::size_of,
+    time::{Duration, Instant},
+};
 
 use futures_util::{SinkExt, StreamExt};
 use http::Uri;
