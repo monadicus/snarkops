@@ -55,4 +55,8 @@ impl AgentNodeService for AgentNodeRpcServer {
             .inspect_err(|err| tracing::error!("failed to post node status: {err}"))
             .map_err(|_| ())
     }
+
+    async fn get_log_level(self, _: context::Context) -> Result<(Option<String>, Option<u8>), ()> {
+        Ok(self.state.aot_log_level.clone())
+    }
 }

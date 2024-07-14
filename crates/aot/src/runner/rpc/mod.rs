@@ -20,7 +20,9 @@ use snops_common::{
 use tarpc::{context, server::Channel};
 use tokio::select;
 use tokio_tungstenite::{connect_async, tungstenite, tungstenite::client::IntoClientRequest};
-use tracing::{error, info, warn};
+use tracing::{error, info, level_filters::LevelFilter, warn};
+
+use crate::cli::{make_env_filter, ReloadHandler};
 
 pub mod node;
 
@@ -29,12 +31,13 @@ pub enum RpcClient {
     Enabled {
         port: u16,
         client: AgentNodeServiceClient,
+        log_level_handler: ReloadHandler,
     },
     Disabled,
 }
 
 impl RpcClient {
-    pub fn new(port: Option<u16>) -> Self {
+    pub fn new(log_level_handler: ReloadHandler, port: Option<u16>) -> Self {
         let Some(port) = port else {
             return Self::Disabled;
         };
@@ -187,13 +190,43 @@ impl RpcClient {
             }
         });
 
-        Self::Enabled { port, client }
+        Self::Enabled {
+            port,
+            client,
+            log_level_handler,
+        }
     }
 }
 
 impl RpcClient {
     pub fn is_enabled(&self) -> bool {
         matches!(self, Self::Enabled { .. })
+    }
+
+    pub fn update_log_level(&self) {
+        if let Self::Enabled {
+            client,
+            log_level_handler,
+            ..
+        } = self.to_owned()
+        {
+            tokio::spawn(async move {
+                let (level, verbosity) = client
+                    .get_log_level(context::current())
+                    .await
+                    .expect("failed to get log level from the agent, using default log level")
+                    .expect("failed to get log level from the agent, using default log level");
+
+                let level: Option<LevelFilter> = level
+                    .map(|l| l.parse())
+                    .transpose()
+                    .expect("failed to parse log level from the agent");
+
+                log_level_handler
+                    .modify(|filter| *filter = make_env_filter(level, verbosity))
+                    .expect("failed to set log level");
+            });
+        }
     }
 
     pub fn status(&self, body: SnarkOSStatus) {

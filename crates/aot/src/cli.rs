@@ -82,15 +82,17 @@ type FlameGuard = ();
 
 pub type ReloadHandler = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
 
-pub fn make_env_filter(level: Option<LevelFilter>, verbosity: u8) -> EnvFilter {
+pub fn make_env_filter(level: Option<LevelFilter>, verbosity: Option<u8>) -> EnvFilter {
     let level = match level {
         Some(level) => level,
         None => match verbosity {
-            0 => LevelFilter::INFO,
-            1 => LevelFilter::DEBUG,
-            2.. => LevelFilter::TRACE,
+            Some(0) => LevelFilter::INFO,
+            Some(1) => LevelFilter::DEBUG,
+            Some(2..) => LevelFilter::TRACE,
+            _ => LevelFilter::INFO,
         },
     };
+    let verbosity = verbosity.unwrap_or(0);
 
     // Filter out undesirable logs. (unfortunately EnvFilter cannot be cloned)
     {
@@ -154,7 +156,8 @@ impl<N: Network> Cli<N> {
     pub fn init_logger(&self) -> (FlameGuard, Vec<WorkerGuard>, ReloadHandler) {
         let verbosity = self.verbosity;
 
-        let (env_filter, reload_handler) = reload::Layer::new(make_env_filter(None, verbosity));
+        let (env_filter, reload_handler) =
+            reload::Layer::new(make_env_filter(None, Some(verbosity)));
 
         let subscriber = tracing_subscriber::registry().with(env_filter);
 

@@ -83,8 +83,8 @@ pub struct Runner<N: Network> {
 
 impl<N: Network> Runner<N> {
     // TODO we need a way to communicate to AOT from the CP.
-    pub fn parse(self, _log_level_handler: ReloadHandler) -> Result<()> {
-        let agent = RpcClient::new(self.agent_rpc_port);
+    pub fn parse(self, log_level_handler: ReloadHandler) -> Result<()> {
+        let agent = RpcClient::new(log_level_handler, self.agent_rpc_port);
         agent.status(SnarkOSStatus::Starting);
 
         let res = if std::env::var("DEFAULT_RUNTIME").ok().is_some() {

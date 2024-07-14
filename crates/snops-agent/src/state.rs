@@ -57,6 +57,7 @@ pub struct GlobalState {
     pub node_client: AsyncMutex<Option<NodeServiceClient>>,
 
     pub log_level_handler: ReloadHandler,
+    pub aot_log_level: (Option<String>, Option<u8>),
 }
 
 impl GlobalState {

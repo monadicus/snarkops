@@ -213,5 +213,5 @@ impl<N: Network> LedgerQuery<N> {
 #[derive(Debug, Deserialize)]
 struct LogSetQuery {
     level: Option<String>,
-    verbosity: u8,
+    verbosity: Option<u8>,
 }
