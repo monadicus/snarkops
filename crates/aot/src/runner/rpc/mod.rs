@@ -29,7 +29,7 @@ pub mod node;
 #[derive(Clone)]
 pub enum RpcClient {
     Enabled {
-        port: u16,
+        _port: u16,
         client: AgentNodeServiceClient,
         log_level_handler: ReloadHandler,
     },
@@ -191,7 +191,7 @@ impl RpcClient {
         });
 
         Self::Enabled {
-            port,
+            _port: port,
             client,
             log_level_handler,
         }

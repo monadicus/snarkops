@@ -82,17 +82,19 @@ pub struct Runner<N: Network> {
 }
 
 impl<N: Network> Runner<N> {
-    // TODO we need a way to communicate to AOT from the CP.
     pub fn parse(self, log_level_handler: ReloadHandler) -> Result<()> {
-        let agent = RpcClient::new(log_level_handler, self.agent_rpc_port);
-        agent.status(SnarkOSStatus::Starting);
-
-        let res = if std::env::var("DEFAULT_RUNTIME").ok().is_some() {
-            self.start_without_runtime(agent.to_owned())
+        if std::env::var("DEFAULT_RUNTIME").ok().is_some() {
+            self.start_without_runtime(log_level_handler)
         } else {
-            let agent = agent.to_owned();
-            Self::runtime().block_on(async move { self.start(agent).await })
-        };
+            Self::runtime().block_on(async move { self.start(log_level_handler).await })
+        }
+    }
+
+    #[tokio::main]
+    pub async fn start_without_runtime(self, log_level_handler: ReloadHandler) -> Result<()> {
+        let agent = RpcClient::new(log_level_handler, self.agent_rpc_port);
+
+        let res = self.start_inner(agent.to_owned()).await;
 
         if let Err(e) = &res {
             agent.status(SnarkOSStatus::Halted(Some(e.to_string())));
@@ -101,12 +103,21 @@ impl<N: Network> Runner<N> {
         res
     }
 
-    #[tokio::main]
-    pub async fn start_without_runtime(self, agent: RpcClient) -> Result<()> {
-        self.start(agent).await
+    pub async fn start(self, log_level_handler: ReloadHandler) -> Result<()> {
+        let agent = RpcClient::new(log_level_handler, self.agent_rpc_port);
+
+        let res = self.start_inner(agent.to_owned()).await;
+
+        if let Err(e) = &res {
+            agent.status(SnarkOSStatus::Halted(Some(e.to_string())));
+        }
+
+        res
     }
 
-    pub async fn start(self, agent: RpcClient) -> Result<()> {
+    async fn start_inner(self, agent: RpcClient) -> Result<()> {
+        agent.status(SnarkOSStatus::Starting);
+
         let bind_addr = self.bind_addr;
         let node_ip = SocketAddr::new(bind_addr, self.node);
         let rest_ip = SocketAddr::new(bind_addr, self.rest);
