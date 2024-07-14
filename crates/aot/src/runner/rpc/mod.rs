@@ -63,8 +63,8 @@ impl RpcClient {
 
         // get a URL/req that can be used to connect to the agent
         let ws_req = Uri::builder()
-            .scheme("http")
-            .authority("127.0.0.1")
+            .scheme("ws")
+            .authority(format!("127.0.0.1:{port}"))
             .path_and_query("/node")
             .build()
             .expect("failed to build websocket URL")
