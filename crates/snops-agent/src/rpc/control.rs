@@ -540,6 +540,7 @@ impl AgentService for AgentRpcServer {
         level: Option<String>,
         verbosity: Option<u8>,
     ) -> Result<(), AgentError> {
+        tracing::debug!("agent setting aot log level to {level:?}");
         let lock = self.state.node_client.lock().await;
         let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
         node_client

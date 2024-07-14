@@ -154,15 +154,17 @@ impl Agent {
 
             SetSnarkosLogLevel { level, verbosity } => {
                 let ep = match (level, verbosity) {
-                    (Some(level), Some(verbosity)) => {
+                    (Some(_), Some(_)) => {
+                        unreachable!("Both log level and verbosity provided")
+                    }
+                    (Some(level), None) => {
+                        format!("{url}/api/v1/agents/{}/aot/log?level={level}", self.id)
+                    }
+                    (None, Some(verbosity)) => {
                         format!(
-                            "{url}/api/v1/agents/{}/log/{level}?verbosity={verbosity}",
+                            "{url}/api/v1/agents/{}/aot/log?verbosity={verbosity}",
                             self.id
                         )
-                    }
-                    (Some(level), None) => format!("{url}/api/v1/env/{}/log/{level}", self.id),
-                    (None, Some(verbosity)) => {
-                        format!("{url}/api/v1/agents/{}/log?verbosity={verbosity}", self.id)
                     }
                     (None, None) => {
                         eprintln!("No log level or verbosity provided");

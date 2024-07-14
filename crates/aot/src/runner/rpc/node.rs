@@ -32,6 +32,7 @@ impl NodeService for NodeRpcServer {
         level: Option<String>,
         verbosity: Option<u8>,
     ) -> Result<(), AgentError> {
+        tracing::debug!("NodeService Setting log level to {level:?}");
         let level: Option<LevelFilter> = level
             .as_ref()
             .map(|l| l.parse())
