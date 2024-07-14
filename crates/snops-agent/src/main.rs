@@ -137,10 +137,10 @@ async fn main() {
     // start transfer monitor
     let (transfer_tx, transfers) = transfers::start_monitor(client.clone());
 
-    let status_api_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+    let agent_rpc_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
         .await
         .expect("failed to bind status server");
-    let status_api_port = status_api_listener
+    let agent_rpc_port = agent_rpc_listener
         .local_addr()
         .expect("failed to get status server port")
         .port();
@@ -162,7 +162,7 @@ async fn main() {
         child: Default::default(),
         resolved_addrs: Default::default(),
         metrics: Default::default(),
-        status_api_port,
+        agent_rpc_port,
         transfer_tx,
         transfers,
         node_client: Default::default(),
@@ -176,8 +176,8 @@ async fn main() {
     // start the status server
     let status_state = Arc::clone(&state);
     tokio::spawn(async move {
-        info!("starting status API server on port {status_api_port}");
-        if let Err(e) = server::start(status_api_listener, status_state).await {
+        info!("starting status API server on port {agent_rpc_port}");
+        if let Err(e) = server::start(agent_rpc_listener, status_state).await {
             error!("status API server crashed: {e:?}");
             std::process::exit(1);
         }

@@ -93,6 +93,7 @@ pub fn make_env_filter(level: Option<LevelFilter>, verbosity: Option<u8>) -> Env
         },
     };
     let verbosity = verbosity.unwrap_or(0);
+    tracing::debug!("Setting log level to: {:?}", level);
 
     // Filter out undesirable logs. (unfortunately EnvFilter cannot be cloned)
     {

@@ -250,6 +250,8 @@ impl<N: Network> Runner<N> {
                         }
                     }
 
+                    agent.update_log_level();
+
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 }
             });

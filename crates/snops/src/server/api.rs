@@ -1,7 +1,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use axum::{
-    extract::{self, Path, Request, State},
+    extract::{self, Path, Query, Request, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
@@ -51,6 +51,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents/:id/kill", post(kill_agent))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/agents/:id/log/:level", post(set_agent_log_level))
+        .route("/agents/:id/aot/log", post(set_aot_log_level))
         .route("/agents/find", post(find_agents))
         .route("/env/list", get(get_env_list))
         .route("/env/:env_id/topology", get(get_env_topology))
@@ -91,12 +92,45 @@ async fn set_agent_log_level(
     let id = unwrap_or_not_found!(id_or_none(&id));
     let agent = unwrap_or_not_found!(state.pool.get(&id));
 
-    tracing::debug!("attempting to set log level to {level} for agent {id}");
+    tracing::debug!("attempting to set agent log level to {level} for agent {id}");
     let Some(rpc) = agent.rpc() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
 
     let Err(e) = rpc.set_log_level(tarpc::context::current(), level).await else {
+        return status_ok();
+    };
+
+    ServerError::from(e).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct LogSetQuery {
+    level: Option<String>,
+    verbosity: Option<u8>,
+}
+
+async fn set_aot_log_level(
+    state: State<AppState>,
+    Path(id): Path<String>,
+    Query(log_query): Query<LogSetQuery>,
+) -> Response {
+    let id = unwrap_or_not_found!(id_or_none(&id));
+    let agent = unwrap_or_not_found!(state.pool.get(&id));
+
+    tracing::debug!("attempting to set aot log level to {log_query:?}");
+    let Some(rpc) = agent.rpc() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+
+    let Err(e) = rpc
+        .set_aot_log_level(
+            tarpc::context::current(),
+            log_query.level,
+            log_query.verbosity,
+        )
+        .await
+    else {
         return status_ok();
     };
 

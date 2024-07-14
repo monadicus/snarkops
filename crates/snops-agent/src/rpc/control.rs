@@ -226,8 +226,8 @@ impl AgentService for AgentRpcServer {
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
-                        .arg("--agent-status-port")
-                        .arg(state.status_api_port.to_string())
+                        .arg("--agent-rpc-port")
+                        .arg(state.agent_rpc_port.to_string())
                         .arg("--type")
                         .arg(node.node_key.ty.to_string())
                         .arg("--ledger")
@@ -531,6 +531,17 @@ impl AgentService for AgentRpcServer {
             .modify(|filter| *filter = make_env_filter(level))
             .map_err(|_| AgentError::FailedToChangeLogLevel)?;
 
+        Ok(())
+    }
+
+    async fn set_aot_log_level(
+        self,
+        _: context::Context,
+        level: Option<String>,
+        verbosity: Option<u8>,
+    ) -> Result<(), AgentError> {
+        let mut aot_log_level = self.state.aot_log_level.write().await;
+        *aot_log_level = (level, verbosity);
         Ok(())
     }
 }

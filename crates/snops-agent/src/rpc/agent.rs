@@ -57,6 +57,6 @@ impl AgentNodeService for AgentNodeRpcServer {
     }
 
     async fn get_log_level(self, _: context::Context) -> Result<(Option<String>, Option<u8>), ()> {
-        Ok(self.state.aot_log_level.clone())
+        Ok(self.state.aot_log_level.read().await.clone())
     }
 }
