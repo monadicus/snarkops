@@ -536,12 +536,15 @@ impl AgentService for AgentRpcServer {
 
     async fn set_aot_log_level(
         self,
-        _: context::Context,
+        ctx: context::Context,
         level: Option<String>,
         verbosity: Option<u8>,
     ) -> Result<(), AgentError> {
-        let mut aot_log_level = self.state.aot_log_level.write().await;
-        *aot_log_level = (level, verbosity);
-        Ok(())
+        let lock = self.state.node_client.lock().await;
+        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
+        node_client
+            .set_log_level(ctx, level, verbosity)
+            .await
+            .map_err(|_| AgentError::FailedToChangeLogLevel)?
     }
 }

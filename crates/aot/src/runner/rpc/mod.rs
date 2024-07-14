@@ -20,9 +20,9 @@ use snops_common::{
 use tarpc::{context, server::Channel};
 use tokio::select;
 use tokio_tungstenite::{connect_async, tungstenite, tungstenite::client::IntoClientRequest};
-use tracing::{error, info, level_filters::LevelFilter, warn};
+use tracing::{error, info, warn};
 
-use crate::cli::{make_env_filter, ReloadHandler};
+use crate::cli::ReloadHandler;
 
 pub mod node;
 
@@ -31,7 +31,6 @@ pub enum RpcClient {
     Enabled {
         _port: u16,
         client: AgentNodeServiceClient,
-        log_level_handler: ReloadHandler,
     },
     Disabled,
 }
@@ -56,7 +55,7 @@ impl RpcClient {
         let server = tarpc::server::BaseChannel::with_defaults(server_transport);
         tokio::spawn(
             server
-                .execute(NodeRpcServer { state: () }.serve())
+                .execute(NodeRpcServer { log_level_handler }.serve())
                 .for_each(|r| async move {
                     tokio::spawn(r);
                 }),
@@ -193,7 +192,6 @@ impl RpcClient {
         Self::Enabled {
             _port: port,
             client,
-            log_level_handler,
         }
     }
 }
@@ -201,32 +199,6 @@ impl RpcClient {
 impl RpcClient {
     pub fn is_enabled(&self) -> bool {
         matches!(self, Self::Enabled { .. })
-    }
-
-    pub fn update_log_level(&self) {
-        if let Self::Enabled {
-            client,
-            log_level_handler,
-            ..
-        } = self.to_owned()
-        {
-            tokio::spawn(async move {
-                let (level, verbosity) = client
-                    .get_log_level(context::current())
-                    .await
-                    .expect("failed to get log level from the agent, using default log level")
-                    .expect("failed to get log level from the agent, using default log level");
-
-                let level: Option<LevelFilter> = level
-                    .map(|l| l.parse())
-                    .transpose()
-                    .expect("failed to parse log level from the agent");
-
-                log_level_handler
-                    .modify(|filter| *filter = make_env_filter(level, verbosity))
-                    .expect("failed to set log level");
-            });
-        }
     }
 
     pub fn status(&self, body: SnarkOSStatus) {

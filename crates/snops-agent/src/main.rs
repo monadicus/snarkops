@@ -167,7 +167,6 @@ async fn main() {
         transfers,
         node_client: Default::default(),
         log_level_handler: reload_handler,
-        aot_log_level: Default::default(),
     });
 
     // start the metrics watcher

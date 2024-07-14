@@ -76,6 +76,8 @@ pub enum AgentError {
     InvalidLogLevel(String),
     #[error("failed to change log level")]
     FailedToChangeLogLevel,
+    #[error("node client not set")]
+    NodeClientNotSet,
 }
 
 #[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
