@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     ops::Deref,
     path::PathBuf,
     process::{ExitStatus, Stdio},
@@ -9,23 +8,28 @@ use std::{
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
-use rand::seq::IteratorRandom;
-use serde::{
-    de::{DeserializeOwned, Visitor},
-    Deserialize, Deserializer, Serialize,
-};
+use serde::{Deserialize, Serialize};
 use snops_common::{
     aot_cmds::error::CommandError,
-    api::{CheckpointMeta, StorageInfo},
+    binaries::{BinaryEntry, BinarySource},
     constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE},
-    key_source::{KeySource, ACCOUNTS_KEY_ID},
-    state::{InternedId, KeyState, NetworkId, StorageId},
+    key_source::ACCOUNTS_KEY_ID,
+    state::{InternedId, NetworkId, StorageId},
 };
 use tokio::process::Command;
 use tracing::{error, info, warn};
 
 use super::error::{SchemaError, StorageError};
-use crate::{cli::Cli, persist::PersistStorage, state::GlobalState};
+use crate::{persist::PersistStorage, state::GlobalState};
+
+mod accounts;
+use accounts::*;
+mod helpers;
+pub use helpers::*;
+mod loaded;
+pub use loaded::*;
+mod binaries;
+pub use binaries::*;
 
 pub const STORAGE_DIR: &str = "storage";
 
@@ -48,6 +52,14 @@ pub struct Document {
     pub connect: Option<url::Url>,
     #[serde(default)]
     pub retention_policy: Option<RetentionPolicy>,
+    /// The binaries list for this storage is used to determine which binaries
+    /// are used by the agents.
+    /// Overriding `default` will replace the node's default binary rather than
+    /// using snops' own default aot binary.
+    /// Overriding `compute` will replace the node's default binary only for
+    /// compute
+    #[serde(default)]
+    pub binaries: IndexMap<InternedId, BinaryEntryDoc>,
 }
 
 /// Data generation instructions.
@@ -61,73 +73,6 @@ pub struct StorageGeneration {
 
     #[serde(default)]
     pub transactions: Vec<Transaction>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Accounts {
-    pub count: u16,
-    #[serde(default)]
-    pub seed: Option<u64>,
-}
-
-impl<'de> Deserialize<'de> for Accounts {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct AccountsVisitor;
-
-        impl<'de> Visitor<'de> for AccountsVisitor {
-            type Value = Accounts;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a number or an object with a count and seed")
-            }
-
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(Accounts {
-                    count: v.min(u16::MAX as u64) as u16,
-                    seed: None,
-                })
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::MapAccess<'de>,
-            {
-                let mut count = None;
-                let mut seed = None;
-
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        "count" => {
-                            if count.is_some() {
-                                return Err(serde::de::Error::duplicate_field("count"));
-                            }
-                            count = Some(map.next_value()?);
-                        }
-                        "seed" => {
-                            if seed.is_some() {
-                                return Err(serde::de::Error::duplicate_field("seed"));
-                            }
-                            seed = Some(map.next_value()?);
-                        }
-                        _ => return Err(serde::de::Error::unknown_field(key, &["count", "seed"])),
-                    }
-                }
-
-                Ok(Accounts {
-                    count: count.ok_or_else(|| serde::de::Error::missing_field("count"))?,
-                    seed,
-                })
-            }
-        }
-
-        deserializer.deserialize_any(AccountsVisitor)
-    }
 }
 
 // TODO: I don't know what this type should look like
@@ -199,32 +144,8 @@ impl Default for GenesisGeneration {
     }
 }
 
-// IndexMap<addr, private_key>
-pub type AleoAddrMap = IndexMap<String, String>;
-
-#[derive(Debug, Clone)]
-pub struct LoadedStorage {
-    /// Storage ID
-    pub id: StorageId,
-    /// Network ID
-    pub network: NetworkId,
-    /// Version counter for this storage - incrementing will invalidate old
-    /// saved ledgers
-    pub version: u16,
-    /// committee lookup
-    pub committee: AleoAddrMap,
-    /// other accounts files lookup
-    pub accounts: HashMap<InternedId, AleoAddrMap>,
-    /// storage of checkpoints
-    pub checkpoints: Option<CheckpointManager>,
-    /// whether agents using this storage should persist it
-    pub persist: bool,
-    /// whether to use the network's native genesis block
-    pub native_genesis: bool,
-}
-
 lazy_static! {
-    // TODO: support multiple architectures
+    // TODO: given /release/, /release-big/, and /release-small/, use the most recent one
     pub static ref DEFAULT_AOT_BIN: PathBuf =
         std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/snarkos-aot"),
@@ -283,6 +204,20 @@ impl Document {
                 .await
                 .map_err(|e| StorageError::RemoveStorage(version_file.clone(), e))?;
             exists = false;
+        }
+
+        // gather the binaries
+        let mut binaries = IndexMap::default();
+        for (id, v) in self.binaries {
+            let entry = BinaryEntry::from(v);
+            if let BinarySource::Path(p) = &entry.source {
+                if !p.exists() {
+                    return Err(StorageError::BinaryFileMissing(id, p.clone()).into());
+                }
+                // TODO: check the binary execution mode
+                // TODO: check the binary shasum & length
+            }
+            binaries.insert(id, entry);
         }
 
         // generate the block and ledger if we have generation params
@@ -482,7 +417,7 @@ impl Document {
                 .map_err(|e| StorageError::FailedToTarLedger(id, e))?;
         }
 
-        let mut accounts = HashMap::new();
+        let mut accounts = IndexMap::new();
         accounts.insert(
             *ACCOUNTS_KEY_ID,
             read_to_addrs(pick_additional_addr, &base.join("accounts.json")).await?,
@@ -597,6 +532,7 @@ impl Document {
             checkpoints,
             persist: self.persist,
             native_genesis,
+            binaries,
         });
         if let Err(e) = state
             .db
@@ -609,188 +545,4 @@ impl Document {
 
         Ok(storage)
     }
-}
-
-pub fn pick_additional_addr(entry: (String, u64, Option<serde_json::Value>)) -> String {
-    entry.0
-}
-pub fn pick_commitee_addr(entry: (String, u64)) -> String {
-    entry.0
-}
-pub fn pick_account_addr(entry: String) -> String {
-    entry
-}
-
-// TODO: function should also take storage id
-// in case of error, the storage id can be used to provide more context
-pub async fn read_to_addrs<T: DeserializeOwned>(
-    f: impl Fn(T) -> String,
-    file: &PathBuf,
-) -> Result<AleoAddrMap, StorageError> {
-    if !file.exists() {
-        return Ok(Default::default());
-    }
-
-    let data = tokio::fs::read_to_string(file)
-        .await
-        .map_err(|e| StorageError::ReadBalances(file.clone(), e))?;
-    let parsed: IndexMap<String, T> =
-        serde_json::from_str(&data).map_err(|e| StorageError::ParseBalances(file.clone(), e))?;
-
-    Ok(parsed.into_iter().map(|(k, v)| (k, f(v))).collect())
-}
-
-impl LoadedStorage {
-    pub fn lookup_keysource_pk(&self, key: &KeySource) -> KeyState {
-        match key {
-            KeySource::Local => KeyState::Local,
-            KeySource::PrivateKeyLiteral(pk) => KeyState::Literal(pk.clone()),
-            KeySource::PublicKeyLiteral(_) => KeyState::None,
-            KeySource::ProgramLiteral(_) => KeyState::None,
-            KeySource::Committee(Some(i)) => self
-                .committee
-                .get_index(*i)
-                .map(|(_, pk)| pk.clone())
-                .into(),
-            KeySource::Committee(None) => KeyState::None,
-            KeySource::Named(name, Some(i)) => self
-                .accounts
-                .get(name)
-                .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone()))
-                .into(),
-            KeySource::Named(_name, None) => KeyState::None,
-        }
-    }
-
-    pub fn lookup_keysource_addr(&self, key: &KeySource) -> KeyState {
-        match key {
-            KeySource::Local => KeyState::Local,
-            KeySource::PrivateKeyLiteral(_) => KeyState::None,
-            KeySource::PublicKeyLiteral(addr) => KeyState::Literal(addr.clone()),
-            KeySource::ProgramLiteral(addr) => KeyState::Literal(addr.clone()),
-            KeySource::Committee(Some(i)) => self
-                .committee
-                .get_index(*i)
-                .map(|(addr, _)| addr.clone())
-                .into(),
-            KeySource::Committee(None) => KeyState::None,
-            KeySource::Named(name, Some(i)) => self
-                .accounts
-                .get(name)
-                .and_then(|a| a.get_index(*i).map(|(addr, _)| addr.clone()))
-                .into(),
-            KeySource::Named(_name, None) => KeyState::None,
-        }
-    }
-
-    pub fn sample_keysource_pk(&self, key: &KeySource) -> KeyState {
-        match key {
-            KeySource::Local => KeyState::Local,
-            KeySource::PrivateKeyLiteral(pk) => KeyState::Literal(pk.clone()),
-            KeySource::PublicKeyLiteral(_) => KeyState::None,
-            KeySource::ProgramLiteral(_) => KeyState::None,
-            KeySource::Committee(Some(i)) => self
-                .committee
-                .get_index(*i)
-                .map(|(_, pk)| pk.clone())
-                .into(),
-            KeySource::Committee(None) => self
-                .committee
-                .values()
-                .choose(&mut rand::thread_rng())
-                .cloned()
-                .into(),
-            KeySource::Named(name, Some(i)) => self
-                .accounts
-                .get(name)
-                .and_then(|a| a.get_index(*i).map(|(_, pk)| pk.clone()))
-                .into(),
-            KeySource::Named(name, None) => self
-                .accounts
-                .get(name)
-                .and_then(|a| a.values().choose(&mut rand::thread_rng()).cloned())
-                .into(),
-        }
-    }
-
-    pub fn sample_keysource_addr(&self, key: &KeySource) -> KeyState {
-        match key {
-            KeySource::Local => KeyState::Local,
-            KeySource::PrivateKeyLiteral(_) => KeyState::None,
-            KeySource::PublicKeyLiteral(addr) => KeyState::Literal(addr.clone()),
-            KeySource::ProgramLiteral(addr) => KeyState::Literal(addr.clone()),
-            KeySource::Committee(Some(i)) => self
-                .committee
-                .get_index(*i)
-                .map(|(addr, _)| addr.clone())
-                .into(),
-            KeySource::Committee(None) => self
-                .committee
-                .keys()
-                .choose(&mut rand::thread_rng())
-                .cloned()
-                .into(),
-            KeySource::Named(name, Some(i)) => self
-                .accounts
-                .get(name)
-                .and_then(|a| a.get_index(*i).map(|(addr, _)| addr.clone()))
-                .into(),
-            KeySource::Named(name, None) => self
-                .accounts
-                .get(name)
-                .and_then(|a| a.keys().choose(&mut rand::thread_rng()).cloned())
-                .into(),
-        }
-    }
-
-    pub fn info(&self) -> StorageInfo {
-        let checkpoints = self
-            .checkpoints
-            .as_ref()
-            .map(|c| {
-                c.checkpoints()
-                    .filter_map(|(c, path)| {
-                        path.file_name()
-                            .and_then(|s| s.to_str())
-                            .map(|filename| CheckpointMeta {
-                                filename: filename.to_string(),
-                                height: c.block_height,
-                                timestamp: c.timestamp,
-                            })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        StorageInfo {
-            id: self.id,
-            version: self.version,
-            retention_policy: self.checkpoints.as_ref().map(|c| c.policy().clone()),
-            checkpoints,
-            persist: self.persist,
-            native_genesis: self.native_genesis,
-        }
-    }
-
-    pub fn path(&self, state: &GlobalState) -> PathBuf {
-        self.path_cli(&state.cli)
-    }
-
-    pub fn path_cli(&self, cli: &Cli) -> PathBuf {
-        let mut path = cli.path.join(STORAGE_DIR);
-        path.push(self.network.to_string());
-        path.push(self.id.to_string());
-        path
-    }
-}
-
-async fn get_version_from_path(path: &PathBuf) -> Result<Option<u16>, StorageError> {
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let data = tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| StorageError::ReadVersion(path.clone(), e))?;
-
-    Ok(data.parse().ok())
 }
