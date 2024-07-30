@@ -22,6 +22,10 @@ impl InternedId {
     pub fn is_match(s: &str) -> bool {
         INTERNED_ID_REGEX.is_match(s)
     }
+
+    pub fn compute_id() -> Self {
+        Self(INTERN.get_or_intern("compute"))
+    }
 }
 
 impl Default for InternedId {

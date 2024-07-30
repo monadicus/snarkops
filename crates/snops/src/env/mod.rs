@@ -1,7 +1,6 @@
 use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -32,7 +31,7 @@ use crate::{
     persist::PersistEnv,
     schema::{
         nodes::{ExternalNode, Node},
-        storage::{LoadedStorage, DEFAULT_AOT_BIN},
+        storage::LoadedStorage,
         ItemDocument,
     },
     state::{Agent, GlobalState},
@@ -52,7 +51,6 @@ pub struct Environment {
     // TODO: pub outcome_results: RwLock<OutcomeResults>,
     pub node_peers: BiMap<NodeKey, EnvPeer>,
     pub node_states: DashMap<NodeKey, EnvNodeState>,
-    pub aot_bin: PathBuf,
 
     /// Map of transaction files to their respective counters
     pub sinks: HashMap<TxPipeId, Arc<TransactionSink>>,
@@ -360,12 +358,14 @@ impl Environment {
             .await
             .unwrap();
 
+        let compute_aot_bin = storage.resolve_compute_binary(&state).await;
+
         let (cannons, sinks) = prepare_cannons(
             Arc::clone(&state),
             &storage,
             prev_env.clone(),
             cannons_ready,
-            (env_id, network, storage_id, DEFAULT_AOT_BIN.clone()),
+            (env_id, network, storage_id, compute_aot_bin),
             pending_cannons
                 .into_iter()
                 .map(|(n, (source, sink))| (n, source, sink))
@@ -381,8 +381,6 @@ impl Environment {
             node_states,
             sinks,
             cannons,
-            // TODO: specify the binary when uploading the test or something
-            aot_bin: DEFAULT_AOT_BIN.clone(),
         });
 
         if let Err(e) = state.db.envs.save(&env_id, &PersistEnv::from(env.as_ref())) {

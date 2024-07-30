@@ -1,17 +1,17 @@
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 use checkpoint::CheckpointManager;
 use indexmap::IndexMap;
 use rand::seq::IteratorRandom;
 use snops_common::{
     api::{CheckpointMeta, StorageInfo},
-    binaries::BinaryEntry,
+    binaries::{BinaryEntry, BinarySource},
     key_source::KeySource,
     state::{InternedId, KeyState, NetworkId, StorageId},
 };
 
-use super::STORAGE_DIR;
-use crate::{cli::Cli, state::GlobalState};
+use super::{DEFAULT_AOT_BIN, STORAGE_DIR};
+use crate::{cli::Cli, schema::error::StorageError, state::GlobalState};
 
 // IndexMap<addr, private_key>
 pub type AleoAddrMap = IndexMap<String, String>;
@@ -184,5 +184,82 @@ impl LoadedStorage {
         path.push(self.network.to_string());
         path.push(self.id.to_string());
         path
+    }
+
+    pub async fn resolve_default_binary(&self, state: &GlobalState) -> PathBuf {
+        match self.resolve_binary_inner(state, &Default::default()).await {
+            Ok(path) => path,
+            Err(_) => DEFAULT_AOT_BIN.clone(),
+        }
+    }
+
+    pub async fn resolve_compute_binary(&self, state: &GlobalState) -> PathBuf {
+        match self
+            .resolve_binary_inner(state, &InternedId::compute_id())
+            .await
+        {
+            Ok(path) => path,
+            Err(_) => self.resolve_default_binary(state).await,
+        }
+    }
+
+    pub async fn resolve_binary(
+        &self,
+        state: &GlobalState,
+        id: &InternedId,
+    ) -> Result<PathBuf, StorageError> {
+        if id == &InternedId::default() {
+            Ok(self.resolve_default_binary(state).await)
+        } else if id == &InternedId::compute_id() {
+            Ok(self.resolve_compute_binary(state).await)
+        } else {
+            self.resolve_binary_inner(state, id).await
+        }
+    }
+
+    async fn resolve_binary_inner(
+        &self,
+        state: &GlobalState,
+        id: &InternedId,
+    ) -> Result<PathBuf, StorageError> {
+        let bin = self
+            .binaries
+            .get(id)
+            .ok_or(StorageError::BinaryDoesNotExist(*id, self.id))?;
+
+        let id_str: &str = id.as_ref();
+        let path = match bin.source.clone() {
+            BinarySource::Path(path) => return Ok(path.clone()),
+            BinarySource::Url(url) => {
+                let path = self.path(state).join("binaries").join(id_str);
+                if !path.exists() {
+                    let resp = reqwest::get(url.clone())
+                        .await
+                        .map_err(|e| StorageError::FailedToFetchBinary(*id, url.clone(), e))?;
+
+                    if resp.status() != reqwest::StatusCode::OK {
+                        return Err(StorageError::FailedToFetchBinaryWithStatus(
+                            *id,
+                            url,
+                            resp.status(),
+                        ));
+                    }
+
+                    let mut download = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .truncate(true)
+                        .open(&path)
+                        .map_err(|e| StorageError::FailedToCreateBinaryFile(*id, e))?;
+                    download
+                        .write_all(resp.bytes().await.expect("TODO").as_ref())
+                        .map_err(|e| StorageError::FailedToCreateBinaryFile(*id, e))?;
+                }
+
+                path
+            }
+        };
+
+        Ok(path)
     }
 }

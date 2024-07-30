@@ -8,7 +8,6 @@ use tokio::sync::Semaphore;
 use super::prelude::*;
 use super::PersistNode;
 use crate::env::prepare_cannons;
-use crate::schema::storage::DEFAULT_AOT_BIN;
 use crate::state::GlobalState;
 use crate::{
     cannon::{sink::TxSink, source::TxSource},
@@ -106,17 +105,14 @@ impl PersistEnv {
             }
         }
 
+        let compute_aot_bin = storage.resolve_compute_binary(&state).await;
+
         let (cannons, sinks) = prepare_cannons(
             Arc::clone(&state),
             storage.value(),
             None,
             cannons_ready,
-            (
-                self.id,
-                self.network,
-                self.storage_id,
-                DEFAULT_AOT_BIN.clone(),
-            ),
+            (self.id, self.network, self.storage_id, compute_aot_bin),
             self.cannons,
         )?;
 
@@ -127,7 +123,6 @@ impl PersistEnv {
             node_peers: node_map,
             node_states: initial_nodes,
             sinks,
-            aot_bin: DEFAULT_AOT_BIN.clone(),
             cannons,
         })
     }

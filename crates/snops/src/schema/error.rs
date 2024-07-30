@@ -47,6 +47,14 @@ pub enum StorageError {
     ParseBalances(PathBuf, #[source] serde_json::Error),
     #[error("error loading checkpoints: {0}")]
     CheckpointManager(#[from] checkpoint::errors::ManagerLoadError),
+    #[error("binary with id `{0}` does not exist for storage id: {1}")]
+    BinaryDoesNotExist(InternedId, StorageId),
+    #[error("failed fetching binary with id `{0}` from url `{1}`: {2}")]
+    FailedToFetchBinary(InternedId, Url, #[source] reqwest::Error),
+    #[error("failed fetching binary with id `{0}` from url `{1}`: status {2}")]
+    FailedToFetchBinaryWithStatus(InternedId, Url, StatusCode),
+    #[error("failed to create binary file with id `{0}`: {1}")]
+    FailedToCreateBinaryFile(InternedId, #[source] std::io::Error),
     #[error("missing binary file: {0}")]
     BinaryFileMissing(InternedId, PathBuf),
 }
@@ -55,6 +63,7 @@ impl_into_status_code!(StorageError, |value| match value {
     Command(e, _) => e.into(),
     FailedToFetchGenesis(_, _, _) => StatusCode::MISDIRECTED_REQUEST,
     NoGenerationParams(_) => StatusCode::BAD_REQUEST,
+    BinaryDoesNotExist(_, _) => StatusCode::NOT_FOUND,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 

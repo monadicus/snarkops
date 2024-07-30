@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use axum::{
-    extract::Query,
+    extract::{Query, State},
     response::{IntoResponse, Response},
     Json,
 };
@@ -21,6 +23,7 @@ use crate::{
     },
     env::{error::ExecutionError, Environment},
     server::error::{ActionError, ServerError},
+    state::GlobalState,
 };
 
 pub async fn execute_status(
@@ -70,6 +73,7 @@ pub async fn execute_status(
 }
 
 pub async fn execute(
+    State(state): State<Arc<GlobalState>>,
     Env { env, .. }: Env,
     Query(query): Query<AuthQuery>,
     Json(action): Json<ExecuteAction>,
@@ -77,7 +81,14 @@ pub async fn execute(
     let query_addr = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
 
     if query.is_async() {
-        return match execute_inner(action, &env, TransactionStatusSender::empty(), query_addr).await
+        return match execute_inner(
+            &state,
+            action,
+            &env,
+            TransactionStatusSender::empty(),
+            query_addr,
+        )
+        .await
         {
             Ok(tx_id) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
             Err(e) => ServerError::from(e).into_response(),
@@ -85,13 +96,22 @@ pub async fn execute(
     }
 
     let (tx, rx) = mpsc::channel(10);
-    match execute_inner(action, &env, TransactionStatusSender::new(tx), query_addr).await {
+    match execute_inner(
+        &state,
+        action,
+        &env,
+        TransactionStatusSender::new(tx),
+        query_addr,
+    )
+    .await
+    {
         Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }
 
 pub async fn execute_inner(
+    state: &GlobalState,
     action: ExecuteAction,
     env: &Environment,
     events: TransactionStatusSender,
@@ -148,7 +168,8 @@ pub async fn execute_inner(
         .collect::<Result<Vec<String>, AuthorizeError>>()?;
 
     // authorize the transaction
-    let aot = AotCmd::new(env.aot_bin.clone(), env.network);
+    let compute_bin = env.storage.resolve_compute_binary(state).await;
+    let aot = AotCmd::new(compute_bin, env.network);
     let auth_str = aot
         .authorize_program(
             &resolved_pk,
