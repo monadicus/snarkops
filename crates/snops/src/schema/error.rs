@@ -3,8 +3,11 @@ use std::path::PathBuf;
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
-    aot_cmds::error::CommandError, impl_into_status_code, impl_into_type_str,
-    key_source::KeySourceError, node_targets::NodeTargetError, state::StorageId,
+    aot_cmds::error::CommandError,
+    impl_into_status_code, impl_into_type_str,
+    key_source::KeySourceError,
+    node_targets::NodeTargetError,
+    state::{InternedId, StorageId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -44,6 +47,8 @@ pub enum StorageError {
     ParseBalances(PathBuf, #[source] serde_json::Error),
     #[error("error loading checkpoints: {0}")]
     CheckpointManager(#[from] checkpoint::errors::ManagerLoadError),
+    #[error("missing binary file: {0}")]
+    BinaryFileMissing(InternedId, PathBuf),
 }
 
 impl_into_status_code!(StorageError, |value| match value {

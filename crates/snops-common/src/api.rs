@@ -1,9 +1,11 @@
 use checkpoint::RetentionPolicy;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    binaries::BinaryEntry,
     prelude::StorageId,
-    state::{LatestBlockInfo, NetworkId},
+    state::{InternedId, LatestBlockInfo, NetworkId},
 };
 
 /// Metadata about a checkpoint file
@@ -35,4 +37,7 @@ pub struct StorageInfo {
     pub version: u16,
     /// Whether to use the network's native genesis block
     pub native_genesis: bool,
+    /// A map of the snarkos binary ids to a potential download url (when None,
+    /// download from the control plane)
+    pub binaries: IndexMap<InternedId, BinaryEntry>,
 }

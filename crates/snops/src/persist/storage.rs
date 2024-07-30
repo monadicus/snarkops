@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-
 use checkpoint::{CheckpointManager, RetentionPolicy};
+use indexmap::IndexMap;
 use snops_common::{
+    binaries::BinaryEntry,
     constant::LEDGER_BASE_DIR,
     key_source::ACCOUNTS_KEY_ID,
     state::{InternedId, NetworkId, StorageId},
@@ -29,6 +29,7 @@ pub struct PersistStorage {
     pub accounts: Vec<InternedId>,
     pub retention_policy: Option<RetentionPolicy>,
     pub native_genesis: bool,
+    pub binaries: IndexMap<InternedId, BinaryEntry>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,23 +37,25 @@ pub struct PersistStorageFormatHeader {
     pub version: u8,
     pub retention_policy: DataHeaderOf<RetentionPolicy>,
     pub network: DataHeaderOf<NetworkId>,
+    pub binaries: DataHeaderOf<BinaryEntry>,
 }
 
 impl DataFormat for PersistStorageFormatHeader {
     type Header = u8;
-    const LATEST_HEADER: Self::Header = 2;
+    const LATEST_HEADER: Self::Header = 3;
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(self.version.write_data(writer)?
             + self.retention_policy.write_data(writer)?
-            + self.network.write_data(writer)?)
+            + self.network.write_data(writer)?
+            + self.binaries.write_data(writer)?)
     }
 
     fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
-        if *header > Self::LATEST_HEADER || *header < 1 {
+        if *header > Self::LATEST_HEADER || *header < 2 {
             return Err(DataReadError::unsupported(
                 "PersistStorageFormatHeader",
-                format!("1 or {}", Self::LATEST_HEADER),
+                format!("1, 2, or {}", Self::LATEST_HEADER),
                 *header,
             ));
         }
@@ -61,6 +64,11 @@ impl DataFormat for PersistStorageFormatHeader {
             version: reader.read_data(&())?,
             retention_policy: reader.read_data(&((), ()))?,
             network: if *header >= 2 {
+                reader.read_data(&())?
+            } else {
+                0
+            },
+            binaries: if *header >= 3 {
                 reader.read_data(&())?
             } else {
                 0
@@ -79,6 +87,7 @@ impl From<&LoadedStorage> for PersistStorage {
             accounts: storage.accounts.keys().cloned().collect(),
             retention_policy: storage.checkpoints.as_ref().map(|c| c.policy().clone()),
             native_genesis: storage.native_genesis,
+            binaries: storage.binaries.clone(),
         }
     }
 }
@@ -105,7 +114,7 @@ impl PersistStorage {
             info!("storage {id} loaded without a checkpoint manager");
         }
 
-        let mut accounts = HashMap::new();
+        let mut accounts = IndexMap::new();
 
         // load accounts json
         for name in &self.accounts {
@@ -136,6 +145,7 @@ impl PersistStorage {
             checkpoints,
             native_genesis: self.native_genesis,
             accounts,
+            binaries: self.binaries,
         })
     }
 }
@@ -146,6 +156,7 @@ impl DataFormat for PersistStorage {
         version: 1,
         retention_policy: RetentionPolicy::LATEST_HEADER,
         network: NetworkId::LATEST_HEADER,
+        binaries: BinaryEntry::LATEST_HEADER,
     };
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
@@ -163,7 +174,7 @@ impl DataFormat for PersistStorage {
     }
 
     fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
-        if header.version != Self::LATEST_HEADER.version {
+        if header.version == 0 || header.version > Self::LATEST_HEADER.version {
             return Err(DataReadError::unsupported(
                 "PersistStorage",
                 Self::LATEST_HEADER.version,
@@ -183,6 +194,11 @@ impl DataFormat for PersistStorage {
             accounts: reader.read_data(&())?,
             retention_policy: reader.read_data(&header.retention_policy)?,
             native_genesis: reader.read_data(&())?,
+            binaries: if header.binaries > 0 {
+                reader.read_data(&((), header.binaries))?
+            } else {
+                IndexMap::new()
+            },
         })
     }
 }
@@ -193,7 +209,9 @@ mod tests {
     use std::str::FromStr;
 
     use checkpoint::RetentionPolicy;
+    use indexmap::IndexMap;
     use snops_common::{
+        binaries::BinaryEntry,
         format::{read_dataformat, write_dataformat, DataFormat},
         state::{InternedId, NetworkId},
     };
@@ -244,6 +262,7 @@ mod tests {
             accounts: vec![],
             retention_policy: None,
             native_genesis: false,
+            binaries: IndexMap::new(),
         },
         [
             PersistStorageFormatHeader::LATEST_HEADER.to_byte_vec()?,
@@ -255,6 +274,7 @@ mod tests {
             Vec::<InternedId>::new().to_byte_vec()?,
             None::<RetentionPolicy>.to_byte_vec()?,
             false.to_byte_vec()?,
+            IndexMap::<InternedId, BinaryEntry>::new().to_byte_vec()?,
         ]
         .concat()
     );
@@ -270,6 +290,7 @@ mod tests {
             accounts: vec![InternedId::from_str("accounts")?],
             retention_policy: None,
             native_genesis: true,
+            binaries: IndexMap::new(),
         },
         [
             2, 1, 1, 1, 1, 1, 4, 98, 97, 115, 101, 0, 0, 0, 0, 1, 1, 1, 8, 97, 99, 99, 111, 117,

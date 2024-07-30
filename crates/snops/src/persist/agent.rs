@@ -294,6 +294,7 @@ mod test {
                 peers: vec![],
                 validators: vec![],
                 env: Default::default(),
+                binary: None,
             })),
             AgentFlags {
                 mode: AgentModeOptions::from(5u8),
@@ -311,7 +312,7 @@ mod test {
             Agent::LATEST_HEADER.to_byte_vec()?,
             "agent".to_string().to_byte_vec()?,
             2u16.to_byte_vec()?,
-            1u8.to_byte_vec()?, // node state
+            2u8.to_byte_vec()?, // node state
             "env".to_string().to_byte_vec()?,
             NodeState {
                 node_key: "client/foo".parse()?,
@@ -321,6 +322,7 @@ mod test {
                 peers: vec![],
                 validators: vec![],
                 env: Default::default(),
+                binary: None,
             }.to_byte_vec()?,
             AgentFlags {
                 mode: AgentModeOptions::from(5u8),

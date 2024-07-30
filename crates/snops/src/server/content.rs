@@ -38,6 +38,8 @@ pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
         // the agent binary
         .route_service("/agent", ServeFile::new(DEFAULT_AGENT_BIN.clone()))
         // ledger/block storage derived from tests (.tar.gz'd)
+        // TODO: change this to be more restrictive
         .nest_service("/storage", ServeDir::new(storage_path))
         .layer(middleware::map_response(not_found))
+    // TODO: ServeFile for all files by /storage/<storageid>/binaries/<binaryId>
 }

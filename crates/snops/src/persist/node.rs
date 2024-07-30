@@ -146,6 +146,7 @@ mod tests {
                 validators: NodeTargets::None,
                 peers: NodeTargets::None,
                 env: Default::default(),
+                binary: None,
             })
         ),
         [
@@ -161,6 +162,7 @@ mod tests {
                 validators: NodeTargets::None,
                 peers: NodeTargets::None,
                 env: Default::default(),
+                binary: None,
             }
             .to_byte_vec()?,
         ]

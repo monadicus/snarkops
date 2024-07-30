@@ -6,6 +6,7 @@ pub mod set;
 pub mod state;
 pub use lasso;
 pub mod api;
+pub mod binaries;
 pub mod constant;
 pub mod db;
 pub mod format;
