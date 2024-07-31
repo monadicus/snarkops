@@ -277,7 +277,7 @@ pub async fn load_ledger(
     if !info.storage.native_genesis {
         command
             .arg("--genesis")
-            .arg(&storage_path.join(SNARKOS_GENESIS_FILE));
+            .arg(storage_path.join(SNARKOS_GENESIS_FILE));
     }
 
     command.arg("checkpoint").arg("apply").arg(path);
