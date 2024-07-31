@@ -17,7 +17,7 @@ use snops_common::rpc::{
 };
 use tarpc::server::Channel;
 use tokio::select;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     rpc::agent::{AgentNodeRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing},
@@ -28,6 +28,7 @@ pub async fn start(listener: tokio::net::TcpListener, state: AppState) -> Result
     let app = Router::new()
         .route("/node", get(node_ws_handler))
         .with_state(Arc::clone(&state));
+    info!("axum router listening on: {}", listener.local_addr()?);
 
     axum::serve(listener, app).await?;
 
@@ -35,6 +36,7 @@ pub async fn start(listener: tokio::net::TcpListener, state: AppState) -> Result
 }
 
 async fn node_ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
+    info!("node_ws_handler hit");
     ws.on_upgrade(|socket| handle_socket(socket, state))
         .into_response()
 }
@@ -76,6 +78,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
         select! {
             // handle incoming messages
             msg = socket.recv() => {
+                info!("socket handle incoming message: {msg:?}");
                 match msg {
                     Some(Err(_)) | None => break,
                     Some(Ok(Message::Binary(bin))) => {
@@ -98,6 +101,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
             // handle outgoing requests
             msg = client_request_out.recv() => {
+                info!("client handle outgoing request: {msg:?}");
                 let msg = msg.expect("internal RPC channel closed");
                 let bin = bincode::serialize(&MuxedMessageOutgoing::Child(msg)).expect("failed to serialize request");
                 if socket.send(Message::Binary(bin)).await.is_err() {
@@ -107,6 +111,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
             // handle outgoing response
             msg = server_response_out.recv() => {
+                info!("server handle outgoing response: {msg:?}");
                 let msg = msg.expect("internal RPC channel closed");
                 let bin = bincode::serialize(&MuxedMessageOutgoing::Parent(msg)).expect("failed to serialize response");
                 if socket.send(Message::Binary(bin)).await.is_err() {
