@@ -310,10 +310,10 @@ mod test {
         [
             AgentFormatHeader::LATEST_HEADER.to_byte_vec()?,
             Agent::LATEST_HEADER.to_byte_vec()?,
-            "agent".to_string().to_byte_vec()?,
-            2u16.to_byte_vec()?,
-            2u8.to_byte_vec()?, // node state
-            "env".to_string().to_byte_vec()?,
+            "agent".to_string().to_byte_vec()?, // agent id
+            2u16.to_byte_vec()?, // nonce
+            1u8.to_byte_vec()?, // node state discriminant
+            "env".to_string().to_byte_vec()?, // env id
             NodeState {
                 node_key: "client/foo".parse()?,
                 private_key: KeyState::None,

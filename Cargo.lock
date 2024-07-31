@@ -5734,8 +5734,3 @@ dependencies = [
  "quote 1.0.36",
  "syn 2.0.66",
 ]
-
-[[patch.unused]]
-name = "snarkvm"
-version = "0.16.19"
-source = "git+https://github.com/AleoNet/snarkVM?rev=aef07da#aef07da8ed38aa4c3cdb2d946e0b6c783cc72cd3"

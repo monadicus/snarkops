@@ -111,17 +111,3 @@ impl From<BinaryEntryDoc> for BinaryEntry {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    // test if a random string can parse into a uri:
-    #[test]
-    fn test_uri() {
-        let uri = "http://example.com";
-        let parsed = url::Url::parse(uri);
-        assert!(parsed.is_ok());
-        let uri = "meow/bar/baz";
-        let parsed = url::Url::parse(uri);
-        assert!(parsed.is_ok());
-    }
-}

@@ -169,6 +169,7 @@ impl DataFormat for PersistStorage {
         written += self.accounts.write_data(writer)?;
         written += self.retention_policy.write_data(writer)?;
         written += self.native_genesis.write_data(writer)?;
+        written += self.binaries.write_data(writer)?;
 
         Ok(written)
     }
@@ -247,6 +248,7 @@ mod tests {
             PersistStorage::LATEST_HEADER.version.to_byte_vec()?,
             RetentionPolicy::LATEST_HEADER.to_byte_vec()?,
             NetworkId::LATEST_HEADER.to_byte_vec()?,
+            BinaryEntry::LATEST_HEADER.to_byte_vec()?,
         ]
         .concat()
     );
@@ -293,8 +295,8 @@ mod tests {
             binaries: IndexMap::new(),
         },
         [
-            2, 1, 1, 1, 1, 1, 4, 98, 97, 115, 101, 0, 0, 0, 0, 1, 1, 1, 8, 97, 99, 99, 111, 117,
-            110, 116, 115, 0, 1
+            3, 1, 1, 1, 1, 1, 1, 4, 98, 97, 115, 101, 0, 0, 0, 0, 1, 1, 1, 8, 97, 99, 99, 111, 117,
+            110, 116, 115, 0, 1, 0
         ]
     );
 }
