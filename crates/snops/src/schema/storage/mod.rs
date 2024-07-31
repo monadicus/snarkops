@@ -7,7 +7,6 @@ use std::{
 
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use snops_common::{
     aot_cmds::error::CommandError,
@@ -144,18 +143,6 @@ impl Default for GenesisGeneration {
     }
 }
 
-lazy_static! {
-    // TODO: given /release/, /release-big/, and /release-small/, use the most recent one
-    pub static ref DEFAULT_AOT_BIN: PathBuf =
-        std::env::var("AOT_BIN").map(PathBuf::from).unwrap_or(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/snarkos-aot"),
-        );
-    pub static ref DEFAULT_AGENT_BIN: PathBuf =
-        std::env::var("AGENT_BIN").map(PathBuf::from).unwrap_or(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/release/snops-agent"),
-        );
-}
-
 impl Document {
     pub async fn prepare(
         self,
@@ -271,7 +258,7 @@ impl Document {
                 }
                 (None, Some(genesis)) => {
                     // generated genesis block is not native
-                    let mut command = Command::new(aot_bin);
+                    let mut command = Command::new(&aot_bin);
                     command
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
@@ -440,7 +427,7 @@ impl Document {
                 if !path.exists() {
                     info!("generating accounts for {name}");
 
-                    let mut command = Command::new(DEFAULT_AOT_BIN.clone());
+                    let mut command = Command::new(&aot_bin);
                     command
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
