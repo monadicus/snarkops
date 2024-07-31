@@ -123,6 +123,8 @@ async fn set_aot_log_level(
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
 
+    // let mut ctx = tarpc::context::current();
+    // ctx.deadline += std::time::Duration::from_secs(300);
     let Err(e) = rpc
         .set_aot_log_level(
             tarpc::context::current(),

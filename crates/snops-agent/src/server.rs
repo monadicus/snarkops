@@ -57,7 +57,9 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let client = NodeServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
     // store the client in state
+    tracing::info!("node client connected");
     *node_client = Some(client);
+    drop(node_client);
 
     // set up the server for incoming RPC requests
     let server = tarpc::server::BaseChannel::with_defaults(server_transport);
@@ -78,7 +80,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
         select! {
             // handle incoming messages
             msg = socket.recv() => {
-                info!("socket handle incoming message: {msg:?}");
                 match msg {
                     Some(Err(_)) | None => break,
                     Some(Ok(Message::Binary(bin))) => {
@@ -101,7 +102,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
             // handle outgoing requests
             msg = client_request_out.recv() => {
-                info!("client handle outgoing request: {msg:?}");
                 let msg = msg.expect("internal RPC channel closed");
                 let bin = bincode::serialize(&MuxedMessageOutgoing::Child(msg)).expect("failed to serialize request");
                 if socket.send(Message::Binary(bin)).await.is_err() {
@@ -111,7 +111,6 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
             // handle outgoing response
             msg = server_response_out.recv() => {
-                info!("server handle outgoing response: {msg:?}");
                 let msg = msg.expect("internal RPC channel closed");
                 let bin = bincode::serialize(&MuxedMessageOutgoing::Parent(msg)).expect("failed to serialize response");
                 if socket.send(Message::Binary(bin)).await.is_err() {
