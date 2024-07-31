@@ -186,80 +186,102 @@ impl LoadedStorage {
         path
     }
 
-    pub async fn resolve_default_binary(&self, state: &GlobalState) -> PathBuf {
-        match self.resolve_binary_inner(state, &Default::default()).await {
-            Ok(path) => path,
-            Err(_) => DEFAULT_AOT_BIN.clone(),
-        }
+    /// Resolve the default binary for this storage
+    pub async fn resolve_default_binary(
+        &self,
+        state: &GlobalState,
+    ) -> Result<PathBuf, StorageError> {
+        self.resolve_binary(state, InternedId::default()).await
     }
 
-    pub async fn resolve_compute_binary(&self, state: &GlobalState) -> PathBuf {
-        match self
-            .resolve_binary_inner(state, &InternedId::compute_id())
-            .await
-        {
-            Ok(path) => path,
-            Err(_) => self.resolve_default_binary(state).await,
-        }
+    /// Resolve the compute binary for this storage
+    pub async fn resolve_compute_binary(
+        &self,
+        state: &GlobalState,
+    ) -> Result<PathBuf, StorageError> {
+        self.resolve_binary(state, InternedId::compute_id()).await
     }
 
+    /// Resolve a binary for this storage by id
     pub async fn resolve_binary(
         &self,
         state: &GlobalState,
-        id: &InternedId,
+        id: InternedId,
     ) -> Result<PathBuf, StorageError> {
-        if id == &InternedId::default() {
-            Ok(self.resolve_default_binary(state).await)
-        } else if id == &InternedId::compute_id() {
-            Ok(self.resolve_compute_binary(state).await)
-        } else {
-            self.resolve_binary_inner(state, id).await
-        }
+        Self::resolve_binary_from_map(self.id, self.network, &self.binaries, state, id).await
     }
 
-    async fn resolve_binary_inner(
-        &self,
+    pub async fn resolve_binary_from_map(
+        storage_id: InternedId,
+        network: NetworkId,
+        binaries: &IndexMap<InternedId, BinaryEntry>,
         state: &GlobalState,
-        id: &InternedId,
+        mut id: InternedId,
     ) -> Result<PathBuf, StorageError> {
-        let bin = self
-            .binaries
-            .get(id)
-            .ok_or(StorageError::BinaryDoesNotExist(*id, self.id))?;
+        let compute_id = InternedId::compute_id();
+
+        // if the binary id is "compute" and there is no "compute" binary override in
+        // the map, then we should use the default binary
+        if id == compute_id && !binaries.contains_key(&compute_id) {
+            id = InternedId::default();
+        }
+
+        // if the binary id is the default binary id and there is no default binary
+        // override in the map,
+        if id == InternedId::default() && !binaries.contains_key(&InternedId::default()) {
+            // then we should use the default AOT binary
+            return Ok(DEFAULT_AOT_BIN.clone());
+        }
+
+        let bin = binaries
+            .get(&id)
+            .ok_or(StorageError::BinaryDoesNotExist(id, storage_id))?;
 
         let id_str: &str = id.as_ref();
-        let path = match bin.source.clone() {
+
+        let remote_url = match bin.source.clone() {
+            // if the binary is a relative path, then we should use the path as is
+            // rather than downloading it
             BinarySource::Path(path) => return Ok(path.clone()),
-            BinarySource::Url(url) => {
-                let path = self.path(state).join("binaries").join(id_str);
-                if !path.exists() {
-                    let resp = reqwest::get(url.clone())
-                        .await
-                        .map_err(|e| StorageError::FailedToFetchBinary(*id, url.clone(), e))?;
-
-                    if resp.status() != reqwest::StatusCode::OK {
-                        return Err(StorageError::FailedToFetchBinaryWithStatus(
-                            *id,
-                            url,
-                            resp.status(),
-                        ));
-                    }
-
-                    let mut download = std::fs::OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .truncate(true)
-                        .open(&path)
-                        .map_err(|e| StorageError::FailedToCreateBinaryFile(*id, e))?;
-                    download
-                        .write_all(resp.bytes().await.expect("TODO").as_ref())
-                        .map_err(|e| StorageError::FailedToCreateBinaryFile(*id, e))?;
-                }
-
-                path
-            }
+            BinarySource::Url(url) => url,
         };
 
-        Ok(path)
+        // derive the path to the binary
+        let mut download_path = state.cli.path.join(STORAGE_DIR);
+        download_path.push(network.to_string());
+        download_path.push(storage_id.to_string());
+        download_path.push("binaries");
+        download_path.push(id_str);
+
+        if download_path.exists() {
+            return Ok(download_path);
+        }
+
+        let resp = reqwest::get(remote_url.clone())
+            .await
+            .map_err(|e| StorageError::FailedToFetchBinary(id, remote_url.clone(), e))?;
+
+        if resp.status() != reqwest::StatusCode::OK {
+            return Err(StorageError::FailedToFetchBinaryWithStatus(
+                id,
+                remote_url,
+                resp.status(),
+            ));
+        }
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&download_path)
+            .map_err(|e| StorageError::FailedToCreateBinaryFile(id, e))?;
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| StorageError::FailedToFetchBinary(id, remote_url, e))?;
+        file.write_all(&bytes)
+            .map_err(|e| StorageError::FailedToWriteBinaryFile(id, e))?;
+
+        Ok(download_path)
     }
 }

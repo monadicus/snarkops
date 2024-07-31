@@ -12,7 +12,7 @@ use tokio::task::JoinError;
 
 use crate::{
     cannon::error::{AuthorizeError, CannonError},
-    schema::error::SchemaError,
+    schema::error::{SchemaError, StorageError},
     state::error::BatchReconcileError,
 };
 
@@ -73,11 +73,14 @@ pub enum ExecutionError {
     UnknownCannon(CannonId),
     #[error(transparent)]
     AuthorizeError(#[from] AuthorizeError),
+    #[error(transparent)]
+    Storage(#[from] StorageError),
 }
 
 impl_into_status_code!(ExecutionError, |value| match value {
     Cannon(e) => e.into(),
     Reconcile(e) => e.into(),
+    Storage(e) => e.into(),
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 
@@ -85,6 +88,7 @@ impl_into_type_str!(ExecutionError, |value| match value {
     AuthorizeError(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     AotCmdError(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     Cannon(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
+    Storage(e) => format!("{}.{}", value.as_ref(), &String::from(e)),
     _ => value.as_ref().to_string(),
 });
 
@@ -215,6 +219,8 @@ pub enum EnvError {
     Reconcile(#[from] ReconcileError),
     #[error(transparent)]
     Schema(#[from] SchemaError),
+    #[error(transparent)]
+    Storage(#[from] StorageError),
 }
 
 impl_into_status_code!(EnvError, |value| match value {
@@ -225,6 +231,7 @@ impl_into_status_code!(EnvError, |value| match value {
     Prepare(e) => e.into(),
     Reconcile(e) => e.into(),
     Schema(e) => e.into(),
+    Storage(e) => e.into(),
 });
 
 impl_into_type_str!(EnvError, |value| match value {
@@ -239,6 +246,7 @@ impl_into_type_str!(EnvError, |value| match value {
     Prepare(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Reconcile(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
     Schema(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    Storage(e) => format!("{}.{}", value.as_ref(), String::from(e)),
 });
 
 impl Serialize for EnvError {

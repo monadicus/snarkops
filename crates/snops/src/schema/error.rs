@@ -55,7 +55,9 @@ pub enum StorageError {
     FailedToFetchBinaryWithStatus(InternedId, Url, StatusCode),
     #[error("failed to create binary file with id `{0}`: {1}")]
     FailedToCreateBinaryFile(InternedId, #[source] std::io::Error),
-    #[error("missing binary file: {0}")]
+    #[error("failed to write binary file with id `{0}`: {1}")]
+    FailedToWriteBinaryFile(InternedId, #[source] std::io::Error),
+    #[error("missing binary file `{0}`: {1}")]
     BinaryFileMissing(InternedId, PathBuf),
 }
 
@@ -64,6 +66,7 @@ impl_into_status_code!(StorageError, |value| match value {
     FailedToFetchGenesis(_, _, _) => StatusCode::MISDIRECTED_REQUEST,
     NoGenerationParams(_) => StatusCode::BAD_REQUEST,
     BinaryDoesNotExist(_, _) => StatusCode::NOT_FOUND,
+    BinaryFileMissing(_, _) => StatusCode::NOT_FOUND,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 

@@ -168,7 +168,7 @@ pub async fn execute_inner(
         .collect::<Result<Vec<String>, AuthorizeError>>()?;
 
     // authorize the transaction
-    let compute_bin = env.storage.resolve_compute_binary(state).await;
+    let compute_bin = env.storage.resolve_compute_binary(state).await?;
     let aot = AotCmd::new(compute_bin, env.network);
     let auth_str = aot
         .authorize_program(

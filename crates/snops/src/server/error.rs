@@ -11,7 +11,7 @@ use crate::{
     cannon::error::CannonError,
     env::error::{EnvError, EnvRequestError, ExecutionError},
     error::DeserializeError,
-    schema::error::SchemaError,
+    schema::error::{SchemaError, StorageError},
     state::error::BatchReconcileError,
 };
 
@@ -43,6 +43,8 @@ pub enum ServerError {
     FailedToChangeLogLevel,
     #[error(transparent)]
     RpcError(#[from] tarpc::client::RpcError),
+    #[error(transparent)]
+    Storage(#[from] StorageError),
 }
 
 impl_into_status_code!(ServerError, |value| match value {
@@ -54,6 +56,7 @@ impl_into_status_code!(ServerError, |value| match value {
     Execute(e) => e.into(),
     Schema(e) => e.into(),
     EnvRequest(e) => e.into(),
+    Storage(e) => e.into(),
     AotCmd(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     NotFound(_) => axum::http::StatusCode::NOT_FOUND,
     InvalidLogLevel(_) => axum::http::StatusCode::BAD_REQUEST,
@@ -68,6 +71,7 @@ impl_into_type_str!(ServerError, |value| match value {
     Execute(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Schema(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     EnvRequest(e) => format!("{}.{}", value.as_ref(), String::from(e)),
+    Storage(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     _ => value.as_ref().to_string(),
 });
 

@@ -358,7 +358,7 @@ impl Environment {
             .await
             .unwrap();
 
-        let compute_aot_bin = storage.resolve_compute_binary(&state).await;
+        let compute_aot_bin = storage.resolve_compute_binary(&state).await?;
 
         let (cannons, sinks) = prepare_cannons(
             Arc::clone(&state),

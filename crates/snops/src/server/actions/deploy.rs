@@ -100,7 +100,7 @@ pub async fn deploy_inner(
         None
     };
 
-    let compute_bin = env.storage.resolve_compute_binary(state).await;
+    let compute_bin = env.storage.resolve_compute_binary(state).await?;
     // authorize the transaction
     let aot = AotCmd::new(compute_bin, env.network);
     let auth_str = aot

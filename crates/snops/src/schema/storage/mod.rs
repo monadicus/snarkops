@@ -220,6 +220,16 @@ impl Document {
             binaries.insert(id, entry);
         }
 
+        // resolve the default aot bin for this storage
+        let aot_bin = LoadedStorage::resolve_binary_from_map(
+            id,
+            network,
+            &binaries,
+            state,
+            InternedId::default(),
+        )
+        .await?;
+
         // generate the block and ledger if we have generation params
         if let (Some(generation), false) = (self.generate.as_ref(), exists) {
             tracing::debug!("generating storage for {id}");
@@ -261,7 +271,7 @@ impl Document {
                 }
                 (None, Some(genesis)) => {
                     // generated genesis block is not native
-                    let mut command = Command::new(DEFAULT_AOT_BIN.clone());
+                    let mut command = Command::new(aot_bin);
                     command
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
