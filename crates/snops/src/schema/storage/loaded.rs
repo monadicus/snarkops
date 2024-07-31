@@ -10,7 +10,7 @@ use snops_common::{
     state::{InternedId, KeyState, NetworkId, StorageId},
 };
 
-use super::{DEFAULT_AOT_BIN, STORAGE_DIR};
+use super::{DEFAULT_AOT_BINARY, STORAGE_DIR};
 use crate::{cli::Cli, schema::error::StorageError, state::GlobalState};
 
 // IndexMap<addr, private_key>
@@ -170,7 +170,7 @@ impl LoadedStorage {
             binaries: self
                 .binaries
                 .iter()
-                .map(|(k, v)| (*k, v.with_api_path(self.id, *k)))
+                .map(|(k, v)| (*k, v.with_api_path(self.network, self.id, *k)))
                 .collect(),
         }
     }
@@ -202,7 +202,7 @@ impl LoadedStorage {
         self.resolve_binary(state, InternedId::compute_id()).await
     }
 
-    /// Resolve a binary for this storage by id
+    /// Resolve (find and download) a binary for this storage by id
     pub async fn resolve_binary(
         &self,
         state: &GlobalState,
@@ -211,13 +211,19 @@ impl LoadedStorage {
         Self::resolve_binary_from_map(self.id, self.network, &self.binaries, state, id).await
     }
 
-    pub async fn resolve_binary_from_map(
+    /// Resolve a binary entry for this storage by id
+    pub fn resolve_binary_entry(
+        &self,
+        id: InternedId,
+    ) -> Result<(InternedId, &BinaryEntry), StorageError> {
+        Self::resolve_binary_entry_from_map(self.id, &self.binaries, id)
+    }
+
+    pub fn resolve_binary_entry_from_map(
         storage_id: InternedId,
-        network: NetworkId,
         binaries: &IndexMap<InternedId, BinaryEntry>,
-        state: &GlobalState,
         mut id: InternedId,
-    ) -> Result<PathBuf, StorageError> {
+    ) -> Result<(InternedId, &BinaryEntry), StorageError> {
         let compute_id = InternedId::compute_id();
 
         // if the binary id is "compute" and there is no "compute" binary override in
@@ -230,12 +236,24 @@ impl LoadedStorage {
         // override in the map,
         if id == InternedId::default() && !binaries.contains_key(&InternedId::default()) {
             // then we should use the default AOT binary
-            return Ok(DEFAULT_AOT_BIN.clone());
+            return Ok((id, &DEFAULT_AOT_BINARY));
         }
 
         let bin = binaries
             .get(&id)
             .ok_or(StorageError::BinaryDoesNotExist(id, storage_id))?;
+
+        Ok((id, bin))
+    }
+
+    pub async fn resolve_binary_from_map(
+        storage_id: InternedId,
+        network: NetworkId,
+        binaries: &IndexMap<InternedId, BinaryEntry>,
+        state: &GlobalState,
+        id: InternedId,
+    ) -> Result<PathBuf, StorageError> {
+        let (id, bin) = Self::resolve_binary_entry_from_map(storage_id, binaries, id)?;
 
         let id_str: &str = id.as_ref();
 

@@ -9,7 +9,10 @@ use chrono::Utc;
 use futures::StreamExt;
 use http::StatusCode;
 use reqwest::IntoUrl;
-use snops_common::state::{EnvId, TransferStatusUpdate};
+use snops_common::{
+    binaries::{BinaryEntry, BinarySource},
+    state::TransferStatusUpdate,
+};
 use tokio::{fs::File, io::AsyncWriteExt};
 use tracing::info;
 
@@ -110,7 +113,7 @@ pub async fn check_file(
 }
 
 pub async fn check_binary(
-    env_id: EnvId,
+    binary: &BinaryEntry,
     base_url: &str,
     path: &Path,
     transfer_tx: TransferTx,
@@ -118,8 +121,14 @@ pub async fn check_binary(
     let client = reqwest::Client::new();
 
     // check if we already have an up-to-date binary
-    let loc = format!("{base_url}/api/v1/env/{env_id}/storage/binary");
-    if !should_download_file(&client, &loc, path)
+    let source_url = match &binary.source {
+        BinarySource::Url(url) => url.to_string(),
+        BinarySource::Path(path) => {
+            format!("{base_url}{}", path.display())
+        }
+    };
+
+    if !should_download_file(&client, &source_url, path)
         .await
         .unwrap_or(true)
     {
@@ -133,7 +142,7 @@ pub async fn check_binary(
     }
     info!("binary update is available, downloading...");
 
-    let Some(file) = download_file(&client, &loc, path, transfer_tx).await? else {
+    let Some(file) = download_file(&client, &source_url, path, transfer_tx).await? else {
         bail!("downloading binary returned 404");
     };
 

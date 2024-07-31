@@ -1,7 +1,10 @@
-use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
+use std::{
+    collections::HashSet, net::IpAddr, ops::Deref, path::PathBuf, process::Stdio, sync::Arc,
+};
 
 use snops_common::{
     aot_cmds::AotCmd,
+    binaries::{BinaryEntry, BinarySource},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
@@ -11,7 +14,7 @@ use snops_common::{
         error::{AgentError, ReconcileError, SnarkosRequestError},
         MuxMessage,
     },
-    state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, NetworkId, PortConfig},
+    state::{AgentId, AgentPeer, AgentState, EnvId, InternedId, KeyState, NetworkId, PortConfig},
 };
 use tarpc::{context, ClientMessage, Response};
 use tokio::process::Command;
@@ -162,7 +165,7 @@ impl AgentService for AgentRpcServer {
                 // if a node starts at height: 0, the node will never
                 // download the ledger
                 if !is_same_env {
-                    reconcile::check_files(&state, *env_id, &info, height).await?;
+                    reconcile::check_files(&state, node.binary, &info, height).await?;
                 }
                 reconcile::load_ledger(&state, &info, height, !is_same_env).await?;
                 // TODO: checkpoint/absolute height request handling
@@ -483,11 +486,33 @@ impl AgentService for AgentRpcServer {
         // TODO: maybe in the env config store a branch label for the binary so it won't
         // be put in storage and won't overwrite itself
 
-        let aot_bin = self.state.cli.path.join(SNARKOS_FILE);
+        let info = self
+            .state
+            .get_env_info(env_id)
+            .await
+            .map_err(|e| AgentError::FailedToGetEnvInfo(e.to_string()))?;
+
+        let aot_bin = self
+            .state
+            .cli
+            .path
+            .join(format!("snarkos-aot-{env_id}-compute"));
+
+        let default_entry = BinaryEntry {
+            source: BinarySource::Path(PathBuf::from(format!(
+                "/content/storage/{}/{}/binaries/compute",
+                info.network, info.storage.id,
+            ))),
+            sha256: None,
+            size: None,
+        };
 
         // download the snarkOS binary
         api::check_binary(
-            env_id,
+            info.storage
+                .binaries
+                .get(&InternedId::compute_id())
+                .unwrap_or(&default_entry),
             &self.state.endpoint,
             &aot_bin,
             self.state.transfer_tx(),

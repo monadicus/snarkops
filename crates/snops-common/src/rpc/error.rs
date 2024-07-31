@@ -68,6 +68,8 @@ pub enum AgentError {
     FailedToParseJson,
     #[error("failed to make a request")]
     FailedToMakeRequest,
+    #[error("failed to get env info: {0}")]
+    FailedToGetEnvInfo(String),
     #[error("failed to spawn a process")]
     FailedToSpawnProcess,
     #[error("process failed")]

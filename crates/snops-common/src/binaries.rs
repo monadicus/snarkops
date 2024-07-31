@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
     format::{DataFormat, DataFormatReader, DataReadError},
-    state::InternedId,
+    state::{InternedId, NetworkId},
 };
 
 /// A BinaryEntry is the location to a binary with an optional shasum
@@ -17,12 +17,17 @@ pub struct BinaryEntry {
 }
 
 impl BinaryEntry {
-    pub fn with_api_path(&self, storage_id: InternedId, binary_id: InternedId) -> BinaryEntry {
+    pub fn with_api_path(
+        &self,
+        network: NetworkId,
+        storage_id: InternedId,
+        binary_id: InternedId,
+    ) -> BinaryEntry {
         match &self.source {
             BinarySource::Url(_) => self.clone(),
             BinarySource::Path(_) => BinaryEntry {
                 source: BinarySource::Path(PathBuf::from(format!(
-                    "/content/storage/{storage_id}/binaries/{binary_id}"
+                    "/content/storage/{network}/{storage_id}/binaries/{binary_id}"
                 ))),
                 sha256: None,
                 size: None,

@@ -6,12 +6,13 @@ use std::{
 use checkpoint::{CheckpointHeader, CheckpointManager, RetentionSpan};
 use snops_common::{
     api::{CheckpointMeta, EnvInfo},
+    binaries::{BinaryEntry, BinarySource},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, LEDGER_STORAGE_FILE, SNARKOS_FILE,
         SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
     rpc::error::ReconcileError,
-    state::{EnvId, HeightRequest, NetworkId, StorageId},
+    state::{HeightRequest, InternedId, NetworkId, StorageId},
 };
 use tokio::process::Command;
 use tracing::{debug, error, info, trace};
@@ -21,7 +22,7 @@ use crate::{api, state::GlobalState};
 /// Ensure all required files are present in the storage directory
 pub async fn check_files(
     state: &GlobalState,
-    env_id: EnvId,
+    binary_id: Option<InternedId>,
     info: &EnvInfo,
     height: &HeightRequest,
 ) -> Result<(), ReconcileError> {
@@ -38,10 +39,21 @@ pub async fn check_files(
         .await
         .map_err(|_| ReconcileError::StorageSetupError("create storage directory".to_string()))?;
 
+    let default_entry = BinaryEntry {
+        source: BinarySource::Path(PathBuf::from(format!(
+            "/content/storage/{}/{}/binaries/default",
+            info.network, info.storage.id
+        ))),
+        sha256: None,
+        size: None,
+    };
+
     // TODO: store binary based on binary id
     // download the snarkOS binary
     api::check_binary(
-        env_id,
+        binary_id
+            .and_then(|id| info.storage.binaries.get(&id))
+            .unwrap_or(&default_entry),
         &state.endpoint,
         &base_path.join(SNARKOS_FILE),
         state.transfer_tx(),
