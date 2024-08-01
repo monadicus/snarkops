@@ -13,7 +13,7 @@ use crossterm::tty::IsTty;
 use reqwest::Url;
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer};
+use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter, Layer};
 
 #[cfg(feature = "node")]
 use crate::runner::Runner;
@@ -93,7 +93,6 @@ pub fn make_env_filter(level: Option<LevelFilter>, verbosity: Option<u8>) -> Env
         },
     };
     let verbosity = verbosity.unwrap_or(0);
-    tracing::debug!("make_env_filter Setting log level to: {:?}", level);
 
     // Filter out undesirable logs. (unfortunately EnvFilter cannot be cloned)
     {
@@ -103,6 +102,8 @@ pub fn make_env_filter(level: Option<LevelFilter>, verbosity: Option<u8>) -> Env
             .from_env_lossy()
             .add_directive("mio=off".parse().unwrap())
             .add_directive("tokio_util=off".parse().unwrap())
+            .add_directive("tracing_tungstenite=off".parse().unwrap())
+            .add_directive("tungstenite=off".parse().unwrap())
             .add_directive("hyper=off".parse().unwrap())
             .add_directive("reqwest=off".parse().unwrap())
             .add_directive("want=off".parse().unwrap())
@@ -159,8 +160,6 @@ impl<N: Network> Cli<N> {
 
         let (env_filter, reload_handler) =
             reload::Layer::new(make_env_filter(None, Some(verbosity)));
-
-        let subscriber = tracing_subscriber::registry().with(env_filter);
 
         let mut layers = vec![];
         let mut guards = vec![];
@@ -259,7 +258,10 @@ impl<N: Network> Cli<N> {
             layers.push(layer.boxed());
         };
 
-        tracing::subscriber::set_global_default(subscriber.with(layers)).unwrap();
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(layers)
+            .init();
         (guard, guards, reload_handler)
     }
 

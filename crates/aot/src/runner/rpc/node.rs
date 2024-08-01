@@ -32,15 +32,18 @@ impl NodeService for NodeRpcServer {
         level: Option<String>,
         verbosity: Option<u8>,
     ) -> Result<(), AgentError> {
-        tracing::info!("NodeService Setting log level to {level:?}");
+        tracing::debug!("NodeService Setting log level to {level:?} with verbosity {verbosity:?}");
         let level: Option<LevelFilter> = level
             .as_ref()
             .map(|l| l.parse())
             .transpose()
             .map_err(|_| AgentError::InvalidLogLevel(level.unwrap_or_default()))?;
 
+        let new_filter = make_env_filter(level, verbosity);
         self.log_level_handler
-            .modify(|filter| *filter = make_env_filter(level, verbosity))
-            .map_err(|_| AgentError::FailedToChangeLogLevel)
+            .modify(|filter| *filter = new_filter)
+            .map_err(|_| AgentError::FailedToChangeLogLevel)?;
+
+        Ok(())
     }
 }
