@@ -5,6 +5,7 @@ use clap::{Parser, ValueHint};
 use clap_stdin::FileOrStdin;
 use reqwest::blocking::{Client, Response};
 use snops_common::{
+    action_models::AleoValue,
     aot_cmds::Authorization,
     key_source::KeySource,
     state::{CannonId, InternedId, NodeKey},
@@ -64,9 +65,16 @@ enum EnvCommands {
         height_or_hash: String,
     },
 
-    /// Lookup a transaction's block by a transaction id
+    /// Get the latest height from all agents in the env.
+    Height,
+
+    /// Lookup a transaction's block by a transaction id.
     #[clap(alias = "tx")]
     Transaction { id: String },
+
+    /// Lookup a transaction's details by a transaction id.
+    #[clap(alias = "tx-details")]
+    TransactionDetails { id: String },
 
     /// Clean a specific environment.
     #[clap(alias = "c")]
@@ -97,6 +105,20 @@ enum EnvCommands {
         spec: PathBuf,
     },
 
+    /// Lookup a mapping by program id and mapping name.
+    Mapping {
+        /// The program name.
+        program: String,
+        /// The mapping name.
+        mapping: String,
+        /// The key to lookup.
+        key: AleoValue,
+    },
+    /// Lookup a program's mappings only.
+    Mappings {
+        /// The program name.
+        program: String,
+    },
     /// Lookup a program by its id.
     Program { id: String },
 
@@ -177,6 +199,31 @@ impl Env {
 
                 client.post(ep).body(file).send()?
             }
+            Mapping {
+                program,
+                mapping,
+                key,
+            } => {
+                let ep = match key {
+                    AleoValue::Other(key) => {
+                        format!(
+                            "{url}/api/v1/env/{id}/program/{program}/mapping/{mapping}?key={key}"
+                        )
+                    }
+                    AleoValue::Key(source) => {
+                        format!(
+                            "{url}/api/v1/env/{id}/program/{program}/mapping/{mapping}?keysource={source}"
+                        )
+                    }
+                };
+
+                client.get(ep).send()?
+            }
+            Mappings { program } => {
+                let ep = format!("{url}/api/v1/env/{id}/program/{program}/mappings");
+
+                client.get(ep).send()?
+            }
             Program { id: prog } => {
                 let ep = format!("{url}/api/v1/env/{id}/program/{prog}");
 
@@ -190,6 +237,16 @@ impl Env {
             }
             Transaction { id: hash } => {
                 let ep = format!("{url}/api/v1/env/{id}/transaction_block/{hash}");
+
+                client.get(ep).send()?
+            }
+            TransactionDetails { id: hash } => {
+                let ep = format!("{url}/api/v1/env/{id}/transaction/{hash}");
+
+                client.get(ep).send()?
+            }
+            Height => {
+                let ep = format!("{url}/api/v1/env/{id}/height");
 
                 client.get(ep).send()?
             }

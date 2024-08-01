@@ -71,6 +71,7 @@ pub(super) fn routes() -> Router<AppState> {
         // .route("/env/:env_id/metric/:prom_ql", get())
         .route("/env/:env_id/prepare", post(post_env_prepare))
         .route("/env/:env_id/info", get(get_env_info))
+        .route("/env/:env_id/height", get(get_latest_height))
         .route("/env/:env_id/block_info", get(get_env_block_info))
         .route("/env/:env_id/balance/:key", get(get_env_balance))
         .route("/env/:env_id/block/:height_or_hash", get(get_block))
@@ -78,8 +79,14 @@ pub(super) fn routes() -> Router<AppState> {
             "/env/:env_id/transaction_block/:tx_id",
             get(get_tx_blockhash),
         )
+        .route("/env/:env_id/transaction/:tx_id", get(get_tx))
         .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .route("/env/:env_id/program/:program", get(get_program))
+        .route(
+            "/env/:env_id/program/:program/mapping/:mapping",
+            get(get_mapping_value),
+        )
+        .route("/env/:env_id/program/:program/mappings", get(get_mappings))
         .nest("/env/:env_id/cannons", redirect_cannon_routes())
         .route("/env/:id", delete(delete_env))
         .nest("/env/:env_id/action", actions::routes())
@@ -168,6 +175,26 @@ async fn get_env_info(Path(env_id): Path<String>, state: State<AppState>) -> Res
     let env = unwrap_or_not_found!(state.get_env(env_id));
 
     Json(env.info(&state)).into_response()
+}
+
+async fn get_latest_height(Path(env_id): Path<String>, state: State<AppState>) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
+
+    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Option<u128>>(env_id, "/block/height/latest".to_string(), target)
+                .await
+            {
+                Ok(res) => Json(res).into_response(),
+                Err(e) => ServerError::from(e).into_response(),
+            }
+        }
+    }
 }
 
 async fn get_env_block_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
@@ -275,6 +302,32 @@ async fn get_tx_blockhash(
     }
 }
 
+async fn get_tx(
+    Path((env_id, transaction)): Path<(String, String)>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Option<serde_json::Value>>(
+                    env_id,
+                    format!("/transaction/{transaction}"),
+                    target,
+                )
+                .await
+            {
+                Ok(res) => Json(res).into_response(),
+                Err(e) => ServerError::from(e).into_response(),
+            }
+        }
+    }
+}
+
 async fn redirect_storage(
     Path((env_id, ty)): Path<(String, StorageType)>,
     state: State<AppState>,
@@ -365,6 +418,77 @@ async fn get_program(
     {
         Ok(program) => program.into_response(),
         Err(e) => ServerError::from(e).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct MappingValueQuery {
+    key: Option<String>,
+    keysource: Option<KeySource>,
+}
+
+async fn get_mapping_value(
+    Path((env_id, program, mapping)): Path<(String, String, String)>,
+    Query(query): Query<MappingValueQuery>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+
+    let url = match (query.key, query.keysource) {
+        (Some(key), None) => {
+            format!("/program/{program}/mapping/{mapping}/{key}",)
+        }
+        (None, Some(keysource)) => {
+            let KeyState::Literal(key) = env.storage.sample_keysource_addr(&keysource) else {
+                return ServerError::NotFound(format!("keysource pubkey {keysource}"))
+                    .into_response();
+            };
+            format!("/program/{program}/mapping/{mapping}/{key}",)
+        }
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "either key or key_source must be provided"})),
+            )
+                .into_response();
+        }
+    };
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Option<String>>(env_id, url, target)
+                .await
+            {
+                Ok(value) => Json(json!({"value": value})).into_response(),
+                Err(e) => ServerError::from(e).into_response(),
+            }
+        }
+    }
+}
+
+async fn get_mappings(
+    Path((env_id, program)): Path<(String, String)>,
+    state: State<AppState>,
+) -> Response {
+    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+
+    match &cannon.source.query {
+        QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
+        QueryTarget::Node(target) => {
+            match state
+                .snarkos_get::<Vec<String>>(env_id, format!("/program/{program}/mappings"), target)
+                .await
+            {
+                Ok(mappings) => Json(mappings).into_response(),
+                Err(e) => ServerError::from(e).into_response(),
+            }
+        }
     }
 }
 
