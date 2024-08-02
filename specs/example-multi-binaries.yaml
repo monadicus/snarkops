@@ -1,0 +1,36 @@
+# Example test spec demonstrating multi-binary support
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: example-binary
+name: example-binary
+
+binaries:
+  # providing a "default" binary will make agents download a binary different than the one configured by
+  # the AOT_BIN env
+  default:
+    source: ./path/to/example_file
+    # sha256s are case insensitive and must be 64 characters long
+    sha256: a95e329b13627165283e59c5435586d681fdbbe517f45e868178f9453cb55e72
+    size: 0
+
+  # providing a "compute" binary will make compute agents download it instead of the default
+  # this is also an example of a short-hand syntax for the binary path
+  compute: ./path/to/compute/file
+
+  # providing a "http" binary will make agents download it from the provided URL
+  example_http:
+    source: https://example.com/example_file
+    sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    size: 123
+
+  # Use the shorthand syntax for http binaries at your own discretion as
+  # the sha256sum is not verified by the agent or the control plane on download
+  example_http_short: https://example.com/example_file
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+name: example-storage
+
+external:
+  client/example@namespace: 1.2.3.4
