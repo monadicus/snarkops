@@ -26,7 +26,7 @@ fn env_or_bin(name: &str, env: &str) -> BinaryEntry {
         BinarySource::from_str(&var)
             .unwrap_or_else(|e| panic!("{env}: failed to parse `{var}` as a binary source: {e:#?}"))
     } else {
-        let path = find_bin(name)
+        let path = find_bin(name).and_then(|p| p.canonicalize().ok())
             .unwrap_or_else(|| panic!("failed to find binary `{name}`\nSet your {env} environment variable to the path of the binary, or compile the snarkos-aot binary"));
 
         check_bin(&path).unwrap_or_else(|e| {

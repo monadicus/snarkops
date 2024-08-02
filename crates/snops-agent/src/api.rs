@@ -139,6 +139,32 @@ pub async fn check_binary(
         .await
         .unwrap_or(true)
     {
+        match binary.check_file_sha256(&path.to_path_buf()) {
+            Ok(None) => {}
+            Ok(Some(sha256)) => {
+                bail!(
+                    "binary sha256 mismatch for {}: expected {}, found {}",
+                    path.display(),
+                    binary.sha256.clone().unwrap(),
+                    sha256
+                );
+            }
+            Err(e) => bail!("binary sha256 check failed for {}: {e}", path.display()),
+        }
+
+        match binary.check_file_size(path) {
+            Ok(None) => {}
+            Ok(Some(size)) => {
+                bail!(
+                    "binary size mismatch for {}: expected {}, found {}",
+                    path.display(),
+                    binary.size.unwrap(),
+                    size
+                );
+            }
+            Err(e) => bail!("binary size check failed for {}: {e}", path.display()),
+        }
+
         // check permissions and ensure 0o755
         let perms = path.metadata()?.permissions();
         if perms.mode() != 0o755 {
@@ -151,13 +177,32 @@ pub async fn check_binary(
     }
     info!("binary update is available, downloading...");
 
-    let Some((file, _sha256, _size)) =
-        download_file(&client, &source_url, path, transfer_tx).await?
+    let Some((file, sha256, size)) = download_file(&client, &source_url, path, transfer_tx).await?
     else {
         bail!("downloading binary returned 404");
     };
 
-    // TODO: check sha256 and size
+    if let Some(bin_sha256) = &binary.sha256 {
+        if sha256 != bin_sha256.to_ascii_lowercase() {
+            bail!(
+                "binary sha256 mismatch for {}: expected {}, found {}",
+                path.display(),
+                bin_sha256,
+                sha256
+            );
+        }
+    }
+
+    if let Some(bin_size) = binary.size {
+        if size != bin_size {
+            bail!(
+                "binary size mismatch for {}: expected {}, found {}",
+                path.display(),
+                bin_size,
+                size
+            );
+        }
+    }
 
     // ensure the permissions are set for execution
     file.set_permissions(std::fs::Permissions::from_mode(0o755))

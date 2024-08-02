@@ -1,10 +1,11 @@
-use core::fmt;
 use std::{
+    fmt::Display,
     io,
     path::{Path, PathBuf},
     str::FromStr,
 };
 
+use chrono::DateTime;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
@@ -68,14 +69,35 @@ impl BinaryEntry {
     }
 }
 
+impl Display for BinaryEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(f, "source: {}", self.source)?;
+        writeln!(f, "sha256: {}", self.sha256.as_deref().unwrap_or("not set"))?;
+        writeln!(
+            f,
+            "size: {}",
+            self.size
+                .map(|s| format!("{s} bytes"))
+                .as_deref()
+                .unwrap_or("not set")
+        )?;
+        if let BinarySource::Path(path) = &self.source {
+            if let Ok(time) = path.metadata().and_then(|m| m.modified()) {
+                writeln!(f, "last modified: {}", DateTime::from(time).naive_local())?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum BinarySource {
     Url(url::Url),
     Path(PathBuf),
 }
 
-impl fmt::Display for BinarySource {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for BinarySource {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             BinarySource::Url(url) => write!(f, "{}", url),
             BinarySource::Path(path) => write!(f, "{}", path.display()),
@@ -101,7 +123,7 @@ impl Serialize for BinarySource {
         S: serde::ser::Serializer,
     {
         match self {
-            BinarySource::Url(url) => url.serialize(serializer),
+            BinarySource::Url(url) => url.to_string().serialize(serializer),
             BinarySource::Path(path) => path.to_string_lossy().serialize(serializer),
         }
     }
