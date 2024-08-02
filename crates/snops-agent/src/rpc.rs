@@ -509,7 +509,7 @@ impl AgentService for AgentRpcServer {
 
         let default_entry = BinaryEntry {
             source: BinarySource::Path(PathBuf::from(format!(
-                "/content/storage/{}/{}/binaries/compute",
+                "/content/storage/{}/{}/binaries/default",
                 info.network, info.storage.id,
             ))),
             sha256: None,
@@ -518,9 +518,13 @@ impl AgentService for AgentRpcServer {
 
         // download the snarkOS binary
         api::check_binary(
+            // attempt to use the specified "compute" binary
             info.storage
                 .binaries
                 .get(&InternedId::compute_id())
+                // fallback to the default binary
+                .or_else(|| info.storage.binaries.get(&InternedId::default()))
+                // fallback to the default entry
                 .unwrap_or(&default_entry),
             &self.state.endpoint,
             &aot_bin,
