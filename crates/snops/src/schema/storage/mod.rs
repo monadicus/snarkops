@@ -16,7 +16,7 @@ use snops_common::{
     state::{InternedId, NetworkId, StorageId},
 };
 use tokio::process::Command;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 use super::error::{SchemaError, StorageError};
 use crate::{persist::PersistStorage, state::GlobalState};
@@ -196,14 +196,22 @@ impl Document {
         // gather the binaries
         let mut binaries = IndexMap::default();
         for (id, v) in self.binaries {
-            let entry = BinaryEntry::from(v);
-            if let BinarySource::Path(p) = &entry.source {
+            let mut entry = BinaryEntry::from(v);
+            if let BinarySource::Path(p) = &mut entry.source {
                 if !p.exists() {
                     return Err(StorageError::BinaryFileMissing(id, p.clone()).into());
                 }
-                // TODO: check the binary execution mode
-                // TODO: check the binary shasum & length
+                // canonicalize the path
+                if let Ok(canon) = p.canonicalize() {
+                    trace!(
+                        "resolved binary relative path from {} to {}",
+                        p.display(),
+                        canon.display()
+                    );
+                    *p = canon
+                }
             }
+            info!("resolved binary {id}: {entry}");
             binaries.insert(id, entry);
         }
 
@@ -217,13 +225,13 @@ impl Document {
         )
         .await?;
 
+        tokio::fs::create_dir_all(&base)
+            .await
+            .map_err(|e| StorageError::GenerateStorage(id, e))?;
+
         // generate the block and ledger if we have generation params
         if let (Some(generation), false) = (self.generate.as_ref(), exists) {
             tracing::debug!("generating storage for {id}");
-            tokio::fs::create_dir_all(&base)
-                .await
-                .map_err(|e| StorageError::GenerateStorage(id, e))?;
-
             // generate the genesis block using the aot cli
             let output = base.join(SNARKOS_GENESIS_FILE);
 
@@ -247,10 +255,6 @@ impl Document {
                         .bytes()
                         .await
                         .map_err(err)?;
-
-                    tokio::fs::create_dir(base.join(LEDGER_BASE_DIR))
-                        .await
-                        .map_err(|e| StorageError::FailedToCreateLedgerDir(id, e))?;
 
                     tokio::fs::write(&output, res)
                         .await

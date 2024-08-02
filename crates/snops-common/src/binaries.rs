@@ -35,8 +35,8 @@ impl BinaryEntry {
                 source: BinarySource::Path(PathBuf::from(format!(
                     "/content/storage/{network}/{storage_id}/binaries/{binary_id}"
                 ))),
-                sha256: None,
-                size: None,
+                sha256: self.sha256.clone(),
+                size: self.size,
             },
         }
     }

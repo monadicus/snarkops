@@ -116,6 +116,8 @@ pub enum ReconcileError {
     StorageSetupError(String),
     #[error("failed to download {0} from the control plane")]
     StorageAcquireError(String),
+    #[error("failed to get the binary from the control plane: {0}")]
+    BinaryAcquireError(String),
     #[error("failed to find a checkpoint for the requested height/span")]
     CheckpointAcquireError,
     #[error("failed to apply checkpoint: {0}")]

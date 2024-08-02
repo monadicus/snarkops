@@ -49,7 +49,10 @@ pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
         // the snarkOS binary
         .route_service(
             "/snarkos",
-            get(|req: Request| respond_from_entry(InternedId::default(), &DEFAULT_AOT_BINARY, req)),
+            get(|req: Request| respond_from_entry(InternedId::default(), &DEFAULT_AOT_BINARY, req))
+                .head(|req: Request| {
+                    respond_from_entry(InternedId::default(), &DEFAULT_AOT_BINARY, req)
+                }),
         )
         // the agent binary
         .route_service(
@@ -66,7 +69,7 @@ pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
         .route("/storage/:network/:storage_id/:file", get(serve_file))
         .route(
             "/storage/:network/:storage_id/binaries/:id",
-            get(serve_binary),
+            get(serve_binary).head(serve_binary),
         )
         .layer(middleware::map_response(not_found))
 }
@@ -120,8 +123,8 @@ async fn serve_file(
         "ledger.tar.gz" => {}
         // allow checkpoints to be served
         _ if file.ends_with(".checkpoint") => {}
-        // serve the version as a string
-        "version" => return storage.version.to_string().into_response(),
+        // serve the version file
+        "version" => {}
         // otherwise, return a 404
         _ => return StatusCode::NOT_FOUND.into_response(),
     }

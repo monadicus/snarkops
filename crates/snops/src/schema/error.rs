@@ -65,6 +65,8 @@ pub enum StorageError {
     BinarySha256Mismatch(InternedId, PathBuf, String, String),
     #[error("binary file `{0}` at path `{1}` has failed check: {2}")]
     BinaryCheckFailed(InternedId, PathBuf, String),
+    #[error("failed to check/modify file permissions `{0}`: {1}")]
+    PermissionError(PathBuf, std::io::Error),
 }
 
 impl_into_status_code!(StorageError, |value| match value {

@@ -1,4 +1,4 @@
-use std::{io::Write, path::PathBuf};
+use std::{fs, io::Write, os::unix::fs::PermissionsExt, path::PathBuf};
 
 use checkpoint::CheckpointManager;
 use futures_util::StreamExt;
@@ -288,6 +288,15 @@ impl LoadedStorage {
 
         // if the file already exists, ensure that it is the correct size and sha256
         if download_path.exists() {
+            let perms = download_path
+                .metadata()
+                .map_err(|e| StorageError::PermissionError(download_path.clone(), e))?
+                .permissions();
+            if perms.mode() != 0o755 {
+                std::fs::set_permissions(&download_path, std::fs::Permissions::from_mode(0o755))
+                    .map_err(|e| StorageError::PermissionError(download_path.clone(), e))?;
+            }
+
             match bin.check_file_sha256(&download_path) {
                 Ok(None) => {}
                 Ok(Some(sha256)) => {
@@ -340,6 +349,11 @@ impl LoadedStorage {
                 remote_url,
                 resp.status(),
             ));
+        }
+
+        if let Some(parent) = download_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| StorageError::FailedToCreateBinaryFile(id, e))?;
         }
 
         let mut file = std::fs::OpenOptions::new()
@@ -397,6 +411,15 @@ impl LoadedStorage {
             download_path.display()
         );
         trace!("binary {storage_id}.{id_str} has sha256 {sha256}");
+
+        let perms = download_path
+            .metadata()
+            .map_err(|e| StorageError::PermissionError(download_path.clone(), e))?
+            .permissions();
+        if perms.mode() != 0o755 {
+            std::fs::set_permissions(&download_path, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| StorageError::PermissionError(download_path.clone(), e))?;
+        }
 
         Ok(download_path)
     }
