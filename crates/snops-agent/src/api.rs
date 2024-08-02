@@ -134,8 +134,6 @@ pub async fn check_binary(
         }
     };
 
-    // TODO: check binary size and shasum if provided
-
     // this also checks for sha256 differences, along with last modified time
     // against the target
     if !should_download_file(&client, &source_url, path, Some(binary))
