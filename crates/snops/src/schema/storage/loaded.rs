@@ -1,14 +1,17 @@
 use std::{io::Write, path::PathBuf};
 
 use checkpoint::CheckpointManager;
+use futures_util::StreamExt;
 use indexmap::IndexMap;
 use rand::seq::IteratorRandom;
+use sha2::{Digest, Sha256};
 use snops_common::{
     api::{CheckpointMeta, StorageInfo},
     binaries::{BinaryEntry, BinarySource},
     key_source::KeySource,
     state::{InternedId, KeyState, NetworkId, StorageId},
 };
+use tracing::{info, trace};
 
 use super::{DEFAULT_AOT_BINARY, STORAGE_DIR};
 use crate::{cli::Cli, schema::error::StorageError, state::GlobalState};
@@ -160,6 +163,22 @@ impl LoadedStorage {
                     .collect()
             })
             .unwrap_or_default();
+        let mut binaries: IndexMap<_, _> = self
+            .binaries
+            .iter()
+            .map(|(k, v)| (*k, v.with_api_path(self.network, self.id, *k)))
+            .collect();
+
+        // insert the default binary source information (so agents have a way to compare
+        // shasums and file size)
+        binaries
+            .entry(InternedId::default())
+            .or_insert(DEFAULT_AOT_BINARY.with_api_path(
+                self.network,
+                self.id,
+                InternedId::default(),
+            ));
+
         StorageInfo {
             id: self.id,
             version: self.version,
@@ -167,11 +186,7 @@ impl LoadedStorage {
             checkpoints,
             persist: self.persist,
             native_genesis: self.native_genesis,
-            binaries: self
-                .binaries
-                .iter()
-                .map(|(k, v)| (*k, v.with_api_path(self.network, self.id, *k)))
-                .collect(),
+            binaries,
         }
     }
 
@@ -271,7 +286,47 @@ impl LoadedStorage {
         download_path.push("binaries");
         download_path.push(id_str);
 
+        // if the file already exists, ensure that it is the correct size and sha256
         if download_path.exists() {
+            match bin.check_file_sha256(&download_path) {
+                Ok(None) => {}
+                Ok(Some(sha256)) => {
+                    return Err(StorageError::BinarySha256Mismatch(
+                        storage_id,
+                        download_path,
+                        bin.sha256.clone().unwrap_or_default(),
+                        sha256,
+                    ));
+                }
+                Err(e) => {
+                    return Err(StorageError::BinaryCheckFailed(
+                        storage_id,
+                        download_path,
+                        e.to_string(),
+                    ));
+                }
+            }
+
+            match bin.check_file_size(&download_path) {
+                // file is okay :)
+                Ok(None) => {}
+                Ok(Some(size)) => {
+                    return Err(StorageError::BinarySizeMismatch(
+                        storage_id,
+                        download_path,
+                        bin.size.unwrap_or_default(),
+                        size,
+                    ));
+                }
+                Err(e) => {
+                    return Err(StorageError::BinaryCheckFailed(
+                        storage_id,
+                        download_path,
+                        e.to_string(),
+                    ));
+                }
+            }
+
             return Ok(download_path);
         }
 
@@ -293,12 +348,55 @@ impl LoadedStorage {
             .truncate(true)
             .open(&download_path)
             .map_err(|e| StorageError::FailedToCreateBinaryFile(id, e))?;
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| StorageError::FailedToFetchBinary(id, remote_url, e))?;
-        file.write_all(&bytes)
-            .map_err(|e| StorageError::FailedToWriteBinaryFile(id, e))?;
+
+        let mut digest = Sha256::new();
+        let mut stream = resp.bytes_stream();
+        let mut size = 0u64;
+
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(chunk) => {
+                    size += chunk.len() as u64;
+                    file.write_all(&chunk)
+                        .map_err(|e| StorageError::FailedToWriteBinaryFile(id, e))?;
+                    digest.update(&chunk);
+                }
+                Err(e) => {
+                    return Err(StorageError::FailedToFetchBinary(id, remote_url, e));
+                }
+            }
+        }
+
+        // check if the binary sha256 matches the expected sha256
+        let sha256 = format!("{:x}", digest.finalize());
+        if let Some(bin_sha256) = bin.sha256.as_ref() {
+            if bin_sha256.to_lowercase() != sha256 {
+                return Err(StorageError::BinarySha256Mismatch(
+                    id,
+                    download_path,
+                    bin_sha256.clone(),
+                    sha256,
+                ));
+            }
+        }
+
+        // check if the binary size matches the expected size
+        if let Some(bin_size) = bin.size {
+            if bin_size != size {
+                return Err(StorageError::BinarySizeMismatch(
+                    id,
+                    download_path,
+                    bin_size,
+                    size,
+                ));
+            }
+        }
+
+        info!(
+            "downloaded binary {storage_id}.{id_str} to {} ({size} bytes)",
+            download_path.display()
+        );
+        trace!("binary {storage_id}.{id_str} has sha256 {sha256}");
 
         Ok(download_path)
     }

@@ -9,6 +9,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use http::StatusCode;
 use reqwest::IntoUrl;
+use sha2::{Digest, Sha256};
 use snops_common::{
     binaries::{BinaryEntry, BinarySource},
     state::TransferStatusUpdate,
@@ -26,7 +27,7 @@ pub async fn download_file(
     url: impl IntoUrl,
     to: impl AsRef<Path>,
     transfer_tx: TransferTx,
-) -> anyhow::Result<Option<File>> {
+) -> anyhow::Result<Option<(File, String, u64)>> {
     let desc = url.as_str().to_owned();
     let req = client.get(url).send().await?;
     if req.status() == StatusCode::NOT_FOUND {
@@ -55,6 +56,7 @@ pub async fn download_file(
     })?;
 
     let mut downloaded = 0;
+    let mut digest = Sha256::new();
     let mut update_next = Instant::now() + TRANSFER_UPDATE_RATE;
 
     while let Some(chunk) = stream.next().await {
@@ -68,6 +70,7 @@ pub async fn download_file(
         })?;
 
         downloaded += chunk.len() as u64;
+        digest.update(&chunk);
 
         // update the transfer if the update interval has elapsed
         let now = Instant::now();
@@ -86,10 +89,12 @@ pub async fn download_file(
         })?;
     }
 
+    let sha256 = format!("{:x}", digest.finalize());
+
     // mark the transfer as ended
     transfer_tx.send((tx_id, TransferStatusUpdate::End { interruption: None }))?;
 
-    Ok(Some(file))
+    Ok(Some((file, sha256, downloaded)))
 }
 
 pub async fn check_file(
@@ -128,23 +133,31 @@ pub async fn check_binary(
         }
     };
 
+    // TODO: check binary size and shasum if provided
+
     if !should_download_file(&client, &source_url, path)
         .await
         .unwrap_or(true)
     {
         // check permissions and ensure 0o755
-        let perms = std::fs::metadata(path)?.permissions();
+        let perms = path.metadata()?.permissions();
         if perms.mode() != 0o755 {
             tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
         }
+
+        // TODO: check sha256 and size
 
         return Ok(());
     }
     info!("binary update is available, downloading...");
 
-    let Some(file) = download_file(&client, &source_url, path, transfer_tx).await? else {
+    let Some((file, _sha256, _size)) =
+        download_file(&client, &source_url, path, transfer_tx).await?
+    else {
         bail!("downloading binary returned 404");
     };
+
+    // TODO: check sha256 and size
 
     // ensure the permissions are set for execution
     file.set_permissions(std::fs::Permissions::from_mode(0o755))

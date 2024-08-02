@@ -59,6 +59,12 @@ pub enum StorageError {
     FailedToWriteBinaryFile(InternedId, #[source] std::io::Error),
     #[error("missing binary file `{0}`: {1}")]
     BinaryFileMissing(InternedId, PathBuf),
+    #[error("binary file `{0}` at path `{1}` has size mismatch: expected {2}, found {3}")]
+    BinarySizeMismatch(InternedId, PathBuf, u64, u64),
+    #[error("binary file `{0}` at path `{1}` has sha256 mismatch expected `{2}`, found `{3}`")]
+    BinarySha256Mismatch(InternedId, PathBuf, String, String),
+    #[error("binary file `{0}` at path `{1}` has failed check: {2}")]
+    BinaryCheckFailed(InternedId, PathBuf, String),
 }
 
 impl_into_status_code!(StorageError, |value| match value {

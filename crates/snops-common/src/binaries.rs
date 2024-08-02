@@ -1,11 +1,16 @@
 use core::fmt;
-use std::{path::PathBuf, str::FromStr};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
     format::{DataFormat, DataFormatReader, DataReadError},
     state::{InternedId, NetworkId},
+    util::sha256_file,
 };
 
 /// A BinaryEntry is the location to a binary with an optional shasum
@@ -33,6 +38,33 @@ impl BinaryEntry {
                 size: None,
             },
         }
+    }
+
+    /// Check if the sha256 is a valid sha256 hash
+    pub fn check_sha256(&self) -> bool {
+        self.sha256
+            .as_ref()
+            .map(|s| s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit()))
+            .unwrap_or(false)
+    }
+
+    /// Check if the given file has the same size as the size in the
+    /// BinaryEntry, return the file's size if it does not match
+    pub fn check_file_size(&self, path: &Path) -> Result<Option<u64>, io::Error> {
+        let Some(size) = self.size else {
+            return Ok(None);
+        };
+        Ok((path.metadata()?.len() != size).then_some(size))
+    }
+
+    /// Check if the given file has the same sha256 as the sha256 in the
+    /// BinaryEntry, return the file's sha256 if it does not match
+    pub fn check_file_sha256(&self, path: &PathBuf) -> Result<Option<String>, io::Error> {
+        let Some(sha256) = &self.sha256 else {
+            return Ok(None);
+        };
+        let file_hash = sha256_file(path)?;
+        Ok((&file_hash != sha256).then_some(file_hash))
     }
 }
 

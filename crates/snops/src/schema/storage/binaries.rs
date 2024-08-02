@@ -7,7 +7,10 @@ use std::{
 use lazy_static::lazy_static;
 use lazysort::SortedBy;
 use serde::{Deserialize, Serialize};
-use snops_common::binaries::{BinaryEntry, BinarySource};
+use snops_common::{
+    binaries::{BinaryEntry, BinarySource},
+    util::sha256_file,
+};
 use thiserror::Error;
 
 const PROFILES: [&str; 4] = ["release-small", "release", "release-big", "debug"];
@@ -19,15 +22,9 @@ lazy_static! {
 
 /// Get the path to the snarkos-aot binary
 fn env_or_bin(name: &str, env: &str) -> BinaryEntry {
-    if let Ok(var) = std::env::var(env) {
-        let source = BinarySource::from_str(&var).unwrap_or_else(|e| {
-            panic!("{env}: failed to parse `{var}` as a binary source: {e:#?}")
-        });
-        BinaryEntry {
-            source,
-            sha256: None,
-            size: None,
-        }
+    let source = if let Ok(var) = std::env::var(env) {
+        BinarySource::from_str(&var)
+            .unwrap_or_else(|e| panic!("{env}: failed to parse `{var}` as a binary source: {e:#?}"))
     } else {
         let path = find_bin(name)
             .unwrap_or_else(|| panic!("failed to find binary `{name}`\nSet your {env} environment variable to the path of the binary, or compile the snarkos-aot binary"));
@@ -38,13 +35,47 @@ fn env_or_bin(name: &str, env: &str) -> BinaryEntry {
                 path.display()
             )
         });
+        BinarySource::Path(path)
+    };
 
-        BinaryEntry {
-            size: Some(path.metadata().unwrap().size()),
-            sha256: None, // TODO: calculate sha256
-            source: BinarySource::Path(path),
+    let mut entry = BinaryEntry {
+        size: None,
+        sha256: None,
+        source: source.clone(),
+    };
+
+    match source {
+        BinarySource::Url(_) => {
+            if let Ok(size) = std::env::var(format!("{}_SIZE", env)) {
+                entry.size = Some(size.parse().unwrap_or_else(|e| {
+                    panic!(
+                        "{env}_SIZE: failed to parse `{size}` as a u64: {e}",
+                        size = size
+                    )
+                }));
+            }
+            if let Ok(sha256) = std::env::var(format!("{}_SHA256", env)) {
+                entry.sha256 = Some(sha256.to_lowercase());
+                if !entry.check_sha256() {
+                    panic!("{env}_SHA256: invalid sha256 `{sha256}`");
+                }
+            }
+        }
+        BinarySource::Path(path) => {
+            entry.sha256 = Some(sha256_file(&path).unwrap_or_else(|e| {
+                panic!("failed to calculate sha256 of `{}`: {e}", path.display())
+            }));
+            entry.size = Some(
+                path.metadata()
+                    .unwrap_or_else(|e| {
+                        panic!("failed to get file metadata of `{}`: {e}", path.display())
+                    })
+                    .size(),
+            );
         }
     }
+
+    entry
 }
 
 /// Given the name of a binary file, pick the most recently updated binary
