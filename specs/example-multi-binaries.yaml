@@ -5,6 +5,11 @@ version: storage.snarkos.testing.monadic.us/v1
 id: example-binary
 name: example-binary
 
+# generic genesis generation & seed
+generate:
+  genesis:
+    seed: 1
+
 binaries:
   # providing a "default" binary will make agents download a binary different than the one configured by
   # the AOT_BIN env
@@ -32,5 +37,19 @@ binaries:
 version: nodes.snarkos.testing.monadic.us/v1
 name: example-storage
 
-external:
-  client/example@namespace: 1.2.3.4
+nodes:
+  validator/test:
+    replicas: 3
+    key: committee.$
+    height: 0
+    validators: [validator/*]
+    # the "default" binary is inferred
+    binary: default
+
+  validator/alternate-binary:
+    replicas: 3
+    key: committee.4
+    height: 0
+    validators: [validator/*]
+    # specify the binary to use for this node
+    binary: example_http_short
