@@ -11,7 +11,6 @@ use snops_common::{
     },
 };
 use tarpc::context;
-use tracing::level_filters::LevelFilter;
 
 use crate::cli::{make_env_filter, ReloadHandler};
 
@@ -26,22 +25,11 @@ pub struct NodeRpcServer {
 }
 
 impl NodeService for NodeRpcServer {
-    async fn set_log_level(
-        self,
-        _: context::Context,
-        level: Option<String>,
-        verbosity: Option<u8>,
-    ) -> Result<(), AgentError> {
-        tracing::debug!("NodeService Setting log level to {level:?} with verbosity {verbosity:?}");
-        let level: Option<LevelFilter> = level
-            .as_ref()
-            .map(|l| l.parse())
-            .transpose()
-            .map_err(|_| AgentError::InvalidLogLevel(level.unwrap_or_default()))?;
+    async fn set_log_level(self, _: context::Context, verbosity: u8) -> Result<(), AgentError> {
+        tracing::debug!("NodeService Setting log verbosity {verbosity:?}");
 
-        let new_filter = make_env_filter(level, verbosity);
         self.log_level_handler
-            .modify(|filter| *filter = new_filter)
+            .modify(|filter| *filter = make_env_filter(verbosity))
             .map_err(|_| AgentError::FailedToChangeLogLevel)?;
 
         Ok(())

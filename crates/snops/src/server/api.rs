@@ -51,7 +51,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents/:id/kill", post(kill_agent))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/agents/:id/log/:level", post(set_agent_log_level))
-        .route("/agents/:id/aot/log", post(set_aot_log_level))
+        .route("/agents/:id/aot/log/:verbosity", post(set_aot_log_level))
         .route("/agents/find", post(find_agents))
         .route("/env/list", get(get_env_list))
         .route("/env/:env_id/topology", get(get_env_topology))
@@ -111,21 +111,14 @@ async fn set_agent_log_level(
     ServerError::from(e).into_response()
 }
 
-#[derive(Debug, Deserialize)]
-struct LogSetQuery {
-    level: Option<String>,
-    verbosity: Option<u8>,
-}
-
 async fn set_aot_log_level(
     state: State<AppState>,
-    Path(id): Path<String>,
-    Query(log_query): Query<LogSetQuery>,
+    Path((id, verbosity)): Path<(String, u8)>,
 ) -> Response {
     let id = unwrap_or_not_found!(id_or_none(&id));
     let agent = unwrap_or_not_found!(state.pool.get(&id));
 
-    tracing::debug!("attempting to set aot log level to {log_query:?}");
+    tracing::debug!("attempting to set aot log verbosity to {verbosity}");
     let Some(rpc) = agent.rpc() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
@@ -133,11 +126,7 @@ async fn set_aot_log_level(
     // let mut ctx = tarpc::context::current();
     // ctx.deadline += std::time::Duration::from_secs(300);
     let Err(e) = rpc
-        .set_aot_log_level(
-            tarpc::context::current(),
-            log_query.level,
-            log_query.verbosity,
-        )
+        .set_aot_log_level(tarpc::context::current(), verbosity)
         .await
     else {
         return status_ok();

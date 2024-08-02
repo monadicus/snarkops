@@ -82,17 +82,12 @@ type FlameGuard = ();
 
 pub type ReloadHandler = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
 
-pub fn make_env_filter(level: Option<LevelFilter>, verbosity: Option<u8>) -> EnvFilter {
-    let level = match level {
-        Some(level) => level,
-        None => match verbosity {
-            Some(0) => LevelFilter::INFO,
-            Some(1) => LevelFilter::DEBUG,
-            Some(2..) => LevelFilter::TRACE,
-            _ => LevelFilter::INFO,
-        },
+pub fn make_env_filter(verbosity: u8) -> EnvFilter {
+    let level = match verbosity {
+        0 => LevelFilter::INFO,
+        1 => LevelFilter::DEBUG,
+        2.. => LevelFilter::TRACE,
     };
-    let verbosity = verbosity.unwrap_or(0);
 
     // Filter out undesirable logs. (unfortunately EnvFilter cannot be cloned)
     {
@@ -101,7 +96,9 @@ pub fn make_env_filter(level: Option<LevelFilter>, verbosity: Option<u8>) -> Env
             .with_default_directive(level.into())
             .from_env_lossy()
             .add_directive("mio=off".parse().unwrap())
+            .add_directive("tarpc=off".parse().unwrap())
             .add_directive("tokio_util=off".parse().unwrap())
+            .add_directive("tokio_tungstenite=off".parse().unwrap())
             .add_directive("tracing_tungstenite=off".parse().unwrap())
             .add_directive("tungstenite=off".parse().unwrap())
             .add_directive("hyper=off".parse().unwrap())
@@ -158,8 +155,7 @@ impl<N: Network> Cli<N> {
     pub fn init_logger(&self) -> (FlameGuard, Vec<WorkerGuard>, ReloadHandler) {
         let verbosity = self.verbosity;
 
-        let (env_filter, reload_handler) =
-            reload::Layer::new(make_env_filter(None, Some(verbosity)));
+        let (env_filter, reload_handler) = reload::Layer::new(make_env_filter(verbosity));
 
         let mut layers = vec![];
         let mut guards = vec![];

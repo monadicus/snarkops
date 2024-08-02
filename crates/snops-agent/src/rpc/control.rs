@@ -537,14 +537,13 @@ impl AgentService for AgentRpcServer {
     async fn set_aot_log_level(
         self,
         ctx: context::Context,
-        level: Option<String>,
-        verbosity: Option<u8>,
+        verbosity: u8,
     ) -> Result<(), AgentError> {
-        tracing::debug!("agent setting aot log level to {level:?}");
+        tracing::debug!("agent setting aot log verbosity to {verbosity:?}");
         let lock = self.state.node_client.lock().await;
         let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
         node_client
-            .set_log_level(ctx, level, verbosity)
+            .set_log_level(ctx, verbosity)
             .await
             .map_err(|_| AgentError::FailedToChangeLogLevel)?
     }

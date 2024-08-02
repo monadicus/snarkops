@@ -16,7 +16,6 @@ use axum::{
 };
 use clap::Args;
 use reqwest::StatusCode;
-use serde::Deserialize;
 use serde_json::json;
 use tracing_appender::non_blocking::NonBlocking;
 
@@ -187,18 +186,11 @@ impl<N: Network> LedgerQuery<N> {
 
     async fn set_log_level(
         state: State<AppState<N>>,
-        Query(changes): Query<LogSetQuery>,
+        Query(verbosity): Query<u8>,
     ) -> impl IntoResponse {
-        let Ok(level) = changes.level.map(|l| l.parse()).transpose() else {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "invalid log level"})),
-            );
-        };
-
         let Ok(_) = state
             .log_level_handler
-            .modify(|filter| *filter = make_env_filter(level, changes.verbosity))
+            .modify(|filter| *filter = make_env_filter(verbosity))
         else {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -208,10 +200,4 @@ impl<N: Network> LedgerQuery<N> {
 
         (StatusCode::OK, Json(json!({"status": "ok"})))
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct LogSetQuery {
-    level: Option<String>,
-    verbosity: Option<u8>,
 }

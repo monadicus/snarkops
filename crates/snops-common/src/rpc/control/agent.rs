@@ -52,10 +52,7 @@ pub trait AgentService {
 
     async fn set_log_level(level: String) -> Result<(), AgentError>;
 
-    async fn set_aot_log_level(
-        level: Option<String>,
-        verbosity: Option<u8>,
-    ) -> Result<(), AgentError>;
+    async fn set_aot_log_level(verbosity: u8) -> Result<(), AgentError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

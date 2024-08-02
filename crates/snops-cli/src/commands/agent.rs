@@ -76,11 +76,8 @@ enum AgentCommands {
     },
 
     SetSnarkosLogLevel {
-        /// The log level to set.
-        #[clap(short, long, group = "log-level")]
-        level: Option<String>,
-        #[clap(short, long, group = "log-level")]
-        verbosity: Option<u8>,
+        /// The log verbosity to set.
+        verbosity: u8,
     },
 }
 
@@ -147,30 +144,13 @@ impl Agent {
                 client.get(ep).send()?
             }
             SetLogLevel { level } => {
-                let ep = format!("{url}/api/v1/agents/{}/log/{}", self.id, level);
+                let ep = format!("{url}/api/v1/agents/{}/log/{level}", self.id);
 
                 client.post(ep).send()?
             }
 
-            SetSnarkosLogLevel { level, verbosity } => {
-                let ep = match (level, verbosity) {
-                    (Some(_), Some(_)) => {
-                        unreachable!("Both log level and verbosity provided")
-                    }
-                    (Some(level), None) => {
-                        format!("{url}/api/v1/agents/{}/aot/log?level={level}", self.id)
-                    }
-                    (None, Some(verbosity)) => {
-                        format!(
-                            "{url}/api/v1/agents/{}/aot/log?verbosity={verbosity}",
-                            self.id
-                        )
-                    }
-                    (None, None) => {
-                        eprintln!("No log level or verbosity provided");
-                        std::process::exit(1);
-                    }
-                };
+            SetSnarkosLogLevel { verbosity } => {
+                let ep = format!("{url}/api/v1/agents/{}/aot/log/{verbosity}", self.id);
                 client.post(ep).send()?
             }
         })
