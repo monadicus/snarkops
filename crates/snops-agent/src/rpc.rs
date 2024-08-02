@@ -20,7 +20,12 @@ use tarpc::{context, ClientMessage, Response};
 use tokio::process::Command;
 use tracing::{debug, error, info, trace, warn};
 
-use crate::{api, make_env_filter, metrics::MetricComputer, reconcile, state::AppState};
+use crate::{
+    api, make_env_filter,
+    metrics::MetricComputer,
+    reconcile::{self, ensure_correct_binary},
+    state::AppState,
+};
 
 /// A multiplexed message, incoming on the websocket.
 pub type MuxedMessageIncoming =
@@ -137,8 +142,22 @@ impl AgentService for AgentRpcServer {
                     _ => (false, false),
                 };
 
+                // skip if we don't need storage
+                let AgentState::Node(env_id, node) = &target else {
+                    break 'storage;
+                };
+
+                // get the storage info for this environment if we don't have it cached
+                let info = state
+                    .get_env_info(*env_id)
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
+
+                // ensure the binary is correct every reconcile (or restart)
+                ensure_correct_binary(node.binary, &state, &info).await?;
+
                 if is_same_env && is_same_index {
-                    debug!("skipping agent storage download");
+                    debug!("skipping storage download");
                     break 'storage;
                 }
 
@@ -147,17 +166,7 @@ impl AgentService for AgentRpcServer {
                 // can be configurable to also work from a network drive
 
                 // download and decompress the storage
-                // skip if we don't need storage
-                let AgentState::Node(env_id, node) = &target else {
-                    break 'storage;
-                };
                 let height = &node.height.1;
-
-                // get the storage info for this environment if we don't have it cached
-                let info = state
-                    .get_env_info(*env_id)
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
 
                 trace!("checking storage files...");
 
@@ -165,7 +174,7 @@ impl AgentService for AgentRpcServer {
                 // if a node starts at height: 0, the node will never
                 // download the ledger
                 if !is_same_env {
-                    reconcile::check_files(&state, node.binary, &info, height).await?;
+                    reconcile::check_files(&state, &info, height).await?;
                 }
                 reconcile::load_ledger(&state, &info, height, !is_same_env).await?;
                 // TODO: checkpoint/absolute height request handling

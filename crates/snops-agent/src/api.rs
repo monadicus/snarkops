@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use snops_common::{
     binaries::{BinaryEntry, BinarySource},
     state::TransferStatusUpdate,
+    util::sha256_file,
 };
 use tokio::{fs::File, io::AsyncWriteExt};
 use tracing::info;
@@ -104,7 +105,7 @@ pub async fn check_file(
 ) -> anyhow::Result<()> {
     let client = reqwest::Client::new();
 
-    if !should_download_file(&client, url.as_str(), to)
+    if !should_download_file(&client, url.as_str(), to, None)
         .await
         .unwrap_or(true)
     {
@@ -135,36 +136,12 @@ pub async fn check_binary(
 
     // TODO: check binary size and shasum if provided
 
-    if !should_download_file(&client, &source_url, path)
+    // this also checks for sha256 differences, along with last modified time
+    // against the target
+    if !should_download_file(&client, &source_url, path, Some(binary))
         .await
         .unwrap_or(true)
     {
-        match binary.check_file_sha256(&path.to_path_buf()) {
-            Ok(None) => {}
-            Ok(Some(sha256)) => {
-                bail!(
-                    "binary sha256 mismatch for {}: expected {}, found {}",
-                    path.display(),
-                    binary.sha256.clone().unwrap(),
-                    sha256
-                );
-            }
-            Err(e) => bail!("binary sha256 check failed for {}: {e}", path.display()),
-        }
-
-        match binary.check_file_size(path) {
-            Ok(None) => {}
-            Ok(Some(size)) => {
-                bail!(
-                    "binary size mismatch for {}: expected {}, found {}",
-                    path.display(),
-                    binary.size.unwrap(),
-                    size
-                );
-            }
-            Err(e) => bail!("binary size check failed for {}: {e}", path.display()),
-        }
-
         // check permissions and ensure 0o755
         let perms = path.metadata()?.permissions();
         if perms.mode() != 0o755 {
@@ -175,7 +152,7 @@ pub async fn check_binary(
 
         return Ok(());
     }
-    info!("binary update is available, downloading...");
+    info!("downloading binary update to {}: {binary}", path.display());
 
     let Some((file, sha256, size)) = download_file(&client, &source_url, path, transfer_tx).await?
     else {
@@ -215,32 +192,43 @@ pub async fn should_download_file(
     client: &reqwest::Client,
     loc: &str,
     path: &Path,
+    binary: Option<&BinaryEntry>,
 ) -> anyhow::Result<bool> {
-    Ok(match tokio::fs::metadata(&path).await {
-        Ok(meta) => {
-            // check last modified
-            let res = client.head(loc).send().await?;
+    if !path.exists() {
+        return Ok(true);
+    }
 
-            let Some(last_modified_header) = res.headers().get(http::header::LAST_MODIFIED) else {
-                return Ok(true);
-            };
+    let meta = tokio::fs::metadata(&path).await?;
+    let local_content_length = meta.len();
 
-            let Some(content_length_header) = res.headers().get(http::header::CONTENT_LENGTH)
-            else {
-                return Ok(true);
-            };
-
-            let remote_last_modified = httpdate::parse_http_date(last_modified_header.to_str()?)?;
-            let local_last_modified = meta.modified()?;
-
-            let remote_content_length = content_length_header.to_str()?.parse::<u64>()?;
-            let local_content_length = meta.len();
-
-            remote_last_modified > local_last_modified
-                || remote_content_length != local_content_length
+    // if the binary entry is provided, check if the file size and sha256 match
+    if let Some(binary) = binary {
+        // file size is incorrect
+        if binary.size.is_some_and(|s| s != local_content_length) {
+            return Ok(true);
         }
 
-        // no existing file, unconditionally download binary
-        Err(_) => true,
-    })
+        // if sha256 is present, only download if the sha256 is different
+        if let Some(sha256) = binary.sha256.as_ref() {
+            return Ok(sha256_file(&path.to_path_buf())? != sha256.to_ascii_lowercase());
+        }
+    }
+
+    // check last modified
+    let res = client.head(loc).send().await?;
+
+    let Some(last_modified_header) = res.headers().get(http::header::LAST_MODIFIED) else {
+        return Ok(true);
+    };
+
+    let Some(content_length_header) = res.headers().get(http::header::CONTENT_LENGTH) else {
+        return Ok(true);
+    };
+
+    let remote_last_modified = httpdate::parse_http_date(last_modified_header.to_str()?)?;
+    let local_last_modified = meta.modified()?;
+
+    let remote_content_length = content_length_header.to_str()?.parse::<u64>()?;
+
+    Ok(remote_last_modified > local_last_modified || remote_content_length != local_content_length)
 }

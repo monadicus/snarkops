@@ -19,10 +19,43 @@ use tracing::{debug, error, info, trace};
 
 use crate::{api, state::GlobalState};
 
+/// Ensure the correct binary is present for running snarkos
+pub async fn ensure_correct_binary(
+    binary_id: Option<InternedId>,
+    state: &GlobalState,
+    info: &EnvInfo,
+) -> Result<(), ReconcileError> {
+    let base_path = &state.cli.path;
+
+    let default_entry = BinaryEntry {
+        source: BinarySource::Path(PathBuf::from(format!(
+            "/content/storage/{}/{}/binaries/default",
+            info.network, info.storage.id
+        ))),
+        sha256: None,
+        size: None,
+    };
+
+    // TODO: store binary based on binary id
+    // download the snarkOS binary
+    api::check_binary(
+        info.storage
+            .binaries
+            .get(&binary_id.unwrap_or_default())
+            .unwrap_or(&default_entry),
+        &state.endpoint,
+        &base_path.join(SNARKOS_FILE),
+        state.transfer_tx(),
+    )
+    .await
+    .map_err(|e| ReconcileError::BinaryAcquireError(e.to_string()))?;
+
+    Ok(())
+}
+
 /// Ensure all required files are present in the storage directory
 pub async fn check_files(
     state: &GlobalState,
-    binary_id: Option<InternedId>,
     info: &EnvInfo,
     height: &HeightRequest,
 ) -> Result<(), ReconcileError> {
@@ -38,28 +71,6 @@ pub async fn check_files(
     tokio::fs::create_dir_all(&storage_path)
         .await
         .map_err(|_| ReconcileError::StorageSetupError("create storage directory".to_string()))?;
-
-    let default_entry = BinaryEntry {
-        source: BinarySource::Path(PathBuf::from(format!(
-            "/content/storage/{}/{}/binaries/default",
-            info.network, info.storage.id
-        ))),
-        sha256: None,
-        size: None,
-    };
-
-    // TODO: store binary based on binary id
-    // download the snarkOS binary
-    api::check_binary(
-        binary_id
-            .and_then(|id| info.storage.binaries.get(&id))
-            .unwrap_or(&default_entry),
-        &state.endpoint,
-        &base_path.join(SNARKOS_FILE),
-        state.transfer_tx(),
-    ) // TODO: http(s)?
-    .await
-    .expect("failed to acquire snarkOS binary");
 
     let version_file = storage_path.join(VERSION_FILE);
 
