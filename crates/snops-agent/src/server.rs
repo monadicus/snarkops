@@ -36,7 +36,6 @@ pub async fn start(listener: tokio::net::TcpListener, state: AppState) -> Result
 }
 
 async fn node_ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
-    info!("node_ws_handler hit");
     ws.on_upgrade(|socket| handle_socket(socket, state))
         .into_response()
 }

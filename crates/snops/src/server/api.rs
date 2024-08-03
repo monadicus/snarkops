@@ -118,7 +118,7 @@ async fn set_aot_log_level(
     let id = unwrap_or_not_found!(id_or_none(&id));
     let agent = unwrap_or_not_found!(state.pool.get(&id));
 
-    tracing::debug!("attempting to set aot log verbosity to {verbosity}");
+    tracing::debug!("attempting to set aot log verbosity to {verbosity}  for agent {id}");
     let Some(rpc) = agent.rpc() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
