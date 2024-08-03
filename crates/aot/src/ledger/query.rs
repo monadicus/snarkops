@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::Result;
 use axum::{
-    extract::{self, State},
+    extract::{self, Query, State},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -19,7 +19,10 @@ use reqwest::StatusCode;
 use serde_json::json;
 use tracing_appender::non_blocking::NonBlocking;
 
-use crate::{Block, DbLedger, Network, Transaction};
+use crate::{
+    cli::{make_env_filter, ReloadHandler},
+    Block, DbLedger, Network, Transaction,
+};
 
 /// Receive inquiries on `/<network>/latest/stateRoot`.
 #[derive(Debug, Args, Clone)]
@@ -53,13 +56,14 @@ struct LedgerState<N: Network> {
     readonly: bool,
     ledger: DbLedger<N>,
     appender: Option<NonBlocking>,
+    log_level_handler: ReloadHandler,
 }
 
 type AppState<N> = Arc<LedgerState<N>>;
 
 impl<N: Network> LedgerQuery<N> {
     #[tokio::main]
-    pub async fn parse(self, ledger: &DbLedger<N>) -> Result<()> {
+    pub async fn parse(self, ledger: &DbLedger<N>, log_level_handler: ReloadHandler) -> Result<()> {
         let (appender, _guard) = if self.record {
             let (appender, guard) = tracing_appender::non_blocking(
                 File::options()
@@ -77,6 +81,7 @@ impl<N: Network> LedgerQuery<N> {
             readonly: self.readonly,
             ledger: ledger.clone(),
             appender,
+            log_level_handler,
         };
 
         let network = N::str_id();
@@ -99,6 +104,7 @@ impl<N: Network> LedgerQuery<N> {
                 post(Self::broadcast_tx),
             )
             .route("/block", post(Self::add_block))
+            .route("/log", post(Self::set_log_level))
             // TODO: for ahead of time ledger generation, support a /beacon_block endpoint to write
             // beacon block TODO: api to get and decrypt records for a private key
             .with_state(Arc::new(state));
@@ -176,5 +182,22 @@ impl<N: Network> LedgerQuery<N> {
                 Json(json!({"error": format!("failed to advance block: {e}")})),
             ),
         }
+    }
+
+    async fn set_log_level(
+        state: State<AppState<N>>,
+        Query(verbosity): Query<u8>,
+    ) -> impl IntoResponse {
+        let Ok(_) = state
+            .log_level_handler
+            .modify(|filter| *filter = make_env_filter(verbosity))
+        else {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "failed to set log level"})),
+            );
+        };
+
+        (StatusCode::OK, Json(json!({"status": "ok"})))
     }
 }

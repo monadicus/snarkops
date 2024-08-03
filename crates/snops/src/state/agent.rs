@@ -12,7 +12,7 @@ use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
-    rpc::agent::AgentServiceClient,
+    rpc::control::agent::AgentServiceClient,
     state::{AgentId, AgentModeOptions, AgentState, AgentStatus, EnvId, NodeState, PortConfig},
     INTERN,
 };

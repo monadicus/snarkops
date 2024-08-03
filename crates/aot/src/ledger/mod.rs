@@ -8,6 +8,7 @@ use snarkvm::{ledger::Block, utilities::FromBytes};
 use self::checkpoint::CheckpointCommand;
 use crate::{
     auth::execute::{execute_local, Execute},
+    cli::ReloadHandler,
     Network,
 };
 
@@ -53,7 +54,7 @@ pub enum Commands<N: Network> {
 }
 
 impl<N: Network> Ledger<N> {
-    pub fn parse(self) -> Result<()> {
+    pub fn parse(self, log_level_handler: ReloadHandler) -> Result<()> {
         // Common arguments
         let Ledger {
             genesis, ledger, ..
@@ -89,9 +90,10 @@ impl<N: Network> Ledger<N> {
                 Ok(())
             }
 
+            // TODO this log handler only affects the query server not snarkos
             Commands::Query(query) => {
                 let ledger = util::open_ledger(genesis_block, ledger)?;
-                query.parse(&ledger)
+                query.parse(&ledger, log_level_handler)
             }
 
             Commands::Hash => hash::hash_ledger(ledger),

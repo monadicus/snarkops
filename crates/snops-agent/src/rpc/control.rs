@@ -1,3 +1,5 @@
+//! Control plane-to-agent RPC.
+
 use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
 
 use snops_common::{
@@ -5,29 +7,29 @@ use snops_common::{
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
+    define_rpc_mux,
     rpc::{
-        agent::{AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake},
-        control::{ControlServiceRequest, ControlServiceResponse},
+        control::{
+            agent::{
+                AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake,
+            },
+            ControlServiceRequest, ControlServiceResponse,
+        },
         error::{AgentError, ReconcileError, SnarkosRequestError},
-        MuxMessage,
     },
     state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, NetworkId, PortConfig},
 };
-use tarpc::{context, ClientMessage, Response};
+use tarpc::context;
 use tokio::process::Command;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{api, make_env_filter, metrics::MetricComputer, reconcile, state::AppState};
 
-/// A multiplexed message, incoming on the websocket.
-pub type MuxedMessageIncoming =
-    MuxMessage<Response<ControlServiceResponse>, ClientMessage<AgentServiceRequest>>;
+define_rpc_mux!(child;
+    ControlServiceRequest => ControlServiceResponse;
+    AgentServiceRequest => AgentServiceResponse;
+);
 
-/// A multiplexed message, outgoing on the websocket.
-pub type MuxedMessageOutgoing =
-    MuxMessage<ClientMessage<ControlServiceRequest>, Response<AgentServiceResponse>>;
-
-// TODO: include agent state (process, JWT, etc.)
 #[derive(Clone)]
 pub struct AgentRpcServer {
     pub state: AppState,
@@ -224,8 +226,8 @@ impl AgentService for AgentRpcServer {
                         .arg("--log")
                         .arg(state.cli.path.join(SNARKOS_LOG_FILE))
                         .arg("run")
-                        .arg("--agent-status-port")
-                        .arg(state.status_api_port.to_string())
+                        .arg("--agent-rpc-port")
+                        .arg(state.agent_rpc_port.to_string())
                         .arg("--type")
                         .arg(node.node_key.ty.to_string())
                         .arg("--ledger")
@@ -530,5 +532,19 @@ impl AgentService for AgentRpcServer {
             .map_err(|_| AgentError::FailedToChangeLogLevel)?;
 
         Ok(())
+    }
+
+    async fn set_aot_log_level(
+        self,
+        ctx: context::Context,
+        verbosity: u8,
+    ) -> Result<(), AgentError> {
+        tracing::debug!("agent setting aot log verbosity to {verbosity:?}");
+        let lock = self.state.node_client.lock().await;
+        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
+        node_client
+            .set_log_level(ctx, verbosity)
+            .await
+            .map_err(|_| AgentError::FailedToChangeLogLevel)?
     }
 }

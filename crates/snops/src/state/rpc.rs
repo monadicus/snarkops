@@ -3,7 +3,7 @@ use std::{fmt::Display, time::Duration};
 use serde::de::DeserializeOwned;
 use snops_common::{
     rpc::{
-        agent::AgentServiceClient,
+        control::agent::AgentServiceClient,
         error::{ReconcileError, SnarkosRequestError},
     },
     state::{AgentState, EnvId, NetworkId},

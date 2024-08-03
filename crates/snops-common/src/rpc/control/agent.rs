@@ -2,7 +2,7 @@ use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
 
-use super::error::*;
+use crate::rpc::error::*;
 use crate::{
     prelude::EnvId,
     state::{AgentState, NetworkId, PortConfig},
@@ -51,6 +51,8 @@ pub trait AgentService {
     async fn get_metric(metric: AgentMetric) -> f64;
 
     async fn set_log_level(level: String) -> Result<(), AgentError>;
+
+    async fn set_aot_log_level(verbosity: u8) -> Result<(), AgentError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

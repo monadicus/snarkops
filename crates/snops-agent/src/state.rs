@@ -10,7 +10,7 @@ use dashmap::DashMap;
 use reqwest::Url;
 use snops_common::{
     api::EnvInfo,
-    rpc::control::ControlServiceClient,
+    rpc::{agent::node::NodeServiceClient, control::ControlServiceClient},
     state::{AgentId, AgentPeer, AgentState, EnvId, TransferId, TransferStatus},
     util::OpaqueDebug,
 };
@@ -38,7 +38,7 @@ pub struct GlobalState {
 
     pub external_addr: Option<IpAddr>,
     pub internal_addrs: Vec<IpAddr>,
-    pub status_api_port: u16,
+    pub agent_rpc_port: u16,
     pub cli: Cli,
     pub endpoint: String,
     pub loki: Mutex<Option<Url>>,
@@ -53,6 +53,8 @@ pub struct GlobalState {
 
     pub transfer_tx: TransferTx,
     pub transfers: Arc<DashMap<TransferId, TransferStatus>>,
+
+    pub node_client: AsyncMutex<Option<NodeServiceClient>>,
 
     pub log_level_handler: ReloadHandler,
 }
