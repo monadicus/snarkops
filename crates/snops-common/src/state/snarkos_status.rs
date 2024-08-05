@@ -18,7 +18,7 @@ pub enum SnarkOSStatus {
 /// Messages from snarkos to the agent, containing information about the status
 /// of the node
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub struct SnarkOSBlockInfo {
     pub height: u32,
     pub state_root: String,

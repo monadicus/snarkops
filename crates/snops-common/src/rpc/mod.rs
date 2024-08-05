@@ -1,4 +1,17 @@
+//! The module defining all RPC behaviors in snops.
+//!
+//! This module is split into two separate modules:
+//! * `control`: the RPC server that lies on websockets established between the
+//!   control plane and the agent, and
+//! * `agent`: the RPC server that lies on websockets established between the
+//!   agent and its AOT/snarkOS node.
+//!
+//! The naming convention for RPC-related modules is to name the modules after
+//! the RPC's *parent*, where the parent is the side of the transport
+//! responsible for *listening* for new websocket connections.
+
 use std::{
+    mem::size_of,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -13,10 +26,43 @@ pub mod control;
 pub mod error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MuxMessage<Control, Agent> {
-    Control(Control),
-    Agent(Agent),
+pub enum MuxMessage<Parent, Child> {
+    Parent(Parent),
+    Child(Child),
 }
+
+#[macro_export]
+macro_rules! define_rpc_mux {
+    ( parent ; $parent_req:ty => $parent_res:ty ; $child_req:ty => $child_res:ty $(;)? ) => {
+        /// A multiplexed message, incoming on the websocket.
+        pub type MuxedMessageIncoming = ::snops_common::rpc::MuxMessage<
+            ::tarpc::ClientMessage<$parent_req>,
+            ::tarpc::Response<$child_res>,
+        >;
+
+        /// A multiplexed message, outgoing on the websocket.
+        pub type MuxedMessageOutgoing = ::snops_common::rpc::MuxMessage<
+            ::tarpc::Response<$parent_res>,
+            ::tarpc::ClientMessage<$child_req>,
+        >;
+    };
+    ( child ; $parent_req:ty => $parent_res:ty ; $child_req:ty => $child_res:ty $(;)? ) => {
+        /// A multiplexed message, incoming on the websocket.
+        pub type MuxedMessageIncoming = ::snops_common::rpc::MuxMessage<
+            ::tarpc::Response<$parent_res>,
+            ::tarpc::ClientMessage<$child_req>,
+        >;
+
+        /// A multiplexed message, outgoing on the websocket.
+        pub type MuxedMessageOutgoing = ::snops_common::rpc::MuxMessage<
+            ::tarpc::ClientMessage<$parent_req>,
+            ::tarpc::Response<$child_res>,
+        >;
+    };
+}
+
+pub const PING_LENGTH: usize = size_of::<u32>() + size_of::<u128>();
+pub const PING_INTERVAL_SEC: u64 = 10;
 
 pub struct RpcTransport<In, Out> {
     tx: mpsc::UnboundedSender<Out>,

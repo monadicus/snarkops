@@ -20,9 +20,9 @@ use snops_common::{
     constant::HEADER_AGENT_KEY,
     db::Database,
     prelude::*,
-    rpc::{
+    rpc::control::{
         agent::{AgentServiceClient, Handshake},
-        control::ControlService,
+        ControlService,
     },
 };
 use tarpc::server::Channel;
@@ -241,7 +241,7 @@ async fn handle_socket(
             .unwrap_or_default()
         {
             warn!("an agent is trying to identify as an already-connected agent {id}");
-            socket.send(Message::Close(None)).await.ok();
+            let _ = socket.send(Message::Close(None)).await;
             return;
         }
 
@@ -330,8 +330,8 @@ async fn handle_socket(
                         };
 
                         match msg {
-                            MuxedMessageIncoming::Control(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
-                            MuxedMessageIncoming::Agent(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
+                            MuxedMessageIncoming::Parent(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
+                            MuxedMessageIncoming::Child(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
                         }
                     }
                     _ => (),
@@ -341,8 +341,8 @@ async fn handle_socket(
             // handle outgoing requests
             msg = client_request_out.recv() => {
                 let msg = msg.expect("internal RPC channel closed");
-                let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize request");
-                if (socket.send(Message::Binary(bin)).await).is_err() {
+                let bin = bincode::serialize(&MuxedMessageOutgoing::Child(msg)).expect("failed to serialize request");
+                if socket.send(Message::Binary(bin)).await.is_err() {
                     break;
                 }
             }
@@ -350,8 +350,8 @@ async fn handle_socket(
             // handle outgoing responses
             msg = server_response_out.recv() => {
                 let msg = msg.expect("internal RPC channel closed");
-                let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize response");
-                if (socket.send(Message::Binary(bin)).await).is_err() {
+                let bin = bincode::serialize(&MuxedMessageOutgoing::Parent(msg)).expect("failed to serialize response");
+                if socket.send(Message::Binary(bin)).await.is_err() {
                     break;
                 }
             }

@@ -14,7 +14,7 @@ use snops_common::{
     key_source::KeySource,
     lasso::Spur,
     node_targets::NodeTargets,
-    rpc::agent::AgentMetric,
+    rpc::control::agent::AgentMetric,
     state::{id_or_none, AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey},
 };
 use tarpc::context;
@@ -47,6 +47,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/agents/:id/kill", post(kill_agent))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/agents/:id/log/:level", post(set_agent_log_level))
+        .route("/agents/:id/aot/log/:verbosity", post(set_aot_log_level))
         .route("/agents/find", post(find_agents))
         .route("/env/list", get(get_env_list))
         .route("/env/:env_id/topology", get(get_env_topology))
@@ -93,12 +94,36 @@ async fn set_agent_log_level(
     let id = unwrap_or_not_found!(id_or_none(&id));
     let agent = unwrap_or_not_found!(state.pool.get(&id));
 
-    tracing::debug!("attempting to set log level to {level} for agent {id}");
+    tracing::debug!("attempting to set agent log level to {level} for agent {id}");
     let Some(rpc) = agent.rpc() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
 
     let Err(e) = rpc.set_log_level(tarpc::context::current(), level).await else {
+        return status_ok();
+    };
+
+    ServerError::from(e).into_response()
+}
+
+async fn set_aot_log_level(
+    state: State<AppState>,
+    Path((id, verbosity)): Path<(String, u8)>,
+) -> Response {
+    let id = unwrap_or_not_found!(id_or_none(&id));
+    let agent = unwrap_or_not_found!(state.pool.get(&id));
+
+    tracing::debug!("attempting to set aot log verbosity to {verbosity}  for agent {id}");
+    let Some(rpc) = agent.rpc() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+
+    // let mut ctx = tarpc::context::current();
+    // ctx.deadline += std::time::Duration::from_secs(300);
+    let Err(e) = rpc
+        .set_aot_log_level(tarpc::context::current(), verbosity)
+        .await
+    else {
         return status_ok();
     };
 

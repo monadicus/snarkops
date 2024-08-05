@@ -74,6 +74,11 @@ enum AgentCommands {
         /// The log level to set.
         level: String,
     },
+
+    SetSnarkosLogLevel {
+        /// The log verbosity to set.
+        verbosity: u8,
+    },
 }
 
 impl Agent {
@@ -139,8 +144,13 @@ impl Agent {
                 client.get(ep).send()?
             }
             SetLogLevel { level } => {
-                let ep = format!("{url}/api/v1/agents/{}/log/{}", self.id, level);
+                let ep = format!("{url}/api/v1/agents/{}/log/{level}", self.id);
 
+                client.post(ep).send()?
+            }
+
+            SetSnarkosLogLevel { verbosity } => {
+                let ep = format!("{url}/api/v1/agents/{}/aot/log/{verbosity}", self.id);
                 client.post(ep).send()?
             }
         })

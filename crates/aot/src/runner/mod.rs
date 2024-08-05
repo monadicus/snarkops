@@ -8,6 +8,7 @@ use aleo_std::StorageMode;
 use anyhow::Result;
 use checkpoint::{CheckpointManager, RetentionPolicy};
 use clap::Args;
+use rpc::RpcClient;
 use snarkos_node::Node;
 use snarkvm::{
     ledger::store::{
@@ -18,12 +19,11 @@ use snarkvm::{
     utilities::FromBytes,
 };
 use snops_common::state::{snarkos_status::SnarkOSStatus, NodeType};
-use status::AgentStatusClient;
 
-use crate::{Account, DbLedger, Key, Network};
+use crate::{cli::ReloadHandler, Account, DbLedger, Key, Network};
 
 mod metrics;
-mod status;
+mod rpc;
 
 /// A wrapper around the snarkos node run commands that provide additional
 /// logging and configurability.
@@ -76,39 +76,53 @@ pub struct Runner<N: Network> {
     #[clap(long)]
     pub retention_policy: Option<RetentionPolicy>,
 
-    /// When present, emits the agent status on the given port.
+    /// When present, connects to an agent RPC server on the given port.
     #[clap(long)]
-    pub agent_status_port: Option<u16>,
+    pub agent_rpc_port: Option<u16>,
 }
 
 impl<N: Network> Runner<N> {
-    pub fn parse(self) -> Result<()> {
-        let agent = AgentStatusClient::from(self.agent_status_port);
-        agent.status(SnarkOSStatus::Starting);
-        let res = if std::env::var("DEFAULT_RUNTIME").ok().is_some() {
-            self.start_without_runtime()
+    pub fn parse(self, log_level_handler: ReloadHandler) -> Result<()> {
+        if std::env::var("DEFAULT_RUNTIME").ok().is_some() {
+            self.start_without_runtime(log_level_handler)
         } else {
-            Self::runtime().block_on(async move { self.start().await })
-        };
+            Self::runtime().block_on(async move { self.start(log_level_handler).await })
+        }
+    }
+
+    #[tokio::main]
+    pub async fn start_without_runtime(self, log_level_handler: ReloadHandler) -> Result<()> {
+        let agent = RpcClient::new(log_level_handler, self.agent_rpc_port);
+
+        let res = self.start_inner(agent.to_owned()).await;
 
         if let Err(e) = &res {
             agent.status(SnarkOSStatus::Halted(Some(e.to_string())));
         }
+
         res
     }
 
-    #[tokio::main]
-    pub async fn start_without_runtime(self) -> Result<()> {
-        self.start().await
+    pub async fn start(self, log_level_handler: ReloadHandler) -> Result<()> {
+        let agent = RpcClient::new(log_level_handler, self.agent_rpc_port);
+
+        let res = self.start_inner(agent.to_owned()).await;
+
+        if let Err(e) = &res {
+            agent.status(SnarkOSStatus::Halted(Some(e.to_string())));
+        }
+
+        res
     }
 
-    pub async fn start(self) -> Result<()> {
+    async fn start_inner(self, agent: RpcClient) -> Result<()> {
+        agent.status(SnarkOSStatus::Starting);
+
         let bind_addr = self.bind_addr;
         let node_ip = SocketAddr::new(bind_addr, self.node);
         let rest_ip = SocketAddr::new(bind_addr, self.rest);
         let bft_ip = SocketAddr::new(bind_addr, self.bft);
         let metrics_ip = SocketAddr::new(bind_addr, self.metrics);
-        let agent = AgentStatusClient::from(self.agent_status_port);
 
         let account = Account::try_from(self.key.try_get()?)?;
 

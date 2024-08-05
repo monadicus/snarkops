@@ -1,3 +1,5 @@
+pub mod agent;
+
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
@@ -8,6 +10,8 @@ use crate::{
     api::EnvInfo,
     state::{AgentId, EnvId, NodeStatus, TransferStatus, TransferStatusUpdate},
 };
+
+pub const PING_HEADER: &[u8] = b"snops-agent";
 
 #[tarpc::service]
 pub trait ControlService {

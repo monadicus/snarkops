@@ -21,10 +21,14 @@ use cli::Cli;
 use futures::SinkExt;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::HeaderValue;
+use rpc::control::{self, AgentRpcServer};
 use snops_common::{
     constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
     db::Database,
-    rpc::{agent::AgentService, control::ControlServiceClient, RpcTransport},
+    rpc::{
+        control::{agent::AgentService, ControlServiceClient, PING_HEADER},
+        RpcTransport, PING_INTERVAL_SEC, PING_LENGTH,
+    },
     util::OpaqueDebug,
 };
 use tarpc::server::Channel;
@@ -39,12 +43,7 @@ use tokio_tungstenite::{
 use tracing::{error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
 
-use crate::rpc::{AgentRpcServer, MuxedMessageIncoming, MuxedMessageOutgoing};
 use crate::state::GlobalState;
-
-const PING_HEADER: &[u8] = b"snops-agent";
-const PING_LENGTH: usize = size_of::<u32>() + size_of::<u128>();
-const PING_INTERVAL_SEC: u64 = 10;
 
 type ReloadHandler = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
 
@@ -138,10 +137,10 @@ async fn main() {
     // start transfer monitor
     let (transfer_tx, transfers) = transfers::start_monitor(client.clone());
 
-    let status_api_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+    let agent_rpc_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
         .await
         .expect("failed to bind status server");
-    let status_api_port = status_api_listener
+    let agent_rpc_port = agent_rpc_listener
         .local_addr()
         .expect("failed to get status server port")
         .port();
@@ -163,9 +162,10 @@ async fn main() {
         child: Default::default(),
         resolved_addrs: Default::default(),
         metrics: Default::default(),
-        status_api_port,
+        agent_rpc_port,
         transfer_tx,
         transfers,
+        node_client: Default::default(),
         log_level_handler: reload_handler,
     });
 
@@ -175,8 +175,8 @@ async fn main() {
     // start the status server
     let status_state = Arc::clone(&state);
     tokio::spawn(async move {
-        info!("starting status API server on port {status_api_port}");
-        if let Err(e) = server::start(status_api_listener, status_state).await {
+        info!("starting status API server on port {agent_rpc_port}");
+        if let Err(e) = server::start(agent_rpc_listener, status_state).await {
             error!("status API server crashed: {e:?}");
             std::process::exit(1);
         }
@@ -268,7 +268,7 @@ async fn main() {
                     // handle outgoing responses
                     msg = server_response_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
-                        let bin = bincode::serialize(&MuxedMessageOutgoing::Agent(msg)).expect("failed to serialize response");
+                        let bin = bincode::serialize(&control::MuxedMessageOutgoing::Child(msg)).expect("failed to serialize response");
                         let send = ws_stream.send(tungstenite::Message::Binary(bin));
                         if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
                             error!("The connection to the control plane was interrupted while sending agent message");
@@ -279,7 +279,7 @@ async fn main() {
                     // handle outgoing requests
                     msg = client_request_out.recv() => {
                         let msg = msg.expect("internal RPC channel closed");
-                        let bin = bincode::serialize(&MuxedMessageOutgoing::Control(msg)).expect("failed to serialize request");
+                        let bin = bincode::serialize(&control::MuxedMessageOutgoing::Parent(msg)).expect("failed to serialize request");
                         let send = ws_stream.send(tungstenite::Message::Binary(bin));
                         if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
                             error!("The connection to the control plane was interrupted while sending control message");
@@ -337,8 +337,8 @@ async fn main() {
                             };
 
                             match msg {
-                                MuxedMessageIncoming::Agent(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
-                                MuxedMessageIncoming::Control(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
+                                control::MuxedMessageIncoming::Child(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
+                                control::MuxedMessageIncoming::Parent(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
                             }
                         }
 
@@ -346,10 +346,8 @@ async fn main() {
                             error!("The connection to the control plane was interrupted");
                             break 'event;
                         }
-                        Some(Ok(o)) => {
 
-                            println!("{o:#?}");
-                        }
+                        Some(Ok(o)) => println!("{o:#?}"),
                     },
                 };
             }
