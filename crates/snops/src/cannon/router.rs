@@ -358,7 +358,11 @@ async fn authorization(
         return ServerError::NotFound("cannon not found".to_owned()).into_response();
     };
 
-    let aot = AotCmd::new(env.aot_bin.clone(), env.network);
+    let compute_bin = match env.storage.resolve_compute_binary(&state).await {
+        Ok(bin) => bin,
+        Err(e) => return ServerError::from(e).into_response(),
+    };
+    let aot = AotCmd::new(compute_bin, env.network);
     let tx_id = match aot.get_tx_id(&body).await {
         Ok(id) => id,
         Err(e) => {

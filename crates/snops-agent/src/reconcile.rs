@@ -6,22 +6,56 @@ use std::{
 use checkpoint::{CheckpointHeader, CheckpointManager, RetentionSpan};
 use snops_common::{
     api::{CheckpointMeta, EnvInfo},
+    binaries::{BinaryEntry, BinarySource},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, LEDGER_STORAGE_FILE, SNARKOS_FILE,
         SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
     rpc::error::ReconcileError,
-    state::{EnvId, HeightRequest, NetworkId, StorageId},
+    state::{HeightRequest, InternedId, NetworkId, StorageId},
 };
 use tokio::process::Command;
 use tracing::{debug, error, info, trace};
 
 use crate::{api, state::GlobalState};
 
+/// Ensure the correct binary is present for running snarkos
+pub async fn ensure_correct_binary(
+    binary_id: Option<InternedId>,
+    state: &GlobalState,
+    info: &EnvInfo,
+) -> Result<(), ReconcileError> {
+    let base_path = &state.cli.path;
+
+    let default_entry = BinaryEntry {
+        source: BinarySource::Path(PathBuf::from(format!(
+            "/content/storage/{}/{}/binaries/default",
+            info.network, info.storage.id
+        ))),
+        sha256: None,
+        size: None,
+    };
+
+    // TODO: store binary based on binary id
+    // download the snarkOS binary
+    api::check_binary(
+        info.storage
+            .binaries
+            .get(&binary_id.unwrap_or_default())
+            .unwrap_or(&default_entry),
+        &state.endpoint,
+        &base_path.join(SNARKOS_FILE),
+        state.transfer_tx(),
+    )
+    .await
+    .map_err(|e| ReconcileError::BinaryAcquireError(e.to_string()))?;
+
+    Ok(())
+}
+
 /// Ensure all required files are present in the storage directory
 pub async fn check_files(
     state: &GlobalState,
-    env_id: EnvId,
     info: &EnvInfo,
     height: &HeightRequest,
 ) -> Result<(), ReconcileError> {
@@ -37,17 +71,6 @@ pub async fn check_files(
     tokio::fs::create_dir_all(&storage_path)
         .await
         .map_err(|_| ReconcileError::StorageSetupError("create storage directory".to_string()))?;
-
-    // TODO: store binary based on binary id
-    // download the snarkOS binary
-    api::check_binary(
-        env_id,
-        &state.endpoint,
-        &base_path.join(SNARKOS_FILE),
-        state.transfer_tx(),
-    ) // TODO: http(s)?
-    .await
-    .expect("failed to acquire snarkOS binary");
 
     let version_file = storage_path.join(VERSION_FILE);
 

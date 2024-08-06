@@ -4508,6 +4508,7 @@ dependencies = [
  "nix",
  "reqwest 0.12.5",
  "serde_json",
+ "sha2",
  "simple_moving_average",
  "sled",
  "snops-common",
@@ -4558,6 +4559,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "sha2",
  "sled",
  "strum_macros",
  "tarpc",
@@ -5738,8 +5740,3 @@ dependencies = [
  "quote 1.0.36",
  "syn 2.0.66",
 ]
-
-[[patch.unused]]
-name = "snarkvm"
-version = "0.16.19"
-source = "git+https://github.com/AleoNet/snarkVM?rev=aef07da#aef07da8ed38aa4c3cdb2d946e0b6c783cc72cd3"

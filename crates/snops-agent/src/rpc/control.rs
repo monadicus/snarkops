@@ -1,9 +1,12 @@
 //! Control plane-to-agent RPC.
 
-use std::{collections::HashSet, net::IpAddr, ops::Deref, process::Stdio, sync::Arc};
+use std::{
+    collections::HashSet, net::IpAddr, ops::Deref, path::PathBuf, process::Stdio, sync::Arc,
+};
 
 use snops_common::{
     aot_cmds::AotCmd,
+    binaries::{BinaryEntry, BinarySource},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
@@ -17,13 +20,18 @@ use snops_common::{
         },
         error::{AgentError, ReconcileError, SnarkosRequestError},
     },
-    state::{AgentId, AgentPeer, AgentState, EnvId, KeyState, NetworkId, PortConfig},
+    state::{AgentId, AgentPeer, AgentState, EnvId, InternedId, KeyState, NetworkId, PortConfig},
 };
 use tarpc::context;
 use tokio::process::Command;
 use tracing::{debug, error, info, trace, warn};
 
-use crate::{api, make_env_filter, metrics::MetricComputer, reconcile, state::AppState};
+use crate::{
+    api, make_env_filter,
+    metrics::MetricComputer,
+    reconcile::{self, ensure_correct_binary},
+    state::AppState,
+};
 
 define_rpc_mux!(child;
     ControlServiceRequest => ControlServiceResponse;
@@ -136,8 +144,22 @@ impl AgentService for AgentRpcServer {
                     _ => (false, false),
                 };
 
+                // skip if we don't need storage
+                let AgentState::Node(env_id, node) = &target else {
+                    break 'storage;
+                };
+
+                // get the storage info for this environment if we don't have it cached
+                let info = state
+                    .get_env_info(*env_id)
+                    .await
+                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
+
+                // ensure the binary is correct every reconcile (or restart)
+                ensure_correct_binary(node.binary, &state, &info).await?;
+
                 if is_same_env && is_same_index {
-                    debug!("skipping agent storage download");
+                    debug!("skipping storage download");
                     break 'storage;
                 }
 
@@ -146,17 +168,7 @@ impl AgentService for AgentRpcServer {
                 // can be configurable to also work from a network drive
 
                 // download and decompress the storage
-                // skip if we don't need storage
-                let AgentState::Node(env_id, node) = &target else {
-                    break 'storage;
-                };
                 let height = &node.height.1;
-
-                // get the storage info for this environment if we don't have it cached
-                let info = state
-                    .get_env_info(*env_id)
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
 
                 trace!("checking storage files...");
 
@@ -164,7 +176,7 @@ impl AgentService for AgentRpcServer {
                 // if a node starts at height: 0, the node will never
                 // download the ledger
                 if !is_same_env {
-                    reconcile::check_files(&state, *env_id, &info, height).await?;
+                    reconcile::check_files(&state, &info, height).await?;
                 }
                 reconcile::load_ledger(&state, &info, height, !is_same_env).await?;
                 // TODO: checkpoint/absolute height request handling
@@ -485,11 +497,37 @@ impl AgentService for AgentRpcServer {
         // TODO: maybe in the env config store a branch label for the binary so it won't
         // be put in storage and won't overwrite itself
 
-        let aot_bin = self.state.cli.path.join(SNARKOS_FILE);
+        let info = self
+            .state
+            .get_env_info(env_id)
+            .await
+            .map_err(|e| AgentError::FailedToGetEnvInfo(e.to_string()))?;
+
+        let aot_bin = self
+            .state
+            .cli
+            .path
+            .join(format!("snarkos-aot-{env_id}-compute"));
+
+        let default_entry = BinaryEntry {
+            source: BinarySource::Path(PathBuf::from(format!(
+                "/content/storage/{}/{}/binaries/default",
+                info.network, info.storage.id,
+            ))),
+            sha256: None,
+            size: None,
+        };
 
         // download the snarkOS binary
         api::check_binary(
-            env_id,
+            // attempt to use the specified "compute" binary
+            info.storage
+                .binaries
+                .get(&InternedId::compute_id())
+                // fallback to the default binary
+                .or_else(|| info.storage.binaries.get(&InternedId::default()))
+                // fallback to the default entry
+                .unwrap_or(&default_entry),
             &self.state.endpoint,
             &aot_bin,
             self.state.transfer_tx(),

@@ -3,8 +3,11 @@ use std::path::PathBuf;
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
-    aot_cmds::error::CommandError, impl_into_status_code, impl_into_type_str,
-    key_source::KeySourceError, node_targets::NodeTargetError, state::StorageId,
+    aot_cmds::error::CommandError,
+    impl_into_status_code, impl_into_type_str,
+    key_source::KeySourceError,
+    node_targets::NodeTargetError,
+    state::{InternedId, StorageId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -44,12 +47,34 @@ pub enum StorageError {
     ParseBalances(PathBuf, #[source] serde_json::Error),
     #[error("error loading checkpoints: {0}")]
     CheckpointManager(#[from] checkpoint::errors::ManagerLoadError),
+    #[error("binary with id `{0}` does not exist for storage id: {1}")]
+    BinaryDoesNotExist(InternedId, StorageId),
+    #[error("failed fetching binary with id `{0}` from url `{1}`: {2}")]
+    FailedToFetchBinary(InternedId, Url, #[source] reqwest::Error),
+    #[error("failed fetching binary with id `{0}` from url `{1}`: status {2}")]
+    FailedToFetchBinaryWithStatus(InternedId, Url, StatusCode),
+    #[error("failed to create binary file with id `{0}`: {1}")]
+    FailedToCreateBinaryFile(InternedId, #[source] std::io::Error),
+    #[error("failed to write binary file with id `{0}`: {1}")]
+    FailedToWriteBinaryFile(InternedId, #[source] std::io::Error),
+    #[error("missing binary file `{0}`: {1}")]
+    BinaryFileMissing(InternedId, PathBuf),
+    #[error("binary file `{0}` at path `{1}` has size mismatch: expected {2}, found {3}")]
+    BinarySizeMismatch(InternedId, PathBuf, u64, u64),
+    #[error("binary file `{0}` at path `{1}` has sha256 mismatch expected `{2}`, found `{3}`")]
+    BinarySha256Mismatch(InternedId, PathBuf, String, String),
+    #[error("binary file `{0}` at path `{1}` has failed check: {2}")]
+    BinaryCheckFailed(InternedId, PathBuf, String),
+    #[error("failed to check/modify file permissions `{0}`: {1}")]
+    PermissionError(PathBuf, std::io::Error),
 }
 
 impl_into_status_code!(StorageError, |value| match value {
     Command(e, _) => e.into(),
     FailedToFetchGenesis(_, _, _) => StatusCode::MISDIRECTED_REQUEST,
     NoGenerationParams(_) => StatusCode::BAD_REQUEST,
+    BinaryDoesNotExist(_, _) => StatusCode::NOT_FOUND,
+    BinaryFileMissing(_, _) => StatusCode::NOT_FOUND,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 

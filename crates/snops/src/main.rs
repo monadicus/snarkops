@@ -2,7 +2,8 @@ use std::io;
 
 use clap::Parser;
 use cli::Cli;
-use tracing::level_filters::LevelFilter;
+use schema::storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY};
+use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::{prelude::*, reload, EnvFilter};
 
 pub mod cannon;
@@ -64,6 +65,9 @@ async fn main() {
     #[cfg(any(feature = "clipages", feature = "mangen"))]
     Cli::parse().run();
     let cli = Cli::parse();
+
+    info!("Using AOT binary:\n{}", DEFAULT_AOT_BINARY.to_string());
+    info!("Using Agent binary:\n{}", DEFAULT_AGENT_BINARY.to_string());
 
     server::start(cli, reload_handler)
         .await

@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use indexmap::IndexMap;
 
-use super::{AgentId, HeightRequest, NodeKey};
+use super::{AgentId, HeightRequest, InternedId, NodeKey};
 use crate::format::{DataFormat, DataFormatReader, DataHeaderOf, PackedUint};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -16,6 +16,7 @@ pub struct NodeState {
     pub peers: Vec<AgentPeer>,
     pub validators: Vec<AgentPeer>,
     pub env: IndexMap<String, String>,
+    pub binary: Option<InternedId>,
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +70,7 @@ impl DataFormat for NodeStateFormatHeader {
 impl DataFormat for NodeState {
     type Header = NodeStateFormatHeader;
     const LATEST_HEADER: Self::Header = NodeStateFormatHeader {
-        version: 1,
+        version: 2,
         node_key: NodeKey::LATEST_HEADER,
         key_state: KeyState::LATEST_HEADER,
         height: HeightRequest::LATEST_HEADER,
@@ -89,6 +90,7 @@ impl DataFormat for NodeState {
         written += self.peers.write_data(writer)?;
         written += self.validators.write_data(writer)?;
         written += self.env.write_data(writer)?;
+        written += self.binary.write_data(writer)?;
         Ok(written)
     }
 
@@ -96,10 +98,10 @@ impl DataFormat for NodeState {
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, crate::format::DataReadError> {
-        if header.version != Self::LATEST_HEADER.version {
+        if header.version == 0 || header.version > Self::LATEST_HEADER.version {
             return Err(crate::format::DataReadError::unsupported(
                 "NodeState",
-                Self::LATEST_HEADER.version,
+                format!("1 or {}", Self::LATEST_HEADER.version),
                 header.version,
             ));
         }
@@ -112,6 +114,11 @@ impl DataFormat for NodeState {
         let peers = reader.read_data(&header.peer)?;
         let validators = reader.read_data(&header.peer)?;
         let env = reader.read_data(&((), ()))?;
+        let binary = if header.version > 1 {
+            reader.read_data(&())?
+        } else {
+            None
+        };
 
         Ok(NodeState {
             node_key,
@@ -121,6 +128,7 @@ impl DataFormat for NodeState {
             peers,
             validators,
             env,
+            binary,
         })
     }
 }
@@ -300,6 +308,7 @@ mod tests {
             peers: vec![],
             validators: vec![],
             env: Default::default(),
+            binary: None,
         },
         [
             NodeStateFormatHeader::LATEST_HEADER.to_byte_vec()?,
@@ -312,6 +321,7 @@ mod tests {
                 peers: vec![],
                 validators: vec![],
                 env: Default::default(),
+                binary: None,
             }
             .to_byte_vec()?,
         ]

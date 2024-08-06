@@ -8,7 +8,7 @@ use snops_common::{
     lasso::Spur,
     node_targets::NodeTargets,
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, DocHeightRequest, NetworkId, NodeState},
+    state::{AgentId, DocHeightRequest, InternedId, NetworkId, NodeState},
     INTERN,
 };
 
@@ -206,6 +206,10 @@ pub struct Node {
     /// Environment variables to inject into the snarkOS process.
     #[serde(default)]
     pub env: IndexMap<String, String>,
+
+    /// The id of the binary for this node to use, uses "default" by default
+    #[serde(default)]
+    pub binary: Option<InternedId>,
 }
 
 impl Node {
@@ -216,6 +220,7 @@ impl Node {
             height: (0, self.height.into()),
             online: self.online,
             env: self.env.clone(),
+            binary: self.binary,
 
             // these are resolved later
             validators: Default::default(),
@@ -249,11 +254,12 @@ pub struct NodeFormatHeader {
     pub(crate) key_source: DataHeaderOf<KeySource>,
     pub(crate) height_request: DataHeaderOf<DocHeightRequest>,
     pub(crate) node_targets: DataHeaderOf<NodeTargets>,
+    pub has_binaries: bool,
 }
 
 impl DataFormat for NodeFormatHeader {
     type Header = u8;
-    const LATEST_HEADER: Self::Header = 1;
+    const LATEST_HEADER: Self::Header = 2;
 
     fn write_data<W: std::io::prelude::Write>(
         &self,
@@ -270,23 +276,23 @@ impl DataFormat for NodeFormatHeader {
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, DataReadError> {
-        match header {
-            1 => {
-                let key_source = KeySource::read_header(reader)?;
-                let height_request = DocHeightRequest::read_header(reader)?;
-                let node_targets = NodeTargets::read_header(reader)?;
-                Ok(NodeFormatHeader {
-                    key_source,
-                    height_request,
-                    node_targets,
-                })
-            }
-            _ => Err(DataReadError::unsupported(
+        if *header == 0 || *header > Self::LATEST_HEADER {
+            return Err(DataReadError::unsupported(
                 "NodeFormatHeader",
-                Self::LATEST_HEADER,
+                format!("1 or {}", Self::LATEST_HEADER),
                 *header,
-            )),
+            ));
         }
+
+        let key_source = KeySource::read_header(reader)?;
+        let height_request = DocHeightRequest::read_header(reader)?;
+        let node_targets = NodeTargets::read_header(reader)?;
+        Ok(NodeFormatHeader {
+            key_source,
+            height_request,
+            node_targets,
+            has_binaries: *header > 1,
+        })
     }
 }
 
@@ -296,6 +302,7 @@ impl DataFormat for Node {
         key_source: KeySource::LATEST_HEADER,
         height_request: DocHeightRequest::LATEST_HEADER,
         node_targets: NodeTargets::LATEST_HEADER,
+        has_binaries: true,
     };
 
     fn write_data<W: std::io::prelude::Write>(
@@ -312,6 +319,7 @@ impl DataFormat for Node {
         written += self.validators.write_data(writer)?;
         written += self.peers.write_data(writer)?;
         written += self.env.write_data(writer)?;
+        written += self.binary.write_data(writer)?;
         Ok(written)
     }
 
@@ -328,6 +336,11 @@ impl DataFormat for Node {
         let validators = reader.read_data(&header.node_targets)?;
         let peers = reader.read_data(&header.node_targets)?;
         let env = Vec::<(String, String)>::read_data(reader, &((), ()))?;
+        let binary = if header.has_binaries {
+            reader.read_data(&())?
+        } else {
+            None
+        };
 
         Ok(Node {
             online,
@@ -339,6 +352,7 @@ impl DataFormat for Node {
             validators,
             peers,
             env: env.into_iter().collect(),
+            binary,
         })
     }
 }

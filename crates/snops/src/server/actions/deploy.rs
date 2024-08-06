@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use axum::{
-    extract::Query,
+    extract::{Query, State},
     response::{IntoResponse, Response},
     Json,
 };
@@ -16,9 +18,11 @@ use crate::{
     cannon::{error::AuthorizeError, router::AuthQuery, status::TransactionStatusSender},
     env::{error::ExecutionError, Environment},
     server::error::ServerError,
+    state::GlobalState,
 };
 
 pub async fn deploy(
+    State(state): State<Arc<GlobalState>>,
     Env { env, .. }: Env,
     Query(query): Query<AuthQuery>,
     Json(action): Json<DeployAction>,
@@ -26,7 +30,14 @@ pub async fn deploy(
     let query_addr = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
 
     if query.is_async() {
-        return match deploy_inner(action, &env, TransactionStatusSender::empty(), query_addr).await
+        return match deploy_inner(
+            &state,
+            action,
+            &env,
+            TransactionStatusSender::empty(),
+            query_addr,
+        )
+        .await
         {
             Ok(tx_id) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
             Err(e) => ServerError::from(e).into_response(),
@@ -34,13 +45,22 @@ pub async fn deploy(
     }
 
     let (tx, rx) = mpsc::channel(10);
-    match deploy_inner(action, &env, TransactionStatusSender::new(tx), query_addr).await {
+    match deploy_inner(
+        &state,
+        action,
+        &env,
+        TransactionStatusSender::new(tx),
+        query_addr,
+    )
+    .await
+    {
         Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }
 
 pub async fn deploy_inner(
+    state: &GlobalState,
     action: DeployAction,
     env: &Environment,
     events: TransactionStatusSender,
@@ -80,8 +100,9 @@ pub async fn deploy_inner(
         None
     };
 
+    let compute_bin = env.storage.resolve_compute_binary(state).await?;
     // authorize the transaction
-    let aot = AotCmd::new(env.aot_bin.clone(), env.network);
+    let aot = AotCmd::new(compute_bin, env.network);
     let auth_str = aot
         .authorize_deploy(
             &resolved_pk,

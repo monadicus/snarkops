@@ -1,9 +1,9 @@
 use std::{collections::HashMap, str::FromStr};
 
 use axum::{
-    extract::{self, Path, Query, Request, State},
+    extract::{self, Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -11,7 +11,6 @@ use indexmap::IndexSet;
 use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
-    constant::{LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE},
     key_source::KeySource,
     lasso::Spur,
     node_targets::NodeTargets,
@@ -19,14 +18,11 @@ use snops_common::{
     state::{id_or_none, AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey},
 };
 use tarpc::context;
-use tower::Service;
-use tower_http::services::ServeFile;
 
 use super::{actions, error::ServerError, models::AgentStatusResponse, AppState};
 use crate::{
     cannon::{router::redirect_cannon_routes, source::QueryTarget},
     make_env_filter,
-    schema::storage::DEFAULT_AOT_BIN,
 };
 use crate::{
     env::{EnvPeer, Environment},
@@ -80,7 +76,6 @@ pub(super) fn routes() -> Router<AppState> {
             get(get_tx_blockhash),
         )
         .route("/env/:env_id/transaction/:tx_id", get(get_tx))
-        .route("/env/:env_id/storage/:ty", get(redirect_storage))
         .route("/env/:env_id/program/:program", get(get_program))
         .route(
             "/env/:env_id/program/:program/mapping/:mapping",
@@ -315,31 +310,6 @@ async fn get_tx(
             }
         }
     }
-}
-
-async fn redirect_storage(
-    Path((env_id, ty)): Path<(String, StorageType)>,
-    state: State<AppState>,
-    req: Request,
-) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-
-    let real_id = &env.storage.id;
-
-    let filename = match ty {
-        StorageType::Genesis => SNARKOS_GENESIS_FILE,
-        StorageType::Ledger => LEDGER_STORAGE_FILE,
-        StorageType::Binary => {
-            // TODO: replace with env specific aot binary
-            return ServeFile::new(DEFAULT_AOT_BIN.clone())
-                .call(req)
-                .await
-                .into_response();
-        }
-    };
-
-    Redirect::temporary(&format!("/content/storage/{real_id}/{filename}")).into_response()
 }
 
 async fn get_agents(state: State<AppState>) -> impl IntoResponse {

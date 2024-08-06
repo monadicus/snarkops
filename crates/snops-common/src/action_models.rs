@@ -120,4 +120,7 @@ pub struct Reconfig {
     pub peers: Option<NodeTargets>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validators: Option<NodeTargets>,
+    // TODO: private key
+    // TODO: env
+    // TODO: binary
 }

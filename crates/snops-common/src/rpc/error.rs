@@ -68,6 +68,8 @@ pub enum AgentError {
     FailedToParseJson,
     #[error("failed to make a request")]
     FailedToMakeRequest,
+    #[error("failed to get env info: {0}")]
+    FailedToGetEnvInfo(String),
     #[error("failed to spawn a process")]
     FailedToSpawnProcess,
     #[error("process failed")]
@@ -117,6 +119,8 @@ pub enum ReconcileError {
     StorageSetupError(String),
     #[error("failed to download {0} from the control plane")]
     StorageAcquireError(String),
+    #[error("failed to get the binary from the control plane: {0}")]
+    BinaryAcquireError(String),
     #[error("failed to find a checkpoint for the requested height/span")]
     CheckpointAcquireError,
     #[error("failed to apply checkpoint: {0}")]
