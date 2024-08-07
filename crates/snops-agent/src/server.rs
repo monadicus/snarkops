@@ -121,4 +121,5 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
     // abort the RPC server handle
     server_handle.abort();
+    state.node_client.lock().await.take();
 }
