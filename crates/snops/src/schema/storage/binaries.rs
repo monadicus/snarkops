@@ -6,7 +6,7 @@ use std::{
 
 use lazy_static::lazy_static;
 use lazysort::SortedBy;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use snops_common::{
     binaries::{BinaryEntry, BinarySource},
     util::sha256_file,
@@ -44,34 +44,46 @@ fn env_or_bin(name: &str, env: &str) -> BinaryEntry {
         source: source.clone(),
     };
 
-    match source {
-        BinarySource::Url(_) => {
-            if let Ok(size) = std::env::var(format!("{}_SIZE", env)) {
-                entry.size = Some(size.parse().unwrap_or_else(|e| {
-                    panic!(
-                        "{env}_SIZE: failed to parse `{size}` as a u64: {e}",
-                        size = size
-                    )
-                }));
+    if let Ok(size) = std::env::var(format!("{}_SIZE", env)) {
+        entry.size = if size == "auto" {
+            match &source {
+                BinarySource::Url(_) => {
+                    panic!("{env}_SIZE: `auto` not implemented for url sources");
+                }
+                BinarySource::Path(path) => Some(
+                    path.metadata()
+                        .unwrap_or_else(|e| {
+                            panic!("failed to get file metadata of `{}`: {e}", path.display())
+                        })
+                        .size(),
+                ),
             }
-            if let Ok(sha256) = std::env::var(format!("{}_SHA256", env)) {
-                entry.sha256 = Some(sha256.to_lowercase());
-                if !entry.check_sha256() {
-                    panic!("{env}_SHA256: invalid sha256 `{sha256}`");
+        } else {
+            Some(size.parse().unwrap_or_else(|e| {
+                panic!(
+                    "{env}_SIZE: failed to parse `{size}` as a u64: {e}",
+                    size = size
+                )
+            }))
+        };
+    }
+    if let Ok(sha256) = std::env::var(format!("{}_SHA256", env)) {
+        if sha256 == "auto" {
+            match &source {
+                BinarySource::Url(_) => {
+                    panic!("{env}_SHA256: `auto` not implemented for url sources");
+                }
+                BinarySource::Path(path) => {
+                    entry.sha256 = Some(sha256_file(path).unwrap_or_else(|e| {
+                        panic!("failed to calculate sha256 of `{}`: {e}", path.display())
+                    }))
                 }
             }
-        }
-        BinarySource::Path(path) => {
-            entry.sha256 = Some(sha256_file(&path).unwrap_or_else(|e| {
-                panic!("failed to calculate sha256 of `{}`: {e}", path.display())
-            }));
-            entry.size = Some(
-                path.metadata()
-                    .unwrap_or_else(|e| {
-                        panic!("failed to get file metadata of `{}`: {e}", path.display())
-                    })
-                    .size(),
-            );
+        } else {
+            entry.sha256 = Some(sha256.to_lowercase());
+            if !entry.check_sha256() {
+                panic!("{env}_SHA256: invalid sha256 `{sha256}`");
+            }
         }
     }
 
@@ -137,23 +149,82 @@ pub enum BinResolveError {
     SetPermissions(PathBuf, #[source] std::io::Error),
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Default)]
+#[serde(untagged)]
+pub enum AutoIsDefault<T> {
+    #[default]
+    None,
+    #[serde(with = "snops_common::state::strings::auto")]
+    Auto,
+    Value(T),
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct BinaryEntryInternal {
+    pub source: BinarySource,
+    #[serde(default)]
+    pub size: Option<AutoIsDefault<u64>>,
+    #[serde(default)]
+    pub sha256: Option<AutoIsDefault<String>>,
+}
+
 /// A BinaryEntryDoc can be a shorthand or a full entry
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum BinaryEntryDoc {
     Shorthand(BinarySource),
-    Full(BinaryEntry),
+    Full(BinaryEntryInternal),
 }
 
-impl From<BinaryEntryDoc> for BinaryEntry {
-    fn from(doc: BinaryEntryDoc) -> Self {
-        match doc {
-            BinaryEntryDoc::Shorthand(source) => BinaryEntry {
+#[derive(Debug, Error)]
+pub enum BinarySourceError {
+    #[error("`auto` is not supported for urls")]
+    UnavailableFeature,
+    #[error("not found: {0}")]
+    NotFound(PathBuf),
+    #[error("failed to get metadata of {0}: {1}")]
+    MetadataFailed(PathBuf, std::io::Error),
+    #[error("failed to calculate sha256 of {0}: {1}")]
+    Sha256(PathBuf, std::io::Error),
+}
+
+impl TryFrom<BinaryEntryDoc> for BinaryEntry {
+    type Error = BinarySourceError;
+
+    fn try_from(value: BinaryEntryDoc) -> Result<Self, Self::Error> {
+        match value {
+            BinaryEntryDoc::Shorthand(source) => Ok(BinaryEntry {
                 source,
                 sha256: None,
                 size: None,
-            },
-            BinaryEntryDoc::Full(entry) => entry,
+            }),
+            BinaryEntryDoc::Full(entry) => Ok(BinaryEntry {
+                size: match entry.size {
+                    None | Some(AutoIsDefault::None) => None,
+                    Some(AutoIsDefault::Value(size)) => Some(size),
+                    Some(AutoIsDefault::Auto) => match &entry.source {
+                        BinarySource::Url(_) => return Err(BinarySourceError::UnavailableFeature),
+                        BinarySource::Path(path) => Some(
+                            path.metadata()
+                                .map_err(|e| BinarySourceError::MetadataFailed(path.clone(), e))?
+                                .size(),
+                        ),
+                    },
+                },
+                sha256: match entry.sha256 {
+                    None | Some(AutoIsDefault::None) => None,
+                    Some(AutoIsDefault::Value(sha256)) => Some(sha256),
+                    Some(AutoIsDefault::Auto) => match &entry.source {
+                        BinarySource::Url(_) => return Err(BinarySourceError::UnavailableFeature),
+                        BinarySource::Path(path) => Some(
+                            sha256_file(path)
+                                .map_err(|e| BinarySourceError::Sha256(path.clone(), e))?
+                                .to_lowercase(),
+                        ),
+                    },
+                },
+                source: entry.source,
+            }),
         }
     }
 }

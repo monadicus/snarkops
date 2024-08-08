@@ -12,7 +12,7 @@ mod node_state;
 mod node_type;
 mod port_config;
 pub mod snarkos_status;
-mod strings;
+pub mod strings;
 
 pub use agent_mode::*;
 pub use agent_state::*;

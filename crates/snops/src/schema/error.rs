@@ -13,6 +13,8 @@ use strum_macros::AsRefStr;
 use thiserror::Error;
 use url::Url;
 
+use super::storage::BinarySourceError;
+
 #[derive(Debug, Error, AsRefStr)]
 pub enum StorageError {
     #[error("storage id: `{1}`: {0}")]
@@ -67,6 +69,8 @@ pub enum StorageError {
     BinaryCheckFailed(InternedId, PathBuf, String),
     #[error("failed to check/modify file permissions `{0}`: {1}")]
     PermissionError(PathBuf, std::io::Error),
+    #[error("failed to parse binary `{0}`: {1}")]
+    BinaryParse(InternedId, BinarySourceError),
 }
 
 impl_into_status_code!(StorageError, |value| match value {
