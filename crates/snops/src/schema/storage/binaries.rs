@@ -45,27 +45,25 @@ fn env_or_bin(name: &str, env: &str) -> BinaryEntry {
     };
 
     if let Ok(size) = std::env::var(format!("{}_SIZE", env)) {
-        entry.size = if size == "auto" {
-            match &source {
-                BinarySource::Url(_) => {
-                    panic!("{env}_SIZE: `auto` not implemented for url sources");
+        entry.size =
+            if size == "auto" {
+                match &source {
+                    BinarySource::Url(_) => {
+                        panic!("{env}_SIZE: `auto` not implemented for url sources");
+                    }
+                    BinarySource::Path(path) => Some(
+                        path.metadata()
+                            .unwrap_or_else(|e| {
+                                panic!("failed to get file metadata of `{}`: {e}", path.display())
+                            })
+                            .size(),
+                    ),
                 }
-                BinarySource::Path(path) => Some(
-                    path.metadata()
-                        .unwrap_or_else(|e| {
-                            panic!("failed to get file metadata of `{}`: {e}", path.display())
-                        })
-                        .size(),
-                ),
-            }
-        } else {
-            Some(size.parse().unwrap_or_else(|e| {
-                panic!(
-                    "{env}_SIZE: failed to parse `{size}` as a u64: {e}",
-                    size = size
-                )
-            }))
-        };
+            } else {
+                Some(size.parse().unwrap_or_else(|e| {
+                    panic!("{env}_SIZE: failed to parse `{size}` as a u64: {e}",)
+                }))
+            };
     }
     if let Ok(sha256) = std::env::var(format!("{}_SHA256", env)) {
         if sha256 == "auto" {
