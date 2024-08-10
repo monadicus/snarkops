@@ -45,30 +45,31 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
             let mut static_configs = vec![];
 
             for agent in state.pool.iter() {
-                let Some(mut agent_addr) =
-                    (match (state.cli.prometheus_location, agent.has_label_str("local")) {
-                        // agent is external: serve its external IP
-                        (_, false) => agent
-                            .addrs()
-                            .and_then(|addrs| addrs.external.as_ref())
-                            .map(ToString::to_string),
+                let Some(mut agent_addr) = (match (
+                    state.config.prometheus_location,
+                    agent.has_label_str("local"),
+                ) {
+                    // agent is external: serve its external IP
+                    (_, false) => agent
+                        .addrs()
+                        .and_then(|addrs| addrs.external.as_ref())
+                        .map(ToString::to_string),
 
-                        // prometheus and agent are local: use internal IP
-                        (PrometheusLocation::Internal, true) => agent
-                            .addrs()
-                            .and_then(|addrs| addrs.internal.first())
-                            .map(ToString::to_string),
+                    // prometheus and agent are local: use internal IP
+                    (PrometheusLocation::Internal, true) => agent
+                        .addrs()
+                        .and_then(|addrs| addrs.internal.first())
+                        .map(ToString::to_string),
 
-                        // prometheus in docker but agent is local: use host.docker.internal
-                        (PrometheusLocation::Docker, true) => {
-                            Some(String::from("host.docker.internal"))
-                        }
+                    // prometheus in docker but agent is local: use host.docker.internal
+                    (PrometheusLocation::Docker, true) => {
+                        Some(String::from("host.docker.internal"))
+                    }
 
-                        // prometheus is external but agent is local: agent might not be forwarded;
-                        // TODO
-                        (PrometheusLocation::External, true) => continue,
-                    })
-                else {
+                    // prometheus is external but agent is local: agent might not be forwarded;
+                    // TODO
+                    (PrometheusLocation::External, true) => continue,
+                }) else {
                     continue;
                 };
 

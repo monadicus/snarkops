@@ -39,7 +39,7 @@ async fn not_found(uri: Uri, res: Response) -> Response {
 
 pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
     // create storage path
-    let storage_path = state.cli.path.join("storage");
+    let storage_path = state.config.path.join("storage");
     tracing::debug!("storage path: {:?}", storage_path);
     tokio::fs::create_dir_all(&storage_path)
         .await

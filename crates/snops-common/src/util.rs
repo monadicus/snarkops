@@ -1,5 +1,12 @@
-use std::{fmt::Debug, io::Read, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    fmt::Debug,
+    fs::File,
+    io::{BufReader, Read},
+    path::{Path, PathBuf},
+};
 
+use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 
 /// A wrapper struct that has an "opaque" `Debug` implementation for types
@@ -40,4 +47,22 @@ pub fn sha256_file(path: &PathBuf) -> Result<String, std::io::Error> {
     }
 
     Ok(format!("{:x}", digest.finalize()))
+}
+
+pub fn parse_file_from_extension<T: DeserializeOwned>(
+    path: &Path,
+    file: File,
+) -> Result<T, Box<dyn core::error::Error>> {
+    // TODO: toml
+    let reader = BufReader::new(file);
+    let ext = path.extension().and_then(OsStr::to_str).unwrap_or_else(|| {
+        tracing::warn!("invalid parse extension; falling back to yaml");
+        "yaml"
+    });
+
+    Ok(match ext {
+        "yaml" | "yml" => serde_yaml::from_reader(reader)?,
+        "json" => serde_yaml::from_reader(reader)?,
+        _ => unimplemented!("unknown parse extension {ext}"),
+    })
 }

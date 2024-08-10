@@ -199,7 +199,7 @@ impl CannonInstance {
     pub fn get_local_query(&self) -> String {
         format!(
             "http://{}/api/v1/env/{}/cannons/{}",
-            self.global_state.cli.get_local_addr(),
+            self.global_state.config.get_local_addr(),
             self.env_id,
             self.id
         )
@@ -309,11 +309,11 @@ impl ExecutionContext {
             // demox needs to locate it
             ComputeTarget::Demox { .. } => {
                 let host = state
-                    .cli
+                    .config
                     .hostname
                     .as_ref()
                     .ok_or(ExecutionContextError::NoHostnameConfigured)?;
-                format!("{host}:{}{suffix}", state.cli.port)
+                format!("{host}:{}{suffix}", state.config.port)
             }
         };
         trace!("cannon {env_id}.{cannon_id} using realtime query {query_path}");
