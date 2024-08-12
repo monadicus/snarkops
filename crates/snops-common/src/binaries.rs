@@ -18,7 +18,9 @@ use crate::{
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BinaryEntry {
     pub source: BinarySource,
+    #[serde(default)]
     pub sha256: Option<String>,
+    #[serde(default)]
     pub size: Option<u64>,
 }
 

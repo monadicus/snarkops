@@ -33,7 +33,7 @@ pub use binaries::*;
 pub const STORAGE_DIR: &str = "storage";
 
 /// A storage document. Explains how storage for a test should be set up.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct Document {
     pub id: StorageId,
@@ -196,7 +196,8 @@ impl Document {
         // gather the binaries
         let mut binaries = IndexMap::default();
         for (id, v) in self.binaries {
-            let mut entry = BinaryEntry::from(v);
+            let mut entry =
+                BinaryEntry::try_from(v).map_err(|e| StorageError::BinaryParse(id, e))?;
             if let BinarySource::Path(p) = &mut entry.source {
                 if !p.exists() {
                     return Err(StorageError::BinaryFileMissing(id, p.clone()).into());

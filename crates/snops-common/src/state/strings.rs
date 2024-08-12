@@ -34,3 +34,4 @@ macro_rules! named_unit_variant {
 }
 
 named_unit_variant!(top);
+named_unit_variant!(auto);
