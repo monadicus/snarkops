@@ -31,6 +31,65 @@ This allows you to re-use a storage among different environments.
 
 The optional description for a storage document.
 
+### binaries
+
+Allows you to specify multiple runner binaries for an environment.
+ 
+You can specify a binary in a few ways, but it's always `binary_name: field/sub-fields`.
+
+Longhand url:
+```yaml
+binaries:
+  default:
+    source: url
+    # case sensitive sha
+    sha256: a95e329b13627165283e59c5435586d681fdbbe517f45e868178f9453cb55e72
+    size: 124
+```
+
+Longhand path:
+```yaml
+binaries:
+  compute:
+    source: /path/to/binary
+    # for path based ones you can auto derive sha and size.
+    sha256: auto
+    size: auto
+```
+
+Shorthand url/path:
+```yaml
+binaries:
+  # For paths this will use auto.
+  fix-bug-1285: path
+  # For url's use at your own risk as sha will not be verified.
+  fix-performance-1298: url
+```
+
+#### default
+
+An optional specifically named binary information you can provide to be used as the default node runner binary.
+
+If not provided defaults to the `AOT_BIN` environment variable.
+
+#### compute
+
+An optional specifically named binary information you can provide to be used as the default compute binary.
+
+If not provided falls back to the default binary.
+
+##### source
+
+The url or path for a binary version to be served from.
+
+##### sha256
+
+The sha of the binary, verifed when downloaded by the agent.
+
+##### size
+
+The size of the binary in bytes.
+
 ### regen
 
 An optional number used if you want to wipe the old storage.
@@ -219,4 +278,54 @@ connect: https://pub-d74d58a8616c4d54bc1a948b4d001970.r2.dev/block.genesis
 generate:
   accounts:
     extra: 5
+```
+
+### Multiple Binaries
+
+```yaml
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: example-binary
+
+generate:
+  genesis:
+    seed: 1
+
+# Can be later accessed in the nodes document by name.
+binaries:
+  default:
+    sha256: auto
+    size: auto
+
+  compute: ./path/to/compute/file
+
+  example_http:
+    source: https://example.com/example_file
+    sha256: a95e329b13627165283e59c5435586d681fdbbe517f45e868178f9453cb55e72
+    size: 123 # auto is not available for url sources
+
+  example_http_short: https://example.com/example_file
+
+# you can then use thes in nodes like:
+---
+version: nodes.snarkos.testing.monadic.us/v1
+name: example-storage
+
+nodes:
+  validator/test:
+    replicas: 3
+    key: committee.$
+    height: 0
+    validators: [validator/*]
+    # the "default" binary is inferred
+    binary: default
+
+  validator/alternate-binary:
+    replicas: 3
+    key: committee.4
+    height: 0
+    validators: [validator/*]
+    # specify the binary to use for this node
+    binary: example_http_short
 ```

@@ -44,27 +44,12 @@ This document contains the help content for the `snops-agent` command-line progr
 
   Default value: `9000`
 * `--validator` — Enable running a validator node
-
-  Possible values: `true`, `false`
-
 * `--prover` — Enable running a prover node
-
-  Possible values: `true`, `false`
-
 * `--client` — Enable running a client node
-
-  Possible values: `true`, `false`
-
 * `--compute` — Enable functioning as a compute target when inventoried
-
-  Possible values: `true`, `false`
-
 * `-q`, `--quiet` — Run the agent in quiet mode, suppressing most node output
 
   Default value: `false`
-
-  Possible values: `true`, `false`
-
 
 
 

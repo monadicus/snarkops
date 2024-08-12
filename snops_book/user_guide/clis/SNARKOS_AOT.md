@@ -60,9 +60,6 @@ The different AOT commands
 ###### **Options:**
 
 * `--enable-profiling`
-
-  Possible values: `true`, `false`
-
 * `--log <LOG>` — The path to the log file
 * `--verbosity <VERBOSITY>` — The verbosity level of the logs
 
@@ -149,9 +146,6 @@ Commands for interacting with the ledger
 ###### **Options:**
 
 * `--enable-profiling`
-
-  Possible values: `true`, `false`
-
 * `-g`, `--genesis <GENESIS>` — A path to the genesis block to initialize the ledger from
 
   Default value: `./genesis.block`
@@ -257,9 +251,6 @@ Replays blocks from a ledger to a specific height or amount to rollback to
 
   Default value: `false`
 
-  Possible values: `true`, `false`
-
-
 
 
 ## `snarkos-aot ledger execute`
@@ -271,6 +262,10 @@ A command to execute an authorization
 ###### **Arguments:**
 
 * `<JSON>` — Authorization flags as json
+
+   `{"auth": Program Auth, "fee_auth": Fee Auth }`
+
+   `{"deployment": Deployment, "owner": Prog Owner, "fee_auth": Fee Auth }`
 
 ###### **Options:**
 
@@ -284,13 +279,11 @@ A command to execute an authorization
 * `-b`, `--broadcast` — Whether to broadcast the transaction
 
   Default value: `false`
-
-  Possible values: `true`, `false`
-
 * `-a`, `--auth <AUTH>` — Authorization for an execution of some kind
 * `-f`, `--fee-auth <FEE_AUTH>` — The optional fee authorization for said execution
 * `-o`, `--owner <OWNER>` — The owner of the program if deploying
 * `-d`, `--deployment <DEPLOYMENT>` — The deployment of the program if deploying
+* `--seed <SEED>` — The seed to use for the execution
 
 
 
@@ -309,13 +302,7 @@ Receive inquiries on `/<network>/latest/stateRoot`
 
   Default value: `0.0.0.0`
 * `--readonly` — When true, the POST `/block` endpoint will not be available
-
-  Possible values: `true`, `false`
-
 * `--record` — Receive messages from `/<network>/transaction/broadcast` and record them to the output
-
-  Possible values: `true`, `false`
-
 * `-o`, `--output <OUTPUT>` — Path to the directory containing the stored data
 
   Default value: `transactions.json`
@@ -368,9 +355,6 @@ Apply a checkpoint to the given ledger
 * `-c`, `--clean` — When present, clean up old checkpoints that are no longer applicable after applying the checkpoint
 
   Default value: `false`
-
-  Possible values: `true`, `false`
-
 
 
 
@@ -426,7 +410,7 @@ A wrapper around the snarkos node run commands that provide additional logging a
 
   Default value: `1000`
 * `--retention-policy <RETENTION_POLICY>` — The retention policy for the checkpoint manager. i.e. how often to create checkpoints
-* `--agent-status-port <AGENT_STATUS_PORT>` — When present, emits the agent status on the given port
+* `--agent-rpc-port <AGENT_RPC_PORT>` — When present, connects to an agent RPC server on the given port
 
 
 
@@ -457,6 +441,10 @@ A command to execute an authorization
 
 * `<JSON>` — Authorization flags as json
 
+   `{"auth": Program Auth, "fee_auth": Fee Auth }`
+
+   `{"deployment": Deployment, "owner": Prog Owner, "fee_auth": Fee Auth }`
+
 ###### **Options:**
 
 * `-e`, `--exec-mode <EXEC_MODE>` — The execution mode: local(local ledgr) or remote(api to another node)
@@ -469,13 +457,11 @@ A command to execute an authorization
 * `-b`, `--broadcast` — Whether to broadcast the transaction
 
   Default value: `false`
-
-  Possible values: `true`, `false`
-
 * `-a`, `--auth <AUTH>` — Authorization for an execution of some kind
 * `-f`, `--fee-auth <FEE_AUTH>` — The optional fee authorization for said execution
 * `-o`, `--owner <OWNER>` — The owner of the program if deploying
 * `-d`, `--deployment <DEPLOYMENT>` — The deployment of the program if deploying
+* `--seed <SEED>` — The seed to use for the execution
 
 
 
@@ -497,14 +483,12 @@ Authorize a program execution
 * `--fee-private-key <FEE_PRIVATE_KEY>` — Specify the account private key of the node
 * `--fee-private-key-file <FEE_PRIVATE_KEY_FILE>` — Specify the account private key of the node
 * `--skip-fee` — Prevent the fee from being included in the authorization
-
-  Possible values: `true`, `false`
-
 * `--priority-fee <PRIORITY_FEE>` — The priority fee in microcredits
 
   Default value: `0`
 * `--record <RECORD>` — The record for a private fee
 * `-q`, `--query <QUERY>` — Query to load the program with
+* `--seed <SEED>` — The seed to use for the authorization generation
 
 
 
@@ -527,6 +511,7 @@ Authorize the fee for a program execution
 * `-d`, `--deployment <DEPLOYMENT>` — The Authorization for a deployment
 * `-i`, `--id <ID>` — The ID of the deployment or program execution
 * `-c`, `--cost <COST>` — Estimated cost of the deployment or program execution
+* `--seed <SEED>` — The seed to use for the authorization generation
 
 
 
@@ -539,6 +524,10 @@ Given an authorization (and fee), return the transaction ID
 ###### **Arguments:**
 
 * `<JSON>` — Authorization flags as json
+
+   `{"auth": Program Auth, "fee_auth": Fee Auth }`
+
+   `{"deployment": Deployment, "owner": Prog Owner, "fee_auth": Fee Auth }`
 
 ###### **Options:**
 
@@ -558,6 +547,10 @@ Estimate the cost of a program execution or deployment
 ###### **Arguments:**
 
 * `<JSON>` — Authorization flags as json
+
+   `{"auth": Program Auth, "fee_auth": Fee Auth }`
+
+   `{"deployment": Deployment, "owner": Prog Owner, "fee_auth": Fee Auth }`
 
 ###### **Options:**
 
@@ -586,14 +579,12 @@ Deploy a program to the network
 * `--fee-private-key <FEE_PRIVATE_KEY>` — Specify the account private key of the node
 * `--fee-private-key-file <FEE_PRIVATE_KEY_FILE>` — Specify the account private key of the node
 * `--skip-fee` — Prevent the fee from being included in the authorization
-
-  Possible values: `true`, `false`
-
 * `--priority-fee <PRIORITY_FEE>` — The priority fee in microcredits
 
   Default value: `0`
 * `--record <RECORD>` — The record for a private fee
 * `-q`, `--query <QUERY>` — The query to use for the program
+* `--seed <SEED>` — The seed to use for the authorization generation
 
 
 
@@ -626,9 +617,6 @@ Get the ID of a given program
 
 * `-j`, `--json` — Output as JSON
 
-  Possible values: `true`, `false`
-
-
 
 
 ## `snarkos-aot program functions`
@@ -644,9 +632,6 @@ List the functions and their inputs/outputs of a given program
 ###### **Options:**
 
 * `-j`, `--json` — Output as JSON
-
-  Possible values: `true`, `false`
-
 
 
 
@@ -664,21 +649,18 @@ List the inputs of a given program
 
 * `-j`, `--json` — Output as JSON
 
-  Possible values: `true`, `false`
-
-
 
 
 ## `snarkos-aot program cost`
 
 Compute the cost to execute a function in a given program
 
-**Usage:** `snarkos-aot program cost [OPTIONS] <PROGRAM> <FUNCTION> [INPUTS]...`
+**Usage:** `snarkos-aot program cost [OPTIONS] <PROGRAM> [FUNCTION] [INPUTS]...`
 
 ###### **Arguments:**
 
 * `<PROGRAM>` — Program to estimate the cost of
-* `<FUNCTION>` — Program ID and function name (eg. credits.aleo/transfer_public)
+* `<FUNCTION>` — Program ID and function name (eg. credits.aleo/transfer_public). When not specified, the cost of deploying the program is estimated
 * `<INPUTS>` — Program inputs (eg. 1u64 5field)
 
 ###### **Options:**

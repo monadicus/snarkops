@@ -9,8 +9,11 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli agent`↴](#snops-cli-agent)
 * [`snops-cli agent find`↴](#snops-cli-agent-find)
 * [`snops-cli agent info`↴](#snops-cli-agent-info)
+* [`snops-cli agent kill`↴](#snops-cli-agent-kill)
 * [`snops-cli agent list`↴](#snops-cli-agent-list)
 * [`snops-cli agent tps`↴](#snops-cli-agent-tps)
+* [`snops-cli agent set-log-level`↴](#snops-cli-agent-set-log-level)
+* [`snops-cli agent set-snarkos-log-level`↴](#snops-cli-agent-set-snarkos-log-level)
 * [`snops-cli env`↴](#snops-cli-env)
 * [`snops-cli env action`↴](#snops-cli-env-action)
 * [`snops-cli env action offline`↴](#snops-cli-env-action-offline)
@@ -21,14 +24,23 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli env action config`↴](#snops-cli-env-action-config)
 * [`snops-cli env agent`↴](#snops-cli-env-agent)
 * [`snops-cli env agents`↴](#snops-cli-env-agents)
+* [`snops-cli env auth`↴](#snops-cli-env-auth)
 * [`snops-cli env balance`↴](#snops-cli-env-balance)
+* [`snops-cli env block`↴](#snops-cli-env-block)
+* [`snops-cli env height`↴](#snops-cli-env-height)
+* [`snops-cli env transaction`↴](#snops-cli-env-transaction)
+* [`snops-cli env transaction-details`↴](#snops-cli-env-transaction-details)
 * [`snops-cli env clean`↴](#snops-cli-env-clean)
+* [`snops-cli env info`↴](#snops-cli-env-info)
 * [`snops-cli env list`↴](#snops-cli-env-list)
 * [`snops-cli env topology`↴](#snops-cli-env-topology)
 * [`snops-cli env topology-resolved`↴](#snops-cli-env-topology-resolved)
 * [`snops-cli env prepare`↴](#snops-cli-env-prepare)
+* [`snops-cli env mapping`↴](#snops-cli-env-mapping)
+* [`snops-cli env mappings`↴](#snops-cli-env-mappings)
 * [`snops-cli env program`↴](#snops-cli-env-program)
 * [`snops-cli env storage`↴](#snops-cli-env-storage)
+* [`snops-cli set-log-level`↴](#snops-cli-set-log-level)
 * [`snops-cli man`↴](#snops-cli-man)
 * [`snops-cli md`↴](#snops-cli-md)
 
@@ -41,6 +53,7 @@ This document contains the help content for the `snops-cli` command-line program
 * `autocomplete` — Generate shell completions
 * `agent` — For interacting with snop agents
 * `env` — For interacting with snop environments
+* `set-log-level` — 
 * `man` — For generating cli manpages. Only with the mangen feature enabled
 * `md` — For generating cli markdown. Only with the clipages feature enabled
 
@@ -77,8 +90,11 @@ For interacting with snop agents
 
 * `find` — Find agents by set criteria. If all of client/compute/prover/validator are not specified it can be any one of them
 * `info` — Get the specific agent
+* `kill` — Kill the specific agent
 * `list` — List all agents. Ignores the agent id
 * `tps` — Get the specific agent's TPS
+* `set-log-level` — 
+* `set-snarkos-log-level` — 
 
 ###### **Arguments:**
 
@@ -97,35 +113,14 @@ Find agents by set criteria. If all of client/compute/prover/validator are not s
 ###### **Options:**
 
 * `--client` — Whether the agent can be a client
-
-  Possible values: `true`, `false`
-
 * `--compute` — Whether the agent can be a compute
-
-  Possible values: `true`, `false`
-
 * `--prover` — Whether the agent can be a prover
-
-  Possible values: `true`, `false`
-
 * `--validator` — Whether the agent can be a validator
-
-  Possible values: `true`, `false`
-
 * `--env <ENV>` — Which env you are finding the agens from. Not specifing a env, means only inventoried agents are found
 * `--all` — Means regardless of connection status, and state we find them
-
-  Possible values: `true`, `false`
-
 * `--labels <LABELS>` — The labels an agent should have
 * `--local-pk` — If the agent has a local private key or not
-
-  Possible values: `true`, `false`
-
 * `--include-offline` — Wether to include offline agents as well
-
-  Possible values: `true`, `false`
-
 
 
 
@@ -134,6 +129,14 @@ Find agents by set criteria. If all of client/compute/prover/validator are not s
 Get the specific agent
 
 **Usage:** `snops-cli agent info`
+
+
+
+## `snops-cli agent kill`
+
+Kill the specific agent
+
+**Usage:** `snops-cli agent kill`
 
 
 
@@ -153,6 +156,26 @@ Get the specific agent's TPS
 
 
 
+## `snops-cli agent set-log-level`
+
+**Usage:** `snops-cli agent set-log-level <LEVEL>`
+
+###### **Arguments:**
+
+* `<LEVEL>` — The log level to set
+
+
+
+## `snops-cli agent set-snarkos-log-level`
+
+**Usage:** `snops-cli agent set-snarkos-log-level <VERBOSITY>`
+
+###### **Arguments:**
+
+* `<VERBOSITY>` — The log verbosity to set
+
+
+
 ## `snops-cli env`
 
 For interacting with snop environments
@@ -164,12 +187,20 @@ For interacting with snop environments
 * `action` — Actions you can apply on a specific environment
 * `agent` — Get an env's specific agent by
 * `agents` — List an env's agents
+* `auth` — 
 * `balance` — Lookup an account's balance
+* `block` — Lookup a block or get the latest block
+* `height` — Get the latest height from all agents in the env
+* `transaction` — Lookup a transaction's block by a transaction id
+* `transaction-details` — Lookup a transaction's details by a transaction id
 * `clean` — Clean a specific environment
+* `info` — Get an env's latest block/state root info
 * `list` — List all environments. Ignores the env id
 * `topology` — Show the current topology of a specific environment
 * `topology-resolved` — Show the resolved topology of a specific environment. Shows only internal agents
 * `prepare` — Prepare a (test) environment
+* `mapping` — Lookup a mapping by program id and mapping name
+* `mappings` — Lookup a program's mappings only
 * `program` — Lookup a program by its id
 * `storage` — Get an env's storage info
 
@@ -252,6 +283,7 @@ Execute an aleo program function on the environment. i.e. credits.aleo/transfer_
 * `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
 * `--priority-fee <PRIORITY_FEE>` — The optional priority fee to use
 * `--fee-record <FEE_RECORD>` — The fee record to use if you want to pay the fee privately
+* `--async` — When present, don't wait for transaction execution before returning
 
 
 
@@ -272,6 +304,7 @@ Deploy an aleo program to the environment
 * `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
 * `--priority-fee <PRIORITY_FEE>` — The optional priority fee to use
 * `--fee-record <FEE_RECORD>` — The fee record to use if you want to pay the fee privately
+* `--async` — When present, don't wait for transaction execution before returning
 
 
 
@@ -283,7 +316,7 @@ Configure the state of the target nodes
 
 ###### **Arguments:**
 
-* `<NODES>` — The nodes to configure.
+* `<NODES>` — The nodes to configure
 
 ###### **Options:**
 
@@ -317,15 +350,78 @@ List an env's agents
 
 
 
+## `snops-cli env auth`
+
+**Usage:** `snops-cli env auth [OPTIONS] <AUTH>`
+
+###### **Arguments:**
+
+* `<AUTH>` — Authorization to execute and broadcast
+
+###### **Options:**
+
+* `--async` — When present, don't wait for transaction execution before returning
+* `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
+
+  Default value: `default`
+
+
+
 ## `snops-cli env balance`
 
 Lookup an account's balance
 
-**Usage:** `snops-cli env balance <KEY>`
+**Usage:** `snops-cli env balance <ADDRESS>`
 
 ###### **Arguments:**
 
-* `<KEY>`
+* `<ADDRESS>` — Address to lookup balance for
+
+
+
+## `snops-cli env block`
+
+Lookup a block or get the latest block
+
+**Usage:** `snops-cli env block [HEIGHT_OR_HASH]`
+
+###### **Arguments:**
+
+* `<HEIGHT_OR_HASH>` — The block's height or hash
+
+  Default value: `latest`
+
+
+
+## `snops-cli env height`
+
+Get the latest height from all agents in the env
+
+**Usage:** `snops-cli env height`
+
+
+
+## `snops-cli env transaction`
+
+Lookup a transaction's block by a transaction id
+
+**Usage:** `snops-cli env transaction <ID>`
+
+###### **Arguments:**
+
+* `<ID>`
+
+
+
+## `snops-cli env transaction-details`
+
+Lookup a transaction's details by a transaction id
+
+**Usage:** `snops-cli env transaction-details <ID>`
+
+###### **Arguments:**
+
+* `<ID>`
 
 
 
@@ -334,6 +430,14 @@ Lookup an account's balance
 Clean a specific environment
 
 **Usage:** `snops-cli env clean`
+
+
+
+## `snops-cli env info`
+
+Get an env's latest block/state root info
+
+**Usage:** `snops-cli env info`
 
 
 
@@ -373,6 +477,32 @@ Prepare a (test) environment
 
 
 
+## `snops-cli env mapping`
+
+Lookup a mapping by program id and mapping name
+
+**Usage:** `snops-cli env mapping <PROGRAM> <MAPPING> <KEY>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — The program name
+* `<MAPPING>` — The mapping name
+* `<KEY>` — The key to lookup
+
+
+
+## `snops-cli env mappings`
+
+Lookup a program's mappings only
+
+**Usage:** `snops-cli env mappings <PROGRAM>`
+
+###### **Arguments:**
+
+* `<PROGRAM>` — The program name
+
+
+
 ## `snops-cli env program`
 
 Lookup a program by its id
@@ -390,6 +520,16 @@ Lookup a program by its id
 Get an env's storage info
 
 **Usage:** `snops-cli env storage`
+
+
+
+## `snops-cli set-log-level`
+
+**Usage:** `snops-cli set-log-level <LEVEL>`
+
+###### **Arguments:**
+
+* `<LEVEL>`
 
 
 
