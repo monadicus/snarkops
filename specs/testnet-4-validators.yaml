@@ -20,5 +20,5 @@ nodes:
     replicas: 4
     key: committee.$
     height: 0
-    validators: [validator/*]
+    validators: validator/*
     peers: []

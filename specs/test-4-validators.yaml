@@ -4,8 +4,9 @@ version: storage.snarkos.testing.monadic.us/v1
 id: base
 name: base-ledger
 
-generate: { genesis: { seed: 1 } }
-regen: 2
+generate:
+  genesis:
+    seed: 1
 
 ---
 version: nodes.snarkos.testing.monadic.us/v1
@@ -17,5 +18,5 @@ nodes:
     replicas: 4
     key: committee.$
     height: 0
-    validators: [validator/*]
+    validators: validator/*
     peers: []
