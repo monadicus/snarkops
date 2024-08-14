@@ -21,7 +21,15 @@ The version of the topology document.
 
 The name of the topology document.
 
-Should we remove this??? Our commands already put the env id and name is never used.
+### network
+
+The optional network to use for the nodes to use in API routes. By default it's `mainnet`.
+
+You can specify one of:
+
+- `mainnet`
+- `testnet`
+- `canary`
 
 ### description
 
@@ -29,9 +37,9 @@ The optional description for a topology document.
 
 ### external
 
-Where you can optionally list exeternal nodes, i.e. nodes outside of the `control plane's` control.
+Where you can optionally list external nodes, i.e. nodes outside of the `control plane's` control.
 
-If they are running with the default ports you can simply provied a node key(validator/foo@some_company_name) with their ip.
+If they are running with the default ports you can simply provide a node key(validator/foo@some_company_name) with their ip.
 
 For, reference the default ports are as follows:
 
@@ -60,7 +68,7 @@ external:
 
 ### internal
 
-Where you can optionally list internal nodes, i.e. `agents` controled by the plane that will run the provided mode. You will need the corresponding number of agents to create those nodes and their replicas.
+Where you can optionally list internal nodes, i.e. `agents` controlled by the plane that will run the provided mode. You will need the corresponding number of agents to create those nodes and their replicas.
 
 #### online
 
@@ -71,7 +79,7 @@ Defaults to `true`.
 
 #### replicas
 
-An opitional field that when specified, creates a group of nodes, all with the same configuration.
+An optional field that when specified, creates a group of nodes, all with the same configuration.
 So it will require that many agents to be running.
 
 #### key
@@ -82,7 +90,7 @@ The private key for the node to use.
 
 An optional field that when:
 - not provided crates a new ledger when the block is started.
-- `top` will use the latest heigth for the ledger.
+- `top` will use the latest height for the ledger.
 - a number to say what height to start at. If set to `0` resets the height to the genesis block.
 - or the next checkpoint that matches the retention span.
 
@@ -114,6 +122,10 @@ An optional, list of peers to connect to:
 An optional list of environment variables to provide to the node.
 
 `RUST_BACKTRACE: 1`
+
+#### binary
+
+The optional id of the binary to use provided from the [storage](./STORAGE.md#binaries) document, defaults to the `default` binary.
 
 ## Examples
 
@@ -159,4 +171,28 @@ nodes:
     validators: []
     # has all of every type of node that are at canarynet as peers
     peers: ["*/*@canarynet"] # so both validators and the client. 
+```
+
+### Using a custom binary
+
+```yaml
+version: nodes.snarkos.testing.monadic.us/v1
+name: example-storage
+
+nodes:
+  validator/test:
+    replicas: 3
+    key: committee.$
+    height: 0
+    validators: [validator/*]
+    # the "default" binary is inferred
+    binary: default
+
+  validator/alternate-binary:
+    replicas: 3
+    key: committee.4
+    height: 0
+    validators: [validator/*]
+    # specify the binary to use for this node
+    binary: example_http_short
 ```

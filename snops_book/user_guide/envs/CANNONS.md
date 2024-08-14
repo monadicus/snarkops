@@ -13,8 +13,6 @@ This document is required if you want to use a [cannon timeline action](TIMELINE
 
 You can have more than one cannon per `environment`.
 
-> [NOTE] For now only `credits.aleo` is supported.
-
 ## Fields
 
 The different top level fields you can specify in a cannon document and what they mean. You can skip to examples by clicking [here](#examples).
@@ -39,44 +37,14 @@ The optional description for a cannon document.
 
 Where the transactions should come from.
 
-There are several modes to chose from for a source.
-
-The type of source is determined by the options you provide.
-
-> [NOTE] You can only select one mode.
-
-#### playback
-
-This `source` mode reads transactions from a file.
-
-##### _file-name_
-
-The name of the file to read transactions from.
-
-```yaml
-source:
-  file-name: txs.json
-```
-
-The format of the file is:
-
-```json
-{tx_1_info...}
-{tx_2_info...}
-```
-
-#### realtime
-
-This `source` mode generates transactions in real time.
-
-##### query
+#### query
 
 Sets the query service for the cannon to use.
 
 Has two modes local ledger or a node in the `environment`.
 Optional defaults to the local ledger.
 
-###### local
+##### local
 
 An optional field that if provided uses the node in the `environment` specified to sync from.
 
@@ -89,7 +57,7 @@ source:
       sync-from: client/1 # optional
 ```
 
-###### node
+##### node
 
 An optional field that if provided uses the node in the `environment` specified pulls that node's state root over RPC.
 
@@ -99,14 +67,14 @@ source:
     mode: client/1 # required
 ```
 
-##### compute
+#### compute
 
 Sets the compute service for the cannon to use.
 
 Has two modes agent or demox.
 Optional defaults to the agent.
 
-###### agent
+##### agent
 
 This tells the cannon to use agents in the `environment`.
 
@@ -118,7 +86,7 @@ source:
     labels: foo,bar
 ```
 
-###### demox
+##### demox
 
 This tells the cannon to use Demox's API to generate the executions.
 
@@ -128,59 +96,6 @@ Requires the url for the API.
 source:
   compute:
     demox-api: https://exampl_url.com/api/v1
-```
-
-##### tx-modes
-
-The transaction methods to call.
-
-Optional defaults to `credits.aleo/transfer_public`.
-
-```yaml
-source:
-  tx-modes: [transfer-public]
-```
-
-> [NOTE] Only `credits.aleo` is supported at this time. And only transfer transactions.
-
-##### private-keys
-
-The private keys of the accounts that will make the transaction method call.
-
-Optional defaults to committee keys.
-
-```yaml
-source:
-  private-keys: [committee.$]
-```
-
-##### addresses
-
-The addresses of the accounts that will recieve the transfer.
-
-Optional defaults to committee keys.
-
-```yaml
-source:
-  addresses: [committee.$]
-```
-
-#### listen
-
-This `source` mode receive authorizations from a persistent path, `/api/v1/env/:env_id/cannons/:id/auth`.
-
-The same query mode as [above](#query).
-The compute mode as [above](#compute).
-
-However, they are now both requried.
-
-```yaml
-source:
-  query:
-    mode:
-      sync-from: client/1 # optional
-  compute:
-    labels: foo,bar # optional
 ```
 
 ### _sink_
@@ -213,61 +128,24 @@ The format of the file is:
 {tx_2_info...}
 ```
 
-##### tx_request_delay_ms
-
-An opitional field to specify how long between writes the tx should take, in milliseconds.
-
-Defaults to `1000`
-
-```yaml
-sink:
-  file-name: ...
-  tx-request-delay-ms: 1000
-```
-
 #### realtime
 
 This `sink` mode sends the txs to a node in the env.
 
 ##### _target_
 
-The node target(s) the tx's shoud be fired at.
+The node target(s) the tx's should be fired at.
 
 ```yaml
 sink:
   target: client/1
-  rate: ...
 ```
-
-##### _rate_
-
-The fire rate that tx's shoud be fired at.
-
-Read more about [fire rates](../../glossary/FIRE_RATE.md)
-
-```yaml
-sink:
-  target: ...
-  rate:
-    tx-delay-ms: 5000
-```
-
-### instance
-
-An optional value to specify if the cannon shoud be made when the document is loaded.
-`true` means the cannon is created immediately upon preparing an `enviroment`.
-`false` means it will be prepared when a `timeline` tells it to.
-Defaults to `false`.
-
-### count
-
-Number of transactions to fire when for an instanced cannon is created.
 
 ## Examples
 
 A few different examples of topology docs.
 
-### Realtime Record Right Away
+### Record txs to a file
 
 ```yaml
 ---
@@ -275,19 +153,13 @@ version: cannon.snarkos.testing.monadic.us/v1
 
 name: realtime-txs-record-to-file
 
-# realtime mode
 source:
-  tx-modes: [transfer-public]
-  private-keys: [committee.$]
-  addresses: [committee.$]
+  query: "*/*" # node targets
+  labels: [local] # compute labels
 
 sink:
-    file-name: txs.json
+  file-name: txs.json
 
-# create the cannon immediately
-instance: true
-# fire 10 transactions
-count: 10
 ```
 
 ### Playback Fire Right Away
@@ -304,12 +176,4 @@ source:
 # realtime mode
 sink:
   target: validator/test-1
-  tx-delay-ms: 1000
-
-# create the cannon immediately
-instance: true
-# fire 10 transactions
-count: 10
 ```
-
-### TODO more examples

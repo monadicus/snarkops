@@ -16,8 +16,6 @@
     - [Storage](user_guide/envs/STORAGE.md)
     - [Topology](user_guide/envs/TOPOLOGY.md)
     - [Cannons](user_guide/envs/CANNONS.md)
-    - [Timelines](user_guide/envs/TIMELINES.md)
-    - [Outcomes](user_guide/envs/OUTCOMES.md)
   - [Running](user_guide/running/README.md)
     - [Agent](user_guide/running/AGENT.md)
     - [Control Plane](user_guide/running/CONTROL_PLANE.md)

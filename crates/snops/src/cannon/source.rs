@@ -122,25 +122,6 @@ impl Default for ComputeTarget {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum CreditsTxMode {
-    BondPublic,
-    UnbondPublic,
-    TransferPublic,
-    TransferPublicToPrivate,
-    // cannot run these in aot mode
-    TransferPrivate,
-    TransferPrivateToPublic,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum TxMode {
-    Credits(CreditsTxMode),
-    // TODO: Program(program, func, input types??)
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct TxSource {
