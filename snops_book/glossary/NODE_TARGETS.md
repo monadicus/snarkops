@@ -1,3 +1,3 @@
 # Node Targets
 
-TODO decribe the different syntaxes here.
+TODO describe the different syntaxes here.

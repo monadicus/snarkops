@@ -1,3 +1,0 @@
-# Fire Rate
-
-TODO

@@ -4,12 +4,12 @@ A machine that is running the `snops` crate.
 
 The control plane runs as a daemon. It orchestrates any agents that connect to
 it, and listens for requests from implementors of its HTTP API (such as the
-[snops-cli](TODO)) for further instructions, like preparing an
+[snops-cli](../user_guide/clis/SNOPS_CLI.md)) for further instructions, like preparing an
 environment.
 
-## Responsibilites
+## Responsibilities
 
-The control plane has many responsibilites.
+The control plane has many responsibilities.
 
 ### Binary Distribution
 
