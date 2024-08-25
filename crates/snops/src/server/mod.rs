@@ -209,7 +209,7 @@ async fn handle_socket(
                 // unwrap safety: this agent was just `mark_connected` with a valid client
                 let client = agent.rpc().cloned().unwrap();
 
-                // drop agent ref to allow for mutable borrow in handhake requests
+                // drop agent ref to allow for mutable borrow in handshake requests
                 drop(agent);
 
                 tokio::spawn(async move {
