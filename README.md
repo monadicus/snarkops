@@ -8,9 +8,11 @@
   snarkOPs
 </h1>
 
+[Snops Quickstart](#snops-quickstart) | [snarkos-aot Quickstart](#snarkos-aot-quickstart)
+
 This repository is home to the `snops` (snarkOS operations) ecosystem, and
-`snarkos-aot`, a crate for performing ahead-of-time ledger actions as well as
-a plethora of developer tooling.
+`snarkos-aot`, a crate for performing ahead-of-time ledger actions, transaction
+authorizations, and various tools for helping with developing Aleo programs.
 
 snops is a suite of tools that can be used to maintain [Aleo](https://aleo.org/)
 network environments. The environments are defined in a manner similar to
@@ -22,7 +24,7 @@ and attacks, and guarantee metrics.
 
 To learn more about `snops` we recommend checking out the mdbook [here](https://monadicus.github.io/snarkops/).
 
-## Quickstart
+## Snops Quickstart
 
 ### Easy Setup
 
@@ -62,7 +64,7 @@ To learn more about `snops` we recommend checking out the mdbook [here](https://
     Each of these can be dynamically configured as snarkos nodes. The default
     agent configuration should connect to a locally operated controlplane.
 
-### Trivial Local Isonets
+### Local Isonets
 
 This example requires 4 agents and the control plane to be running.
 
@@ -72,9 +74,9 @@ This example requires 4 agents and the control plane to be running.
 1. Look at the genesis block: `snops-cli env block 0`
 1. Stop the environment: `snops-cli env clean`
 
-### Trivial Isonet Transfers
+### Isonet Transfers
 
-Using the setup for a [Local Isonet](#trivial-local-isonets), executing Aleo programs has never
+Using the setup for a [Local Isonet](#local-isonets), executing Aleo programs has never
 been more convenient. Snops aliases locally generated keys automatically from configuration and
 reduces the need to keep track of individual key files.
 
@@ -105,7 +107,7 @@ reduces the need to keep track of individual key files.
     ```
 
 
-### Trivial Isonet Program Deployments
+### Isonet Program Deployments
 
 Deploying and executing Aleo programs on your isonets is easiest with snops. You do not need any extra json files or tooling, only a standalone `.aleo` file.
 
@@ -148,6 +150,102 @@ Deploying and executing Aleo programs on your isonets is easiest with snops. You
     }
     ```
 
+
+## SnarkOS-aot Quickstart
+
+`snarkos-aot` provides various CLI tools to help with developing and executing
+Aleo programs as well as interact with snarkOS ledgers.
+
+Build `snarkos-aot` with: `cargo install --profile release-big -p snarkos-aot`.
+The compiled binary can be found in `target/release-big/snarkos-aot`.
+
+Use the `NETWORK` environment variable to specify `mainnet` (default),
+`testnet`, or `canary`.
+
+### Transaction Authorizations
+
+Typically when executing snarkOS transactions you specify the program and inputs
+and receive a proof. Behind the scenes, snarkVM is using a private key to
+"authorize" the proof for the program execution, and "authorize" the proof for
+the fee.
+
+Creating authorizations is much quicker than executing the transaction, and the
+process can be done airgapped or even on web clients.
+
+```sh
+# Create an authorization for a executing transfer_public to the "example.aleo" program for 1 microcredit
+NETWORK=testnet snarkos-aot auth program --private-key <PK> credits.aleo/transfer_public example.aleo 1u64 > auth.json
+# The same as above but with a different private key
+NETWORK=testnet snarkos-aot auth program --private-key <PK> --fee-private-key <PK> credits.aleo/transfer_public example.aleo 1u64 > auth.json
+
+# Create an authorization for deploying a program (from my_program.aleo)
+NETWORK=testnet snarkos-aot auth deploy --private-key <PK> my_program.aleo
+# Determine the cost to deploy a program (from stdin)
+cat my_program.aleo | NETWORK=testnet snarkos-aot auth deploy --private-key <PK> - | NETWORK=testnet snarkos-aot auth cost -
+
+# Execute an authorization from auth.json without broadcasting it (the - means stdin)
+cat auth.json | NETWORK=testnet snarkos-aot auth execute - --query https://api.explorer.aleo.org/v1
+
+# Get the cost of an authorization (program or deployment) without executing the transaction
+cat auth.json | NETWORK=testnet snarkos-aot auth cost -
+
+# Derive the transaction id from an authorization without executing it
+cat auth.json | NETWORK=testnet snarkos-aot auth id -
+
+```
+
+### Program Helpers
+
+`snarkos-aot` contains various tools to programmatically interact with aleo program.
+
+If you don't have any Aleo programs you can download a program (`credits.aleo`)
+from Aleo Explorer with the following commands. You can find a list of
+programs on [Aleo Explorer's Programs List](https://explorer.aleo.org/programs).
+
+```sh
+NETWORK=testnet
+PROGRAM=credits.aleo
+# Download a program, then un-jsonify it
+curl https://api.explorer.aleo.org/v1/$NETWORK/program/$PROGRAM | jq -r > $PROGRAM
+```
+
+Below are some `snarkos-aot` commands for interacting with programs.
+
+```sh
+# Get a program's id from a text file
+$ snarkos-aot program id ./credits.aleo
+credits.aleo
+
+# Calculate the cost of deploying a program
+$ snarkos-aot program cost ./example.aleo
+2568400
+
+# Get a list of imports for a program (output in a json format with --json)
+$ snarkos-aot program imports ./staking_v1.aleo --json
+["credits.aleo"]
+
+# Get a list of functions (and respective inputs/outputs) for a program (jq for formatting)
+$ snarkos-aot program functions ./domainnames.aleo --json | jq
+{
+  "validate_name": {
+    "inputs": [
+      "[u128; 4u32].private"
+    ],
+    "outputs": [
+      "boolean.private"
+    ]
+  }
+}
+```
+
+### Account Helpers
+
+Need to generate a bunch of vanity accounts for testing?
+
+```
+# Generate 5 accounts that have addresses that start with `aleo1f00`
+snarkos-aot accounts 5 --vanity f00
+```
 
 ## Contributing
 
