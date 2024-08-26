@@ -43,7 +43,11 @@ fn try_main() -> Result<()> {
 fn clipages(sh: &Shell) -> Result<()> {
     cmd!(sh, "cargo run -p snarkos-aot --features=docpages -- md").run()?;
     cmd!(sh, "cargo run -p snops --features=docpages -- md").run()?;
-    cmd!(sh, "cargo run -p snops-agent --features=docpages -- md").run()?;
+    cmd!(
+        sh,
+        "cargo run -p snops-agent --features=docpages -- --id foo md"
+    )
+    .run()?;
     cmd!(sh, "cargo run -p snops-cli --features=docpages -- md").run()?;
     Ok(())
 }

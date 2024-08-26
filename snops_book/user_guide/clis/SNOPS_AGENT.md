@@ -10,7 +10,7 @@ This document contains the help content for the `snops-agent` command-line progr
 
 ## `snops-agent`
 
-**Usage:** `snops-agent [OPTIONS] <COMMAND>`
+**Usage:** `snops-agent [OPTIONS] --id <ID> <COMMAND>`
 
 ###### **Subcommands:**
 
@@ -20,9 +20,9 @@ This document contains the help content for the `snops-agent` command-line progr
 ###### **Options:**
 
 * `--endpoint <ENDPOINT>` — Control plane endpoint address (IP, or wss://host, http://host)
-* `--id <ID>`
+* `--id <ID>` — Agent ID, used to identify the agent in the network
 * `--private-key-file <PRIVATE_KEY_FILE>` — Locally provided private key file, used for envs where private keys are locally provided
-* `--labels <LABELS>`
+* `--labels <LABELS>` — Labels to attach to the agent, used for filtering and grouping
 * `--path <PATH>` — Path to the directory containing the stored data and configuration
 
   Default value: `./snops-data`
