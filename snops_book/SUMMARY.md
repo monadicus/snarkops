@@ -34,4 +34,10 @@
 
 ---
 
-[Glossary](glossary/README.md)
+# Glossary
+- [Overview](glossary/README.md)
+  - [Actions](glossary/ACTIONS.md)
+  - [IDs](glossary/IDs.md)
+  - [Node Targets](glossary/NODE_TARGETS.md)
+  - [Retention Rules](glossary/RETENTION_RULES.md)
+

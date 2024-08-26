@@ -19,6 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            snops_book
+            index.html
+
       - name: Install latest mdbook
         run: |
           tag=$(curl 'https://api.github.com/repos/rust-lang/mdbook/releases/latest' | jq -r '.tag_name')
@@ -30,7 +35,7 @@ jobs:
       # https://github.com/rust-lang/mdBook/issues/984
       - name: Fix MdBook Issue 984
         run: |
-          find $MD_BOOK_ROOT/src/ -type f -name "*.md" ! -iname "SUMMARY.md" -exec sed -ri 's/(\[.*\])\((.*\/)?(readme\.md)(#.*)?\)/\1\(\2index\.md\4\)/gI' {} \;
+          find ./snops_book/ -type f -name "*.md" ! -iname "SUMMARY.md" -exec sed -ri 's/(\[.*\])\((.*\/)?(readme\.md)(#.*)?\)/\1\(\2index\.md\4\)/gI; s/(\[.*\]:[ \t]+)(.*\/)?(readme\.md)/\1\2index\.md/gI' {} \;
 
       - name: Build Book
         run: mdbook build
