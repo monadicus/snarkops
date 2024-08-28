@@ -105,10 +105,10 @@ sled = "0.34"
 # snarkvm = { path = "../snarkvm", features = ["rocks"] }
 # snarkos-node-metrics = { path = "../snarkos/node/metrics" }
 
-snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "878624d" }
-snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "878624d" }
-snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "878624d" }
-snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "d170a9f", features = [
+snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "805bade" }
+snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "805bade" }
+snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "805bade" }
+snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "5bb50a8", features = [
 	"rocks",
 ] }
 
