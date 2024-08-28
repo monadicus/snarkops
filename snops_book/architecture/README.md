@@ -1,6 +1,6 @@
 # Architecture
 
-A snops "instance" is composed of multiple parts:
+A `snops` "instance" is composed of multiple parts:
 
 - A Control Plane
 - Agents

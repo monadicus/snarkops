@@ -26,7 +26,7 @@ pub struct Cli {
 
     // TODO: clarify that this needs to be an IP that agents can reach (handle external/internal?)
     /// Optional URL referencing a Loki server
-    #[arg(long)]
+    #[arg(long, env = "LOKI_URL")]
     pub loki: Option<Url>,
 
     #[arg(long, default_value_t = PrometheusLocation::Docker)]

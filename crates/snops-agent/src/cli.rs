@@ -18,12 +18,13 @@ pub const ENV_ENDPOINT_DEFAULT: &str = "127.0.0.1:1234";
 
 #[derive(Debug, Parser)]
 pub struct Cli {
-    #[arg(long)]
+    #[arg(long, env = ENV_ENDPOINT)]
     /// Control plane endpoint address (IP, or wss://host, http://host)
     pub endpoint: Option<String>,
 
+    /// Agent ID, used to identify the agent in the network.
     #[arg(long)]
-    pub id: Option<AgentId>,
+    pub id: AgentId,
 
     /// Locally provided private key file, used for envs where private keys are
     /// locally provided
@@ -31,6 +32,7 @@ pub struct Cli {
     #[clap(long = "private-key-file")]
     pub private_key_file: Option<PathBuf>,
 
+    /// Labels to attach to the agent, used for filtering and grouping.
     #[arg(long, value_delimiter = ',', num_args = 1..)]
     pub labels: Option<Vec<String>>,
 
@@ -103,15 +105,12 @@ impl Cli {
             .endpoint
             .as_ref()
             .cloned()
-            .or_else(|| env::var(ENV_ENDPOINT).ok())
             .unwrap_or(ENV_ENDPOINT_DEFAULT.to_owned());
 
         let mut query = format!("/agent?mode={}", u8::from(self.modes));
 
         // add &id=
-        if let Some(id) = self.id {
-            query.push_str(&format!("&id={}", id));
-        }
+        query.push_str(&format!("&id={}", self.id));
 
         // add local pk flag
         if let Some(file) = self.private_key_file.as_ref() {

@@ -19,6 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            book.toml
+            snops_book
+            index.html
+
       - name: Install latest mdbook
         run: |
           tag=$(curl 'https://api.github.com/repos/rust-lang/mdbook/releases/latest' | jq -r '.tag_name')
@@ -26,11 +32,19 @@ jobs:
           mkdir mdbook
           curl -sSL $url | tar -xz --directory=./mdbook
           echo `pwd`/mdbook >> $GITHUB_PATH
+
+      # https://github.com/rust-lang/mdBook/issues/984
+      - name: Fix MdBook Issue 984
+        run: |
+          find ./snops_book/ -type f -name "*.md" ! -iname "SUMMARY.md" -exec sed -ri 's/(\[.*\])\((.*\/)?(readme\.md)(#.*)?\)/\1\(\2index\.md\4\)/gI; s/(\[.*\]:[ \t]+)(.*\/)?(readme\.md)/\1\2index\.md/gI' {} \;
+
       - name: Build Book
         run: mdbook build
+
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

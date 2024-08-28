@@ -2,6 +2,8 @@
 
 [Introduction](../README.md)
 
+---
+
 # Architecture
 
 - [Overview](architecture/README.md)
@@ -30,8 +32,12 @@
 
 - [Developing](developing/README.md)
 
-# Glossary
+---
 
-- [Retention Rules](glossary/RETENTION_RULES.md)
-- [Node Targets](glossary/NODE_TARGETS.md)
-- [Fire Rates](glossary/FIRE_RATE.md)
+# Glossary
+- [Overview](glossary/README.md)
+  - [Actions](glossary/ACTIONS.md)
+  - [IDs](glossary/IDs.md)
+  - [Node Targets](glossary/NODE_TARGETS.md)
+  - [Retention Rules](glossary/RETENTION_RULES.md)
+
