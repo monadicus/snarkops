@@ -318,19 +318,14 @@ impl ExecutionContext {
         };
         trace!("cannon {env_id}.{cannon_id} using realtime query {query_path}");
 
-        let sink_pipe = match &sink {
-            TxSink::Record { file_name, .. } => {
-                let pipe = env.sinks.get(file_name).cloned();
-                if pipe.is_none() {
-                    return Err(ExecutionContextError::TransactionSinkNotFound(
-                        env_id, *cannon_id, *file_name,
-                    )
-                    .into());
-                }
-                pipe
-            }
-            _ => None,
-        };
+        let sink_pipe = sink
+            .file_name
+            .map(|file_name| {
+                env.sinks.get(&file_name).cloned().ok_or_else(|| {
+                    ExecutionContextError::TransactionSinkNotFound(env_id, *cannon_id, file_name)
+                })
+            })
+            .transpose()?;
 
         let mut auth_execs = FuturesUnordered::new();
         let mut tx_shots = FuturesUnordered::new();
@@ -420,88 +415,84 @@ impl ExecutionContext {
         sink_pipe: Option<Arc<TransactionSink>>,
         tx: String,
     ) -> Result<(), CannonError> {
-        match &self.sink {
-            TxSink::Record { .. } => {
-                sink_pipe.unwrap().write(&tx)?;
-            }
-            TxSink::RealTime { target, .. } => {
-                let cannon_id = self.id;
-                let env_id = self.env_id;
+        if let Some(pipe) = sink_pipe {
+            pipe.write(&tx)?;
+        }
+        if let Some(target) = &self.sink.target {
+            let cannon_id = self.id;
+            let env_id = self.env_id;
 
-                let broadcast_nodes = self.state.get_scored_peers(env_id, target);
+            let broadcast_nodes = self.state.get_scored_peers(env_id, target);
 
-                if broadcast_nodes.is_empty() {
-                    return Err(ExecutionContextError::NoAvailableAgents(
-                        env_id,
-                        cannon_id,
-                        "to broadcast transactions",
-                    )
-                    .into());
-                }
-
-                let network = self.network;
-
-                // broadcast to the first responding node
-                for (_, _, agent, addr) in
-                    broadcast_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0))
-                {
-                    if let Some(id) = agent {
-                        // ensure the client is connected
-                        let Some(client) = self.state.get_client(id) else {
-                            continue;
-                        };
-
-                        if let Err(e) = client.broadcast_tx(tx.clone()).await {
-                            warn!(
-                                "cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}"
-                            );
-                            continue;
-                        }
-                        return Ok(());
-                    }
-
-                    if let Some(addr) = addr {
-                        let url = format!("http://{addr}/{network}/transaction/broadcast");
-                        let req = REST_CLIENT
-                            .post(url)
-                            .header("Content-Type", "application/json")
-                            .body(tx.clone())
-                            .send();
-                        let Ok(res) =
-                            tokio::time::timeout(std::time::Duration::from_secs(5), req).await
-                        else {
-                            warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: timeout");
-                            continue;
-                        };
-
-                        match res {
-                            Err(e) => {
-                                warn!(
-                                    "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}"
-                                );
-                                continue;
-                            }
-                            Ok(req) => {
-                                if !req.status().is_success() {
-                                    warn!(
-                                        "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}",
-                                        req.status(),
-                                    );
-                                    continue;
-                                }
-                            }
-                        }
-
-                        return Ok(());
-                    }
-                }
-
-                Err(ExecutionContextError::NoAvailableAgents(
+            if broadcast_nodes.is_empty() {
+                return Err(ExecutionContextError::NoAvailableAgents(
                     env_id,
                     cannon_id,
                     "to broadcast transactions",
-                ))?
+                )
+                .into());
             }
+
+            let network = self.network;
+
+            // broadcast to the first responding node
+            for (_, _, agent, addr) in broadcast_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0)) {
+                if let Some(id) = agent {
+                    // ensure the client is connected
+                    let Some(client) = self.state.get_client(id) else {
+                        continue;
+                    };
+
+                    if let Err(e) = client.broadcast_tx(tx.clone()).await {
+                        warn!(
+                                "cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}"
+                            );
+                        continue;
+                    }
+                    return Ok(());
+                }
+
+                if let Some(addr) = addr {
+                    let url = format!("http://{addr}/{network}/transaction/broadcast");
+                    let req = REST_CLIENT
+                        .post(url)
+                        .header("Content-Type", "application/json")
+                        .body(tx.clone())
+                        .send();
+                    let Ok(res) =
+                        tokio::time::timeout(std::time::Duration::from_secs(5), req).await
+                    else {
+                        warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: timeout");
+                        continue;
+                    };
+
+                    match res {
+                        Err(e) => {
+                            warn!(
+                                    "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}"
+                                );
+                            continue;
+                        }
+                        Ok(req) => {
+                            if !req.status().is_success() {
+                                warn!(
+                                        "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}",
+                                        req.status(),
+                                    );
+                                continue;
+                            }
+                        }
+                    }
+
+                    return Ok(());
+                }
+            }
+
+            Err(ExecutionContextError::NoAvailableAgents(
+                env_id,
+                cannon_id,
+                "to broadcast transactions",
+            ))?
         }
         Ok(())
     }

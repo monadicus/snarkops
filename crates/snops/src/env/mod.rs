@@ -144,8 +144,10 @@ impl Environment {
                     query: QueryTarget::Node(NodeTargets::ALL),
                     compute: ComputeTarget::Agent { labels: None },
                 },
-                TxSink::RealTime {
-                    target: NodeTargets::ALL,
+                TxSink {
+                    target: Some(NodeTargets::ALL),
+                    file_name: None,
+                    broadcast_attempts: None,
                 },
             ),
         );
@@ -595,13 +597,13 @@ pub fn prepare_cannons(
 
     for (name, source, sink) in pending_cannons.into_iter() {
         // create file sinks for all the cannons that use files as output
-        if let TxSink::Record { file_name, .. } = &sink {
+        if let Some(file_name) = sink.file_name {
             // prevent re-creating sinks that were in the previous env
-            if !sinks.contains_key(file_name) {
-                sinks.insert(
-                    *file_name,
-                    Arc::new(TransactionSink::new(storage.path(&state), *file_name)?),
-                );
+            if let std::collections::hash_map::Entry::Vacant(e) = sinks.entry(file_name) {
+                e.insert(Arc::new(TransactionSink::new(
+                    storage.path(&state),
+                    file_name,
+                )?));
             }
         }
 
