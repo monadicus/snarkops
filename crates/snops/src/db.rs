@@ -1,14 +1,18 @@
 use std::path::Path;
 
 use snops_common::{
+    aot_cmds::Authorization,
     db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
-    state::{AgentId, EnvId, NetworkId, StorageId},
+    state::{AgentId, CannonId, EnvId, NetworkId, StorageId},
 };
 
 use crate::{
+    cannon::status::CannonTransactionStatus,
     persist::{PersistEnv, PersistStorage},
     state::Agent,
 };
+
+pub type TxEntry = (EnvId, CannonId, String);
 
 pub struct Database {
     #[allow(unused)]
@@ -20,6 +24,13 @@ pub struct Database {
     pub(crate) storage: DbTree<(NetworkId, StorageId), PersistStorage>,
     /// Last known agent state, mapped by agent id to agent state
     pub(crate) agents: DbTree<AgentId, Agent>,
+    /// Temporary storage for cannon authorizations to prevent data loss
+    pub(crate) tx_auths: DbTree<TxEntry, Authorization>,
+    /// Temporary storage for cannon executed transactions to ensure they are
+    /// not ghosted
+    pub(crate) tx_blobs: DbTree<TxEntry, serde_json::Value>,
+    /// Status tracking of transactions managed by a single cannon
+    pub(crate) tx_status: DbTree<TxEntry, CannonTransactionStatus>,
 }
 
 impl DatabaseTrait for Database {
@@ -28,12 +39,18 @@ impl DatabaseTrait for Database {
         let envs = DbTree::new(db.open_tree(b"v2/envs")?);
         let storage = DbTree::new(db.open_tree(b"v2/storage")?);
         let agents = DbTree::new(db.open_tree(b"v2/agents")?);
+        let tx_auths = DbTree::new(db.open_tree(b"v2/tx_auths")?);
+        let tx_blobs = DbTree::new(db.open_tree(b"v2/tx_blobs")?);
+        let tx_status = DbTree::new(db.open_tree(b"v2/tx_status")?);
 
         Ok(Self {
             db,
             envs,
             storage,
             agents,
+            tx_auths,
+            tx_blobs,
+            tx_status,
         })
     }
 }

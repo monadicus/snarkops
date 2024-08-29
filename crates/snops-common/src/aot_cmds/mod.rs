@@ -1,14 +1,14 @@
-use std::{io, path::PathBuf, process::Stdio, str::FromStr};
+use std::{io, path::PathBuf, process::Stdio};
 
 use tokio::{
     io::AsyncWriteExt,
     process::{Child, Command},
 };
 
+mod authorization;
 pub mod error;
+pub use authorization::*;
 pub use error::AotCmdError;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use self::error::CommandError;
 use crate::{
@@ -19,29 +19,6 @@ use crate::{
 pub struct AotCmd {
     bin: PathBuf,
     network: NetworkId,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Authorization {
-    Program {
-        auth: Value,
-        fee_auth: Option<Value>,
-    },
-    Deploy {
-        owner: Value,
-        deployment: Value,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        fee_auth: Option<Value>,
-    },
-}
-
-impl FromStr for Authorization {
-    type Err = serde_json::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_str(s)
-    }
 }
 
 type Output = io::Result<std::process::Output>;
