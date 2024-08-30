@@ -7,14 +7,15 @@ use tokio::sync::Semaphore;
 
 use super::prelude::*;
 use super::PersistNode;
-use crate::env::prepare_cannons;
-use crate::state::GlobalState;
 use crate::{
-    cannon::{sink::TxSink, source::TxSource},
+    cannon::{
+        sink::TxSink, source::TxSource, status::TransactionSendState, tracker::TransactionTracker,
+    },
     env::{
         error::{EnvError, PrepareError},
-        EnvNodeState, EnvPeer, Environment,
+        prepare_cannons, EnvNodeState, EnvPeer, Environment,
     },
+    state::GlobalState,
 };
 
 #[derive(Clone)]
@@ -115,6 +116,27 @@ impl PersistEnv {
             (self.id, self.network, self.storage_id, compute_aot_bin),
             self.cannons,
         )?;
+
+        // ensure on hydrate that all transactions that were interrupted are
+        // marked as authorized
+        for (cannon_id, cannon) in &cannons {
+            for mut tracker in cannon.transactions.iter_mut() {
+                if matches!(tracker.status, TransactionSendState::Executing(_)) {
+                    tracker.status = TransactionSendState::Authorized;
+                    if let Err(e) = TransactionTracker::write_status(
+                        &state,
+                        &(self.id, *cannon_id, tracker.key().to_owned()),
+                        TransactionSendState::Authorized,
+                    ) {
+                        tracing::error!(
+                            "cannon {}.{cannon_id} failed to write status for {}: {e}",
+                            self.id,
+                            tracker.key()
+                        );
+                    }
+                }
+            }
+        }
 
         Ok(Environment {
             id: self.id,

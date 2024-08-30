@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 use snops_common::{
-    format::{DataFormat, DataReadError, PackedUint},
+    format::{DataFormat, DataReadError},
     state::AgentId,
 };
 use tokio::sync::mpsc::Sender;
@@ -36,7 +38,7 @@ pub enum TransactionStatusEvent {
     /// Execute RPC failed
     ExecuteFailed(String),
     /// Agent has completed the execution
-    ExecuteComplete(serde_json::Value),
+    ExecuteComplete(Arc<serde_json::Value>),
     // TODO: Implement the following statuses
     // /// API has received the transaction broadcast
     // BroadcastReceived,
@@ -65,12 +67,21 @@ pub enum TransactionSendState {
     ///
     /// This step is skipped if a cannon does not re-attempt to send
     /// the transaction.
-    Broadcasted {
+    Broadcasted(
         /// Latest height of the network at the time of the broadcast
-        height: Option<u32>,
-        /// Number of tries to broadcast the transaction
-        tries: usize,
-    },
+        Option<u32>,
+    ),
+}
+
+impl TransactionSendState {
+    pub fn label(&self) -> &'static str {
+        match self {
+            TransactionSendState::Authorized => "authorized",
+            TransactionSendState::Executing(_) => "executing",
+            TransactionSendState::Unsent => "unsent",
+            TransactionSendState::Broadcasted(_) => "broadcasted",
+        }
+    }
 }
 
 impl DataFormat for TransactionSendState {
@@ -88,10 +99,8 @@ impl DataFormat for TransactionSendState {
                 1u8.write_data(writer)? + timestamp.timestamp().write_data(writer)?
             }
             TransactionSendState::Unsent => 2u8.write_data(writer)?,
-            TransactionSendState::Broadcasted { height, tries } => {
-                3u8.write_data(writer)?
-                    + height.write_data(writer)?
-                    + PackedUint::from(*tries).write_data(writer)?
+            TransactionSendState::Broadcasted(height) => {
+                3u8.write_data(writer)? + height.write_data(writer)?
             }
         })
     }
@@ -118,10 +127,7 @@ impl DataFormat for TransactionSendState {
                 )?)
             }
             2 => TransactionSendState::Unsent,
-            3 => TransactionSendState::Broadcasted {
-                height: Option::<u32>::read_data(reader, &())?,
-                tries: PackedUint::read_data(reader, &())?.into(),
-            },
+            3 => TransactionSendState::Broadcasted(Option::<u32>::read_data(reader, &())?),
             _ => {
                 return Err(snops_common::format::DataReadError::Custom(
                     "Invalid CannonTransactionStatus tag".to_string(),
@@ -183,10 +189,7 @@ mod test {
     case!(
         test_cannon_transaction_status_broadcasted,
         TransactionSendState,
-        TransactionSendState::Broadcasted {
-            height: Some(1),
-            tries: 2
-        },
-        [3u8, 1u8, 1u8, 2u8]
+        TransactionSendState::Broadcasted(Some(1)),
+        [3u8, 1u8, 1u8, 0u8, 0u8, 0u8]
     );
 }

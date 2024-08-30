@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use snops_common::aot_cmds::Authorization;
+use snops_common::{aot_cmds::Authorization, format::PackedUint};
 
 use super::{error::CannonError, status::TransactionSendState};
 use crate::{db::TxEntry, state::GlobalState};
@@ -22,11 +22,21 @@ pub struct TransactionTracker {
 impl TransactionTracker {
     /// Write the transaction tracker's index to the store
     pub fn write_index(state: &GlobalState, key: &TxEntry, index: u64) -> Result<(), CannonError> {
-        state
-            .db
-            .tx_index
-            .save(key, &index)
-            .map_err(|e| CannonError::DatabaseWriteError(format!("transaction index {}", key.2), e))
+        Ok(state.db.tx_index.save(key, &PackedUint(index))?)
+    }
+
+    /// Write the transaction number of attempts to the store
+    pub fn inc_attempts(state: &GlobalState, key: &TxEntry) -> Result<(), CannonError> {
+        // read the previous number of attempts
+        let prev = state.db.tx_attempts.restore(key)?.map(|v| v.0).unwrap_or(0);
+
+        Ok(state.db.tx_attempts.save(key, &PackedUint(prev + 1))?)
+    }
+
+    /// Clear the number of attempts for the transaction
+    pub fn clear_attempts(state: &GlobalState, key: &TxEntry) -> Result<(), CannonError> {
+        state.db.tx_attempts.delete(key)?;
+        Ok(())
     }
 
     /// Write the transaction tracker's status to the store
@@ -35,9 +45,7 @@ impl TransactionTracker {
         key: &TxEntry,
         status: TransactionSendState,
     ) -> Result<(), CannonError> {
-        state.db.tx_status.save(key, &status).map_err(|e| {
-            CannonError::DatabaseWriteError(format!("transaction status {}", key.2), e)
-        })
+        Ok(state.db.tx_status.save(key, &status)?)
     }
 
     /// Write the transaction tracker's authorization to the store
@@ -46,11 +54,7 @@ impl TransactionTracker {
         key: &TxEntry,
         auth: &Authorization,
     ) -> Result<(), CannonError> {
-        state
-            .db
-            .tx_auths
-            .save(key, auth)
-            .map_err(|e| CannonError::DatabaseWriteError(format!("transaction auth {}", key.2), e))
+        Ok(state.db.tx_auths.save(key, auth)?)
     }
 
     /// Write the transaction tracker's transaction to the store
@@ -59,11 +63,7 @@ impl TransactionTracker {
         key: &TxEntry,
         tx: &serde_json::Value,
     ) -> Result<(), CannonError> {
-        state
-            .db
-            .tx_blobs
-            .save(key, tx)
-            .map_err(|e| CannonError::DatabaseWriteError(format!("transaction blob {}", key.2), e))
+        Ok(state.db.tx_blobs.save(key, tx)?)
     }
 
     /// Write the transaction tracker to the store

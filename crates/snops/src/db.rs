@@ -3,6 +3,7 @@ use std::path::Path;
 use snops_common::{
     aot_cmds::Authorization,
     db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
+    format::PackedUint,
     state::{AgentId, CannonId, EnvId, NetworkId, StorageId},
 };
 
@@ -36,7 +37,9 @@ pub struct Database {
     ///
     /// Transactions with lower indices are prioritized for execution and
     /// broadcast.
-    pub(crate) tx_index: DbTree<TxEntry, u64>,
+    pub(crate) tx_index: DbTree<TxEntry, PackedUint>,
+    /// Number of attempts for the transaction's current state
+    pub(crate) tx_attempts: DbTree<TxEntry, PackedUint>,
     // TODO: tx_attempts for tracking retries (of broadcast and execution)
 }
 
@@ -50,6 +53,7 @@ impl DatabaseTrait for Database {
         let tx_blobs = DbTree::new(db.open_tree(b"v2/tx_blobs")?);
         let tx_status = DbTree::new(db.open_tree(b"v2/tx_status")?);
         let tx_index = DbTree::new(db.open_tree(b"v2/tx_index")?);
+        let tx_attempts = DbTree::new(db.open_tree(b"v2/tx_attempts")?);
 
         Ok(Self {
             db,
@@ -60,6 +64,7 @@ impl DatabaseTrait for Database {
             tx_blobs,
             tx_status,
             tx_index,
+            tx_attempts,
         })
     }
 }

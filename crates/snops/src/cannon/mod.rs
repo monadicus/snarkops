@@ -21,6 +21,7 @@ use futures_util::{stream::FuturesUnordered, StreamExt};
 use lazysort::SortedBy;
 use snops_common::{
     aot_cmds::{AotCmd, Authorization},
+    format::PackedUint,
     state::{CannonId, EnvId, NetworkId, StorageId},
 };
 use status::{TransactionSendState, TransactionStatusEvent, TransactionStatusSender};
@@ -109,7 +110,7 @@ pub struct CannonInstance {
     /// channel to send authorizations (by transaction id) to the the task
     auth_sender: UnboundedSender<(String, TransactionStatusSender)>,
     /// transaction ids that are currently being processed
-    transactions: Arc<DashMap<String, TransactionTracker>>,
+    pub(crate) transactions: Arc<DashMap<String, TransactionTracker>>,
 
     pub(crate) received_txs: Arc<AtomicU64>,
     pub(crate) fired_txs: Arc<AtomicUsize>,
@@ -134,7 +135,7 @@ impl CannonInstance {
         if let Err(e) = state
             .db
             .tx_index
-            .save(&(env_id, cannon_id, String::new()), &index)
+            .save(&(env_id, cannon_id, String::new()), &PackedUint(index))
         {
             error!("cannon {env_id}.{cannon_id} failed to save received tx count: {e}");
         }
@@ -154,7 +155,7 @@ impl CannonInstance {
             .tx_index
             .restore(&(env_id, cannon_id, String::new()))
         {
-            Ok(Some(index)) => AtomicU64::new(index),
+            Ok(Some(index)) => AtomicU64::new(index.0),
             Ok(None) => AtomicU64::new(0),
             Err(e) => {
                 error!("cannon {env_id}.{cannon_id} failed to parse received tx count: {e}");
@@ -175,7 +176,7 @@ impl CannonInstance {
         for (key, status) in statuses {
             // Ensure the transaction has an index
             let index = match state.db.tx_index.restore(&key) {
-                Ok(Some(index)) => index,
+                Ok(Some(index)) => index.0,
                 Ok(None) => {
                     warn!(
                         "cannon {env_id}.{cannon_id} failed to restore index for transaction {} (missing index)", key.2
@@ -567,7 +568,7 @@ impl ExecutionContext {
 
                     auth_execs.push(self.execute_auth(tx_id, Arc::clone(auth), &query_path, events));
                 }
-                // receive transactions and forward them to the sink target
+                // receive transaction ids and forward them to the sink target
                 Some(tx) = rx.transactions.recv() => {
                     tx_shots.push(self.fire_tx(sink_pipe.clone(), tx));
                 }
@@ -596,18 +597,18 @@ impl ExecutionContext {
         }
     }
 
-    // write the transaction status to the store
-    pub fn write_tx_status(
-        &self,
-        tx_id: &str,
-        status: TransactionSendState,
-    ) -> Result<(), CannonError> {
+    // write the transaction status to the store and update the transaction tracker
+    pub fn write_tx_status(&self, tx_id: &str, status: TransactionSendState) {
         let key = (self.env_id, self.id, tx_id.to_owned());
         if let Some(mut tx) = self.transactions.get_mut(tx_id) {
-            TransactionTracker::write_status(&self.state, &key, status)?;
+            if let Err(e) = TransactionTracker::write_status(&self.state, &key, status) {
+                error!(
+                    "cannon {}.{} failed to write status for {tx_id}: {e}",
+                    self.env_id, self.id
+                );
+            }
             tx.status = status;
         }
-        Ok(())
     }
 
     /// Execute an authorization on the source's compute target
@@ -627,8 +628,8 @@ impl ExecutionContext {
         {
             // requeue the auth if no agents are available
             Err(CannonError::Source(SourceError::NoAvailableAgents(_))) => {
-                warn!(
-                    "cannon {}.{} no available agents to execute auth, retrying in a second...",
+                trace!(
+                    "cannon {}.{} no available agents to execute auth for {tx_id}, awaiting compute",
                     self.env_id, self.id
                 );
                 events.send(TransactionStatusEvent::ExecuteAwaitingCompute);
@@ -636,6 +637,17 @@ impl ExecutionContext {
                 Ok(())
             }
             Err(e) => {
+                // reset the transaction status to authorized so it can be re-executed
+                self.write_tx_status(&tx_id, TransactionSendState::Authorized);
+                if let Err(e) = TransactionTracker::inc_attempts(
+                    &self.state,
+                    &(self.env_id, self.id, tx_id.clone()),
+                ) {
+                    error!(
+                        "cannon {}.{} failed to increment attempts for {tx_id}: {e}",
+                        self.env_id, self.id
+                    );
+                }
                 events.send(TransactionStatusEvent::ExecuteFailed(e.to_string()));
                 Err(e)
             }
@@ -647,11 +659,51 @@ impl ExecutionContext {
     async fn fire_tx(
         &self,
         sink_pipe: Option<Arc<TransactionSink>>,
-        tx: String,
+        tx_id: String,
     ) -> Result<(), CannonError> {
-        if let Some(pipe) = sink_pipe {
-            pipe.write(&tx)?;
+        let latest_height = self
+            .state
+            .get_env_block_info(self.env_id)
+            .map(|info| info.height);
+
+        // ensure transaction is being tracked
+        let Some(tracker) = self.transactions.get(&tx_id).map(|v| v.value().clone()) else {
+            return Err(CannonError::TransactionLost(self.id, tx_id));
+        };
+        // ensure transaction is ready to be broadcasted
+        if !matches!(
+            tracker.status,
+            TransactionSendState::Unsent | TransactionSendState::Broadcasted(_)
+        ) {
+            return Err(CannonError::InvalidTransactionState(
+                self.id,
+                tx_id,
+                format!(
+                    "expected unsent or broadcasted, got {}",
+                    tracker.status.label()
+                ),
+            ));
         }
+
+        // ensure transaction blob exists
+        let Some(tx_blob) = tracker.transaction else {
+            return Err(CannonError::TransactionLost(self.id, tx_id));
+        };
+
+        let tx_str = match serde_json::to_string(&tx_blob) {
+            Ok(tx_str) => tx_str,
+            Err(e) => {
+                return Err(CannonError::Source(SourceError::Json(
+                    "serialize tx for broadcast",
+                    e,
+                )));
+            }
+        };
+
+        if let Some(pipe) = sink_pipe {
+            pipe.write(&tx_str)?;
+        }
+
         if let Some(target) = &self.sink.target {
             let cannon_id = self.id;
             let env_id = self.env_id;
@@ -669,6 +721,19 @@ impl ExecutionContext {
 
             let network = self.network;
 
+            // update the transaction status and increment the broadcast attempts
+            let update_status = || {
+                self.write_tx_status(&tx_id, TransactionSendState::Broadcasted(latest_height));
+                if let Err(e) = TransactionTracker::inc_attempts(
+                    &self.state,
+                    &(env_id, cannon_id, tx_id.to_owned()),
+                ) {
+                    error!(
+                        "cannon {env_id}.{cannon_id} failed to increment broadcast attempts for {tx_id}: {e}",
+                    );
+                }
+            };
+
             // broadcast to the first responding node
             for (_, _, agent, addr) in broadcast_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0)) {
                 if let Some(id) = agent {
@@ -677,12 +742,12 @@ impl ExecutionContext {
                         continue;
                     };
 
-                    if let Err(e) = client.broadcast_tx(tx.clone()).await {
-                        warn!(
-                                "cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}"
-                            );
+                    if let Err(e) = client.broadcast_tx(tx_str.clone()).await {
+                        warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}");
                         continue;
                     }
+
+                    update_status();
                     return Ok(());
                 }
 
@@ -691,7 +756,7 @@ impl ExecutionContext {
                     let req = REST_CLIENT
                         .post(url)
                         .header("Content-Type", "application/json")
-                        .body(tx.clone())
+                        .body(tx_str.clone())
                         .send();
                     let Ok(res) =
                         tokio::time::timeout(std::time::Duration::from_secs(5), req).await
@@ -702,22 +767,18 @@ impl ExecutionContext {
 
                     match res {
                         Err(e) => {
-                            warn!(
-                                    "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}"
-                                );
+                            warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}");
                             continue;
                         }
                         Ok(req) => {
                             if !req.status().is_success() {
-                                warn!(
-                                        "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}",
-                                        req.status(),
-                                    );
+                                warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}", req.status());
                                 continue;
                             }
                         }
                     }
 
+                    update_status();
                     return Ok(());
                 }
             }

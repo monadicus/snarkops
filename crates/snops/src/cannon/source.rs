@@ -1,14 +1,18 @@
+use std::sync::Arc;
+
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snops_common::{
     aot_cmds::Authorization, lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN,
 };
+use tracing::error;
 
 use super::{
     error::{CannonError, SourceError},
     net::get_available_port,
     status::{TransactionSendState, TransactionStatusEvent, TransactionStatusSender},
+    tracker::TransactionTracker,
     ExecutionContext,
 };
 use crate::env::set::find_compute_agent;
@@ -160,8 +164,18 @@ impl ComputeTarget {
                     find_compute_agent(&ctx.state, &labels.clone().unwrap_or_default())
                         .ok_or(SourceError::NoAvailableAgents("authorization"))?;
 
+                // emit status updates & increment attempts
                 events.send(TransactionStatusEvent::Executing(agent_id));
-                ctx.write_tx_status(tx_id, TransactionSendState::Executing(Utc::now()))?;
+                ctx.write_tx_status(tx_id, TransactionSendState::Executing(Utc::now()));
+                if let Err(e) = TransactionTracker::inc_attempts(
+                    &ctx.state,
+                    &(ctx.env_id, ctx.id, tx_id.to_owned()),
+                ) {
+                    error!(
+                        "cannon {}.{} failed to increment auth attempts for {tx_id}: {e}",
+                        ctx.env_id, ctx.id
+                    );
+                }
 
                 // execute the authorization
                 let transaction_json = client
@@ -175,13 +189,11 @@ impl ComputeTarget {
                     .await?;
 
                 let transaction = match serde_json::from_str(&transaction_json) {
-                    Ok(transaction) => transaction,
+                    Ok(transaction) => Arc::new(transaction),
                     Err(e) => {
                         events.send(TransactionStatusEvent::ExecuteFailed(format!(
                             "failed to parse transaction JSON: {transaction_json}",
                         )));
-                        // TODO: increment "attempts" counter for this auth
-                        ctx.write_tx_status(tx_id, TransactionSendState::Authorized)?;
                         return Err(CannonError::Source(SourceError::Json(
                             "parse compute tx",
                             e,
@@ -189,8 +201,41 @@ impl ComputeTarget {
                     }
                 };
 
+                // update the transaction blob and tracker status
+                let key = (ctx.env_id, ctx.id, tx_id.to_owned());
+                if let Some(mut tx) = ctx.transactions.get_mut(tx_id) {
+                    if let Err(e) = TransactionTracker::write_status(
+                        &ctx.state,
+                        &key,
+                        TransactionSendState::Unsent,
+                    ) {
+                        error!(
+                            "cannon {}.{} failed to write status after auth for {tx_id}: {e}",
+                            ctx.env_id, ctx.id
+                        );
+                    }
+                    if let Err(e) = TransactionTracker::write_tx(&ctx.state, &key, &transaction) {
+                        error!(
+                            "cannon {}.{} failed to write tx json after auth for {tx_id}: {e}",
+                            ctx.env_id, ctx.id
+                        );
+                    }
+
+                    // clear auth attempts so the broadcast has a clean slate
+                    if let Err(e) = TransactionTracker::clear_attempts(
+                        &ctx.state,
+                        &(ctx.env_id, ctx.id, tx_id.to_owned()),
+                    ) {
+                        tracing::error!(
+                            "cannon {}.{} failed to clear auth attempts for {tx_id}: {e}",
+                            ctx.env_id,
+                            ctx.id
+                        );
+                    }
+                    tx.status = TransactionSendState::Unsent;
+                    tx.transaction = Some(Arc::clone(&transaction));
+                }
                 events.send(TransactionStatusEvent::ExecuteComplete(transaction));
-                ctx.write_tx_status(tx_id, TransactionSendState::Unsent)?;
 
                 Ok(())
             }

@@ -177,8 +177,8 @@ pub enum CannonError {
         CannonId,
         #[source] tokio::sync::mpsc::error::SendError<String>,
     ),
-    #[error("error writing to store `{0}`: {1}")]
-    DatabaseWriteError(String, #[source] DatabaseError),
+    #[error(transparent)]
+    DatabaseWriteError(#[from] DatabaseError),
     #[error(transparent)]
     Source(#[from] SourceError),
     #[error(transparent)]
@@ -187,6 +187,10 @@ pub enum CannonError {
     RequestError(#[from] EnvRequestError),
     #[error("transaction already exists for cannon `{0}`: {1}")]
     TransactionAlreadyExists(CannonId, String),
+    #[error("transaction lost for cannon `{0}`: {1}")]
+    TransactionLost(CannonId, String),
+    #[error("invalid transaction state for transaction {1} for cannon `{0}`: {2}")]
+    InvalidTransactionState(CannonId, String, String),
     #[error("binary error for cannon `{0}`: {1}")]
     BinaryError(CannonId, String),
 }
