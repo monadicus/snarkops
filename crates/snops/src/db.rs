@@ -7,7 +7,7 @@ use snops_common::{
 };
 
 use crate::{
-    cannon::status::CannonTransactionStatus,
+    cannon::status::TransactionSendState,
     persist::{PersistEnv, PersistStorage},
     state::Agent,
 };
@@ -30,7 +30,14 @@ pub struct Database {
     /// not ghosted
     pub(crate) tx_blobs: DbTree<TxEntry, serde_json::Value>,
     /// Status tracking of transactions managed by a single cannon
-    pub(crate) tx_status: DbTree<TxEntry, CannonTransactionStatus>,
+    pub(crate) tx_status: DbTree<TxEntry, TransactionSendState>,
+    /// Index tracking for transactions, used for ordering. The empty string key
+    /// is used to track the last transaction index.
+    ///
+    /// Transactions with lower indices are prioritized for execution and
+    /// broadcast.
+    pub(crate) tx_index: DbTree<TxEntry, u64>,
+    // TODO: tx_attempts for tracking retries (of broadcast and execution)
 }
 
 impl DatabaseTrait for Database {
@@ -42,6 +49,7 @@ impl DatabaseTrait for Database {
         let tx_auths = DbTree::new(db.open_tree(b"v2/tx_auths")?);
         let tx_blobs = DbTree::new(db.open_tree(b"v2/tx_blobs")?);
         let tx_status = DbTree::new(db.open_tree(b"v2/tx_status")?);
+        let tx_index = DbTree::new(db.open_tree(b"v2/tx_index")?);
 
         Ok(Self {
             db,
@@ -51,6 +59,7 @@ impl DatabaseTrait for Database {
             tx_auths,
             tx_blobs,
             tx_status,
+            tx_index,
         })
     }
 }

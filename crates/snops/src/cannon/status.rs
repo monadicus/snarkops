@@ -1,13 +1,14 @@
+use chrono::{DateTime, Utc};
 use snops_common::{
-    format::{DataFormat, PackedUint},
+    format::{DataFormat, DataReadError, PackedUint},
     state::AgentId,
 };
 use tokio::sync::mpsc::Sender;
 
-pub struct TransactionStatusSender(Option<Sender<TransactionStatus>>);
+pub struct TransactionStatusSender(Option<Sender<TransactionStatusEvent>>);
 
 impl TransactionStatusSender {
-    pub fn new(sender: Sender<TransactionStatus>) -> Self {
+    pub fn new(sender: Sender<TransactionStatusEvent>) -> Self {
         Self(Some(sender))
     }
 
@@ -15,14 +16,15 @@ impl TransactionStatusSender {
         Self(None)
     }
 
-    pub fn send(&self, status: TransactionStatus) {
+    pub fn send(&self, status: TransactionStatusEvent) {
         if let Some(sender) = &self.0 {
             let _ = sender.try_send(status);
         }
     }
 }
 
-pub enum TransactionStatus {
+/// An event that represents the latest status of a transaction.
+pub enum TransactionStatusEvent {
     /// Authorization has been aborted
     ExecuteAborted,
     /// Authorization has been queued for execution.
@@ -34,7 +36,7 @@ pub enum TransactionStatus {
     /// Execute RPC failed
     ExecuteFailed(String),
     /// Agent has completed the execution
-    ExecuteComplete(String),
+    ExecuteComplete(serde_json::Value),
     // TODO: Implement the following statuses
     // /// API has received the transaction broadcast
     // BroadcastReceived,
@@ -46,15 +48,18 @@ pub enum TransactionStatus {
     // TransactionConfirmed(String),
 }
 
+/// Status of a transaction as presented internally for tracking and
+/// preventing data loss.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum CannonTransactionStatus {
+pub enum TransactionSendState {
     /// Authorization has been received. This step is skipped if a
     /// transaction is created/broadcasted directly.
     Authorized,
     /// Authorization is being executed
-    Executing(AgentId),
-    /// Authorization has been executed and is pending broadcast.
-    Executed,
+    Executing(DateTime<Utc>),
+    /// Authorization has been executed, or a transaction is received and is
+    /// pending broadcast.
+    Unsent,
     /// Authorization has been broadcasted but not confirmed
     /// by the network.
     ///
@@ -68,7 +73,7 @@ pub enum CannonTransactionStatus {
     },
 }
 
-impl DataFormat for CannonTransactionStatus {
+impl DataFormat for TransactionSendState {
     type Header = u8;
 
     const LATEST_HEADER: Self::Header = 1u8;
@@ -78,12 +83,12 @@ impl DataFormat for CannonTransactionStatus {
         writer: &mut W,
     ) -> Result<usize, snops_common::format::DataWriteError> {
         Ok(match self {
-            CannonTransactionStatus::Authorized => 0u8.write_data(writer)?,
-            CannonTransactionStatus::Executing(agent_id) => {
-                1u8.write_data(writer)? + agent_id.write_data(writer)?
+            TransactionSendState::Authorized => 0u8.write_data(writer)?,
+            TransactionSendState::Executing(timestamp) => {
+                1u8.write_data(writer)? + timestamp.timestamp().write_data(writer)?
             }
-            CannonTransactionStatus::Executed => 2u8.write_data(writer)?,
-            CannonTransactionStatus::Broadcasted { height, tries } => {
+            TransactionSendState::Unsent => 2u8.write_data(writer)?,
+            TransactionSendState::Broadcasted { height, tries } => {
                 3u8.write_data(writer)?
                     + height.write_data(writer)?
                     + PackedUint::from(*tries).write_data(writer)?
@@ -105,10 +110,15 @@ impl DataFormat for CannonTransactionStatus {
 
         let tag = u8::read_data(reader, &())?;
         Ok(match tag {
-            0 => CannonTransactionStatus::Authorized,
-            1 => CannonTransactionStatus::Executing(AgentId::read_data(reader, &())?),
-            2 => CannonTransactionStatus::Executed,
-            3 => CannonTransactionStatus::Broadcasted {
+            0 => TransactionSendState::Authorized,
+            1 => {
+                let timestamp = i64::read_data(reader, &())?;
+                TransactionSendState::Executing(DateTime::from_timestamp(timestamp, 0).ok_or_else(
+                    || DataReadError::custom(format!("Invalid timestamp in datetime: {timestamp}")),
+                )?)
+            }
+            2 => TransactionSendState::Unsent,
+            3 => TransactionSendState::Broadcasted {
                 height: Option::<u32>::read_data(reader, &())?,
                 tries: PackedUint::read_data(reader, &())?.into(),
             },
@@ -123,9 +133,10 @@ impl DataFormat for CannonTransactionStatus {
 
 #[cfg(test)]
 mod test {
-    use snops_common::{format::DataFormat, state::AgentId};
+    use chrono::DateTime;
+    use snops_common::format::DataFormat;
 
-    use crate::cannon::status::CannonTransactionStatus;
+    use crate::cannon::status::TransactionSendState;
 
     macro_rules! case {
         ($name:ident, $ty:ty, $a:expr, $b:expr) => {
@@ -148,26 +159,31 @@ mod test {
 
     case!(
         test_cannon_transaction_status_received,
-        CannonTransactionStatus,
-        CannonTransactionStatus::Authorized,
+        TransactionSendState,
+        TransactionSendState::Authorized,
         [0u8]
     );
+
+    lazy_static::lazy_static! {
+        static ref NOW: DateTime<chrono::Utc> = chrono::Utc::now();
+    }
+
     case!(
         test_cannon_transaction_status_executing,
-        CannonTransactionStatus,
-        CannonTransactionStatus::Executing(AgentId::default()),
-        [vec![1u8], AgentId::default().to_byte_vec().unwrap()].concat()
+        TransactionSendState,
+        TransactionSendState::Executing(*NOW),
+        [vec![1u8], NOW.timestamp().to_byte_vec().unwrap()].concat()
     );
     case!(
         test_cannon_transaction_status_executed,
-        CannonTransactionStatus,
-        CannonTransactionStatus::Executed,
+        TransactionSendState,
+        TransactionSendState::Unsent,
         [2u8]
     );
     case!(
         test_cannon_transaction_status_broadcasted,
-        CannonTransactionStatus,
-        CannonTransactionStatus::Broadcasted {
+        TransactionSendState,
+        TransactionSendState::Broadcasted {
             height: Some(1),
             tries: 2
         },

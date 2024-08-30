@@ -576,7 +576,7 @@ impl Environment {
     }
 }
 
-// TODO remove this
+// TODO remove this type complexity problem
 #[allow(clippy::type_complexity)]
 pub fn prepare_cannons(
     state: Arc<GlobalState>,

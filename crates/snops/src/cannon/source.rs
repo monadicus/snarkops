@@ -1,3 +1,4 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snops_common::{
@@ -7,12 +8,10 @@ use snops_common::{
 use super::{
     error::{CannonError, SourceError},
     net::get_available_port,
-    status::{TransactionStatus, TransactionStatusSender},
+    status::{TransactionSendState, TransactionStatusEvent, TransactionStatusSender},
+    ExecutionContext,
 };
-use crate::{
-    env::{set::find_compute_agent, Environment},
-    state::GlobalState,
-};
+use crate::env::set::find_compute_agent;
 
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -148,9 +147,9 @@ impl TxSource {
 impl ComputeTarget {
     pub async fn execute(
         &self,
-        state: &GlobalState,
-        env: &Environment,
+        ctx: &ExecutionContext,
         query_path: &str,
+        tx_id: &str,
         auth: &Authorization,
         events: &TransactionStatusSender,
     ) -> Result<(), CannonError> {
@@ -158,23 +157,40 @@ impl ComputeTarget {
             ComputeTarget::Agent { labels } => {
                 // find a client, mark it as busy
                 let (agent_id, client, _busy) =
-                    find_compute_agent(state, &labels.clone().unwrap_or_default())
+                    find_compute_agent(&ctx.state, &labels.clone().unwrap_or_default())
                         .ok_or(SourceError::NoAvailableAgents("authorization"))?;
 
-                events.send(TransactionStatus::Executing(agent_id));
+                events.send(TransactionStatusEvent::Executing(agent_id));
+                ctx.write_tx_status(tx_id, TransactionSendState::Executing(Utc::now()))?;
 
                 // execute the authorization
-                let transaction = client
+                let transaction_json = client
                     .execute_authorization(
-                        env.id,
-                        env.network,
+                        ctx.env_id,
+                        ctx.network,
                         query_path.to_owned(),
                         serde_json::to_string(&auth)
                             .map_err(|e| SourceError::Json("authorize tx", e))?,
                     )
                     .await?;
 
-                events.send(TransactionStatus::ExecuteComplete(transaction));
+                let transaction = match serde_json::from_str(&transaction_json) {
+                    Ok(transaction) => transaction,
+                    Err(e) => {
+                        events.send(TransactionStatusEvent::ExecuteFailed(format!(
+                            "failed to parse transaction JSON: {transaction_json}",
+                        )));
+                        // TODO: increment "attempts" counter for this auth
+                        ctx.write_tx_status(tx_id, TransactionSendState::Authorized)?;
+                        return Err(CannonError::Source(SourceError::Json(
+                            "parse compute tx",
+                            e,
+                        )));
+                    }
+                };
+
+                events.send(TransactionStatusEvent::ExecuteComplete(transaction));
+                ctx.write_tx_status(tx_id, TransactionSendState::Unsent)?;
 
                 Ok(())
             }

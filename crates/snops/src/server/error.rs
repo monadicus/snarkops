@@ -35,6 +35,8 @@ pub enum ServerError {
     EnvRequest(#[from] EnvRequestError),
     #[error("{0}")]
     NotFound(String),
+    #[error("{0}")]
+    BadRequest(String),
     #[error(transparent)]
     AotCmd(#[from] AotCmdError),
     #[error("invalid log level: `{0}`")]
@@ -60,6 +62,7 @@ impl_into_status_code!(ServerError, |value| match value {
     AotCmd(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     NotFound(_) => axum::http::StatusCode::NOT_FOUND,
     InvalidLogLevel(_) => axum::http::StatusCode::BAD_REQUEST,
+    BadRequest(_) => axum::http::StatusCode::BAD_REQUEST,
     FailedToChangeLogLevel => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     RpcError(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
 });

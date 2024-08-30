@@ -10,7 +10,6 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
-    aot_cmds::AotCmd,
     key_source::KeySource,
     state::{id_or_none, KeyState, NetworkId},
 };
@@ -303,7 +302,7 @@ async fn get_mapping_json(
 async fn transaction(
     Path((env_id, cannon_id, network)): Path<(String, String, NetworkId)>,
     state: State<AppState>,
-    body: String,
+    mut body: Json<serde_json::Value>,
 ) -> Response {
     let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
         return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
@@ -321,7 +320,11 @@ async fn transaction(
         return ServerError::NotFound("cannon not found".to_owned()).into_response();
     };
 
-    match cannon.proxy_broadcast(body) {
+    let Some(tx_id) = body.get("id").and_then(|id| id.as_str().map(str::to_owned)) else {
+        return ServerError::BadRequest("body missing transaction ID".to_owned()).into_response();
+    };
+
+    match cannon.proxy_broadcast(tx_id, body.take()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
@@ -358,29 +361,23 @@ async fn authorization(
         return ServerError::NotFound("cannon not found".to_owned()).into_response();
     };
 
-    let compute_bin = match env.storage.resolve_compute_binary(&state).await {
-        Ok(bin) => bin,
-        Err(e) => return ServerError::from(e).into_response(),
-    };
-    let aot = AotCmd::new(compute_bin, env.network);
-    let tx_id = match aot.get_tx_id(&body).await {
-        Ok(id) => id,
-        Err(e) => {
-            return ServerError::from(e).into_response();
-        }
-    };
-
     if query.is_async() {
-        return match cannon.proxy_auth(body, TransactionStatusSender::empty()) {
-            Ok(_) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
+        return match cannon
+            .proxy_auth(body, TransactionStatusSender::empty())
+            .await
+        {
+            Ok(tx_id) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
             Err(e) => ServerError::from(e).into_response(),
         };
     }
 
     let (tx, rx) = mpsc::channel(10);
 
-    match cannon.proxy_auth(body, TransactionStatusSender::new(tx)) {
-        Ok(_) => execute_status(tx_id, rx).await.into_response(),
+    match cannon
+        .proxy_auth(body, TransactionStatusSender::new(tx))
+        .await
+    {
+        Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }

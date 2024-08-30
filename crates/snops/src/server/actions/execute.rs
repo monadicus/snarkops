@@ -19,7 +19,7 @@ use crate::{
     cannon::{
         error::AuthorizeError,
         router::AuthQuery,
-        status::{TransactionStatus, TransactionStatusSender},
+        status::{TransactionStatusEvent, TransactionStatusSender},
     },
     env::{error::ExecutionError, Environment},
     server::error::{ActionError, ServerError},
@@ -28,9 +28,9 @@ use crate::{
 
 pub async fn execute_status(
     tx_id: String,
-    mut rx: mpsc::Receiver<TransactionStatus>,
+    mut rx: mpsc::Receiver<TransactionStatusEvent>,
 ) -> Result<Json<serde_json::Value>, ActionError> {
-    use TransactionStatus::*;
+    use TransactionStatusEvent::*;
 
     let mut timeout = Box::pin(tokio::time::sleep(std::time::Duration::from_secs(30)));
     let mut agent_id = None;
@@ -59,10 +59,7 @@ pub async fn execute_status(
                         return Ok(Json(json!({
                             "agent_id": agent_id,
                             "retries": retries,
-                            "transaction": serde_json::from_str(&transaction)
-                                .unwrap_or_else(|_|
-                                    json!(transaction)
-                                ),
+                            "transaction": transaction,
                         })));
                     },
                     _ => (),
@@ -187,10 +184,8 @@ pub async fn execute_inner(
     let authorization: Authorization =
         serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
 
-    let tx_id = aot.get_tx_id(&authorization).await?;
-
     // proxy it to a listen cannon
-    cannon.proxy_auth(authorization, events)?;
+    let tx_id = cannon.proxy_auth(authorization, events).await?;
 
     Ok(tx_id)
 }
