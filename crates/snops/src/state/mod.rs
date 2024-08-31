@@ -6,9 +6,11 @@ use snops_common::state::{AgentId, EnvId, NetworkId, StorageId};
 mod agent;
 mod agent_flags;
 pub mod error;
+pub mod external_peers;
 mod global;
 mod reconcile;
 mod rpc;
+pub mod snarkos_request;
 
 pub use agent::*;
 pub use agent_flags::*;

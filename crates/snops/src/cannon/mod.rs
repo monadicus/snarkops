@@ -137,7 +137,8 @@ impl CannonInstance {
         index
     }
 
-    fn hydrate_transactions(
+    /// Load transactions for this cannon/env from the store
+    fn restore_transactions(
         state: &GlobalState,
         env_id: EnvId,
         cannon_id: CannonId,
@@ -258,7 +259,7 @@ impl CannonInstance {
             .map_err(|e| CannonError::Command(id, e))?;
 
         let (auth_sender, auth_receiver) = tokio::sync::mpsc::unbounded_channel();
-        let (transactions, received_txs) = Self::hydrate_transactions(&global_state, env_id, id);
+        let (transactions, received_txs) = Self::restore_transactions(&global_state, env_id, id);
 
         Ok((
             Self {
@@ -284,6 +285,7 @@ impl CannonInstance {
         ))
     }
 
+    /// Create an execution context for this cannon
     pub fn ctx(&self) -> ExecutionContext {
         ExecutionContext {
             id: self.id,
@@ -297,6 +299,7 @@ impl CannonInstance {
         }
     }
 
+    /// Spawn the cannon's execution context as an abortable local task
     pub fn spawn_local(
         &mut self,
         rx: CannonReceivers,
@@ -315,6 +318,8 @@ impl CannonInstance {
         Ok(())
     }
 
+    /// Spawn the cannon's execution context and wait for it to finish
+    #[deprecated = "originally used in the timeline API for temporary cannons with finite transaction counts"]
     pub async fn spawn(&mut self, rx: CannonReceivers) -> Result<(), CannonError> {
         self.ctx().spawn(rx).await
     }

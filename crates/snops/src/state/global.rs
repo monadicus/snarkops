@@ -4,19 +4,20 @@ use chrono::Utc;
 use dashmap::DashMap;
 use lazysort::SortedBy;
 use prometheus_http_query::Client as PrometheusClient;
-use serde::{de::DeserializeOwned, Serialize};
-use serde_json::json;
+use serde::de::DeserializeOwned;
 use snops_common::{
     constant::ENV_AGENT_KEY,
     node_targets::NodeTargets,
-    rpc::error::SnarkosRequestError,
     state::{AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, StorageId},
     util::OpaqueDebug,
 };
 use tokio::sync::{Mutex, Semaphore};
 use tracing::info;
 
-use super::{AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
+use super::{
+    snarkos_request::{self, reparse_json_env},
+    AddrMap, AgentClient, AgentPool, EnvMap, StorageMap,
+};
 use crate::{
     cli::Cli,
     db::Database,
@@ -284,43 +285,25 @@ impl GlobalState {
             return Err(EnvRequestError::MissingEnv(env_id));
         };
 
-        let network = env.network;
-
         let query_nodes = self.get_scored_peers(env_id, target);
         if query_nodes.is_empty() {
             return Err(EnvRequestError::NoMatchingNodes);
         }
 
-        let route_string = route.to_string();
-        let route_str = route_string.as_ref();
-        let is_state_root = matches!(route_str, "/latest/stateRoot" | "/stateRoot/latest");
-        let is_block_height = matches!(route_str, "/latest/height" | "/block/height/latest");
-        let is_block_hash = matches!(route_str, "/latest/hash" | "/block/hash/latest");
-
-        /// I would rather reparse a string than use unsafe/dyn any here
-        // because we would be making a request anyway and it's not a big deal.
-        fn json_generics_bodge<T: DeserializeOwned>(
-            v: impl Serialize,
-        ) -> Result<T, EnvRequestError> {
-            serde_json::from_value(json!(&v)).map_err(|e| {
-                EnvRequestError::AgentRequestError(SnarkosRequestError::JsonParseError(
-                    e.to_string(),
-                ))
-            })
-        }
+        let route_str = route.to_string();
+        let prefix = snarkos_request::route_prefix_check(&route_str);
 
         // walk through the nodes (lazily sorted by a score) until we find one that
         // responds
         for (_, info, agent_id, addr) in query_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0)) {
             // if this route is a route with block info that we already track,
             // we can return the info from the agent's status directly
-            if let Some(info) = info {
-                if is_state_root {
-                    return json_generics_bodge(info.state_root);
-                } else if is_block_height {
-                    return json_generics_bodge(info.height);
-                } else if is_block_hash {
-                    return json_generics_bodge(info.block_hash);
+            if let (Some(prefix), Some(info)) = (prefix, info) {
+                use snarkos_request::RoutePrefix::*;
+                return match prefix {
+                    StateRoot => reparse_json_env(info.state_root),
+                    BlockHeight => reparse_json_env(info.height),
+                    BlockHash => reparse_json_env(info.block_hash),
                 };
             }
 
@@ -343,30 +326,10 @@ impl GlobalState {
             };
 
             // attempt to make the request from the node via REST
-            let url = format!("http://{addr}/{network}{route}");
-            let Ok(res) = tokio::time::timeout(
-                std::time::Duration::from_secs(1),
-                REST_CLIENT.get(&url).send(),
-            )
-            .await
-            else {
-                // timeout
-                continue;
-            };
-            match res {
-                Ok(res) => match res.json::<T>().await {
-                    Ok(e) => return Ok(e),
-                    Err(e) => {
-                        tracing::error!(
-                            "env {env_id} request {addr:?} failed to parse {url}: {e:?}"
-                        );
-                        continue;
-                    }
-                },
+            match snarkos_request::get_on_addr(env.network, &route_str, addr).await {
+                Ok(res) => return Ok(res),
                 Err(e) => {
-                    tracing::error!(
-                        "env {env_id} request {addr:?} failed to make request {url}: {e:?}"
-                    );
+                    tracing::error!("env {env_id} request to `{addr}{route_str}`: {e}");
                     continue;
                 }
             }

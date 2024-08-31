@@ -101,6 +101,8 @@ pub enum SnarkosRequestError {
     JsonDeserializeError(String),
     #[error("rpc error: {0}")]
     RpcError(String),
+    #[error("request timed out")]
+    TimedOut,
 }
 
 #[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
