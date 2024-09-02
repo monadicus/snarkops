@@ -11,6 +11,7 @@ use snops_common::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
     define_rpc_mux,
+    prelude::snarkos_status::SnarkOSLiteBlock,
     rpc::{
         control::{
             agent::{
@@ -582,6 +583,19 @@ impl AgentService for AgentRpcServer {
         let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
         node_client
             .set_log_level(ctx, verbosity)
+            .await
+            .map_err(|_| AgentError::FailedToChangeLogLevel)?
+    }
+
+    async fn get_snarkos_block_lite(
+        self,
+        ctx: context::Context,
+        block_hash: String,
+    ) -> Result<Option<SnarkOSLiteBlock>, AgentError> {
+        let lock = self.state.node_client.lock().await;
+        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
+        node_client
+            .get_block_lite(ctx, block_hash)
             .await
             .map_err(|_| AgentError::FailedToChangeLogLevel)?
     }

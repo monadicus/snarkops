@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use serde::{Deserialize, Serialize};
 
 use crate::rpc::error::*;
+use crate::state::snarkos_status::SnarkOSLiteBlock;
 use crate::{
     prelude::EnvId,
     state::{AgentState, NetworkId, PortConfig},
@@ -51,6 +52,11 @@ pub trait AgentService {
     async fn get_metric(metric: AgentMetric) -> f64;
 
     async fn set_log_level(level: String) -> Result<(), AgentError>;
+
+    /// Get a block info and transaction data from the agent's running node
+    async fn get_snarkos_block_lite(
+        block_hash: String,
+    ) -> Result<Option<SnarkOSLiteBlock>, AgentError>;
 
     async fn set_aot_log_level(verbosity: u8) -> Result<(), AgentError>;
 }

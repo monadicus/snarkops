@@ -26,3 +26,12 @@ pub struct SnarkOSBlockInfo {
     pub previous_hash: String,
     pub block_timestamp: i64,
 }
+
+/// Messages from snarkos to the agent, containing information about the status
+/// of the node
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SnarkOSLiteBlock {
+    pub info: SnarkOSBlockInfo,
+    pub transactions: Vec<String>,
+}
