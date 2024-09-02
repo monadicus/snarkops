@@ -1,6 +1,6 @@
 use std::{collections::HashMap, net::SocketAddr, ops::Deref, sync::Arc, time::Duration};
 
-use chrono::Utc;
+use chrono::{TimeDelta, Utc};
 use futures_util::future;
 use serde_json::Value;
 use snops_common::state::{EnvId, LatestBlockInfo, NetworkId, NodeKey};
@@ -9,14 +9,15 @@ use tokio::time::timeout;
 use super::{snarkos_request, AgentClient, GlobalState};
 use crate::{
     env::{
-        cache::{ABlockHash, ATransactionId},
+        cache::{ABlockHash, ATransactionId, MAX_BLOCK_RANGE},
         EnvNodeState, EnvPeer,
     },
     schema::nodes::ExternalNode,
 };
 
 type ExtPeerPair = (NodeKey, SocketAddr);
-type PendingBlockRequests = HashMap<(EnvId, NetworkId, ABlockHash), Vec<ExtPeerPair>>;
+type PendingBlockRequests =
+    HashMap<(EnvId, NetworkId), HashMap<(ABlockHash, u32), Vec<ExtPeerPair>>>;
 
 /// Hit all the external peers to update their latest block infos.
 ///
@@ -49,6 +50,8 @@ pub async fn external_block_info_task(state: Arc<GlobalState>) {
         ))
         .await;
 
+        let now = Utc::now();
+
         // map of block hashes and environments to peers that can provide them
         // TODO: fetch this from an AOT peer instead if possible
         let mut blocks_pending_request: PendingBlockRequests = HashMap::new();
@@ -62,7 +65,7 @@ pub async fn external_block_info_task(state: Arc<GlobalState>) {
 
             // Go through each peer for an env if they were responsive with the block hash
             // request (flatten)
-            for (key, addr, hash) in peers_and_hashes.into_iter().flatten() {
+            for (key, addr, (hash, height)) in peers_and_hashes.into_iter().flatten() {
                 // update the peer's block info if it is different than the peer's current info
                 cache.update_peer_info_for_hash(&key, &hash);
 
@@ -72,9 +75,22 @@ pub async fn external_block_info_task(state: Arc<GlobalState>) {
                     continue;
                 }
 
+                // prevent making a request on a peer that is probably syncing (way out of date
+                // height)
+                if cache.latest.as_ref().is_some_and(|i|
+                        // peer's height outside the max block range
+                        i.height.saturating_sub(MAX_BLOCK_RANGE) >= height
+                        // and the block range is recent
+                        && (now - i.update_time) < TimeDelta::seconds(60))
+                {
+                    continue;
+                }
+
                 // update the list of blocks that need to be requested
                 blocks_pending_request
-                    .entry((env, network, hash.clone()))
+                    .entry((env, network))
+                    .or_default()
+                    .entry((hash, height))
                     .or_default()
                     .push((key, addr));
             }
@@ -82,18 +98,27 @@ pub async fn external_block_info_task(state: Arc<GlobalState>) {
 
         // fetch the missing block info from agents if possible (fallback on external
         // peers), then update the cache with the peer data
-        let block_fetch_tasks =
-            blocks_pending_request
-                .into_iter()
-                .map(|((env, network, hash), peers)| {
-                    async move {
-                        // TODO: check agents that may have this height/hash available then make the
-                        // request on those agents let applicable_agents =
+        let block_fetch_tasks = blocks_pending_request
+            .into_iter()
+            .map(|((env, network), requests)| {
+                // highest height of all requests
+                let max_height = requests.keys().map(|(_, height)| *height).max().unwrap();
+                // list of agents that could fulfil this request (rather than making slow rest &
+                // deserialize requests)
+                let agents = online_agents_above_height(&state, env, max_height);
 
-                        // Some((env, network, hash, info))
-                        todo!()
-                    }
-                });
+                requests
+                    .into_iter()
+                    .map(|((hash, height), peers)| {
+                        async move {
+                            // TODO: fetch the block info for the height
+                            // TODO: update the list of peers
+                            hash
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
 
         // wait 10 seconds between checks
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
@@ -128,14 +153,18 @@ fn online_agents_above_height(state: &GlobalState, env: EnvId, height: u32) -> V
 // running this
 
 /// Obtain a peer's latest block hash
-async fn get_block_hash_for_peer(network: NetworkId, addr: SocketAddr) -> Option<Arc<str>> {
+async fn get_block_hash_for_peer(network: NetworkId, addr: SocketAddr) -> Option<(Arc<str>, u32)> {
     // make a request to the external peer for the latest block hash
     // TODO: there is no api to get the block height for a block hash, and no API
     // for getting the block hash from a height
-    let res = snarkos_request::get_on_addr::<Value>(network, "/block/hash/latest", addr)
+    let hash_res = snarkos_request::get_on_addr::<Value>(network, "/block/hash/latest", addr)
         .await
         .ok()?;
-    Some(res.as_str()?.into())
+    let height_res = snarkos_request::get_on_addr::<Value>(network, "/block/hash/latest", addr)
+        .await
+        .ok()?;
+
+    Some((hash_res.as_str()?.into(), height_res.as_u64()? as u32))
 }
 
 /// Obtain a peer's block info and transaction ids

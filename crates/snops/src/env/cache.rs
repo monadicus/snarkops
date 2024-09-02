@@ -16,6 +16,10 @@ lazy_static! {
 pub type ABlockHash = Arc<str>;
 pub type ATransactionId = Arc<str>;
 
+/// The maximum number of block distance from the tip before we don't consider
+/// fetching it
+pub const MAX_BLOCK_RANGE: u32 = 10;
+
 /// Exists per environment to track transactions for the most recent blocks
 /// TODO: task to prune old/unused data
 #[derive(Default)]
@@ -34,8 +38,6 @@ pub struct NetworkCache {
     pub external_peer_record: HashMap<NodeKey, ResponsiveRecord>,
     /// The most recent block info
     pub latest: Option<LatestBlockInfo>,
-    /// The height of the highest block with transaction data
-    pub max_block_height: Option<u32>,
 }
 
 /// A list of transactions paired with the time they were added to the cache
@@ -106,6 +108,30 @@ impl NetworkCache {
         false
     }
 
+    /// Add a block to the cache
+    pub fn add_block(
+        &mut self,
+        block_hash: ABlockHash,
+        block_info: LatestBlockInfo,
+        txs: Vec<ATransactionId>,
+    ) {
+        self.height_and_hash
+            .insert(block_info.height, block_hash.clone());
+        for tx in &txs {
+            self.transaction_to_block_hash
+                .insert(Arc::clone(tx), block_hash.clone());
+        }
+        self.block_to_transaction.insert(
+            block_hash.clone(),
+            TransactionCache {
+                create_time: block_info.update_time,
+                entries: txs,
+            },
+        );
+        self.blocks.insert(Arc::clone(&block_hash), block_info);
+    }
+
+    /// Remove a block from the cache
     pub fn remove_block(&mut self, block_hash: &ABlockHash) {
         self.height_and_hash.retain(|_, v| v != block_hash);
         self.block_to_transaction.remove(block_hash);
