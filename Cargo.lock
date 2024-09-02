@@ -507,7 +507,7 @@ version = "0.13.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6026d8cd82ada8bbcfe337805dd1eb6afdc9e80fa4d57e977b3a36315e0c5525"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "lazy_static",
  "num-traits",
  "regex",
@@ -1226,7 +1226,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 0.2.12",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "slab",
  "tokio",
  "tokio-util",
@@ -1245,7 +1245,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "http 1.1.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "slab",
  "tokio",
  "tokio-util",
@@ -1547,9 +1547,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.4.0"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93ead53efc7ea8ed3cfb0c79fc8023fbb782a5432b52830b6518941cebe6505c"
+checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
 dependencies = [
  "equivalent",
  "hashbrown 0.14.5",
@@ -1829,7 +1829,7 @@ dependencies = [
  "cactus",
  "cfgrammar",
  "filetime",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "lazy_static",
  "lrtable",
  "num-traits",
@@ -1914,7 +1914,7 @@ dependencies = [
  "base64 0.21.7",
  "hyper 0.14.29",
  "hyper-tls 0.5.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "ipnet",
  "metrics",
  "metrics-util",
@@ -1935,7 +1935,7 @@ dependencies = [
  "hyper 1.3.1",
  "hyper-tls 0.6.0",
  "hyper-util",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "ipnet",
  "metrics",
  "metrics-util",
@@ -3062,7 +3062,7 @@ version = "1.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "455182ea6142b14f93f4bc5320a2b31c1f266b66a4a5c858b013302a5d8cbfc3"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itoa",
  "ryu",
  "serde",
@@ -3096,7 +3096,7 @@ version = "0.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ce6afeda22f0b55dde2c34897bce76a629587348480384231205c14b59a01f"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itoa",
  "libyml",
  "log",
@@ -3253,7 +3253,7 @@ dependencies = [
  "crossterm",
  "futures-util",
  "http 1.1.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "indicatif",
  "lazy_static",
  "metrics-exporter-prometheus 0.14.0",
@@ -3293,7 +3293,7 @@ dependencies = [
  "async-trait",
  "colored",
  "futures-util",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "num_cpus",
  "once_cell",
  "parking_lot 0.12.3",
@@ -3328,7 +3328,7 @@ dependencies = [
  "bytes",
  "colored",
  "futures",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "parking_lot 0.12.3",
  "rand",
  "rayon",
@@ -3356,7 +3356,7 @@ source = "git+https://github.com/AleoNet/snarkOS?rev=805bade#805baded1a3f41b7070
 dependencies = [
  "anyhow",
  "bytes",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "rayon",
  "serde",
  "snarkos-node-metrics",
@@ -3372,7 +3372,7 @@ version = "2.2.7"
 source = "git+https://github.com/AleoNet/snarkOS?rev=805bade#805baded1a3f41b7070ea6dfad42cdc9822521b8"
 dependencies = [
  "async-trait",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "lru",
  "parking_lot 0.12.3",
  "rand",
@@ -3388,7 +3388,7 @@ version = "2.2.7"
 source = "git+https://github.com/AleoNet/snarkOS?rev=805bade#805baded1a3f41b7070ea6dfad42cdc9822521b8"
 dependencies = [
  "aleo-std",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "parking_lot 0.12.3",
  "snarkvm",
  "tracing",
@@ -3421,7 +3421,7 @@ dependencies = [
  "aleo-std",
  "anyhow",
  "colored",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "lru",
  "parking_lot 0.12.3",
  "rand",
@@ -3457,7 +3457,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "http 1.1.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "jsonwebtoken",
  "once_cell",
  "parking_lot 0.12.3",
@@ -3487,7 +3487,7 @@ dependencies = [
  "bytes",
  "colored",
  "futures",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "linked-hash-map",
  "parking_lot 0.12.3",
  "rand",
@@ -3514,7 +3514,7 @@ source = "git+https://github.com/AleoNet/snarkOS?rev=805bade#805baded1a3f41b7070
 dependencies = [
  "anyhow",
  "bytes",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "rayon",
  "serde",
  "snarkos-node-bft-events",
@@ -3531,7 +3531,7 @@ version = "2.2.7"
 source = "git+https://github.com/AleoNet/snarkOS?rev=805bade#805baded1a3f41b7070ea6dfad42cdc9822521b8"
 dependencies = [
  "anyhow",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itertools 0.12.1",
  "once_cell",
  "parking_lot 0.12.3",
@@ -3561,7 +3561,7 @@ version = "2.2.7"
 source = "git+https://github.com/AleoNet/snarkOS?rev=805bade#805baded1a3f41b7070ea6dfad42cdc9822521b8"
 dependencies = [
  "anyhow",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "serde",
  "snarkvm",
  "tracing",
@@ -3593,7 +3593,7 @@ dependencies = [
  "clap",
  "colored",
  "dotenvy",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "num-format",
  "once_cell",
  "parking_lot 0.12.3",
@@ -3625,7 +3625,7 @@ dependencies = [
  "fxhash",
  "hashbrown 0.14.5",
  "hex",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itertools 0.11.0",
  "num-traits",
  "parking_lot 0.12.3",
@@ -3693,7 +3693,7 @@ name = "snarkvm-circuit-environment"
 version = "0.16.19"
 source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247657947b9f1c9ec7f21d81"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itertools 0.11.0",
  "nom",
  "num-traits",
@@ -3885,7 +3885,7 @@ version = "0.16.19"
 source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247657947b9f1c9ec7f21d81"
 dependencies = [
  "anyhow",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itertools 0.11.0",
  "lazy_static",
  "once_cell",
@@ -3928,7 +3928,7 @@ dependencies = [
  "enum-iterator",
  "enum_index",
  "enum_index_derive",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "num-derive",
  "num-traits",
  "once_cell",
@@ -4068,7 +4068,7 @@ source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247
 dependencies = [
  "aleo-std",
  "anyhow",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "parking_lot 0.12.3",
  "rand",
  "rayon",
@@ -4102,7 +4102,7 @@ name = "snarkvm-ledger-block"
 version = "0.16.19"
 source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247657947b9f1c9ec7f21d81"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "rayon",
  "serde_json",
  "snarkvm-console",
@@ -4122,7 +4122,7 @@ name = "snarkvm-ledger-committee"
 version = "0.16.19"
 source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247657947b9f1c9ec7f21d81"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "rayon",
  "serde_json",
  "snarkvm-console",
@@ -4148,7 +4148,7 @@ name = "snarkvm-ledger-narwhal-batch-certificate"
 version = "0.16.19"
 source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247657947b9f1c9ec7f21d81"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "rayon",
  "serde_json",
  "snarkvm-console",
@@ -4161,7 +4161,7 @@ name = "snarkvm-ledger-narwhal-batch-header"
 version = "0.16.19"
 source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247657947b9f1c9ec7f21d81"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "rayon",
  "serde_json",
  "snarkvm-console",
@@ -4184,7 +4184,7 @@ name = "snarkvm-ledger-narwhal-subdag"
 version = "0.16.19"
 source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247657947b9f1c9ec7f21d81"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "rayon",
  "serde_json",
  "snarkvm-console",
@@ -4224,7 +4224,7 @@ dependencies = [
  "aleo-std",
  "anyhow",
  "bincode",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "lru",
  "once_cell",
  "parking_lot 0.12.3",
@@ -4244,7 +4244,7 @@ dependencies = [
  "aleo-std",
  "anyhow",
  "colored",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "lru",
  "parking_lot 0.12.3",
  "rand",
@@ -4278,7 +4278,7 @@ dependencies = [
  "aleo-std-storage",
  "anyhow",
  "bincode",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "once_cell",
  "parking_lot 0.12.3",
  "rayon",
@@ -4318,7 +4318,7 @@ dependencies = [
  "colored",
  "curl",
  "hex",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itertools 0.11.0",
  "lazy_static",
  "parking_lot 0.12.3",
@@ -4338,7 +4338,7 @@ source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247
 dependencies = [
  "aleo-std",
  "anyhow",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "itertools 0.11.0",
  "lru",
  "parking_lot 0.12.3",
@@ -4369,7 +4369,7 @@ source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247
 dependencies = [
  "aleo-std",
  "colored",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "once_cell",
  "parking_lot 0.12.3",
  "rand",
@@ -4391,7 +4391,7 @@ name = "snarkvm-synthesizer-program"
 version = "0.16.19"
 source = "git+https://github.com/AleoNet/snarkVM?rev=5bb50a8#5bb50a845c774f10247657947b9f1c9ec7f21d81"
 dependencies = [
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "paste",
  "rand",
  "rand_chacha",
@@ -4461,7 +4461,7 @@ dependencies = [
  "futures-util",
  "hmac",
  "http 1.1.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "jwt",
  "lazy_static",
  "lazysort",
@@ -4507,7 +4507,7 @@ dependencies = [
  "futures-util",
  "http 1.1.0",
  "httpdate",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "local-ip-address",
  "nix",
  "reqwest 0.12.5",
@@ -4555,7 +4555,7 @@ dependencies = [
  "clap_mangen",
  "futures",
  "http 1.1.0",
- "indexmap 2.4.0",
+ "indexmap 2.5.0",
  "lasso",
  "lazy_static",
  "paste",
