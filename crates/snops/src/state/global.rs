@@ -21,7 +21,7 @@ use super::{
 use crate::{
     cli::Cli,
     db::Database,
-    env::{error::EnvRequestError, Environment, PortType},
+    env::{cache::NetworkCache, error::EnvRequestError, Environment, PortType},
     error::StateError,
     schema::storage::{LoadedStorage, STORAGE_DIR},
     server::{error::StartError, prometheus::HttpsdResponse},
@@ -41,7 +41,7 @@ pub struct GlobalState {
     pub pool: AgentPool,
     pub storage: StorageMap,
     pub envs: EnvMap,
-    pub env_block_info: DashMap<EnvId, LatestBlockInfo>,
+    pub env_network_cache: OpaqueDebug<DashMap<EnvId, NetworkCache>>,
 
     pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
@@ -96,7 +96,7 @@ impl GlobalState {
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db: OpaqueDebug(db),
-            env_block_info: Default::default(),
+            env_network_cache: Default::default(),
             log_level_handler,
         });
 
@@ -220,20 +220,14 @@ impl GlobalState {
     }
 
     pub fn get_env_block_info(&self, id: EnvId) -> Option<LatestBlockInfo> {
-        self.env_block_info.get(&id).map(|info| info.clone())
+        self.env_network_cache
+            .get(&id)
+            .and_then(|cache| cache.latest.clone())
     }
 
     pub fn update_env_block_info(&self, id: EnvId, info: &LatestBlockInfo) {
-        use dashmap::mapref::entry::Entry::*;
-        match self.env_block_info.entry(id) {
-            Occupied(ent) if ent.get().block_timestamp < info.block_timestamp => {
-                ent.replace_entry(info.clone());
-            }
-            Vacant(ent) => {
-                ent.insert(info.clone());
-            }
-            _ => {}
-        }
+        let mut cache = self.env_network_cache.entry(id).or_default();
+        cache.update_latest_info(info)
     }
 
     /// Get a vec of peers and their addresses, along with a score reflecting

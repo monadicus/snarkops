@@ -6,6 +6,12 @@ use sha2::{Digest, Sha256};
 /// that do not implement `Debug`.
 pub struct OpaqueDebug<T>(pub T);
 
+impl<T: Default> Default for OpaqueDebug<T> {
+    fn default() -> Self {
+        Self(T::default())
+    }
+}
+
 impl<T> Debug for OpaqueDebug<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("(...)")

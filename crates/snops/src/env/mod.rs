@@ -41,6 +41,7 @@ pub mod error;
 mod reconcile;
 pub mod set;
 pub use reconcile::*;
+pub mod cache;
 
 #[derive(Debug)]
 pub struct Environment {
@@ -426,7 +427,7 @@ impl Environment {
 
         // as we're cleaning up the env, we are also removing the associated latest
         // block info
-        let _ = state.env_block_info.remove(&id);
+        let _ = state.env_network_cache.remove(&id);
 
         if let Err(e) = state.db.envs.delete(&id) {
             error!("[env {id}] failed to delete persistence: {e}");
