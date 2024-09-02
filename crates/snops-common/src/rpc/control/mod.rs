@@ -30,7 +30,13 @@ pub trait ControlService {
     async fn post_transfer_statuses(statuses: Vec<(u32, TransferStatus)>);
 
     /// Emit an agent block status update.
-    async fn post_block_status(height: u32, timestamp: i64, state_root: String, block_hash: String);
+    async fn post_block_status(
+        height: u32,
+        timestamp: i64,
+        state_root: String,
+        block_hash: String,
+        prev_block_hash: String,
+    );
 
     /// Emit an agent node status update.
     async fn post_node_status(update: NodeStatus);

@@ -23,5 +23,6 @@ pub struct SnarkOSBlockInfo {
     pub height: u32,
     pub state_root: String,
     pub block_hash: String,
+    pub previous_hash: String,
     pub block_timestamp: i64,
 }

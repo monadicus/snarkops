@@ -121,6 +121,7 @@ impl ControlService for ControlRpcServer {
         timestamp: i64,
         state_root: String,
         block_hash: String,
+        prev_block_hash: String,
     ) {
         let Some(mut agent) = self.state.pool.get_mut(&self.agent) else {
             return;
@@ -134,6 +135,7 @@ impl ControlService for ControlRpcServer {
             height,
             state_root,
             block_hash,
+            previous_hash: prev_block_hash,
             block_timestamp: timestamp,
             update_time: Utc::now(),
         };

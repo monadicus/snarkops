@@ -212,9 +212,11 @@ impl RpcClient {
     pub fn post_block<N: Network>(&self, height: u32, blocks: &BlockDB<N>) {
         if let Self::Enabled { client, .. } = self.to_owned() {
             // lookup block hash and state root
-            let (Ok(Some(block_hash)), Ok(Some(state_root))) =
-                (blocks.get_block_hash(height), blocks.get_state_root(height))
-            else {
+            let (Ok(Some(block_hash)), Ok(Some(state_root)), Ok(Some(previous_hash))) = (
+                blocks.get_block_hash(height),
+                blocks.get_state_root(height),
+                blocks.get_previous_block_hash(height),
+            ) else {
                 return;
             };
 
@@ -228,6 +230,7 @@ impl RpcClient {
                 height,
                 state_root: state_root.to_string(),
                 block_hash: block_hash.to_string(),
+                previous_hash: previous_hash.to_string(),
                 block_timestamp: header.timestamp(),
             };
 
