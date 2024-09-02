@@ -71,4 +71,8 @@ impl AgentClient {
             .get_snarkos_block_lite(context::current(), block_hash)
             .await??)
     }
+
+    pub async fn find_transaction(&self, tx_id: String) -> Result<Option<String>, StateError> {
+        Ok(self.0.find_transaction(context::current(), tx_id).await??)
+    }
 }

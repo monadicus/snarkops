@@ -44,6 +44,26 @@ impl<N: Network> NodeService for NodeRpcServer<N> {
         Ok(())
     }
 
+    async fn find_transaction(
+        self,
+        _: context::Context,
+        tx_id: String,
+    ) -> Result<Option<String>, AgentError> {
+        let block_guard = self.block_db.read();
+        let Ok(Some(block_db)) = block_guard.as_deref() else {
+            return Err(AgentError::NodeClientNotReady);
+        };
+
+        let tx_id: N::TransactionID = tx_id
+            .parse()
+            .map_err(|_| AgentError::InvalidTransactionId)?;
+
+        block_db
+            .find_block_hash(&tx_id)
+            .map_err(|_| AgentError::FailedToMakeRequest)
+            .map(|hash| hash.map(|hash| hash.to_string()))
+    }
+
     async fn get_block_lite(
         self,
         _: context::Context,

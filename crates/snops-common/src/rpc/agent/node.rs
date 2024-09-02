@@ -5,4 +5,5 @@ pub trait NodeService {
     // todo @gluax this should return an A different kind of error.
     async fn set_log_level(verbosity: u8) -> Result<(), AgentError>;
     async fn get_block_lite(block_hash: String) -> Result<Option<SnarkOSLiteBlock>, AgentError>;
+    async fn find_transaction(tx_id: String) -> Result<Option<String>, AgentError>;
 }

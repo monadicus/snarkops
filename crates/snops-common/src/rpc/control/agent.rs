@@ -53,6 +53,9 @@ pub trait AgentService {
 
     async fn set_log_level(level: String) -> Result<(), AgentError>;
 
+    /// Find a transaction's block hash by its transaction id
+    async fn find_transaction(tx_id: String) -> Result<Option<String>, AgentError>;
+
     /// Get a block info and transaction data from the agent's running node
     async fn get_snarkos_block_lite(
         block_hash: String,

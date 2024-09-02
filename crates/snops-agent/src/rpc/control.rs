@@ -597,6 +597,19 @@ impl AgentService for AgentRpcServer {
         node_client
             .get_block_lite(ctx, block_hash)
             .await
-            .map_err(|_| AgentError::FailedToChangeLogLevel)?
+            .map_err(|_| AgentError::FailedToMakeRequest)?
+    }
+
+    async fn find_transaction(
+        self,
+        context: context::Context,
+        tx_id: String,
+    ) -> Result<Option<String>, AgentError> {
+        let lock = self.state.node_client.lock().await;
+        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
+        node_client
+            .find_transaction(context, tx_id)
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?
     }
 }

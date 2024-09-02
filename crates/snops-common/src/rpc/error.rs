@@ -85,6 +85,8 @@ pub enum AgentError {
     NodeClientNotReady,
     #[error("invalid block hash")]
     InvalidBlockHash,
+    #[error("invalid transaction id")]
+    InvalidTransactionId,
 }
 
 #[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
