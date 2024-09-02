@@ -6,11 +6,11 @@ use serde_json::Value;
 use snops_common::state::{EnvId, LatestBlockInfo, NetworkId, NodeKey};
 use tokio::time::timeout;
 
-use super::{snarkos_request, GlobalState};
+use super::{snarkos_request, AgentClient, GlobalState};
 use crate::{
     env::{
         cache::{ABlockHash, ATransactionId},
-        EnvNodeState,
+        EnvNodeState, EnvPeer,
     },
     schema::nodes::ExternalNode,
 };
@@ -63,28 +63,12 @@ pub async fn external_block_info_task(state: Arc<GlobalState>) {
             // Go through each peer for an env if they were responsive with the block hash
             // request (flatten)
             for (key, addr, hash) in peers_and_hashes.into_iter().flatten() {
-                // cache contains the list of transactions for this block
-                let cache_has_block = cache.block_to_transaction.contains_key(&hash);
-
                 // update the peer's block info if it is different than the peer's current info
-                match cache.blocks.get(&hash) {
-                    Some(info)
-                        if !cache
-                            .external_peer_infos
-                            .get(&key)
-                            .is_some_and(|i| i.block_hash == hash.deref()) =>
-                    {
-                        // ensure the new info has an updated timestamp
-                        let mut info = info.clone();
-                        info.update_time = Utc::now();
-                        cache.update_peer_info(key.clone(), info);
-                    }
-                    _ => {}
-                }
+                cache.update_peer_info_for_hash(&key, &hash);
 
                 // prevent re-requesting the list of transactions for a block that
                 // is already cached
-                if cache_has_block {
+                if cache.block_to_transaction.contains_key(&hash) {
                     continue;
                 }
 
@@ -96,9 +80,48 @@ pub async fn external_block_info_task(state: Arc<GlobalState>) {
             }
         }
 
+        // fetch the missing block info from agents if possible (fallback on external
+        // peers), then update the cache with the peer data
+        let block_fetch_tasks =
+            blocks_pending_request
+                .into_iter()
+                .map(|((env, network, hash), peers)| {
+                    async move {
+                        // TODO: check agents that may have this height/hash available then make the
+                        // request on those agents let applicable_agents =
+
+                        // Some((env, network, hash, info))
+                        todo!()
+                    }
+                });
+
         // wait 10 seconds between checks
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
     }
+}
+
+/// Get all online agents above a certain height in an environment
+fn online_agents_above_height(state: &GlobalState, env: EnvId, height: u32) -> Vec<AgentClient> {
+    let Some(env) = state.get_env(env) else {
+        return Vec::new();
+    };
+
+    env.node_peers
+        .iter()
+        .filter_map(|(_, peer)| {
+            // ensure peer is internal
+            let EnvPeer::Internal(agent_id) = peer else {
+                return None;
+            };
+            let agent = state.pool.get(agent_id)?;
+            // ensure peer height is above or equal the requested height
+            if agent.status.block_info.as_ref()?.height < height {
+                return None;
+            }
+            // ensure the agent is online
+            agent.client_owned()
+        })
+        .collect()
 }
 
 // todo: check if an external peer's /block/hash/latest is already cached before
@@ -107,6 +130,8 @@ pub async fn external_block_info_task(state: Arc<GlobalState>) {
 /// Obtain a peer's latest block hash
 async fn get_block_hash_for_peer(network: NetworkId, addr: SocketAddr) -> Option<Arc<str>> {
     // make a request to the external peer for the latest block hash
+    // TODO: there is no api to get the block height for a block hash, and no API
+    // for getting the block hash from a height
     let res = snarkos_request::get_on_addr::<Value>(network, "/block/hash/latest", addr)
         .await
         .ok()?;

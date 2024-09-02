@@ -6,7 +6,7 @@ use snops_common::{
         control::agent::AgentServiceClient,
         error::{ReconcileError, SnarkosRequestError},
     },
-    state::{AgentState, EnvId, NetworkId},
+    state::{snarkos_status::SnarkOSLiteBlock, AgentState, EnvId, NetworkId},
 };
 use tarpc::{client::RpcError, context};
 
@@ -60,5 +60,15 @@ impl AgentClient {
 
     pub async fn broadcast_tx(&self, tx: String) -> Result<(), StateError> {
         Ok(self.0.broadcast_tx(context::current(), tx).await??)
+    }
+
+    pub async fn get_snarkos_block_lite(
+        &self,
+        block_hash: String,
+    ) -> Result<Option<SnarkOSLiteBlock>, StateError> {
+        Ok(self
+            .0
+            .get_snarkos_block_lite(context::current(), block_hash)
+            .await??)
     }
 }

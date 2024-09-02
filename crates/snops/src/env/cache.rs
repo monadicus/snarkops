@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ops::Deref,
     sync::{atomic::AtomicU64, Arc},
 };
 
@@ -27,8 +28,10 @@ pub struct NetworkCache {
     pub transaction_to_block_hash: HashMap<ATransactionId, ABlockHash>,
     /// A map of block height to block info
     pub blocks: HashMap<ABlockHash, LatestBlockInfo>,
-    // A map of external peer node keys to their latest block info
+    /// A map of external peer node keys to their latest block info
     pub external_peer_infos: HashMap<NodeKey, LatestBlockInfo>,
+    /// A map of the peer's "track record" for responsiveness.
+    pub external_peer_record: HashMap<NodeKey, ResponsiveRecord>,
     /// The most recent block info
     pub latest: Option<LatestBlockInfo>,
     /// The height of the highest block with transaction data
@@ -44,6 +47,19 @@ pub struct TransactionCache {
     pub entries: Vec<ATransactionId>,
 }
 
+/// A record of a peer's responsiveness for avoiding using peers that are
+/// unresponsive
+pub struct ResponsiveRecord {
+    /// Number of **consecutive** failed attempts to reach the peer
+    pub failed_attempts: u32,
+    /// Number of successful attempts to reach the peer
+    pub total_successes: u32,
+    /// The last time an attempt was made to reach the peer
+    pub last_attempt: DateTime<Utc>,
+    /// The last time the peer was successfully reached
+    pub last_success: DateTime<Utc>,
+}
+
 impl NetworkCache {
     pub fn update_latest_info(&mut self, info: &LatestBlockInfo) {
         match &self.latest {
@@ -55,6 +71,28 @@ impl NetworkCache {
             }
             _ => {}
         }
+    }
+
+    /// Update a peer's node info if the provided block hash exists in the cache
+    pub fn update_peer_info_for_hash(&mut self, key: &NodeKey, hash: &str) {
+        // ensure info exists
+        let Some(info) = self.blocks.get(hash) else {
+            return;
+        };
+
+        // ensure the hash is different
+        if self
+            .external_peer_infos
+            .get(key)
+            .is_some_and(|i| i.block_hash == hash)
+        {
+            return;
+        }
+
+        // update the info has with a new timestamp
+        let mut info = info.clone();
+        info.update_time = Utc::now();
+        self.update_peer_info(key.clone(), info);
     }
 
     pub fn update_peer_info(&mut self, key: NodeKey, info: LatestBlockInfo) {

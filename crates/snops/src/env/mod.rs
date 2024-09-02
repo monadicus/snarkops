@@ -379,7 +379,6 @@ impl Environment {
             id: env_id,
             storage,
             network,
-            // TODO: outcome_results: Default::default(),
             node_peers,
             node_states,
             sinks,
@@ -390,7 +389,7 @@ impl Environment {
             error!("failed to save env {env_id} to persistence: {e}");
         }
 
-        state.envs.insert(env_id, Arc::clone(&env));
+        state.insert_env(env_id, Arc::clone(&env));
 
         if !agents_to_inventory.is_empty() {
             info!(
@@ -420,10 +419,8 @@ impl Environment {
         // clear the env state
         info!("[env {id}] deleting persistence...");
 
-        let (_, env) = state
-            .envs
-            .remove(&id)
-            .ok_or(CleanupError::EnvNotFound(id))?;
+        let env = state.remove_env(id).ok_or(CleanupError::EnvNotFound(id))?;
+        let _ = state.env_network_cache.remove(&id);
 
         // as we're cleaning up the env, we are also removing the associated latest
         // block info
@@ -483,6 +480,16 @@ impl Environment {
         pool: &'a DashMap<AgentId, Agent>,
         port_type: PortType,
     ) -> impl Iterator<Item = AgentPeer> + 'a {
+        self.matching_peers(targets, pool, port_type)
+            .map(|(_, peer)| peer)
+    }
+
+    pub fn matching_peers<'a>(
+        &'a self,
+        targets: &'a NodeTargets,
+        pool: &'a DashMap<AgentId, Agent>,
+        port_type: PortType,
+    ) -> impl Iterator<Item = (&'a NodeKey, AgentPeer)> + 'a {
         self.node_peers
             .iter()
             .filter(|(key, _)| targets.matches(key))
@@ -490,13 +497,16 @@ impl Environment {
                 EnvPeer::Internal(id) => {
                     let agent = pool.get(id)?;
 
-                    Some(AgentPeer::Internal(
-                        *id,
-                        match port_type {
-                            PortType::Bft => agent.bft_port(),
-                            PortType::Node => agent.node_port(),
-                            PortType::Rest => agent.rest_port(),
-                        },
+                    Some((
+                        key,
+                        AgentPeer::Internal(
+                            *id,
+                            match port_type {
+                                PortType::Bft => agent.bft_port(),
+                                PortType::Node => agent.node_port(),
+                                PortType::Rest => agent.rest_port(),
+                            },
+                        ),
                     ))
                 }
 
@@ -506,11 +516,14 @@ impl Environment {
                         return None;
                     };
 
-                    Some(AgentPeer::External(match port_type {
-                        PortType::Bft => external.bft?,
-                        PortType::Node => external.node?,
-                        PortType::Rest => external.rest?,
-                    }))
+                    Some((
+                        key,
+                        AgentPeer::External(match port_type {
+                            PortType::Bft => external.bft?,
+                            PortType::Node => external.node?,
+                            PortType::Rest => external.rest?,
+                        }),
+                    ))
                 }
             })
     }

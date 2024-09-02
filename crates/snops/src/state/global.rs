@@ -125,7 +125,7 @@ impl GlobalState {
                 }
             };
             info!("loaded env {id} from persistence");
-            state.envs.insert(id, Arc::new(loaded));
+            state.insert_env(id, Arc::new(loaded));
         }
 
         // For all agents not in envs, set their state to Inventory
@@ -215,6 +215,16 @@ impl GlobalState {
         Some(storage)
     }
 
+    pub fn insert_env(&self, env_id: EnvId, env: Arc<Environment>) {
+        self.envs.insert(env_id, env);
+        self.env_network_cache.insert(env_id, Default::default());
+    }
+
+    pub fn remove_env(&self, env_id: EnvId) -> Option<Arc<Environment>> {
+        self.env_network_cache.remove(&env_id);
+        self.envs.remove(&env_id).map(|(_, env)| env)
+    }
+
     pub fn get_env(&self, id: EnvId) -> Option<Arc<Environment>> {
         Some(Arc::clone(self.envs.get(&id)?.value()))
     }
@@ -237,14 +247,24 @@ impl GlobalState {
             return Vec::new();
         };
 
+        // use the network cache to lookup external peer info
+        let cache = self.env_network_cache.get(&env_id);
+        let ext_infos = cache.as_ref().map(|c| &c.external_peer_infos);
+
         let now = Utc::now();
 
-        env.matching_nodes(target, &self.pool, PortType::Rest)
-            .filter_map(|peer| {
+        env.matching_peers(target, &self.pool, PortType::Rest)
+            .filter_map(|(key, peer)| {
                 let agent_id = match peer {
                     AgentPeer::Internal(id, _) => id,
-                    // TODO: periodically get block info from external nodes
-                    AgentPeer::External(addr) => return Some((0u32, None, None, Some(addr))),
+                    AgentPeer::External(addr) => {
+                        // lookup the external peer info from the cache
+                        return Some(if let Some(info) = ext_infos.and_then(|c| c.get(key)) {
+                            (info.score(&now), Some(info.clone()), None, None)
+                        } else {
+                            (0u32, None, None, Some(addr))
+                        });
+                    }
                 };
 
                 let agent = self.pool.get(&agent_id)?;
