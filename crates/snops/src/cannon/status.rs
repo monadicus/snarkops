@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use snops_common::{
-    format::{DataFormat, DataReadError},
-    state::AgentId,
-};
+use snops_common::{format::DataFormat, state::AgentId};
 use tokio::sync::mpsc::Sender;
 
 pub struct TransactionStatusSender(Option<Sender<TransactionStatusEvent>>);
@@ -70,6 +67,8 @@ pub enum TransactionSendState {
     Broadcasted(
         /// Latest height of the network at the time of the broadcast
         Option<u32>,
+        /// Time of the broadcast
+        DateTime<Utc>,
     ),
 }
 
@@ -79,7 +78,7 @@ impl TransactionSendState {
             TransactionSendState::Authorized => "authorized",
             TransactionSendState::Executing(_) => "executing",
             TransactionSendState::Unsent => "unsent",
-            TransactionSendState::Broadcasted(_) => "broadcasted",
+            TransactionSendState::Broadcasted(_, _) => "broadcasted",
         }
     }
 }
@@ -96,11 +95,13 @@ impl DataFormat for TransactionSendState {
         Ok(match self {
             TransactionSendState::Authorized => 0u8.write_data(writer)?,
             TransactionSendState::Executing(timestamp) => {
-                1u8.write_data(writer)? + timestamp.timestamp().write_data(writer)?
+                1u8.write_data(writer)? + timestamp.write_data(writer)?
             }
             TransactionSendState::Unsent => 2u8.write_data(writer)?,
-            TransactionSendState::Broadcasted(height) => {
-                3u8.write_data(writer)? + height.write_data(writer)?
+            TransactionSendState::Broadcasted(height, timestamp) => {
+                3u8.write_data(writer)?
+                    + height.write_data(writer)?
+                    + timestamp.write_data(writer)?
             }
         })
     }
@@ -120,14 +121,12 @@ impl DataFormat for TransactionSendState {
         let tag = u8::read_data(reader, &())?;
         Ok(match tag {
             0 => TransactionSendState::Authorized,
-            1 => {
-                let timestamp = i64::read_data(reader, &())?;
-                TransactionSendState::Executing(DateTime::from_timestamp(timestamp, 0).ok_or_else(
-                    || DataReadError::custom(format!("Invalid timestamp in datetime: {timestamp}")),
-                )?)
-            }
+            1 => TransactionSendState::Executing(DateTime::<Utc>::read_data(reader, &())?),
             2 => TransactionSendState::Unsent,
-            3 => TransactionSendState::Broadcasted(Option::<u32>::read_data(reader, &())?),
+            3 => TransactionSendState::Broadcasted(
+                Option::<u32>::read_data(reader, &())?,
+                DateTime::<Utc>::read_data(reader, &())?,
+            ),
             _ => {
                 return Err(snops_common::format::DataReadError::Custom(
                     "Invalid CannonTransactionStatus tag".to_string(),
@@ -178,7 +177,7 @@ mod test {
         test_cannon_transaction_status_executing,
         TransactionSendState,
         TransactionSendState::Executing(*NOW),
-        [vec![1u8], NOW.timestamp().to_byte_vec().unwrap()].concat()
+        [vec![1u8], NOW.to_byte_vec().unwrap()].concat()
     );
     case!(
         test_cannon_transaction_status_executed,
@@ -189,7 +188,11 @@ mod test {
     case!(
         test_cannon_transaction_status_broadcasted,
         TransactionSendState,
-        TransactionSendState::Broadcasted(Some(1)),
-        [3u8, 1u8, 1u8, 0u8, 0u8, 0u8]
+        TransactionSendState::Broadcasted(Some(1), *NOW),
+        [
+            vec![3u8, 1u8, 0u8, 0u8, 0u8, 0u8],
+            NOW.to_byte_vec().unwrap()
+        ]
+        .concat()
     );
 }

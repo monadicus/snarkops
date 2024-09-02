@@ -1,5 +1,6 @@
 use std::sync::{atomic::AtomicUsize, Arc};
 
+use chrono::Utc;
 use dashmap::DashMap;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use lazysort::SortedBy;
@@ -221,7 +222,7 @@ impl ExecutionContext {
         // ensure transaction is ready to be broadcasted
         if !matches!(
             tracker.status,
-            TransactionSendState::Unsent | TransactionSendState::Broadcasted(_)
+            TransactionSendState::Unsent | TransactionSendState::Broadcasted(_, _)
         ) {
             return Err(CannonError::InvalidTransactionState(
                 self.id,
@@ -271,7 +272,10 @@ impl ExecutionContext {
 
             // update the transaction status and increment the broadcast attempts
             let update_status = || {
-                self.write_tx_status(&tx_id, TransactionSendState::Broadcasted(latest_height));
+                self.write_tx_status(
+                    &tx_id,
+                    TransactionSendState::Broadcasted(latest_height, Utc::now()),
+                );
                 if let Err(e) = TransactionTracker::inc_attempts(
                     &self.state,
                     &(env_id, cannon_id, tx_id.to_owned()),
