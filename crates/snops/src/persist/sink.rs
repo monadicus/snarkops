@@ -48,6 +48,9 @@ impl DataFormat for TxSink {
         written += self.file_name.write_data(writer)?;
         written += self.target.write_data(writer)?;
         written += self.broadcast_attempts.write_data(writer)?;
+        written += self.authorize_attempts.write_data(writer)?;
+        written += self.broadcast_timeout.write_data(writer)?;
+        written += self.authorize_timeout.write_data(writer)?;
         Ok(written)
     }
 
@@ -60,6 +63,9 @@ impl DataFormat for TxSink {
                         file_name: Some(file_name),
                         target: None,
                         broadcast_attempts: None,
+                        authorize_attempts: None,
+                        broadcast_timeout: TxSink::default_retry_timeout(),
+                        authorize_timeout: TxSink::default_retry_timeout(),
                     })
                 }
                 1u8 => {
@@ -68,6 +74,9 @@ impl DataFormat for TxSink {
                         target: Some(target),
                         file_name: None,
                         broadcast_attempts: None,
+                        authorize_attempts: None,
+                        broadcast_timeout: TxSink::default_retry_timeout(),
+                        authorize_timeout: TxSink::default_retry_timeout(),
                     })
                 }
                 n => Err(DataReadError::Custom(format!(
@@ -78,10 +87,16 @@ impl DataFormat for TxSink {
                 let file_name: Option<TxPipeId> = reader.read_data(&())?;
                 let target: Option<NodeTargets> = reader.read_data(&header.node_targets)?;
                 let broadcast_attempts: Option<u32> = reader.read_data(&())?;
+                let authorize_attempts: Option<u32> = reader.read_data(&())?;
+                let broadcast_timeout: u32 = reader.read_data(&())?;
+                let authorize_timeout: u32 = reader.read_data(&())?;
                 Ok(TxSink {
                     file_name,
                     target,
                     broadcast_attempts,
+                    authorize_attempts,
+                    broadcast_timeout,
+                    authorize_timeout,
                 })
             }
             n => Err(DataReadError::unsupported(

@@ -23,7 +23,7 @@ type PendingBlockRequests =
 ///
 /// If an external peer has a new block info and transaction list, update the
 /// cache with the new data.
-pub async fn external_block_info_task(state: Arc<GlobalState>) {
+pub async fn block_info_task(state: Arc<GlobalState>) {
     loop {
         // Get applicable external peers. This is unfiltered as all block info can be
         // expected to be out of date before the next time this loop is run.

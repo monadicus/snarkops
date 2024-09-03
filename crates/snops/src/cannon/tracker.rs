@@ -33,6 +33,18 @@ impl TransactionTracker {
         Ok(state.db.tx_attempts.save(key, &PackedUint(prev + 1))?)
     }
 
+    /// Get the number of attempts for the transaction
+    pub fn get_attempts(state: &GlobalState, key: &TxEntry) -> u32 {
+        state
+            .db
+            .tx_attempts
+            .restore(key)
+            .ok()
+            .flatten()
+            .map(|v| v.0 as u32)
+            .unwrap_or(0)
+    }
+
     /// Clear the number of attempts for the transaction
     pub fn clear_attempts(state: &GlobalState, key: &TxEntry) -> Result<(), CannonError> {
         state.db.tx_attempts.delete(key)?;
@@ -76,6 +88,16 @@ impl TransactionTracker {
         if let Some(tx) = self.transaction.as_deref() {
             Self::write_tx(state, key, tx)?;
         }
+        Ok(())
+    }
+
+    /// Remove the transaction tracker from the store
+    pub fn delete(state: &GlobalState, key: &TxEntry) -> Result<(), CannonError> {
+        state.db.tx_index.delete(key)?;
+        state.db.tx_attempts.delete(key)?;
+        state.db.tx_status.delete(key)?;
+        state.db.tx_auths.delete(key)?;
+        state.db.tx_blobs.delete(key)?;
         Ok(())
     }
 }

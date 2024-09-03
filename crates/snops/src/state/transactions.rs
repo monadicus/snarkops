@@ -1,0 +1,159 @@
+use std::sync::Arc;
+
+use chrono::{TimeDelta, Utc};
+use snops_common::state::{CannonId, EnvId};
+
+use super::GlobalState;
+use crate::cannon::{
+    status::{TransactionSendState, TransactionStatusSender},
+    tracker::TransactionTracker,
+};
+
+/// This task re-sends all transactions that have not been confirmed,
+/// re-computes all transactions that have not been computed, and removes
+/// transactions that are confirmed.
+pub async fn transaction_state_task(state: Arc<GlobalState>) {
+    loop {
+        let pending_txs = get_pending_transactions(&state);
+
+        for ((env_id, cannon_id), pending) in pending_txs {
+            let Some(env) = state.get_env(env_id) else {
+                continue;
+            };
+            let Some(cannon) = env.get_cannon(cannon_id) else {
+                continue;
+            };
+
+            // queue up all the transactions that need to be executed
+            for tx_id in pending.to_execute {
+                if let Err(e) = cannon
+                    .auth_sender
+                    .send((tx_id.clone(), TransactionStatusSender::empty()))
+                {
+                    tracing::error!(
+                        "cannon {env_id}.{cannon_id} failed to send auth {tx_id} to cannon: {e:?}"
+                    );
+                }
+            }
+
+            // queue up all the transactions that need to be confirmed
+            for tx_id in pending.to_broadcast {
+                if let Err(e) = cannon.tx_sender.send(tx_id.clone()) {
+                    tracing::error!(
+                        "cannon {env_id}.{cannon_id} failed to send broadcast {tx_id} to cannon: {e:?}"
+                    );
+                }
+            }
+
+            // remove all the transactions that need to be removed
+            for tx_id in pending.to_remove {
+                cannon.transactions.remove(&tx_id);
+                TransactionTracker::delete(&state, &(env_id, cannon_id, tx_id));
+            }
+
+            // TODO: to_confirm
+        }
+    }
+}
+
+struct PendingTransactions {
+    to_execute: Vec<String>,
+    to_broadcast: Vec<String>,
+    to_remove: Vec<String>,
+    to_confirm: Vec<(String, Option<u32>)>,
+}
+
+/// Get a list of transactions that need to be executed, broadcasted, removed,
+/// or confirmed
+fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), PendingTransactions)> {
+    let now = Utc::now();
+    let mut pending = vec![];
+
+    for env in &state.envs {
+        let env_id = *env.key();
+        let latest_height = state.get_env_block_info(env_id).map(|b| b.height);
+
+        for (cannon_id, cannon) in &env.cannons {
+            let cannon_id = *cannon_id;
+            let mut to_execute = vec![];
+            let mut to_broadcast = vec![];
+            let mut to_remove = vec![];
+            let mut to_confirm = vec![];
+
+            for tx in cannon.transactions.iter() {
+                let tx_id = tx.key().to_owned();
+                let key = (env_id, cannon_id, tx_id.to_owned());
+                let attempts = TransactionTracker::get_attempts(&state, &key);
+
+                match tx.status {
+                    // any authorized transaction that is not started should be queued
+                    TransactionSendState::Authorized => {
+                        if cannon.sink.authorize_attempts.is_some_and(|a| attempts > a) {
+                            to_remove.push(tx_id);
+                        } else {
+                            to_execute.push(tx_id);
+                        }
+                    }
+                    // any expired execution should be queued
+                    TransactionSendState::Executing(start_time)
+                        if now - start_time
+                            > TimeDelta::seconds(cannon.sink.authorize_timeout as i64) =>
+                    {
+                        if cannon.sink.authorize_attempts.is_some_and(|a| attempts > a) {
+                            to_remove.push(tx_id);
+                        } else {
+                            to_execute.push(tx_id);
+                        }
+                    }
+                    // any unbroadcasted transaction that is not started should be queued
+                    TransactionSendState::Unsent => {
+                        if cannon.sink.broadcast_attempts.is_some_and(|a| attempts > a) {
+                            to_remove.push(tx_id);
+                        } else {
+                            to_broadcast.push(tx_id);
+                        }
+                    }
+                    // any expired broadcast should be queued
+                    // any broadcast that has a different height than the latest height
+                    // should be confirmed
+                    TransactionSendState::Broadcasted(height, broadcast_time) => {
+                        // queue a confirm if the latest height is greater than the broadcast height
+                        // or the broadcast height is unknown
+                        //
+                        // this feature is skipped if the sink has no node target
+                        if cannon.sink.target.is_some()
+                            && height
+                                .map(|height| latest_height.is_some_and(|h| h > height))
+                                .unwrap_or(true)
+                        {
+                            to_confirm.push((tx_id.clone(), height));
+                        }
+
+                        // queue a re-broadcast if the broadcast has timed out
+                        if now - broadcast_time
+                            > TimeDelta::seconds(cannon.sink.broadcast_timeout as i64)
+                        {
+                            if cannon.sink.broadcast_attempts.is_some_and(|a| attempts > a) {
+                                to_remove.push(tx_id);
+                            } else {
+                                to_broadcast.push(tx_id);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            pending.push((
+                (env_id, cannon_id),
+                PendingTransactions {
+                    to_execute,
+                    to_broadcast,
+                    to_remove,
+                    to_confirm,
+                },
+            ));
+        }
+    }
+
+    pending
+}

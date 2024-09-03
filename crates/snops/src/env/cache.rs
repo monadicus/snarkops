@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    ops::Deref,
     sync::{atomic::AtomicU64, Arc},
 };
 

@@ -86,16 +86,18 @@ async fn main() {
         .await
         .expect("load state");
 
+    let info_task = tokio::spawn(state::external_peers::block_info_task(Arc::clone(&state)));
+
     info!("Starting server on {socket_addr}");
     select! {
-        res = server::start(Arc::clone(&state), socket_addr) => {
-            if let Err(e) = res {
-                error!("error starting server: {e:?}");
-            }
+        Err(err) = server::start(Arc::clone(&state), socket_addr) => {
+            error!("error starting server: {err:?}");
+        }
+        Err(err) = info_task => {
+            error!("block info task failed: {err:?}");
         }
         // TODO: loop for unexecuted authorizations and executing
         // TODO: loop for unsent transactions and rebroadcasting
         // TODO: loop to check which transactions are complete, and remove them
-        // TODO: loop to get latest block info for external peers
     }
 }

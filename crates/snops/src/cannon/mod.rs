@@ -101,9 +101,9 @@ pub struct CannonInstance {
     child: Option<tokio::process::Child>,
 
     /// channel to send transaction ids to the the task
-    tx_sender: UnboundedSender<String>,
+    pub(crate) tx_sender: UnboundedSender<String>,
     /// channel to send authorizations (by transaction id) to the the task
-    auth_sender: UnboundedSender<(String, TransactionStatusSender)>,
+    pub(crate) auth_sender: UnboundedSender<(String, TransactionStatusSender)>,
     /// transaction ids that are currently being processed
     pub(crate) transactions: Arc<DashMap<String, TransactionTracker>>,
 

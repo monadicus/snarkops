@@ -11,6 +11,7 @@ mod global;
 mod reconcile;
 mod rpc;
 pub mod snarkos_request;
+pub mod transactions;
 
 pub use agent::*;
 pub use agent_flags::*;

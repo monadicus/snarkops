@@ -160,6 +160,18 @@ impl ExecutionContext {
         }
     }
 
+    pub fn remove_tx_tracker(&self, tx_id: String) {
+        let _ = self.transactions.remove(&tx_id);
+        if let Err(e) =
+            TransactionTracker::delete(&self.state, &(self.env_id, self.id, tx_id.to_owned()))
+        {
+            error!(
+                "cannon {}.{} failed to delete transaction {tx_id}: {e:?}",
+                self.env_id, self.id
+            );
+        }
+    }
+
     /// Execute an authorization on the source's compute target
     async fn execute_auth(
         &self,
@@ -253,10 +265,10 @@ impl ExecutionContext {
             pipe.write(&tx_str)?;
         }
 
-        if let Some(target) = &self.sink.target {
-            let cannon_id = self.id;
-            let env_id = self.env_id;
+        let cannon_id = self.id;
+        let env_id = self.env_id;
 
+        if let Some(target) = &self.sink.target {
             let broadcast_nodes = self.state.get_scored_peers(env_id, target);
 
             if broadcast_nodes.is_empty() {
@@ -340,6 +352,10 @@ impl ExecutionContext {
                 cannon_id,
                 "to broadcast transactions",
             ))?
+        } else {
+            // remove the transaction from the store as there is no need to
+            // confirm the broadcast
+            self.remove_tx_tracker(tx_id);
         }
         Ok(())
     }
