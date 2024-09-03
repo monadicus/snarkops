@@ -5,7 +5,7 @@ use std::{
 };
 
 use bimap::BiHashMap;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use lazy_static::lazy_static;
 use snops_common::state::{LatestBlockInfo, NodeKey};
 
@@ -32,7 +32,10 @@ pub struct NetworkCache {
     pub transaction_to_block_hash: HashMap<ATransactionId, ABlockHash>,
     /// A map of block height to block info
     pub blocks: HashMap<ABlockHash, LatestBlockInfo>,
-    /// A map of external peer node keys to their latest block info
+    /// A map of external peer node keys to their latest block info.
+    ///
+    /// This is not a map of Arc<LatestBlockInfo> because we want to update the
+    /// timestamp when we update the info.
     pub external_peer_infos: HashMap<NodeKey, LatestBlockInfo>,
     /// A map of the peer's "track record" for responsiveness.
     pub external_peer_record: HashMap<NodeKey, ResponsiveRecord>,
@@ -49,19 +52,6 @@ pub struct TransactionCache {
     pub entries: Vec<ATransactionId>,
 }
 
-/// A record of a peer's responsiveness for avoiding using peers that are
-/// unresponsive
-pub struct ResponsiveRecord {
-    /// Number of **consecutive** failed attempts to reach the peer
-    pub failed_attempts: u32,
-    /// Number of successful attempts to reach the peer
-    pub total_successes: u32,
-    /// The last time an attempt was made to reach the peer
-    pub last_attempt: DateTime<Utc>,
-    /// The last time the peer was successfully reached
-    pub last_success: DateTime<Utc>,
-}
-
 impl NetworkCache {
     pub fn update_latest_info(&mut self, info: &LatestBlockInfo) {
         match &self.latest {
@@ -73,6 +63,30 @@ impl NetworkCache {
             }
             _ => {}
         }
+    }
+
+    pub fn update_peer_req(&mut self, key: &NodeKey, success: bool) {
+        let record = self
+            .external_peer_record
+            .entry(key.clone())
+            .or_insert(ResponsiveRecord {
+                failed_attempts: 0,
+                total_successes: 0,
+                last_attempt: Utc::now(),
+                last_success: Utc::now(),
+            });
+
+        if success {
+            record.reward();
+        } else {
+            record.punish();
+        }
+    }
+
+    pub fn is_peer_penalized(&self, key: &NodeKey) -> bool {
+        self.external_peer_record
+            .get(key)
+            .map_or(false, ResponsiveRecord::has_penalty)
     }
 
     /// Update a peer's node info if the provided block hash exists in the cache
@@ -109,26 +123,22 @@ impl NetworkCache {
     }
 
     /// Add a block to the cache
-    pub fn add_block(
-        &mut self,
-        block_hash: ABlockHash,
-        block_info: LatestBlockInfo,
-        txs: Vec<ATransactionId>,
-    ) {
+    pub fn add_block(&mut self, block_info: LatestBlockInfo, txs: Vec<ATransactionId>) {
+        let hash = Arc::from(block_info.block_hash.as_ref());
         self.height_and_hash
-            .insert(block_info.height, block_hash.clone());
+            .insert(block_info.height, Arc::clone(&hash));
         for tx in &txs {
             self.transaction_to_block_hash
-                .insert(Arc::clone(tx), block_hash.clone());
+                .insert(Arc::clone(tx), Arc::clone(&hash));
         }
         self.block_to_transaction.insert(
-            block_hash.clone(),
+            Arc::clone(&hash),
             TransactionCache {
                 create_time: block_info.update_time,
                 entries: txs,
             },
         );
-        self.blocks.insert(Arc::clone(&block_hash), block_info);
+        self.blocks.insert(Arc::clone(&hash), block_info);
     }
 
     /// Remove a block from the cache
@@ -138,5 +148,56 @@ impl NetworkCache {
         self.transaction_to_block_hash
             .retain(|_, v| v != block_hash);
         self.blocks.remove(block_hash);
+    }
+}
+
+/// A record of a peer's responsiveness for avoiding using peers that are
+/// unresponsive
+pub struct ResponsiveRecord {
+    /// Number of **consecutive** failed attempts to reach the peer
+    pub failed_attempts: u32,
+    /// Number of successful attempts to reach the peer
+    pub total_successes: u32,
+    /// The last time an attempt was made to reach the peer
+    pub last_attempt: DateTime<Utc>,
+    /// The last time the peer was successfully reached
+    pub last_success: DateTime<Utc>,
+}
+
+impl ResponsiveRecord {
+    /// The maximum penalty time for a peer
+    pub const MAX_PENALTY: u32 = 60 * 60;
+
+    /// Time to wait before attempting to reach the peer again
+    pub fn penalty(&self) -> Option<TimeDelta> {
+        if self.failed_attempts == 0 {
+            return None;
+        }
+
+        // The penalty is based on the time since the last successful attempt.
+        // The longer the time since the last success, the longer the penalty
+        Some(self.last_success - self.last_attempt)
+    }
+
+    /// Whether the peer is currently penalized
+    pub fn has_penalty(&self) -> bool {
+        let Some(penalty) = self.penalty() else {
+            return false;
+        };
+        self.last_attempt + penalty > Utc::now()
+    }
+
+    /// Punish the peer for failing to respond
+    pub fn punish(&mut self) {
+        self.failed_attempts += 1;
+        self.last_attempt = Utc::now();
+    }
+
+    /// Reward the peer for responding
+    pub fn reward(&mut self) {
+        self.total_successes += 1;
+        self.failed_attempts = 0;
+        self.last_success = Utc::now();
+        self.last_attempt = Utc::now();
     }
 }

@@ -1,4 +1,9 @@
+use std::sync::Arc;
+
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
+
+use super::LatestBlockInfo;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -34,4 +39,20 @@ pub struct SnarkOSBlockInfo {
 pub struct SnarkOSLiteBlock {
     pub info: SnarkOSBlockInfo,
     pub transactions: Vec<String>,
+}
+
+impl SnarkOSLiteBlock {
+    pub fn split(self) -> (LatestBlockInfo, Vec<Arc<str>>) {
+        (
+            LatestBlockInfo {
+                height: self.info.height,
+                state_root: self.info.state_root,
+                block_hash: self.info.block_hash,
+                previous_hash: self.info.previous_hash,
+                block_timestamp: self.info.block_timestamp,
+                update_time: Utc::now(),
+            },
+            self.transactions.into_iter().map(Arc::from).collect(),
+        )
+    }
 }
