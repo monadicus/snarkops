@@ -322,8 +322,21 @@ impl ExecutionContext {
                             continue;
                         }
                         Ok(req) => {
-                            if !req.status().is_success() {
-                                warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}", req.status());
+                            let status = req.status();
+                            if !status.is_success() {
+                                // transaction already exists in the ledger but we'll confirm it
+                                // anyway
+                                if status.is_server_error()
+                                    && req
+                                        .text()
+                                        .await
+                                        .ok()
+                                        .is_some_and(|text| text.contains("exists in the ledger"))
+                                {
+                                    return Ok(tx_id);
+                                }
+
+                                warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}", status);
                                 continue;
                             }
                         }

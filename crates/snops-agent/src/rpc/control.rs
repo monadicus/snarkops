@@ -470,8 +470,18 @@ impl AgentService for AgentRpcServer {
             .send()
             .await
             .map_err(|_| AgentError::FailedToMakeRequest)?;
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             Ok(())
+            // transaction already exists so this is technically a success
+        } else if status.is_server_error()
+            && response
+                .text()
+                .await
+                .ok()
+                .is_some_and(|text| text.contains("exists in the ledger"))
+        {
+            return Ok(());
         } else {
             Err(AgentError::FailedToMakeRequest)
         }

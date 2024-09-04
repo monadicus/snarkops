@@ -374,6 +374,19 @@ impl CannonInstance {
     ) -> Result<(), CannonError> {
         let key = (self.env_id, self.id, tx_id.to_owned());
 
+        // if the transaction is in the cache, it has already been broadcasted
+        if let Some(cache) = self.global_state.env_network_cache.get(&self.env_id) {
+            if cache.has_transaction(&tx_id) {
+                if let Err(e) = TransactionTracker::delete(&self.global_state, &key) {
+                    error!(
+                        "cannon {}.{} failed to delete {tx_id} (in proxy_broadcast): {e:?}",
+                        self.env_id, self.id
+                    );
+                }
+                return Err(CannonError::TransactionAlreadyExists(self.id, tx_id));
+            }
+        }
+
         // prevent already queued transactions from being re-broadcasted
         let tracker = if let Some(mut tx) = self.transactions.get(&tx_id).as_deref().cloned() {
             // if we receive a transaction that is not executing, it is a duplicate
