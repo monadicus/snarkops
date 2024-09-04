@@ -29,7 +29,6 @@ impl TransactionTracker {
     pub fn inc_attempts(state: &GlobalState, key: &TxEntry) -> Result<(), CannonError> {
         // read the previous number of attempts
         let prev = state.db.tx_attempts.restore(key)?.map(|v| v.0).unwrap_or(0);
-
         Ok(state.db.tx_attempts.save(key, &PackedUint(prev + 1))?)
     }
 

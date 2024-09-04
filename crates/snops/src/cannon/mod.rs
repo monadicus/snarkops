@@ -31,7 +31,7 @@ use tokio::{
     },
     task::AbortHandle,
 };
-use tracing::{error, warn};
+use tracing::{error, trace, warn};
 use tracker::TransactionTracker;
 
 use self::{
@@ -393,6 +393,11 @@ impl CannonInstance {
             tx.transaction = Some(Arc::new(body));
             tx
         } else {
+            trace!(
+                "cannon {}.{} received broadcast {tx_id}",
+                self.env_id,
+                self.id
+            );
             TransactionTracker {
                 index: Self::inc_received_txs(
                     &self.global_state,
@@ -473,6 +478,7 @@ impl CannonInstance {
         )?;
         self.transactions.insert(tx_id.to_owned(), tracker);
 
+        trace!("cannon {}.{} received auth {tx_id}", self.env_id, self.id);
         self.auth_sender
             .send((tx_id.to_owned(), events))
             .map_err(|e| CannonError::SendAuthError(self.id, e))?;

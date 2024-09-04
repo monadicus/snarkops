@@ -127,15 +127,15 @@ impl ExecutionContext {
                 // ------------------------
 
                 Some(res) = auth_execs.next() => {
-                    if let Err(e) = res {
-                        warn!("cannon {env_id}.{cannon_id} auth execute task failed: {e}");
+                    if let Err((tx_id, e)) = res {
+                        warn!("cannon {env_id}.{cannon_id} auth execute task {tx_id} failed: {e}");
                     }
                 },
                 Some(res) = tx_shots.next() => {
                     match res {
-                        Ok(()) => {
-                            let fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                            trace!("cannon {env_id}.{cannon_id} fired {fired_count} txs");
+                        Ok(tx_id) => {
+                            let _fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            trace!("cannon {env_id}.{cannon_id} broadcasted {tx_id}");
                         }
                         Err(e) => {
                             warn!("cannon {env_id}.{cannon_id} failed to fire transaction {e}");
@@ -179,7 +179,7 @@ impl ExecutionContext {
         auth: Arc<Authorization>,
         query_path: &str,
         events: TransactionStatusSender,
-    ) -> Result<(), CannonError> {
+    ) -> Result<(), (String, CannonError)> {
         events.send(TransactionStatusEvent::ExecuteQueued);
         match self
             .source
@@ -187,32 +187,19 @@ impl ExecutionContext {
             .execute(self, query_path, &tx_id, &auth, &events)
             .await
         {
-            // requeue the auth if no agents are available
+            // Can't execute the auth if no agents are available.
+            // The transaction task will handle re-appending the auth.
             Err(CannonError::Source(SourceError::NoAvailableAgents(_))) => {
-                trace!(
-                    "cannon {}.{} no available agents to execute auth for {tx_id}, awaiting compute",
-                    self.env_id, self.id
-                );
                 events.send(TransactionStatusEvent::ExecuteAwaitingCompute);
-                // TODO: queue re-executing the auth in a loop somewhere
                 Ok(())
             }
             Err(e) => {
                 // reset the transaction status to authorized so it can be re-executed
                 self.write_tx_status(&tx_id, TransactionSendState::Authorized);
-                if let Err(e) = TransactionTracker::inc_attempts(
-                    &self.state,
-                    &(self.env_id, self.id, tx_id.clone()),
-                ) {
-                    error!(
-                        "cannon {}.{} failed to increment attempts for {tx_id}: {e}",
-                        self.env_id, self.id
-                    );
-                }
                 events.send(TransactionStatusEvent::ExecuteFailed(e.to_string()));
-                Err(e)
+                Err((tx_id, e))
             }
-            res => res,
+            res => res.map_err(|e| (tx_id, e)),
         }
     }
 
@@ -221,7 +208,7 @@ impl ExecutionContext {
         &self,
         sink_pipe: Option<Arc<TransactionSink>>,
         tx_id: String,
-    ) -> Result<(), CannonError> {
+    ) -> Result<String, CannonError> {
         let latest_height = self
             .state
             .get_env_block_info(self.env_id)
@@ -312,7 +299,7 @@ impl ExecutionContext {
                     }
 
                     update_status();
-                    return Ok(());
+                    return Ok(tx_id);
                 }
 
                 if let Some(addr) = addr {
@@ -343,7 +330,7 @@ impl ExecutionContext {
                     }
 
                     update_status();
-                    return Ok(());
+                    return Ok(tx_id);
                 }
             }
 
@@ -355,8 +342,8 @@ impl ExecutionContext {
         } else {
             // remove the transaction from the store as there is no need to
             // confirm the broadcast
-            self.remove_tx_tracker(tx_id);
+            self.remove_tx_tracker(tx_id.clone());
         }
-        Ok(())
+        Ok(tx_id)
     }
 }

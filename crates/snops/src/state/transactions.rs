@@ -4,7 +4,7 @@ use chrono::{TimeDelta, Utc};
 use futures_util::future;
 use snops_common::state::{CannonId, EnvId};
 use tokio::time::timeout;
-use tracing::trace;
+use tracing::{info, trace};
 
 use super::GlobalState;
 use crate::cannon::{
@@ -31,7 +31,6 @@ pub async fn tracking_task(state: Arc<GlobalState>) {
 
                 // queue up all the transactions that need to be executed
                 for tx_id in pending.to_execute {
-                    trace!("cannon {env_id}.{cannon_id} queueing transaction {tx_id} for re-execute");
                     if let Err(e) = cannon
                         .auth_sender
                         .send((tx_id.clone(), TransactionStatusSender::empty()))
@@ -87,7 +86,6 @@ pub async fn tracking_task(state: Arc<GlobalState>) {
                 // remove all the transactions that are confirmed or expired
                 for tx_id in pending.to_remove.into_iter().chain(confirmed.into_iter().flatten()) {
                     cannon.transactions.remove(&tx_id);
-                    trace!("cannon {env_id}.{cannon_id} removed transaction {tx_id}");
                     if let Err(e) =
                         TransactionTracker::delete(&state, &(env_id, cannon_id, tx_id.clone()))
                     {
@@ -134,6 +132,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                     // any authorized transaction that is not started should be queued
                     TransactionSendState::Authorized => {
                         if cannon.sink.authorize_attempts.is_some_and(|a| attempts > a) {
+                            info!("cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)");
                             to_remove.push(tx_id);
                         } else {
                             to_execute.push(tx_id);
@@ -145,6 +144,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                             > TimeDelta::seconds(cannon.sink.authorize_timeout as i64) =>
                     {
                         if cannon.sink.authorize_attempts.is_some_and(|a| attempts > a) {
+                            info!("cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)");
                             to_remove.push(tx_id);
                         } else {
                             to_execute.push(tx_id);
@@ -153,6 +153,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                     // any unbroadcasted transaction that is not started should be queued
                     TransactionSendState::Unsent => {
                         if cannon.sink.broadcast_attempts.is_some_and(|a| attempts > a) {
+                            info!("cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)");
                             to_remove.push(tx_id);
                         } else {
                             to_broadcast.push(tx_id);
@@ -179,6 +180,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                             > TimeDelta::seconds(cannon.sink.broadcast_timeout as i64)
                         {
                             if cannon.sink.broadcast_attempts.is_some_and(|a| attempts > a) {
+                                info!("cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)");
                                 to_remove.push(tx_id);
                             } else {
                                 to_broadcast.push(tx_id);
