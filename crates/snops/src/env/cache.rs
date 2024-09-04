@@ -24,7 +24,9 @@ pub const MAX_BLOCK_RANGE: u32 = 10;
 /// The maximum age of a block update before we consider it stale. This is not
 /// the same as the block's timestamp, but the time the block was added to the
 /// cache.
-pub const MAX_CULL_AGE: TimeDelta = TimeDelta::seconds(60 * 60);
+///
+/// TODO: make this configurable in the environment maybe in a meta document
+pub const MAX_CULL_AGE: TimeDelta = TimeDelta::seconds(3 * 60);
 
 /// A task that runs every minute to remove stale blocks from the cache
 pub async fn invalidation_task(state: Arc<GlobalState>) {
@@ -40,7 +42,6 @@ pub async fn invalidation_task(state: Arc<GlobalState>) {
 }
 
 /// Exists per environment to track transactions for the most recent blocks
-/// TODO: task to prune old/unused data
 #[derive(Default)]
 pub struct NetworkCache {
     /// BiMap of block height to block hash
@@ -182,7 +183,7 @@ impl NetworkCache {
         // height is within the range of the latest block
         self.latest
             .as_ref()
-            .is_some_and(|i| i.height.saturating_sub(MAX_BLOCK_RANGE) > height)
+            .is_some_and(|i| i.height.saturating_sub(MAX_BLOCK_RANGE) < height)
     }
 
     /// Remove a block from the cache

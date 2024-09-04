@@ -148,39 +148,47 @@ impl ControlService for ControlRpcServer {
         let agent_id = agent.id();
         let client = agent.client_owned().clone();
 
-        // prevent holding the agent lock over longer operations
+        // Prevent holding the agent lock over longer operations
         drop(agent);
 
-        let is_update = self.state.update_env_block_info(env_id, &info);
+        // Update the block info and if it's not new, bail early.
+        // Otherwise, we'll fetch the block data and update the cache.
+        if !self.state.update_env_block_info(env_id, &info) {
+            return;
+        }
 
-        // if the block is new, request the snarkos block
-        if is_update
-            && self.state.env_network_cache.get(&env_id).is_some_and(|c| {
-                !c.has_transactions_for_block(&info.block_hash) && c.is_recent_block(height)
-            })
-        {
-            if let Some(client) = client {
-                // make the block request, then update the cache if applicable
-                match client.get_snarkos_block_lite(info.block_hash.clone()).await {
-                    Ok(Some(block)) => {
-                        let (info, transactions) = block.split();
-                        if let Some(mut c) = self.state.env_network_cache.get_mut(&env_id) {
-                            c.add_block(info, transactions);
-                        }
-                    }
-                    Ok(None) => {
-                        warn!(
-                            "env {env_id} agent {agent_id} misreported having block {}",
-                            info.block_hash
-                        );
-                    }
-                    Err(err) => {
-                        warn!(
-                            "env {env_id} agent {agent_id} encountered failure requesting block {}: {err}",
-                            info.block_hash
-                        );
-                    }
+        // If the block has the transaction or the block is not recent, ignore this
+        // block
+        if !self.state.env_network_cache.get(&env_id).is_some_and(|c| {
+            !c.has_transactions_for_block(&info.block_hash) && c.is_recent_block(height)
+        }) {
+            return;
+        }
+
+        let Some(client) = client else {
+            // unreachable... we're in currently in the client
+            return;
+        };
+
+        // make the block request, then update the cache if applicable
+        match client.get_snarkos_block_lite(info.block_hash.clone()).await {
+            Ok(Some(block)) => {
+                let (info, transactions) = block.split();
+                if let Some(mut c) = self.state.env_network_cache.get_mut(&env_id) {
+                    c.add_block(info, transactions);
                 }
+            }
+            Ok(None) => {
+                warn!(
+                    "env {env_id} agent {agent_id} misreported having block {}",
+                    info.block_hash
+                );
+            }
+            Err(err) => {
+                warn!(
+                    "env {env_id} agent {agent_id} encountered failure requesting block {}: {err}",
+                    info.block_hash
+                );
             }
         }
     }
