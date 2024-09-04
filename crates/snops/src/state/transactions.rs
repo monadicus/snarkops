@@ -1,7 +1,10 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use chrono::{TimeDelta, Utc};
+use futures_util::future;
 use snops_common::state::{CannonId, EnvId};
+use tokio::time::timeout;
+use tracing::trace;
 
 use super::GlobalState;
 use crate::cannon::{
@@ -12,47 +15,89 @@ use crate::cannon::{
 /// This task re-sends all transactions that have not been confirmed,
 /// re-computes all transactions that have not been computed, and removes
 /// transactions that are confirmed.
-pub async fn transaction_state_task(state: Arc<GlobalState>) {
+pub async fn tracking_task(state: Arc<GlobalState>) {
     loop {
         let pending_txs = get_pending_transactions(&state);
 
-        for ((env_id, cannon_id), pending) in pending_txs {
-            let Some(env) = state.get_env(env_id) else {
-                continue;
-            };
-            let Some(cannon) = env.get_cannon(cannon_id) else {
-                continue;
-            };
+        future::join_all(pending_txs.into_iter().map(|((env_id, cannon_id), pending)| {
+            let state = state.clone();
+            async move {
+                let Some(env) = state.get_env(env_id) else {
+                    return
+                };
+                let Some(cannon) = env.get_cannon(cannon_id) else {
+                    return
+                };
 
-            // queue up all the transactions that need to be executed
-            for tx_id in pending.to_execute {
-                if let Err(e) = cannon
-                    .auth_sender
-                    .send((tx_id.clone(), TransactionStatusSender::empty()))
-                {
-                    tracing::error!(
-                        "cannon {env_id}.{cannon_id} failed to send auth {tx_id} to cannon: {e:?}"
-                    );
+                // queue up all the transactions that need to be executed
+                for tx_id in pending.to_execute {
+                    trace!("cannon {env_id}.{cannon_id} queueing transaction {tx_id} for re-execute");
+                    if let Err(e) = cannon
+                        .auth_sender
+                        .send((tx_id.clone(), TransactionStatusSender::empty()))
+                    {
+                        tracing::error!(
+                            "cannon {env_id}.{cannon_id} failed to send auth {tx_id} to cannon: {e:?}"
+                        );
+                    }
                 }
-            }
 
-            // queue up all the transactions that need to be confirmed
-            for tx_id in pending.to_broadcast {
-                if let Err(e) = cannon.tx_sender.send(tx_id.clone()) {
-                    tracing::error!(
-                        "cannon {env_id}.{cannon_id} failed to send broadcast {tx_id} to cannon: {e:?}"
-                    );
+                // queue up all the transactions that need to be confirmed
+                for tx_id in pending.to_broadcast {
+                    trace!("cannon {env_id}.{cannon_id} queueing transaction {tx_id} for re-broadcast");
+                    if let Err(e) = cannon.tx_sender.send(tx_id.clone()) {
+                        tracing::error!(
+                            "cannon {env_id}.{cannon_id} failed to send broadcast {tx_id} to cannon: {e:?}"
+                        );
+                    }
                 }
-            }
 
-            // remove all the transactions that need to be removed
-            for tx_id in pending.to_remove {
-                cannon.transactions.remove(&tx_id);
-                TransactionTracker::delete(&state, &(env_id, cannon_id, tx_id));
-            }
+                // attempt to confirm all the confirm-pending transactions by using the cache
+                // then fall back on making a request to the peers
+                let confirmed = future::join_all(pending.to_confirm.into_iter().map(|(tx_id, _height)| {
+                    let state = state.clone();
+                    let cannon_target = cannon.sink.target.as_ref();
+                    async move {
+                        if let Some(cache) = state.env_network_cache.get(&env_id) {
+                            if cache.has_transaction(&tx_id) {
+                                trace!("cannon {env_id}.{cannon_id} confirmed transaction {tx_id} (cache hit)");
+                                return Some(tx_id);
+                            }
+                        }
 
-            // TODO: to_confirm
-        }
+                        // check if the transaction not is in the cache, then check the peers
+                        if let Some(target) = cannon_target {
+                            match timeout(Duration::from_secs(1),
+                            state.snarkos_get::<Option<String>>(env_id, format!("/find/blockHash/{tx_id}"), target)).await {
+                                Ok(Ok(Some(_hash))) => {
+                                    trace!("cannon {env_id}.{cannon_id} confirmed transaction {tx_id} (get request)");
+                                    return Some(tx_id)
+                                }
+                                Ok(Ok(None)) => {
+                                    // the transaction is not in the cache
+                                }
+                                _ => {}
+                            }
+
+                        }
+
+                        None
+                }})).await;
+
+                // remove all the transactions that are confirmed or expired
+                for tx_id in pending.to_remove.into_iter().chain(confirmed.into_iter().flatten()) {
+                    cannon.transactions.remove(&tx_id);
+                    trace!("cannon {env_id}.{cannon_id} removed transaction {tx_id}");
+                    if let Err(e) =
+                        TransactionTracker::delete(&state, &(env_id, cannon_id, tx_id.clone()))
+                    {
+                        tracing::error!("cannon {env_id}.{cannon_id} failed to delete {tx_id}: {e:?}");
+                    }
+                }
+            }})).await;
+
+        // wait for the next update
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 
@@ -83,7 +128,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
             for tx in cannon.transactions.iter() {
                 let tx_id = tx.key().to_owned();
                 let key = (env_id, cannon_id, tx_id.to_owned());
-                let attempts = TransactionTracker::get_attempts(&state, &key);
+                let attempts = TransactionTracker::get_attempts(state, &key);
 
                 match tx.status {
                     // any authorized transaction that is not started should be queued

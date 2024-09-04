@@ -235,7 +235,7 @@ impl GlobalState {
             .and_then(|cache| cache.latest.clone())
     }
 
-    pub fn update_env_block_info(&self, id: EnvId, info: &LatestBlockInfo) {
+    pub fn update_env_block_info(&self, id: EnvId, info: &LatestBlockInfo) -> bool {
         let mut cache = self.env_network_cache.entry(id).or_default();
         cache.update_latest_info(info)
     }

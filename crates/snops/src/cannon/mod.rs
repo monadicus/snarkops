@@ -372,27 +372,42 @@ impl CannonInstance {
         tx_id: String,
         body: serde_json::Value,
     ) -> Result<(), CannonError> {
-        // prevent already queued transactions from being re-broadcasted
-        if self.transactions.contains_key(&tx_id) {
-            return Err(CannonError::TransactionAlreadyExists(self.id, tx_id));
-        }
+        let key = (self.env_id, self.id, tx_id.to_owned());
 
-        let tracker = TransactionTracker {
-            index: Self::inc_received_txs(
-                &self.global_state,
-                self.env_id,
-                self.id,
-                &self.received_txs,
-            ),
-            authorization: None,
-            transaction: Some(Arc::new(body)),
-            status: TransactionSendState::Unsent,
+        // prevent already queued transactions from being re-broadcasted
+        let tracker = if let Some(mut tx) = self.transactions.get(&tx_id).as_deref().cloned() {
+            // if we receive a transaction that is not executing, it is a duplicate
+            if !matches!(tx.status, TransactionSendState::Executing(_)) {
+                return Err(CannonError::TransactionAlreadyExists(self.id, tx_id));
+            }
+
+            // clear attempts (as this was a successful execute)
+            if let Err(e) = TransactionTracker::clear_attempts(&self.global_state, &key) {
+                error!(
+                    "cannon {}.{} failed to clear attempts for {tx_id} (in proxy_broadcast): {e:?}",
+                    self.env_id, self.id
+                );
+            }
+            // update the status to pending broadcast, and write the transaction
+            tx.status = TransactionSendState::Unsent;
+            tx.transaction = Some(Arc::new(body));
+            tx
+        } else {
+            TransactionTracker {
+                index: Self::inc_received_txs(
+                    &self.global_state,
+                    self.env_id,
+                    self.id,
+                    &self.received_txs,
+                ),
+                authorization: None,
+                transaction: Some(Arc::new(body)),
+                status: TransactionSendState::Unsent,
+            }
         };
+
         // write the transaction to the store to prevent data loss
-        tracker.write(
-            &self.global_state,
-            &(self.env_id, self.id, tx_id.to_owned()),
-        )?;
+        tracker.write(&self.global_state, &key)?;
         self.transactions.insert(tx_id.to_owned(), tracker);
 
         // forward the transaction to the task, which will broadcast it

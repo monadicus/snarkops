@@ -1,12 +1,15 @@
 use std::{
     collections::HashMap,
     sync::{atomic::AtomicU64, Arc},
+    time::Duration,
 };
 
 use bimap::BiHashMap;
 use chrono::{DateTime, TimeDelta, Utc};
 use lazy_static::lazy_static;
 use snops_common::state::{LatestBlockInfo, NodeKey};
+
+use crate::state::GlobalState;
 
 lazy_static! {
     static ref TX_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -18,6 +21,23 @@ pub type ATransactionId = Arc<str>;
 /// The maximum number of block distance from the tip before we don't consider
 /// fetching it
 pub const MAX_BLOCK_RANGE: u32 = 10;
+/// The maximum age of a block update before we consider it stale. This is not
+/// the same as the block's timestamp, but the time the block was added to the
+/// cache.
+pub const MAX_CULL_AGE: TimeDelta = TimeDelta::seconds(60 * 60);
+
+/// A task that runs every minute to remove stale blocks from the cache
+pub async fn invalidation_task(state: Arc<GlobalState>) {
+    loop {
+        for mut cache in state.env_network_cache.iter_mut() {
+            for hash in cache.stale_blocks() {
+                cache.remove_block(&hash);
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+}
 
 /// Exists per environment to track transactions for the most recent blocks
 /// TODO: task to prune old/unused data
@@ -52,15 +72,17 @@ pub struct TransactionCache {
 }
 
 impl NetworkCache {
-    pub fn update_latest_info(&mut self, info: &LatestBlockInfo) {
+    pub fn update_latest_info(&mut self, info: &LatestBlockInfo) -> bool {
         match &self.latest {
             Some(prev) if prev.block_timestamp < info.block_timestamp => {
                 self.latest.replace(info.clone());
+                true
             }
             None => {
                 self.latest = Some(info.clone());
+                true
             }
-            _ => {}
+            _ => false,
         }
     }
 
@@ -114,11 +136,15 @@ impl NetworkCache {
         self.external_peer_infos.insert(key, info);
     }
 
-    pub fn is_block_stale(&self, _block_hash: &ABlockHash) -> bool {
-        // TODO: check if the block_to_transaction timestamp's age is greater than N
-        // TODO: if there is block_to_transaction, check if block's info's age is
-        // greater than N
-        false
+    /// Get a list of blocks that are considered stale
+    pub fn stale_blocks(&self) -> Vec<ABlockHash> {
+        let now = Utc::now();
+        self.blocks
+            .iter()
+            .filter_map(|(hash, info)| {
+                (info.update_time + MAX_CULL_AGE < now).then_some(Arc::clone(hash))
+            })
+            .collect()
     }
 
     /// Add a block to the cache
@@ -138,6 +164,25 @@ impl NetworkCache {
             },
         );
         self.blocks.insert(Arc::clone(&hash), block_info);
+    }
+
+    /// Check if the cache has a block with the provided hash
+    pub fn has_transactions_for_block(&self, block_hash: &str) -> bool {
+        self.block_to_transaction.contains_key(block_hash)
+    }
+
+    /// Check if the cache has a transaction with the provided id
+    pub fn has_transaction(&self, tx_id: &str) -> bool {
+        self.transaction_to_block_hash.contains_key(tx_id)
+    }
+
+    /// Check if the latest stored info is within the range of the provided
+    /// height
+    pub fn is_recent_block(&self, height: u32) -> bool {
+        // height is within the range of the latest block
+        self.latest
+            .as_ref()
+            .is_some_and(|i| i.height.saturating_sub(MAX_BLOCK_RANGE) > height)
     }
 
     /// Remove a block from the cache

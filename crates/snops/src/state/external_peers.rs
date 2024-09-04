@@ -212,7 +212,11 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
 }
 
 /// Get all online agents above a certain height in an environment
-fn online_agents_above_height(state: &GlobalState, env: EnvId, height: u32) -> Vec<AgentClient> {
+pub fn online_agents_above_height(
+    state: &GlobalState,
+    env: EnvId,
+    height: u32,
+) -> Vec<AgentClient> {
     let Some(env) = state.get_env(env) else {
         return Vec::new();
     };

@@ -148,7 +148,10 @@ impl Environment {
                 TxSink {
                     target: Some(NodeTargets::ALL),
                     file_name: None,
-                    broadcast_attempts: None,
+                    broadcast_attempts: Some(3),
+                    broadcast_timeout: TxSink::default_retry_timeout(),
+                    authorize_attempts: Some(3),
+                    authorize_timeout: TxSink::default_retry_timeout(),
                 },
             ),
         );

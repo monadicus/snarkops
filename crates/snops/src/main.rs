@@ -86,7 +86,12 @@ async fn main() {
         .await
         .expect("load state");
 
+    // start the task that manages external peer block status
     let info_task = tokio::spawn(state::external_peers::block_info_task(Arc::clone(&state)));
+    // start the task that manages transaction tracking status
+    let transaction_task = tokio::spawn(state::transactions::tracking_task(Arc::clone(&state)));
+    // start the task that manages cache invalidation
+    let cache_task = tokio::spawn(env::cache::invalidation_task(Arc::clone(&state)));
 
     info!("Starting server on {socket_addr}");
     select! {
@@ -96,8 +101,11 @@ async fn main() {
         Err(err) = info_task => {
             error!("block info task failed: {err:?}");
         }
-        // TODO: loop for unexecuted authorizations and executing
-        // TODO: loop for unsent transactions and rebroadcasting
-        // TODO: loop to check which transactions are complete, and remove them
+        Err(err) = transaction_task => {
+            error!("transaction task failed: {err:?}");
+        }
+        Err(err) = cache_task => {
+            error!("cache invalidation task failed: {err:?}");
+        }
     }
 }
