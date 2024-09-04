@@ -190,7 +190,7 @@ mod test {
         TransactionSendState,
         TransactionSendState::Broadcasted(Some(1), *NOW),
         [
-            vec![3u8, 1u8, 0u8, 0u8, 0u8, 0u8],
+            vec![3u8, 1u8, 1u8, 0u8, 0u8, 0u8],
             NOW.to_byte_vec().unwrap()
         ]
         .concat()
