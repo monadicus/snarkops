@@ -135,7 +135,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                             info!("cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)");
                             to_remove.push(tx_id);
                         } else {
-                            to_execute.push(tx_id);
+                            to_execute.push((tx_id, tx.index));
                         }
                     }
                     // any expired execution should be queued
@@ -147,7 +147,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                             info!("cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)");
                             to_remove.push(tx_id);
                         } else {
-                            to_execute.push(tx_id);
+                            to_execute.push((tx_id, tx.index));
                         }
                     }
                     // any unbroadcasted transaction that is not started should be queued
@@ -156,7 +156,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                             info!("cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)");
                             to_remove.push(tx_id);
                         } else {
-                            to_broadcast.push(tx_id);
+                            to_broadcast.push((tx_id, tx.index));
                         }
                     }
                     // any expired broadcast should be queued
@@ -172,7 +172,7 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                                 .map(|height| latest_height.is_some_and(|h| h > height))
                                 .unwrap_or(true)
                         {
-                            to_confirm.push((tx_id.clone(), height));
+                            to_confirm.push(((tx_id.clone(), height), tx.index));
                         }
 
                         // queue a re-broadcast if the broadcast has timed out
@@ -183,24 +183,31 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                                 info!("cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)");
                                 to_remove.push(tx_id);
                             } else {
-                                to_broadcast.push(tx_id);
+                                to_broadcast.push((tx_id, tx.index));
                             }
                         }
                     }
                     _ => {}
                 }
             }
+
             pending.push((
                 (env_id, cannon_id),
                 PendingTransactions {
-                    to_execute,
-                    to_broadcast,
+                    to_execute: sorted_by_index(to_execute),
+                    to_broadcast: sorted_by_index(to_broadcast),
                     to_remove,
-                    to_confirm,
+                    to_confirm: sorted_by_index(to_confirm),
                 },
             ));
         }
     }
 
     pending
+}
+
+/// Sort a vec of values by their index
+fn sorted_by_index<T>(mut vec: Vec<(T, u64)>) -> Vec<T> {
+    vec.sort_by_key(|(_, index)| *index);
+    vec.into_iter().map(|(first, _)| first).collect()
 }

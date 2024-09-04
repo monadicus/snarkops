@@ -221,7 +221,10 @@ impl ResponsiveRecord {
 
         // The penalty is based on the time since the last successful attempt.
         // The longer the time since the last success, the longer the penalty
-        Some(self.last_success - self.last_attempt)
+        Some(
+            (self.last_success - self.last_attempt)
+                .min(TimeDelta::seconds(Self::MAX_PENALTY as i64)),
+        )
     }
 
     /// Whether the peer is currently penalized
