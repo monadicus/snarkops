@@ -163,19 +163,28 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                     // any broadcast that has a different height than the latest height
                     // should be confirmed
                     TransactionSendState::Broadcasted(height, broadcast_time) => {
-                        // queue a confirm if the latest height is greater than the broadcast height
-                        // or the broadcast height is unknown
-                        //
-                        // this feature is skipped if the sink has no node target
-                        if cannon.sink.target.is_some()
-                            && height
-                                .map(|height| latest_height.is_some_and(|h| h > height))
-                                .unwrap_or(true)
-                        {
+                        let height_changed = match (height, latest_height) {
+                            // latest height is higher
+                            (Some(height), Some(latest_height)) => latest_height > height,
+                            // latest height is unknown
+                            (None, None) => false,
+                            // heights have changed
+                            _ => true,
+                        };
+
+                        if !height_changed {
+                            continue;
+                        }
+
+                        // When the block height changes, queue a confirm.
+                        // This feature is only available for sinks with a target (should be
+                        // unreachable either way)
+                        if cannon.sink.target.is_some() {
                             to_confirm.push(((tx_id.clone(), height), tx.index));
                         }
 
-                        // queue a re-broadcast if the broadcast has timed out
+                        // Queue a re-broadcast if the broadcast has timed out.
+                        // Also requires the block height to change.
                         if now - broadcast_time
                             > TimeDelta::seconds(cannon.sink.broadcast_timeout as i64)
                         {
