@@ -42,6 +42,6 @@ $AGENT_BIN \
   --metrics "$((9000 + $INDEX))" \
   --node "$((4130 + $INDEX))" \
   --labels "local,local-$INDEX" \
-  --client --validator --compute \
+  --client --validator --prover --compute \
   $@
 

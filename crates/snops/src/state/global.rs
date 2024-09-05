@@ -8,7 +8,9 @@ use serde::de::DeserializeOwned;
 use snops_common::{
     constant::ENV_AGENT_KEY,
     node_targets::NodeTargets,
-    state::{AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, StorageId},
+    state::{
+        AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, NodeType, StorageId,
+    },
     util::OpaqueDebug,
 };
 use tokio::sync::{Mutex, Semaphore};
@@ -255,6 +257,11 @@ impl GlobalState {
 
         env.matching_peers(target, &self.pool, PortType::Rest)
             .filter_map(|(key, peer)| {
+                // ignore prover nodes
+                if key.ty == NodeType::Prover {
+                    return None;
+                }
+
                 let agent_id = match peer {
                     AgentPeer::Internal(id, _) => id,
                     AgentPeer::External(addr) => {
