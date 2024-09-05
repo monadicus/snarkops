@@ -34,7 +34,7 @@ The optional description for a storage document.
 ### binaries
 
 Allows you to specify multiple runner binaries for an environment.
- 
+
 You can specify a binary in a few ways, but it's always `binary_name: field/sub-fields`.
 
 Longhand url:
@@ -100,7 +100,7 @@ The default value is `0`.
 
 ### persist
 
-Tells the agents wether or not they should re-download the storage data. If enabled will save storage to a local db instance.
+Tells the agents whether or not they should re-download the storage data. If enabled will save storage to a local db instance.
 
 `false` by default, which means this behavior is disabled.
 

@@ -52,7 +52,7 @@ enum AgentCommands {
         /// If the agent has a local private key or not.
         #[clap(long)]
         local_pk: bool,
-        /// Wether to include offline agents as well.
+        /// Whether to include offline agents as well.
         #[clap(long)]
         include_offline: bool,
     },
