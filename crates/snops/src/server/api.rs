@@ -171,7 +171,7 @@ async fn get_latest_height(Path(env_id): Path<String>, state: State<AppState>) -
         QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
         QueryTarget::Node(target) => {
             match state
-                .snarkos_get::<Option<u128>>(env_id, "/block/height/latest".to_string(), target)
+                .snarkos_get::<Option<u32>>(env_id, "/block/height/latest".to_string(), target)
                 .await
             {
                 Ok(res) => Json(res).into_response(),

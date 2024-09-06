@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use snops_common::{
     aot_cmds::Authorization, lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN,
 };
@@ -188,8 +188,8 @@ impl ComputeTarget {
                     )
                     .await?;
 
-                let transaction = match serde_json::from_str(&transaction_json) {
-                    Ok(transaction) => Arc::new(transaction),
+                let transaction = match serde_json::from_str::<Arc<Value>>(&transaction_json) {
+                    Ok(transaction) => transaction,
                     Err(e) => {
                         events.send(TransactionStatusEvent::ExecuteFailed(format!(
                             "failed to parse transaction JSON: {transaction_json}",

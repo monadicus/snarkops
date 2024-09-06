@@ -53,8 +53,7 @@ Defaults to `None`, i.e. agent uses it's own local ledger as is.
 ```yaml
 source:
   query:
-    mode:
-      sync-from: client/1 # optional
+    sync-from: client/1 # optional
 ```
 
 ##### node
@@ -63,8 +62,7 @@ An optional field that if provided uses the node in the `environment` specified 
 
 ```yaml
 source:
-  query:
-    mode: client/1 # required
+  query: client/1 # required
 ```
 
 #### compute
@@ -95,30 +93,21 @@ Requires the url for the API.
 ```yaml
 source:
   compute:
-    demox-api: https://exampl_url.com/api/v1
+    demox-api: https://exampleurl.com/api/v1
 ```
 
 ### _sink_
 
-Where the transactions should go to.
+Sinks specify where transactions should go, and optionally how many
+attempts should be made before timing out.
 
-There are several modes to chose from for a sink.
+#### _file-name_
 
-The type of sink is determined by the options you provide.
-
-> [NOTE] You can only select one mode.
-
-#### record
-
-This `sink` mode writes txs to a file.
-
-##### _file-name_
-
-The name of the file to write transactions to.
+Specify a file to write transactions to. This will reside inside the environment's data directory under this name.
 
 ```yaml
 sink:
-  file_name: txs.json
+  file-name: txs.json
 ```
 
 The format of the file is:
@@ -128,17 +117,32 @@ The format of the file is:
 {tx_2_info...}
 ```
 
-#### realtime
+#### _target_
 
-This `sink` mode sends the txs to a node in the env.
-
-##### _target_
-
-The node target(s) the tx's should be fired at.
+Specify the node target(s) the tx's should be fired at.
 
 ```yaml
 sink:
   target: client/1
+```
+
+#### _broadcast-attempts_, _broadcast-timeout_, _authorize-attempts_, _authorize-timeout_
+
+Options for configuring when to drop broadcast/authorization attempts.
+
+The `broadcast-*` options are not relevant if `target` is not configured.
+
+The `broadcast-timeout` and `authorize-timeout` options (seconds) start immediately after an attempt. A broadcast will not be re-broadcast/dropped until the next block occurs.
+
+The `broadcast-attempts` and `authorize-attempts` are limitless when absent. A setting of 0 means a failure will not result in another attempt. A setting of 2 means two attempts will be made before dropping.
+
+```yaml
+sink:
+  target: '*/*'
+  broadcast-attempts: 3
+  authorize-attempts: 3
+  broadcast-timeout: 60 # 1 minute timeout on failure
+  authorize-timeout: 60 # 1 minute timeout on failure
 ```
 
 ## Examples
@@ -169,11 +173,16 @@ version: cannon.snarkos.testing.monadic.us/v1
 
 name: txs-from-file-to-target-node
 
-# playback mode
 source:
+  # playback mode
   file-name: txs.json
 
-# realtime mode
 sink:
+  # realtime mode
   target: validator/test-1
+  # 2 minute timeouts
+  broadcast-timeout: 120
+  authorize-timeout: 120
+  # additionally record to a file
+  file-name: out.json
 ```
