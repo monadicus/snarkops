@@ -28,6 +28,7 @@ regex.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 sha2.workspace = true
 sled.workspace = true
 strum_macros.workspace = true

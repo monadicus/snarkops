@@ -10,7 +10,7 @@ use tracing::{info, warn};
 
 use super::prelude::*;
 use crate::{
-    cli::Cli,
+    cli::Config,
     schema::{
         error::StorageError,
         storage::{
@@ -93,9 +93,9 @@ impl From<&LoadedStorage> for PersistStorage {
 }
 
 impl PersistStorage {
-    pub async fn load(self, cli: &Cli) -> Result<LoadedStorage, StorageError> {
+    pub async fn load(self, config: &Config) -> Result<LoadedStorage, StorageError> {
         let id = self.id;
-        let mut storage_path = cli.path.join(STORAGE_DIR);
+        let mut storage_path = config.path.join(STORAGE_DIR);
         storage_path.push(self.network.to_string());
         storage_path.push(id.to_string());
         let committee_file = storage_path.join("committee.json");

@@ -1,8 +1,10 @@
-use std::io;
+use std::{fs::File, io};
 
 use clap::Parser;
-use cli::Cli;
+use clap_serde_derive::ClapSerde;
+use cli::{Cli, Config};
 use schema::storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY};
+use snops_common::util::parse_file_from_extension;
 use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::{prelude::*, reload, EnvFilter};
 
@@ -64,12 +66,41 @@ async fn main() {
     // For documentation purposes will exit after running the command.
     #[cfg(any(feature = "clipages", feature = "mangen"))]
     Cli::parse().run();
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    // build a full config object from CLI and from optional config file
+    let config = 'config: {
+        match cli.config_path {
+            // file passed: try to open it
+            Some(path) => match File::open(&path) {
+                // file opened: try to parse it
+                Ok(file) => {
+                    match parse_file_from_extension::<<Config as ClapSerde>::Opt>(&path, file) {
+                        // merge file with CLI args
+                        Ok(config) => break 'config Config::from(config).merge(&mut cli.config),
+
+                        // file parse fail
+                        Err(e) => {
+                            tracing::warn!("failed to parse config file, ignoring. error: {e}")
+                        }
+                    }
+                }
+
+                // file open fail
+                Err(e) => tracing::warn!("failed to open config file, ignoring. error: {e}"),
+            },
+
+            // no file
+            None => (),
+        };
+
+        Config::from(&mut cli.config)
+    };
 
     info!("Using AOT binary:\n{}", DEFAULT_AOT_BINARY.to_string());
     info!("Using Agent binary:\n{}", DEFAULT_AGENT_BINARY.to_string());
 
-    server::start(cli, reload_handler)
+    server::start(config, reload_handler)
         .await
         .expect("start server");
 }

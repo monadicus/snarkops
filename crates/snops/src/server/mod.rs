@@ -35,7 +35,7 @@ use self::{
     rpc::ControlRpcServer,
 };
 use crate::{
-    cli::Cli,
+    cli::Config,
     db,
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
@@ -52,16 +52,16 @@ pub mod models;
 pub mod prometheus;
 mod rpc;
 
-pub async fn start(cli: Cli, log_level_handler: ReloadHandler) -> Result<(), StartError> {
-    let db = db::Database::open(&cli.path.join("store"))?;
-    let socket_addr = SocketAddr::new(cli.bind_addr, cli.port);
+pub async fn start(config: Config, log_level_handler: ReloadHandler) -> Result<(), StartError> {
+    let db = db::Database::open(&config.path.join("store"))?;
+    let socket_addr = SocketAddr::new(config.bind_addr, config.port);
 
-    let prometheus = cli
+    let prometheus = config
         .prometheus
         .as_ref()
         .and_then(|p| PrometheusClient::try_from(p.as_str()).ok());
 
-    let state = GlobalState::load(cli, db, prometheus, log_level_handler).await?;
+    let state = GlobalState::load(config, db, prometheus, log_level_handler).await?;
 
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
@@ -160,7 +160,7 @@ async fn handle_socket(
     let id: AgentId = 'insertion: {
         let client = client.clone();
         let mut handshake = Handshake {
-            loki: state.cli.loki.as_ref().map(|u| u.to_string()),
+            loki: state.config.loki.as_ref().map(|u| u.to_string()),
             ..Default::default()
         };
 

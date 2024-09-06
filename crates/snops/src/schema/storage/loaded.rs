@@ -14,7 +14,7 @@ use snops_common::{
 use tracing::{info, trace};
 
 use super::{DEFAULT_AOT_BINARY, STORAGE_DIR};
-use crate::{cli::Cli, schema::error::StorageError, state::GlobalState};
+use crate::{cli::Config, schema::error::StorageError, state::GlobalState};
 
 // IndexMap<addr, private_key>
 pub type AleoAddrMap = IndexMap<String, String>;
@@ -191,11 +191,11 @@ impl LoadedStorage {
     }
 
     pub fn path(&self, state: &GlobalState) -> PathBuf {
-        self.path_cli(&state.cli)
+        self.path_config(&state.config)
     }
 
-    pub fn path_cli(&self, cli: &Cli) -> PathBuf {
-        let mut path = cli.path.join(STORAGE_DIR);
+    pub fn path_config(&self, config: &Config) -> PathBuf {
+        let mut path = config.path.join(STORAGE_DIR);
         path.push(self.network.to_string());
         path.push(self.id.to_string());
         path
@@ -280,7 +280,7 @@ impl LoadedStorage {
         };
 
         // derive the path to the binary
-        let mut download_path = state.cli.path.join(STORAGE_DIR);
+        let mut download_path = state.config.path.join(STORAGE_DIR);
         download_path.push(network.to_string());
         download_path.push(storage_id.to_string());
         download_path.push("binaries");

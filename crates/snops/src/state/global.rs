@@ -18,7 +18,7 @@ use tracing::info;
 
 use super::{AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
 use crate::{
-    cli::Cli,
+    cli::Config,
     db::Database,
     env::{error::EnvRequestError, Environment, PortType},
     error::StateError,
@@ -35,7 +35,7 @@ lazy_static::lazy_static! {
 #[derive(Debug)]
 pub struct GlobalState {
     pub db: OpaqueDebug<Database>,
-    pub cli: Cli,
+    pub config: Config,
     pub agent_key: Option<String>,
     pub pool: AgentPool,
     pub storage: StorageMap,
@@ -65,7 +65,7 @@ type RankedPeerItem = (
 
 impl GlobalState {
     pub async fn load(
-        cli: Cli,
+        config: Config,
         db: Database,
         prometheus: Option<PrometheusClient>,
         log_level_handler: ReloadHandler,
@@ -74,7 +74,7 @@ impl GlobalState {
         let storage_meta = db.storage.read_all();
         let storage = StorageMap::default();
         for ((network, id), meta) in storage_meta {
-            let loaded = match meta.load(&cli).await {
+            let loaded = match meta.load(&config).await {
                 Ok(l) => l,
                 Err(e) => {
                     tracing::error!("Error loading storage from persistence {network}/{id}: {e}");
@@ -87,7 +87,7 @@ impl GlobalState {
         let pool: DashMap<_, _> = db.agents.read_all().collect();
 
         let state = Arc::new(Self {
-            cli,
+            config,
             agent_key: std::env::var(ENV_AGENT_KEY).ok(),
             pool,
             storage,
@@ -149,7 +149,7 @@ impl GlobalState {
     }
 
     pub fn storage_path(&self, network: NetworkId, storage_id: StorageId) -> PathBuf {
-        self.cli
+        self.config
             .path
             .join(STORAGE_DIR)
             .join(network.to_string())
