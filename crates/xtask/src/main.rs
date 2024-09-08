@@ -36,6 +36,8 @@ enum Command {
     InstallUpx,
     /// Builds the project
     Build(Build),
+    /// For watching the project and auto-rebuilding
+    Dev { target: BuildTarget },
 }
 
 #[derive(Parser)]
@@ -53,24 +55,46 @@ impl Build {
     fn run(self, sh: &Shell) -> Result<()> {
         let profile = self.profile.as_ref();
         let package = self.target.as_ref();
-        // -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
-        let cmd = cmd!(sh, "cargo build");
-        let cmd = if matches!(self.target, BuildTarget::All) {
-            cmd
-        } else {
-            cmd.arg("-p").arg(package)
-        };
 
-        let cmd = cmd.arg("--profile").arg(profile);
-        // let cmd = cmd.arg("--target x86_64-unknown-linux-gnu");
-
+        // if crane lift is enabled, we need to build with nightly
         let cmd = if self.cranelift {
-            cmd.arg("-Zcodegen-backend=cranelift")
+            cmd!(sh, "cargo +nightly build")
+        } else {
+            cmd!(sh, "cargo build")
+        };
+        let cmd = cmd.arg("--profile").arg(profile).arg("-p").arg(package);
+
+        // This is broken idk why
+        // // if cranelift is enabled, and the target is not AOT, we can pass additional
+        // // flags
+        // let cmd = if !matches!(self.target, BuildTarget::Aot) && self.cranelift {
+        //     cmd.arg("-Zbuild-std=std,panic_abort")
+        //         .arg("-Zbuild-std-features=panic_immediate_abort")
+        // } else {
+        //     cmd
+        // };
+
+        // if cranelift is enabled we need to set the env var, and also specify the
+        // target
+        let cmd = if self.cranelift {
+            // -C panic=abort
+            cmd.env(
+                "RUSTFLAGS",
+                "-Zlocation-detail=none -Zcodegen-backend=cranelift",
+            )
+            .arg("--target")
+            .arg("x86_64-unknown-linux-gnu")
         } else {
             cmd
         };
 
         cmd.run()?;
+
+        if self.compress {
+            let profile = if profile == "dev" { "debug" } else { profile };
+
+            cmd!(sh, "upx --best -f --lzma -o ./target/{package}-compressed ./target/x86_64-unknown-linux-gnu/{profile}/{package}").run()?;
+        }
 
         Ok(())
     }
@@ -78,7 +102,6 @@ impl Build {
 
 #[derive(Clone, ValueEnum)]
 enum BuildTarget {
-    All,
     Aot,
     Snops,
     SnopsAgent,
@@ -88,8 +111,7 @@ enum BuildTarget {
 impl AsRef<str> for BuildTarget {
     fn as_ref(&self) -> &str {
         match self {
-            BuildTarget::All => "",
-            BuildTarget::Aot => "-snarkos-aot",
+            BuildTarget::Aot => "snarkos-aot",
             BuildTarget::Snops => "snops",
             BuildTarget::SnopsAgent => "snops-agent",
             BuildTarget::SnopsCli => "snops-cli",
@@ -101,7 +123,7 @@ impl AsRef<str> for BuildTarget {
 enum Profile {
     ReleaseBig,
     ReleaseSmall,
-    Debug,
+    Dev,
 }
 
 impl AsRef<str> for Profile {
@@ -109,7 +131,7 @@ impl AsRef<str> for Profile {
         match self {
             Profile::ReleaseBig => "release-big",
             Profile::ReleaseSmall => "release-small",
-            Profile::Debug => "debug",
+            Profile::Dev => "dev",
         }
     }
 }
@@ -130,6 +152,7 @@ impl Command {
             #[cfg(target_os = "linux")]
             Command::InstallUpx => install_upx(sh),
             Command::Build(build) => build.run(sh),
+            Command::Dev { target } => dev(sh, target),
         }
     }
 }
@@ -187,13 +210,13 @@ fn fmt(sh: &Shell, check: bool) -> Result<()> {
     Ok(())
 }
 
-fn insall_cargo_subcommands(sh: &Shell, subcmd: &'static str) -> Result<()> {
+fn install_cargo_subcommands(sh: &Shell, subcmd: &'static str) -> Result<()> {
     cmd!(sh, "cargo install {subcmd} --locked").run()?;
     Ok(())
 }
 
 fn udeps(sh: &Shell, fix: bool) -> Result<()> {
-    insall_cargo_subcommands(sh, "cargo-machete")?;
+    install_cargo_subcommands(sh, "cargo-machete")?;
     let cmd = cmd!(sh, "cargo-machete");
     let cmd = if fix { cmd.arg("fix") } else { cmd };
     cmd.run()?;
@@ -219,5 +242,30 @@ fn install_upx(sh: &Shell) -> Result<()> {
         "rm -rf upx-4.2.3-amd64_linux.tar.xz upx-4.2.3-amd64_linux/"
     )
     .run()?;
+    Ok(())
+}
+
+fn dev(sh: &Shell, target: BuildTarget) -> Result<()> {
+    install_cargo_subcommands(sh, "cargo-watch")?;
+
+    match target {
+        BuildTarget::Aot => cmd!(
+            sh,
+            "cargo watch -x 'build -p snarkos-aot --profile release-big' -w ./crates/aot"
+        )
+        .run(),
+        BuildTarget::Snops => cmd!(sh, "cargo watch -x 'run -p snops' -w ./crates/snops").run(),
+        BuildTarget::SnopsAgent => cmd!(
+            sh,
+            "cargo watch -x 'build -p snops-agent --profile release-big' -w ./crates/snops-agent"
+        )
+        .run(),
+        BuildTarget::SnopsCli => cmd!(
+            sh,
+            "cargo watch -x 'build -p snops-cli' -w ./crates/snops-cli"
+        )
+        .run(),
+    }?;
+
     Ok(())
 }
