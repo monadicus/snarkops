@@ -130,14 +130,11 @@ jobs:
               - 'crates/snops-common/**/*'
 
       - name: 🧪 Test All
-        env:
-          RUSTFLAGS: -Zcodegen-backend=cranelift
         if: steps.changes.outputs.top_toml == 'true'
-        # test everything but AOT since aot doesn't work with cranelift
-        run: cargo +nightly nextest run --all --verbose --fail-fast --all-features --exclude snarkos-aot
+        run: cargo +nightly nextest run --all --verbose --fail-fast --all-features
 
       - name: 🧪 Test Aot
-        if: steps.changes.outputs.aot == 'true' || steps.changes.outputs.top_toml == 'true'
+        if: steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
         run: cargo +nightly nextest run -p snarkos-aot --verbose --fail-fast --all-features
 
       - name: 🧪 Test Checkpoint
