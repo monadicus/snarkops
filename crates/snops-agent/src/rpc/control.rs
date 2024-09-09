@@ -11,6 +11,7 @@ use snops_common::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
     define_rpc_mux,
+    prelude::snarkos_status::SnarkOSLiteBlock,
     rpc::{
         control::{
             agent::{
@@ -469,8 +470,18 @@ impl AgentService for AgentRpcServer {
             .send()
             .await
             .map_err(|_| AgentError::FailedToMakeRequest)?;
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             Ok(())
+            // transaction already exists so this is technically a success
+        } else if status.is_server_error()
+            && response
+                .text()
+                .await
+                .ok()
+                .is_some_and(|text| text.contains("exists in the ledger"))
+        {
+            return Ok(());
         } else {
             Err(AgentError::FailedToMakeRequest)
         }
@@ -584,5 +595,31 @@ impl AgentService for AgentRpcServer {
             .set_log_level(ctx, verbosity)
             .await
             .map_err(|_| AgentError::FailedToChangeLogLevel)?
+    }
+
+    async fn get_snarkos_block_lite(
+        self,
+        ctx: context::Context,
+        block_hash: String,
+    ) -> Result<Option<SnarkOSLiteBlock>, AgentError> {
+        let lock = self.state.node_client.lock().await;
+        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
+        node_client
+            .get_block_lite(ctx, block_hash)
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?
+    }
+
+    async fn find_transaction(
+        self,
+        context: context::Context,
+        tx_id: String,
+    ) -> Result<Option<String>, AgentError> {
+        let lock = self.state.node_client.lock().await;
+        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
+        node_client
+            .find_transaction(context, tx_id)
+            .await
+            .map_err(|_| AgentError::FailedToMakeRequest)?
     }
 }

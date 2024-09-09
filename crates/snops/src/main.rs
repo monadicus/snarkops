@@ -1,9 +1,13 @@
-use std::io;
+use std::{io, net::SocketAddr, sync::Arc};
 
 use clap::Parser;
 use cli::Cli;
+use prometheus_http_query::Client as PrometheusClient;
 use schema::storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY};
-use tracing::{info, level_filters::LevelFilter};
+use snops_common::db::Database;
+use state::GlobalState;
+use tokio::select;
+use tracing::{error, info, level_filters::LevelFilter, trace};
 use tracing_subscriber::{prelude::*, reload, EnvFilter};
 
 pub mod cannon;
@@ -44,11 +48,8 @@ async fn main() {
     };
 
     let (env_filter, reload_handler) = reload::Layer::new(make_env_filter(filter_level));
-
     let (stdout, _guard) = tracing_appender::non_blocking(io::stdout());
-
     let output = tracing_subscriber::fmt::layer().with_writer(stdout);
-
     let output = if cfg!(debug_assertions) {
         output.with_file(true).with_line_number(true)
     } else {
@@ -64,12 +65,47 @@ async fn main() {
     // For documentation purposes will exit after running the command.
     #[cfg(any(feature = "clipages", feature = "mangen"))]
     Cli::parse().run();
+
     let cli = Cli::parse();
 
     info!("Using AOT binary:\n{}", DEFAULT_AOT_BINARY.to_string());
     info!("Using Agent binary:\n{}", DEFAULT_AGENT_BINARY.to_string());
 
-    server::start(cli, reload_handler)
+    trace!("Loading prometheus client");
+    let prometheus = cli
+        .prometheus
+        .as_ref()
+        .and_then(|p| PrometheusClient::try_from(p.as_str()).ok());
+
+    trace!("Creating store");
+    let db = db::Database::open(&cli.path.join("store")).expect("open database");
+    let socket_addr = SocketAddr::new(cli.bind_addr, cli.port);
+
+    trace!("Loading state");
+    let state = GlobalState::load(cli, db, prometheus, reload_handler)
         .await
-        .expect("start server");
+        .expect("load state");
+
+    // start the task that manages external peer block status
+    let info_task = tokio::spawn(state::external_peers::block_info_task(Arc::clone(&state)));
+    // start the task that manages transaction tracking status
+    let transaction_task = tokio::spawn(state::transactions::tracking_task(Arc::clone(&state)));
+    // start the task that manages cache invalidation
+    let cache_task = tokio::spawn(env::cache::invalidation_task(Arc::clone(&state)));
+
+    info!("Starting server on {socket_addr}");
+    select! {
+        Err(err) = server::start(Arc::clone(&state), socket_addr) => {
+            error!("error starting server: {err:?}");
+        }
+        Err(err) = info_task => {
+            error!("block info task failed: {err:?}");
+        }
+        Err(err) = transaction_task => {
+            error!("transaction task failed: {err:?}");
+        }
+        Err(err) = cache_task => {
+            error!("cache invalidation task failed: {err:?}");
+        }
+    }
 }

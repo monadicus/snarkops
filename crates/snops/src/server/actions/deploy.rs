@@ -118,10 +118,8 @@ pub async fn deploy_inner(
     let authorization: Authorization =
         serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
 
-    let tx_id = aot.get_tx_id(&authorization).await?;
-
     // proxy it to a listen cannon
-    cannon.proxy_auth(authorization, events)?;
+    let tx_id = cannon.proxy_auth(authorization, events).await?;
 
     Ok(tx_id)
 }

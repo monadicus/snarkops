@@ -53,7 +53,7 @@ This document contains the help content for the `snops-cli` command-line program
 * `autocomplete` — Generate shell completions
 * `agent` — For interacting with snop agents
 * `env` — For interacting with snop environments
-* `set-log-level` — 
+* `set-log-level` —
 * `man` — For generating cli manpages. Only with the mangen feature enabled
 * `md` — For generating cli markdown. Only with the clipages feature enabled
 
@@ -93,8 +93,8 @@ For interacting with snop agents
 * `kill` — Kill the specific agent
 * `list` — List all agents. Ignores the agent id
 * `tps` — Get the specific agent's TPS
-* `set-log-level` — 
-* `set-snarkos-log-level` — 
+* `set-log-level` —
+* `set-snarkos-log-level` —
 
 ###### **Arguments:**
 
@@ -120,7 +120,7 @@ Find agents by set criteria. If all of client/compute/prover/validator are not s
 * `--all` — Means regardless of connection status, and state we find them
 * `--labels <LABELS>` — The labels an agent should have
 * `--local-pk` — If the agent has a local private key or not
-* `--include-offline` — Wether to include offline agents as well
+* `--include-offline` — Whether to include offline agents as well
 
 
 
@@ -187,7 +187,7 @@ For interacting with snop environments
 * `action` — Actions you can apply on a specific environment
 * `agent` — Get an env's specific agent by
 * `agents` — List an env's agents
-* `auth` — 
+* `auth` —
 * `balance` — Lookup an account's balance
 * `block` — Lookup a block or get the latest block
 * `height` — Get the latest height from all agents in the env

@@ -1,5 +1,7 @@
+#[cfg(any(feature = "clipages", feature = "mangen"))]
+use std::env;
 use std::{
-    env, fs,
+    fs,
     net::{IpAddr, Ipv4Addr},
     path::PathBuf,
 };

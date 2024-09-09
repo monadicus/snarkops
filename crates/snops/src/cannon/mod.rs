@@ -1,3 +1,4 @@
+pub mod context;
 pub mod error;
 pub mod file;
 mod net;
@@ -5,20 +6,24 @@ pub mod router;
 pub mod sink;
 pub mod source;
 pub mod status;
+pub mod tracker;
 
 use std::{
     path::PathBuf,
-    sync::{atomic::AtomicUsize, Arc},
+    sync::{
+        atomic::{AtomicU64, AtomicUsize},
+        Arc,
+    },
 };
 
-use error::SourceError;
-use futures_util::{stream::FuturesUnordered, StreamExt};
-use lazysort::SortedBy;
+use context::ExecutionContext;
+use dashmap::DashMap;
 use snops_common::{
     aot_cmds::{AotCmd, Authorization},
+    format::PackedUint,
     state::{CannonId, EnvId, NetworkId, StorageId},
 };
-use status::{TransactionStatus, TransactionStatusSender};
+use status::{TransactionSendState, TransactionStatusSender};
 use tokio::{
     sync::{
         mpsc::{UnboundedReceiver, UnboundedSender},
@@ -26,18 +31,15 @@ use tokio::{
     },
     task::AbortHandle,
 };
-use tracing::{trace, warn};
+use tracing::{error, trace, warn};
+use tracker::TransactionTracker;
 
 use self::{
-    error::{CannonError, CannonInstanceError, ExecutionContextError},
-    file::TransactionSink,
+    error::{CannonError, CannonInstanceError},
     sink::TxSink,
     source::TxSource,
 };
-use crate::{
-    cannon::source::{ComputeTarget, QueryTarget},
-    state::{GlobalState, REST_CLIENT},
-};
+use crate::{cannon::source::QueryTarget, state::GlobalState};
 
 /*
 
@@ -98,22 +100,141 @@ pub struct CannonInstance {
     #[allow(dead_code)]
     child: Option<tokio::process::Child>,
 
-    /// channel to send transactions to the the task
-    tx_sender: UnboundedSender<String>,
-    /// channel to send authorizations to the the task
-    auth_sender: UnboundedSender<(Authorization, TransactionStatusSender)>,
+    /// channel to send transaction ids to the the task
+    pub(crate) tx_sender: UnboundedSender<String>,
+    /// channel to send authorizations (by transaction id) to the the task
+    pub(crate) auth_sender: UnboundedSender<(String, TransactionStatusSender)>,
+    /// transaction ids that are currently being processed
+    pub(crate) transactions: Arc<DashMap<String, TransactionTracker>>,
 
+    pub(crate) received_txs: Arc<AtomicU64>,
     pub(crate) fired_txs: Arc<AtomicUsize>,
 }
 
 pub struct CannonReceivers {
     transactions: UnboundedReceiver<String>,
-    authorizations: UnboundedReceiver<(Authorization, TransactionStatusSender)>,
+    authorizations: UnboundedReceiver<(String, TransactionStatusSender)>,
 }
 
 pub type CannonInstanceMeta = (EnvId, NetworkId, StorageId, PathBuf);
 
 impl CannonInstance {
+    /// Increment and save the received transaction count
+    pub(crate) fn inc_received_txs(
+        state: &GlobalState,
+        env_id: EnvId,
+        cannon_id: CannonId,
+        txs: &AtomicU64,
+    ) -> u64 {
+        let index = txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if let Err(e) = state
+            .db
+            .tx_index
+            .save(&(env_id, cannon_id, String::new()), &PackedUint(index))
+        {
+            error!("cannon {env_id}.{cannon_id} failed to save received tx count: {e}");
+        }
+        index
+    }
+
+    /// Load transactions for this cannon/env from the store
+    fn restore_transactions(
+        state: &GlobalState,
+        env_id: EnvId,
+        cannon_id: CannonId,
+    ) -> (DashMap<String, TransactionTracker>, AtomicU64) {
+        let transactions = DashMap::new();
+
+        // Restore the received transaction count (empty string key for tx_index)
+        let received_txs = match state
+            .db
+            .tx_index
+            .restore(&(env_id, cannon_id, String::new()))
+        {
+            Ok(Some(index)) => AtomicU64::new(index.0),
+            Ok(None) => AtomicU64::new(0),
+            Err(e) => {
+                error!("cannon {env_id}.{cannon_id} failed to parse received tx count: {e}");
+                AtomicU64::new(0)
+            }
+        };
+
+        let statuses = match state.db.tx_status.read_with_prefix(&(env_id, cannon_id)) {
+            Ok(statuses) => statuses,
+            Err(e) => {
+                error!("cannon {env_id}.{cannon_id} failed to restore transaction statuses: {e}");
+                return (transactions, received_txs);
+            }
+        };
+
+        // Walk through the statuses and restore the transactions (every transaction has
+        // a status)
+        for (key, status) in statuses {
+            // Ensure the transaction has an index
+            let index = match state.db.tx_index.restore(&key) {
+                Ok(Some(index)) => index.0,
+                Ok(None) => {
+                    warn!(
+                        "cannon {env_id}.{cannon_id} failed to restore index for transaction {} (missing index)", key.2
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    error!(
+                        "cannon {env_id}.{cannon_id} failed to parse index for transaction {}: {e}",
+                        key.2
+                    );
+                    continue;
+                }
+            };
+
+            let authorization = match state.db.tx_auths.restore(&key) {
+                Ok(auth) => auth.map(Arc::new),
+                Err(e) => {
+                    error!(
+                        "cannon {env_id}.{cannon_id} failed to restore authorization for transaction {}: {e}",
+                        key.2
+                    );
+                    continue;
+                }
+            };
+
+            // Restore the transaction, if it exists. If there is an issue restoring the
+            // transaction, it is possible to re-execute the authorization when
+            // present.
+            let transaction = match state.db.tx_blobs.restore(&key) {
+                Ok(tx) => tx.map(Arc::new),
+                Err(e) => {
+                    if authorization.is_some() {
+                        warn!(
+                            "cannon {env_id}.{cannon_id} failed to restore json for transaction {}: {e}. Recovering from authorization",
+                            key.2
+                        );
+                        None
+                    } else {
+                        error!(
+                            "cannon {env_id}.{cannon_id} failed to restore json for transaction {}: {e}",
+                            key.2
+                        );
+                        continue;
+                    }
+                }
+            };
+
+            transactions.insert(
+                key.2,
+                TransactionTracker {
+                    index,
+                    authorization,
+                    transaction,
+                    status,
+                },
+            );
+        }
+
+        (transactions, received_txs)
+    }
+
     /// Create a new active transaction cannon
     /// with the given source and sink.
     ///
@@ -138,6 +259,7 @@ impl CannonInstance {
             .map_err(|e| CannonError::Command(id, e))?;
 
         let (auth_sender, auth_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (transactions, received_txs) = Self::restore_transactions(&global_state, env_id, id);
 
         Ok((
             Self {
@@ -153,6 +275,8 @@ impl CannonInstance {
                 child,
                 task: None,
                 fired_txs,
+                received_txs: Arc::new(received_txs),
+                transactions: Arc::new(transactions),
             },
             CannonReceivers {
                 transactions: tx_receiver,
@@ -161,6 +285,7 @@ impl CannonInstance {
         ))
     }
 
+    /// Create an execution context for this cannon
     pub fn ctx(&self) -> ExecutionContext {
         ExecutionContext {
             id: self.id,
@@ -170,9 +295,11 @@ impl CannonInstance {
             sink: self.sink.clone(),
             fired_txs: Arc::clone(&self.fired_txs),
             state: Arc::clone(&self.global_state),
+            transactions: Arc::clone(&self.transactions),
         }
     }
 
+    /// Spawn the cannon's execution context as an abortable local task
     pub fn spawn_local(
         &mut self,
         rx: CannonReceivers,
@@ -191,6 +318,8 @@ impl CannonInstance {
         Ok(())
     }
 
+    /// Spawn the cannon's execution context and wait for it to finish
+    #[deprecated = "originally used in the timeline API for temporary cannons with finite transaction counts"]
     pub async fn spawn(&mut self, rx: CannonReceivers) -> Result<(), CannonError> {
         self.ctx().spawn(rx).await
     }
@@ -238,25 +367,136 @@ impl CannonInstance {
 
     /// Called by axum to forward /cannon/<id>/<network>/transaction/broadcast
     /// to the desired sink
-    pub fn proxy_broadcast(&self, body: String) -> Result<(), CannonError> {
+    pub fn proxy_broadcast(
+        &self,
+        tx_id: String,
+        body: serde_json::Value,
+    ) -> Result<(), CannonError> {
+        let key = (self.env_id, self.id, tx_id.to_owned());
+
+        // if the transaction is in the cache, it has already been broadcasted
+        if let Some(cache) = self.global_state.env_network_cache.get(&self.env_id) {
+            if cache.has_transaction(&tx_id) {
+                if let Err(e) = TransactionTracker::delete(&self.global_state, &key) {
+                    error!(
+                        "cannon {}.{} failed to delete {tx_id} (in proxy_broadcast): {e:?}",
+                        self.env_id, self.id
+                    );
+                }
+                return Err(CannonError::TransactionAlreadyExists(self.id, tx_id));
+            }
+        }
+
+        // prevent already queued transactions from being re-broadcasted
+        let tracker = if let Some(mut tx) = self.transactions.get(&tx_id).as_deref().cloned() {
+            // if we receive a transaction that is not executing, it is a duplicate
+            if !matches!(tx.status, TransactionSendState::Executing(_)) {
+                return Err(CannonError::TransactionAlreadyExists(self.id, tx_id));
+            }
+
+            // clear attempts (as this was a successful execute)
+            if let Err(e) = TransactionTracker::clear_attempts(&self.global_state, &key) {
+                error!(
+                    "cannon {}.{} failed to clear attempts for {tx_id} (in proxy_broadcast): {e:?}",
+                    self.env_id, self.id
+                );
+            }
+            // update the status to pending broadcast, and write the transaction
+            tx.status = TransactionSendState::Unsent;
+            tx.transaction = Some(Arc::new(body));
+            tx
+        } else {
+            trace!(
+                "cannon {}.{} received broadcast {tx_id}",
+                self.env_id,
+                self.id
+            );
+            TransactionTracker {
+                index: Self::inc_received_txs(
+                    &self.global_state,
+                    self.env_id,
+                    self.id,
+                    &self.received_txs,
+                ),
+                authorization: None,
+                transaction: Some(Arc::new(body)),
+                status: TransactionSendState::Unsent,
+            }
+        };
+
+        // write the transaction to the store to prevent data loss
+        tracker.write(&self.global_state, &key)?;
+        self.transactions.insert(tx_id.to_owned(), tracker);
+
+        // forward the transaction to the task, which will broadcast it
+        // rather than waiting for the next broadcast check cycle
         self.tx_sender
-            .send(body)
+            .send(tx_id)
             .map_err(|e| CannonError::SendTxError(self.id, e))?;
 
         Ok(())
     }
 
     /// Called by axum to forward /cannon/<id>/auth to a listen source
-    pub fn proxy_auth(
+    pub async fn proxy_auth(
         &self,
         body: Authorization,
         events: TransactionStatusSender,
-    ) -> Result<(), CannonError> {
+    ) -> Result<String, CannonError> {
+        let Some(storage) = self
+            .global_state
+            .get_env(self.env_id)
+            .map(|e| Arc::clone(&e.storage))
+        else {
+            // this error is very unlikely
+            return Err(CannonError::BinaryError(
+                self.id,
+                "missing environment".to_owned(),
+            ));
+        };
+
+        // resolve the binary for the compute target
+        let compute_bin = storage
+            .resolve_compute_binary(&self.global_state)
+            .await
+            .map_err(|e| CannonError::BinaryError(self.id, e.to_string()))?;
+        let aot = AotCmd::new(compute_bin, self.network);
+
+        // derive the transaction id from the authorization
+        let tx_id = aot
+            .get_tx_id(&body)
+            .await
+            .map_err(|e| CannonError::BinaryError(self.id, format!("derive tx id: {e}")))?;
+
+        // prevent already queued transactions from being re-computed
+        if self.transactions.contains_key(&tx_id) {
+            return Err(CannonError::TransactionAlreadyExists(self.id, tx_id));
+        }
+
+        let tracker = TransactionTracker {
+            index: Self::inc_received_txs(
+                &self.global_state,
+                self.env_id,
+                self.id,
+                &self.received_txs,
+            ),
+            authorization: Some(Arc::new(body)),
+            transaction: None,
+            status: TransactionSendState::Authorized,
+        };
+        // write the transaction to the store to prevent data loss
+        tracker.write(
+            &self.global_state,
+            &(self.env_id, self.id, tx_id.to_owned()),
+        )?;
+        self.transactions.insert(tx_id.to_owned(), tracker);
+
+        trace!("cannon {}.{} received auth {tx_id}", self.env_id, self.id);
         self.auth_sender
-            .send((body, events))
+            .send((tx_id.to_owned(), events))
             .map_err(|e| CannonError::SendAuthError(self.id, e))?;
 
-        Ok(())
+        Ok(tx_id)
     }
 }
 
@@ -266,243 +506,5 @@ impl Drop for CannonInstance {
         if let Some(handle) = self.task.take() {
             handle.abort();
         }
-    }
-}
-
-/// Information a transaction cannon needs for execution via spawned task
-pub struct ExecutionContext {
-    state: Arc<GlobalState>,
-    /// The cannon's id
-    id: CannonId,
-    /// The environment associated with this cannon
-    env_id: EnvId,
-    network: NetworkId,
-    source: TxSource,
-    sink: TxSink,
-    fired_txs: Arc<AtomicUsize>,
-}
-
-impl ExecutionContext {
-    pub async fn spawn(self, mut rx: CannonReceivers) -> Result<(), CannonError> {
-        let ExecutionContext {
-            id: cannon_id,
-            env_id,
-            source,
-            sink,
-            fired_txs,
-            state,
-            ..
-        } = &self;
-
-        let env_id = *env_id;
-        let env = state
-            .get_env(env_id)
-            .ok_or_else(|| ExecutionContextError::EnvDropped(env_id, *cannon_id))?;
-
-        trace!("cannon {env_id}.{cannon_id} spawned");
-
-        // get the query path from the realtime tx source
-        let suffix = format!("/api/v1/env/{}/cannons/{cannon_id}", env.id);
-        let query_path = match source.compute {
-            // agents already know the host of the control plane
-            ComputeTarget::Agent { .. } => suffix,
-            // demox needs to locate it
-            ComputeTarget::Demox { .. } => {
-                let host = state
-                    .cli
-                    .hostname
-                    .as_ref()
-                    .ok_or(ExecutionContextError::NoHostnameConfigured)?;
-                format!("{host}:{}{suffix}", state.cli.port)
-            }
-        };
-        trace!("cannon {env_id}.{cannon_id} using realtime query {query_path}");
-
-        let sink_pipe = match &sink {
-            TxSink::Record { file_name, .. } => {
-                let pipe = env.sinks.get(file_name).cloned();
-                if pipe.is_none() {
-                    return Err(ExecutionContextError::TransactionSinkNotFound(
-                        env_id, *cannon_id, *file_name,
-                    )
-                    .into());
-                }
-                pipe
-            }
-            _ => None,
-        };
-
-        let mut auth_execs = FuturesUnordered::new();
-        let mut tx_shots = FuturesUnordered::new();
-
-        loop {
-            tokio::select! {
-                // ------------------------
-                // Work generation
-                // ------------------------
-
-                // receive authorizations and forward the executions to the compute target
-                Some((auth, events)) = rx.authorizations.recv() => {
-                    auth_execs.push(self.execute_auth(auth, &query_path, events));
-                }
-                // receive transactions and forward them to the sink target
-                Some(tx) = rx.transactions.recv() => {
-                    tx_shots.push(self.fire_tx(sink_pipe.clone(), tx));
-                }
-
-                // ------------------------
-                // Work results
-                // ------------------------
-
-                Some(res) = auth_execs.next() => {
-                    if let Err(e) = res {
-                        warn!("cannon {env_id}.{cannon_id} auth execute task failed: {e}");
-                    }
-                },
-                Some(res) = tx_shots.next() => {
-                    match res {
-                        Ok(()) => {
-                            let fired_count = fired_txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                            trace!("cannon {env_id}.{cannon_id} fired {fired_count} txs");
-                        }
-                        Err(e) => {
-                            warn!("cannon {env_id}.{cannon_id} failed to fire transaction {e}");
-                        }
-                    }
-                },
-            }
-        }
-    }
-
-    /// Execute an authorization on the source's compute target
-    async fn execute_auth(
-        &self,
-        auth: Authorization,
-        query_path: &str,
-        events: TransactionStatusSender,
-    ) -> Result<(), CannonError> {
-        let env = self.state.get_env(self.env_id).ok_or_else(|| {
-            events.send(TransactionStatus::ExecuteAborted);
-            ExecutionContextError::EnvDropped(self.env_id, self.id)
-        })?;
-
-        events.send(TransactionStatus::ExecuteQueued);
-        match self
-            .source
-            .compute
-            .execute(&self.state, &env, query_path, &auth, &events)
-            .await
-        {
-            // requeue the auth if no agents are available
-            Err(CannonError::Source(SourceError::NoAvailableAgents(_))) => {
-                warn!(
-                    "cannon {}.{} no available agents to execute auth, retrying in a second...",
-                    self.env_id, self.id
-                );
-                events.send(TransactionStatus::ExecuteAwaitingCompute);
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                if let Some(cannon) = env.get_cannon(self.id) {
-                    cannon.proxy_auth(auth, events)?
-                }
-                Ok(())
-            }
-            Err(e) => {
-                events.send(TransactionStatus::ExecuteFailed(e.to_string()));
-                Err(e)
-            }
-            res => res,
-        }
-    }
-
-    /// Fire a transaction to the sink
-    async fn fire_tx(
-        &self,
-        sink_pipe: Option<Arc<TransactionSink>>,
-        tx: String,
-    ) -> Result<(), CannonError> {
-        match &self.sink {
-            TxSink::Record { .. } => {
-                sink_pipe.unwrap().write(&tx)?;
-            }
-            TxSink::RealTime { target, .. } => {
-                let cannon_id = self.id;
-                let env_id = self.env_id;
-
-                let broadcast_nodes = self.state.get_scored_peers(env_id, target);
-
-                if broadcast_nodes.is_empty() {
-                    return Err(ExecutionContextError::NoAvailableAgents(
-                        env_id,
-                        cannon_id,
-                        "to broadcast transactions",
-                    )
-                    .into());
-                }
-
-                let network = self.network;
-
-                // broadcast to the first responding node
-                for (_, _, agent, addr) in
-                    broadcast_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0))
-                {
-                    if let Some(id) = agent {
-                        // ensure the client is connected
-                        let Some(client) = self.state.get_client(id) else {
-                            continue;
-                        };
-
-                        if let Err(e) = client.broadcast_tx(tx.clone()).await {
-                            warn!(
-                                "cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}"
-                            );
-                            continue;
-                        }
-                        return Ok(());
-                    }
-
-                    if let Some(addr) = addr {
-                        let url = format!("http://{addr}/{network}/transaction/broadcast");
-                        let req = REST_CLIENT
-                            .post(url)
-                            .header("Content-Type", "application/json")
-                            .body(tx.clone())
-                            .send();
-                        let Ok(res) =
-                            tokio::time::timeout(std::time::Duration::from_secs(5), req).await
-                        else {
-                            warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: timeout");
-                            continue;
-                        };
-
-                        match res {
-                            Err(e) => {
-                                warn!(
-                                    "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}"
-                                );
-                                continue;
-                            }
-                            Ok(req) => {
-                                if !req.status().is_success() {
-                                    warn!(
-                                        "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}",
-                                        req.status(),
-                                    );
-                                    continue;
-                                }
-                            }
-                        }
-
-                        return Ok(());
-                    }
-                }
-
-                Err(ExecutionContextError::NoAvailableAgents(
-                    env_id,
-                    cannon_id,
-                    "to broadcast transactions",
-                ))?
-            }
-        }
-        Ok(())
     }
 }

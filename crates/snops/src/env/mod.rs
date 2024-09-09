@@ -41,6 +41,7 @@ pub mod error;
 mod reconcile;
 pub mod set;
 pub use reconcile::*;
+pub mod cache;
 
 #[derive(Debug)]
 pub struct Environment {
@@ -144,8 +145,13 @@ impl Environment {
                     query: QueryTarget::Node(NodeTargets::ALL),
                     compute: ComputeTarget::Agent { labels: None },
                 },
-                TxSink::RealTime {
-                    target: NodeTargets::ALL,
+                TxSink {
+                    target: Some(NodeTargets::ALL),
+                    file_name: None,
+                    broadcast_attempts: Some(3),
+                    broadcast_timeout: TxSink::default_retry_timeout(),
+                    authorize_attempts: Some(3),
+                    authorize_timeout: TxSink::default_retry_timeout(),
                 },
             ),
         );
@@ -376,7 +382,6 @@ impl Environment {
             id: env_id,
             storage,
             network,
-            // TODO: outcome_results: Default::default(),
             node_peers,
             node_states,
             sinks,
@@ -387,7 +392,7 @@ impl Environment {
             error!("failed to save env {env_id} to persistence: {e}");
         }
 
-        state.envs.insert(env_id, Arc::clone(&env));
+        state.insert_env(env_id, Arc::clone(&env));
 
         if !agents_to_inventory.is_empty() {
             info!(
@@ -417,18 +422,31 @@ impl Environment {
         // clear the env state
         info!("[env {id}] deleting persistence...");
 
-        let (_, env) = state
-            .envs
-            .remove(&id)
-            .ok_or(CleanupError::EnvNotFound(id))?;
-
-        // as we're cleaning up the env, we are also removing the associated latest
-        // block info
-        let _ = state.env_block_info.remove(&id);
+        let env = state.remove_env(id).ok_or(CleanupError::EnvNotFound(id))?;
 
         if let Err(e) = state.db.envs.delete(&id) {
-            error!("[env {id}] failed to delete persistence: {e}");
+            error!("[env {id}] failed to delete env persistence: {e}");
         }
+
+        // TODO: write all of these values to a file before deleting them
+
+        // cleanup cannon transaction trackers
+        if let Err(e) = state.db.tx_attempts.delete_with_prefix(&id) {
+            error!("[env {id}] failed to delete env tx_attempts persistence: {e}");
+        }
+        if let Err(e) = state.db.tx_auths.delete_with_prefix(&id) {
+            error!("[env {id}] failed to delete env tx_auths persistence: {e}");
+        }
+        if let Err(e) = state.db.tx_blobs.delete_with_prefix(&id) {
+            error!("[env {id}] failed to delete env tx_blobs persistence: {e}");
+        }
+        if let Err(e) = state.db.tx_index.delete_with_prefix(&id) {
+            error!("[env {id}] failed to delete env tx_index persistence: {e}");
+        }
+        if let Err(e) = state.db.tx_status.delete_with_prefix(&id) {
+            error!("[env {id}] failed to delete env tx_status persistence: {e}");
+        }
+
         if let Some(storage) = state.try_unload_storage(env.network, env.storage.id) {
             info!("[env {id}] unloaded storage {}", storage.id);
         }
@@ -480,6 +498,16 @@ impl Environment {
         pool: &'a DashMap<AgentId, Agent>,
         port_type: PortType,
     ) -> impl Iterator<Item = AgentPeer> + 'a {
+        self.matching_peers(targets, pool, port_type)
+            .map(|(_, peer)| peer)
+    }
+
+    pub fn matching_peers<'a>(
+        &'a self,
+        targets: &'a NodeTargets,
+        pool: &'a DashMap<AgentId, Agent>,
+        port_type: PortType,
+    ) -> impl Iterator<Item = (&'a NodeKey, AgentPeer)> + 'a {
         self.node_peers
             .iter()
             .filter(|(key, _)| targets.matches(key))
@@ -487,13 +515,16 @@ impl Environment {
                 EnvPeer::Internal(id) => {
                     let agent = pool.get(id)?;
 
-                    Some(AgentPeer::Internal(
-                        *id,
-                        match port_type {
-                            PortType::Bft => agent.bft_port(),
-                            PortType::Node => agent.node_port(),
-                            PortType::Rest => agent.rest_port(),
-                        },
+                    Some((
+                        key,
+                        AgentPeer::Internal(
+                            *id,
+                            match port_type {
+                                PortType::Bft => agent.bft_port(),
+                                PortType::Node => agent.node_port(),
+                                PortType::Rest => agent.rest_port(),
+                            },
+                        ),
                     ))
                 }
 
@@ -503,11 +534,14 @@ impl Environment {
                         return None;
                     };
 
-                    Some(AgentPeer::External(match port_type {
-                        PortType::Bft => external.bft?,
-                        PortType::Node => external.node?,
-                        PortType::Rest => external.rest?,
-                    }))
+                    Some((
+                        key,
+                        AgentPeer::External(match port_type {
+                            PortType::Bft => external.bft?,
+                            PortType::Node => external.node?,
+                            PortType::Rest => external.rest?,
+                        }),
+                    ))
                 }
             })
     }
@@ -574,7 +608,7 @@ impl Environment {
     }
 }
 
-// TODO remove this
+// TODO remove this type complexity problem
 #[allow(clippy::type_complexity)]
 pub fn prepare_cannons(
     state: Arc<GlobalState>,
@@ -595,13 +629,13 @@ pub fn prepare_cannons(
 
     for (name, source, sink) in pending_cannons.into_iter() {
         // create file sinks for all the cannons that use files as output
-        if let TxSink::Record { file_name, .. } = &sink {
+        if let Some(file_name) = sink.file_name {
             // prevent re-creating sinks that were in the previous env
-            if !sinks.contains_key(file_name) {
-                sinks.insert(
-                    *file_name,
-                    Arc::new(TransactionSink::new(storage.path(&state), *file_name)?),
-                );
+            if let std::collections::hash_map::Entry::Vacant(e) = sinks.entry(file_name) {
+                e.insert(Arc::new(TransactionSink::new(
+                    storage.path(&state),
+                    file_name,
+                )?));
             }
         }
 

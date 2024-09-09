@@ -30,6 +30,7 @@ impl AgentNodeService for AgentNodeRpcServer {
             height,
             state_root,
             block_hash,
+            previous_hash: prev_block_hash,
             block_timestamp,
         }: SnarkOSBlockInfo,
     ) -> Result<(), ()> {
@@ -41,6 +42,7 @@ impl AgentNodeService for AgentNodeRpcServer {
                 block_timestamp,
                 state_root,
                 block_hash,
+                prev_block_hash,
             )
             .await
             .inspect_err(|err| tracing::error!("failed to post block status: {err}"))

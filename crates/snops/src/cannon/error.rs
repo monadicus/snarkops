@@ -4,6 +4,7 @@ use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use snops_common::{
     aot_cmds::{error::CommandError, AotCmdError},
+    db::error::DatabaseError,
     impl_into_status_code, impl_into_type_str,
     node_targets::NodeTargets,
     state::{CannonId, EnvId, TxPipeId},
@@ -11,7 +12,7 @@ use snops_common::{
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
-use super::{status::TransactionStatusSender, Authorization};
+use super::status::TransactionStatusSender;
 use crate::{env::error::EnvRequestError, error::StateError};
 
 #[derive(Debug, Error, AsRefStr)]
@@ -169,7 +170,7 @@ pub enum CannonError {
     #[error("send `auth` error for cannon `{0}`: {1}")]
     SendAuthError(
         CannonId,
-        #[source] tokio::sync::mpsc::error::SendError<(Authorization, TransactionStatusSender)>,
+        #[source] tokio::sync::mpsc::error::SendError<(String, TransactionStatusSender)>,
     ),
     #[error("send `tx` error for cannon `{0}`: {1}")]
     SendTxError(
@@ -177,11 +178,21 @@ pub enum CannonError {
         #[source] tokio::sync::mpsc::error::SendError<String>,
     ),
     #[error(transparent)]
+    DatabaseWriteError(#[from] DatabaseError),
+    #[error(transparent)]
     Source(#[from] SourceError),
     #[error(transparent)]
     State(#[from] StateError),
     #[error(transparent)]
     RequestError(#[from] EnvRequestError),
+    #[error("transaction already exists for cannon `{0}`: {1}")]
+    TransactionAlreadyExists(CannonId, String),
+    #[error("transaction lost for cannon `{0}`: {1}")]
+    TransactionLost(CannonId, String),
+    #[error("invalid transaction state for transaction {1} for cannon `{0}`: {2}")]
+    InvalidTransactionState(CannonId, String, String),
+    #[error("binary error for cannon `{0}`: {1}")]
+    BinaryError(CannonId, String),
 }
 
 impl_into_status_code!(CannonError, |value| match value {
@@ -193,6 +204,7 @@ impl_into_status_code!(CannonError, |value| match value {
     TransactionSink(e) => e.into(),
     Source(e) => e.into(),
     State(e) => e.into(),
+    TransactionAlreadyExists(_, _) => StatusCode::CONFLICT,
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
 

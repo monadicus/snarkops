@@ -4,23 +4,26 @@ use chrono::Utc;
 use dashmap::DashMap;
 use lazysort::SortedBy;
 use prometheus_http_query::Client as PrometheusClient;
-use serde::{de::DeserializeOwned, Serialize};
-use serde_json::json;
+use serde::de::DeserializeOwned;
 use snops_common::{
     constant::ENV_AGENT_KEY,
     node_targets::NodeTargets,
-    rpc::error::SnarkosRequestError,
-    state::{AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, StorageId},
+    state::{
+        AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, NodeType, StorageId,
+    },
     util::OpaqueDebug,
 };
 use tokio::sync::{Mutex, Semaphore};
 use tracing::info;
 
-use super::{AddrMap, AgentClient, AgentPool, EnvMap, StorageMap};
+use super::{
+    snarkos_request::{self, reparse_json_env},
+    AddrMap, AgentClient, AgentPool, EnvMap, StorageMap,
+};
 use crate::{
     cli::Cli,
     db::Database,
-    env::{error::EnvRequestError, Environment, PortType},
+    env::{cache::NetworkCache, error::EnvRequestError, Environment, PortType},
     error::StateError,
     schema::storage::{LoadedStorage, STORAGE_DIR},
     server::{error::StartError, prometheus::HttpsdResponse},
@@ -40,7 +43,7 @@ pub struct GlobalState {
     pub pool: AgentPool,
     pub storage: StorageMap,
     pub envs: EnvMap,
-    pub env_block_info: DashMap<EnvId, LatestBlockInfo>,
+    pub env_network_cache: OpaqueDebug<DashMap<EnvId, NetworkCache>>,
 
     pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
@@ -95,7 +98,7 @@ impl GlobalState {
             prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db: OpaqueDebug(db),
-            env_block_info: Default::default(),
+            env_network_cache: Default::default(),
             log_level_handler,
         });
 
@@ -124,7 +127,7 @@ impl GlobalState {
                 }
             };
             info!("loaded env {id} from persistence");
-            state.envs.insert(id, Arc::new(loaded));
+            state.insert_env(id, Arc::new(loaded));
         }
 
         // For all agents not in envs, set their state to Inventory
@@ -214,25 +217,29 @@ impl GlobalState {
         Some(storage)
     }
 
+    pub fn insert_env(&self, env_id: EnvId, env: Arc<Environment>) {
+        self.envs.insert(env_id, env);
+        self.env_network_cache.insert(env_id, Default::default());
+    }
+
+    pub fn remove_env(&self, env_id: EnvId) -> Option<Arc<Environment>> {
+        self.env_network_cache.remove(&env_id);
+        self.envs.remove(&env_id).map(|(_, env)| env)
+    }
+
     pub fn get_env(&self, id: EnvId) -> Option<Arc<Environment>> {
         Some(Arc::clone(self.envs.get(&id)?.value()))
     }
 
     pub fn get_env_block_info(&self, id: EnvId) -> Option<LatestBlockInfo> {
-        self.env_block_info.get(&id).map(|info| info.clone())
+        self.env_network_cache
+            .get(&id)
+            .and_then(|cache| cache.latest.clone())
     }
 
-    pub fn update_env_block_info(&self, id: EnvId, info: &LatestBlockInfo) {
-        use dashmap::mapref::entry::Entry::*;
-        match self.env_block_info.entry(id) {
-            Occupied(ent) if ent.get().block_timestamp < info.block_timestamp => {
-                ent.replace_entry(info.clone());
-            }
-            Vacant(ent) => {
-                ent.insert(info.clone());
-            }
-            _ => {}
-        }
+    pub fn update_env_block_info(&self, id: EnvId, info: &LatestBlockInfo) -> bool {
+        let mut cache = self.env_network_cache.entry(id).or_default();
+        cache.update_latest_info(info)
     }
 
     /// Get a vec of peers and their addresses, along with a score reflecting
@@ -242,14 +249,29 @@ impl GlobalState {
             return Vec::new();
         };
 
+        // use the network cache to lookup external peer info
+        let cache = self.env_network_cache.get(&env_id);
+        let ext_infos = cache.as_ref().map(|c| &c.external_peer_infos);
+
         let now = Utc::now();
 
-        env.matching_nodes(target, &self.pool, PortType::Rest)
-            .filter_map(|peer| {
+        env.matching_peers(target, &self.pool, PortType::Rest)
+            .filter_map(|(key, peer)| {
+                // ignore prover nodes
+                if key.ty == NodeType::Prover {
+                    return None;
+                }
+
                 let agent_id = match peer {
                     AgentPeer::Internal(id, _) => id,
-                    // TODO: periodically get block info from external nodes
-                    AgentPeer::External(addr) => return Some((0u32, None, None, Some(addr))),
+                    AgentPeer::External(addr) => {
+                        // lookup the external peer info from the cache
+                        return Some(if let Some(info) = ext_infos.and_then(|c| c.get(key)) {
+                            (info.score(&now), Some(info.clone()), None, None)
+                        } else {
+                            (0u32, None, None, Some(addr))
+                        });
+                    }
                 };
 
                 let agent = self.pool.get(&agent_id)?;
@@ -284,43 +306,25 @@ impl GlobalState {
             return Err(EnvRequestError::MissingEnv(env_id));
         };
 
-        let network = env.network;
-
         let query_nodes = self.get_scored_peers(env_id, target);
         if query_nodes.is_empty() {
             return Err(EnvRequestError::NoMatchingNodes);
         }
 
-        let route_string = route.to_string();
-        let route_str = route_string.as_ref();
-        let is_state_root = matches!(route_str, "/latest/stateRoot" | "/stateRoot/latest");
-        let is_block_height = matches!(route_str, "/latest/height" | "/block/height/latest");
-        let is_block_hash = matches!(route_str, "/latest/hash" | "/block/hash/latest");
-
-        /// I would rather reparse a string than use unsafe/dyn any here
-        // because we would be making a request anyway and it's not a big deal.
-        fn json_generics_bodge<T: DeserializeOwned>(
-            v: impl Serialize,
-        ) -> Result<T, EnvRequestError> {
-            serde_json::from_value(json!(&v)).map_err(|e| {
-                EnvRequestError::AgentRequestError(SnarkosRequestError::JsonParseError(
-                    e.to_string(),
-                ))
-            })
-        }
+        let route_str = route.to_string();
+        let prefix = snarkos_request::route_prefix_check(&route_str);
 
         // walk through the nodes (lazily sorted by a score) until we find one that
         // responds
         for (_, info, agent_id, addr) in query_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0)) {
             // if this route is a route with block info that we already track,
             // we can return the info from the agent's status directly
-            if let Some(info) = info {
-                if is_state_root {
-                    return json_generics_bodge(info.state_root);
-                } else if is_block_height {
-                    return json_generics_bodge(info.height);
-                } else if is_block_hash {
-                    return json_generics_bodge(info.block_hash);
+            if let (Some(prefix), Some(info)) = (prefix, info) {
+                use snarkos_request::RoutePrefix::*;
+                return match prefix {
+                    StateRoot => reparse_json_env(info.state_root),
+                    BlockHeight => reparse_json_env(info.height),
+                    BlockHash => reparse_json_env(info.block_hash),
                 };
             }
 
@@ -343,30 +347,10 @@ impl GlobalState {
             };
 
             // attempt to make the request from the node via REST
-            let url = format!("http://{addr}/{network}{route}");
-            let Ok(res) = tokio::time::timeout(
-                std::time::Duration::from_secs(1),
-                REST_CLIENT.get(&url).send(),
-            )
-            .await
-            else {
-                // timeout
-                continue;
-            };
-            match res {
-                Ok(res) => match res.json::<T>().await {
-                    Ok(e) => return Ok(e),
-                    Err(e) => {
-                        tracing::error!(
-                            "env {env_id} request {addr:?} failed to parse {url}: {e:?}"
-                        );
-                        continue;
-                    }
-                },
+            match snarkos_request::get_on_addr(env.network, &route_str, addr).await {
+                Ok(res) => return Ok(res),
                 Err(e) => {
-                    tracing::error!(
-                        "env {env_id} request {addr:?} failed to make request {url}: {e:?}"
-                    );
+                    tracing::error!("env {env_id} request to `{addr}{route_str}`: {e}");
                     continue;
                 }
             }

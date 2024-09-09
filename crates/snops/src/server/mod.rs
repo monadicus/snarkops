@@ -14,11 +14,9 @@ use axum::{
 };
 use futures_util::stream::StreamExt;
 use http::StatusCode;
-use prometheus_http_query::Client as PrometheusClient;
 use serde::Deserialize;
 use snops_common::{
     constant::HEADER_AGENT_KEY,
-    db::Database,
     prelude::*,
     rpc::control::{
         agent::{AgentServiceClient, Handshake},
@@ -35,12 +33,9 @@ use self::{
     rpc::ControlRpcServer,
 };
 use crate::{
-    cli::Cli,
-    db,
     logging::{log_request, req_stamp},
     server::rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
     state::{Agent, AgentFlags, AppState, GlobalState},
-    ReloadHandler,
 };
 
 pub mod actions;
@@ -52,17 +47,7 @@ pub mod models;
 pub mod prometheus;
 mod rpc;
 
-pub async fn start(cli: Cli, log_level_handler: ReloadHandler) -> Result<(), StartError> {
-    let db = db::Database::open(&cli.path.join("store"))?;
-    let socket_addr = SocketAddr::new(cli.bind_addr, cli.port);
-
-    let prometheus = cli
-        .prometheus
-        .as_ref()
-        .and_then(|p| PrometheusClient::try_from(p.as_str()).ok());
-
-    let state = GlobalState::load(cli, db, prometheus, log_level_handler).await?;
-
+pub async fn start(state: Arc<GlobalState>, socket_addr: SocketAddr) -> Result<(), StartError> {
     let app = Router::new()
         .route("/agent", get(agent_ws_handler))
         .nest("/api/v1", api::routes())

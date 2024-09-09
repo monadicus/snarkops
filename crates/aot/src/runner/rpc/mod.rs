@@ -1,15 +1,13 @@
 use std::{
     mem::size_of,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
 use futures_util::{SinkExt, StreamExt};
 use http::Uri;
 use node::{MuxedMessageIncoming, MuxedMessageOutgoing, NodeRpcServer};
-use snarkvm::{
-    ledger::store::{helpers::rocksdb::BlockDB, BlockStorage},
-    prelude::Network,
-};
+use snarkvm::ledger::store::{helpers::rocksdb::BlockDB, BlockStorage};
 use snops_common::{
     rpc::{
         agent::{node::NodeService, AgentNodeServiceClient, PING_HEADER},
@@ -22,24 +20,27 @@ use tokio::select;
 use tokio_tungstenite::{connect_async, tungstenite, tungstenite::client::IntoClientRequest};
 use tracing::{error, info, warn};
 
-use crate::cli::ReloadHandler;
+use crate::{cli::ReloadHandler, Network};
 
 pub mod node;
 
 #[derive(Clone)]
-pub enum RpcClient {
+pub enum RpcClient<N: Network> {
     Enabled {
         _port: u16,
         client: AgentNodeServiceClient,
+        server_block_db: Arc<RwLock<Option<BlockDB<N>>>>,
     },
     Disabled,
 }
 
-impl RpcClient {
+impl<N: Network> RpcClient<N> {
     pub fn new(log_level_handler: ReloadHandler, port: Option<u16>) -> Self {
         let Some(port) = port else {
             return Self::Disabled;
         };
+
+        let block_db = Arc::new(RwLock::new(None));
 
         let start_time = Instant::now();
 
@@ -55,7 +56,13 @@ impl RpcClient {
         let server = tarpc::server::BaseChannel::with_defaults(server_transport);
         tokio::spawn(
             server
-                .execute(NodeRpcServer { log_level_handler }.serve())
+                .execute(
+                    NodeRpcServer {
+                        log_level_handler,
+                        block_db: Arc::clone(&block_db),
+                    }
+                    .serve(),
+                )
                 .for_each(|r| async move {
                     tokio::spawn(r);
                 }),
@@ -192,11 +199,24 @@ impl RpcClient {
         Self::Enabled {
             _port: port,
             client,
+            server_block_db: block_db,
+        }
+    }
+
+    pub fn set_block_db(&self, block_db: BlockDB<N>) {
+        if let Self::Enabled {
+            server_block_db, ..
+        } = self
+        {
+            let mut server_block_db = server_block_db
+                .write()
+                .expect("failed to lock rpc's block db");
+            *server_block_db = Some(block_db);
         }
     }
 }
 
-impl RpcClient {
+impl<N: Network> RpcClient<N> {
     pub fn is_enabled(&self) -> bool {
         matches!(self, Self::Enabled { .. })
     }
@@ -209,26 +229,10 @@ impl RpcClient {
         }
     }
 
-    pub fn post_block<N: Network>(&self, height: u32, blocks: &BlockDB<N>) {
+    pub fn post_block(&self, height: u32, blocks: &BlockDB<N>) {
         if let Self::Enabled { client, .. } = self.to_owned() {
-            // lookup block hash and state root
-            let (Ok(Some(block_hash)), Ok(Some(state_root))) =
-                (blocks.get_block_hash(height), blocks.get_state_root(height))
-            else {
+            let Some(body) = get_block_info_for_height(blocks, height) else {
                 return;
-            };
-
-            // lookup block header
-            let Ok(Some(header)) = blocks.get_block_header(&block_hash) else {
-                return;
-            };
-
-            // assemble the body
-            let body = SnarkOSBlockInfo {
-                height,
-                state_root: state_root.to_string(),
-                block_hash: block_hash.to_string(),
-                block_timestamp: header.timestamp(),
             };
 
             tokio::spawn(async move {
@@ -236,4 +240,32 @@ impl RpcClient {
             });
         }
     }
+}
+
+pub fn get_block_info_for_height<N: Network>(
+    blocks: &BlockDB<N>,
+    height: u32,
+) -> Option<SnarkOSBlockInfo> {
+    // lookup block hash and state root
+    let (Ok(Some(block_hash)), Ok(Some(state_root)), Ok(Some(previous_hash))) = (
+        blocks.get_block_hash(height),
+        blocks.get_state_root(height),
+        blocks.get_previous_block_hash(height),
+    ) else {
+        return None;
+    };
+
+    // lookup block header
+    let Ok(Some(header)) = blocks.get_block_header(&block_hash) else {
+        return None;
+    };
+
+    // assemble the body
+    Some(SnarkOSBlockInfo {
+        height,
+        state_root: state_root.to_string(),
+        block_hash: block_hash.to_string(),
+        previous_hash: previous_hash.to_string(),
+        block_timestamp: header.timestamp(),
+    })
 }

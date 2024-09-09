@@ -92,15 +92,7 @@ impl<N: Network> Runner<N> {
 
     #[tokio::main]
     pub async fn start_without_runtime(self, log_level_handler: ReloadHandler) -> Result<()> {
-        let agent = RpcClient::new(log_level_handler, self.agent_rpc_port);
-
-        let res = self.start_inner(agent.to_owned()).await;
-
-        if let Err(e) = &res {
-            agent.status(SnarkOSStatus::Halted(Some(e.to_string())));
-        }
-
-        res
+        self.start(log_level_handler).await
     }
 
     pub async fn start(self, log_level_handler: ReloadHandler) -> Result<()> {
@@ -115,7 +107,7 @@ impl<N: Network> Runner<N> {
         res
     }
 
-    async fn start_inner(self, agent: RpcClient) -> Result<()> {
+    async fn start_inner(self, agent: RpcClient<N>) -> Result<()> {
         agent.status(SnarkOSStatus::Starting);
 
         let bind_addr = self.bind_addr;
@@ -232,6 +224,8 @@ impl<N: Network> Runner<N> {
 
             let committee = CommitteeDB::<N>::open(storage_mode.clone())?;
             let blocks = BlockDB::<N>::open(storage_mode.clone())?;
+            // copy the block db to the agent's rpc server
+            agent.set_block_db(blocks.clone());
 
             // check for height changes and poll the manager when a new block comes in
             let mut last_height = committee.current_height()?;

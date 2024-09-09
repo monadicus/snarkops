@@ -4,9 +4,11 @@ use std::{
 };
 
 mod impl_checkpoint;
+mod impl_chrono;
 mod impl_collections;
 mod impl_containers;
 mod impl_ints;
+mod impl_json;
 mod impl_net;
 mod impl_strings;
 mod impl_tuples;
