@@ -21,7 +21,6 @@ futures.workspace = true
 futures-util.workspace = true
 http.workspace = true
 httpdate.workspace = true
-indexmap.workspace = true
 local-ip-address.workspace = true
 nix = { workspace = true, features = ["signal"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
