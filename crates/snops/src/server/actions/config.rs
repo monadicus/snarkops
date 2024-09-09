@@ -6,7 +6,7 @@ use axum::{
 };
 use snops_common::{
     action_models::{Reconfig, WithTargets},
-    state::{AgentId, AgentState},
+    state::{AgentId, AgentState, InternedId},
 };
 
 use super::Env;
@@ -31,7 +31,7 @@ pub async fn config(
                         AgentState::Inventory => (),
                         AgentState::Node(_, ref mut n) => {
                             $({
-                                let $key = &n.$key;
+                                let $key = &mut n.$key;
                                 n.$key = $val;
                             })*
                         }
@@ -43,7 +43,7 @@ pub async fn config(
                         $agent.client_owned(),
                         $agent.state().clone().map_node(|mut n| {
                             $({
-                                let $key = &n.$key;
+                                let $key = &mut n.$key;
                                 n.$key = $val;
                             })*
                             n
@@ -77,6 +77,41 @@ pub async fn config(
                     .matching_nodes(v, &state.pool, PortType::Bft)
                     .collect::<Vec<_>>();
                 set_node_field!(agent, validators = v.clone());
+            }
+
+            if let Some(b) = &data.binary {
+                set_node_field!(agent, binary = (*b != InternedId::default()).then_some(*b));
+            }
+
+            if let Some(k) = &data.private_key {
+                let key = env.storage.sample_keysource_pk(k);
+                if key.is_none() {
+                    return ServerError::NotFound(format!("key source not found: `{k}`"))
+                        .into_response();
+                }
+                set_node_field!(agent, private_key = key.clone());
+            }
+
+            // inject env fields
+            if let Some(e) = &data.set_env {
+                set_node_field!(
+                    agent,
+                    env = {
+                        env.extend(e.clone());
+                        std::mem::take(env)
+                    }
+                )
+            }
+
+            // remove env fields
+            if let Some(e) = &data.del_env {
+                set_node_field!(
+                    agent,
+                    env = {
+                        env.retain(|k, _| !e.contains(k));
+                        std::mem::take(env)
+                    }
+                )
             }
         }
     }

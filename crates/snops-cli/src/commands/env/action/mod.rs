@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
 use anyhow::Result;
 use clap::Parser;
@@ -9,7 +9,7 @@ use snops_common::{
     action_models::{AleoValue, WithTargets},
     key_source::KeySource,
     node_targets::{NodeTarget, NodeTargetError, NodeTargets},
-    state::{CannonId, DocHeightRequest, EnvId},
+    state::{CannonId, DocHeightRequest, EnvId, InternedId},
 };
 
 //scli env canary action online client/*
@@ -132,10 +132,40 @@ pub enum Action {
         /// Configure the validators of the target nodes, or `none`.
         #[clap(long, short)]
         validators: Option<NodesOption>,
+        /// Set environment variables for a node: `--env FOO=bar`
+        #[clap(long, short, number_of_values = 1, value_parser = clap::value_parser!(KeyEqValue))]
+        env: Option<Vec<KeyEqValue>>,
+        // Remove environment variables from a node: `--del-env FOO,BAR`
+        #[clap(long, short, value_delimiter = ',', allow_hyphen_values = true)]
+        del_env: Option<Vec<String>>,
         /// The nodes to configure.
         #[clap(num_args = 1, value_delimiter = ' ')]
         nodes: Vec<NodeTarget>,
+        /// Configure the binary for a node.
+        #[clap(long, short)]
+        binary: Option<InternedId>,
+        /// Configure the private key for a node.
+        #[clap(long, short)]
+        private_key: Option<KeySource>,
     },
+}
+
+#[derive(Clone, Debug)]
+pub struct KeyEqValue(pub String, pub String);
+
+impl FromStr for KeyEqValue {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let (l, r) = s.split_once('=').ok_or("missing = in `key=value`")?;
+        Ok(Self(l.to_owned(), r.to_owned()))
+    }
+}
+
+impl KeyEqValue {
+    pub fn pair(self) -> (String, String) {
+        (self.0, self.1)
+    }
 }
 
 impl Action {
@@ -251,6 +281,10 @@ impl Action {
                 peers,
                 validators,
                 nodes,
+                env,
+                del_env,
+                binary,
+                private_key,
             } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/config");
 
@@ -269,6 +303,21 @@ impl Action {
                 }
                 if let Some(validators) = validators {
                     json["validators"] = json!(NodeTargets::from(validators));
+                }
+                if let Some(binary) = binary {
+                    json["binary"] = json!(binary);
+                }
+                if let Some(private_key) = private_key {
+                    json["private_key"] = json!(private_key);
+                }
+                if let Some(env) = env {
+                    json["set_env"] = json!(env
+                        .into_iter()
+                        .map(KeyEqValue::pair)
+                        .collect::<HashMap<_, _>>())
+                }
+                if let Some(del_env) = del_env {
+                    json["del_env"] = json!(del_env)
                 }
 
                 // this api accepts a list of json objects

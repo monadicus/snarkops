@@ -4539,6 +4539,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snops-common",
+ "thiserror",
 ]
 
 [[package]]

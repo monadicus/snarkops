@@ -18,6 +18,7 @@ reqwest = { workspace = true, features = ["blocking", "json"] }
 serde.workspace = true
 serde_json.workspace = true
 snops-common = { workspace = true, features = ["aot_cmds"] }
+thiserror.workspace = true
 
 [build-dependencies]
 anyhow.workspace = true

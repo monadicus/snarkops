@@ -1,11 +1,12 @@
 use std::str::FromStr;
 
+use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     key_source::KeySource,
     node_targets::{NodeTarget, NodeTargets},
-    state::{CannonId, DocHeightRequest},
+    state::{CannonId, DocHeightRequest, InternedId},
 };
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -120,7 +121,12 @@ pub struct Reconfig {
     pub peers: Option<NodeTargets>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validators: Option<NodeTargets>,
-    // TODO: private key
-    // TODO: env
-    // TODO: binary
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<InternedId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private_key: Option<KeySource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_env: Option<IndexMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub del_env: Option<IndexSet<String>>,
 }
