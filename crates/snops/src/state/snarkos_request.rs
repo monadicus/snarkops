@@ -32,16 +32,12 @@ pub enum RoutePrefix {
 /// Helper function to check if a route is a prefix of a route covered by the
 /// `LatestBlockInfo`
 pub fn route_prefix_check(route: &str) -> Option<RoutePrefix> {
-    if matches!(route, "/latest/stateRoot" | "/stateRoot/latest") {
-        return Some(RoutePrefix::StateRoot);
+    match route {
+        "/latest/stateRoot" | "/stateRoot/latest" => Some(RoutePrefix::StateRoot),
+        "/latest/height" | "/block/height/latest" => Some(RoutePrefix::BlockHeight),
+        "/latest/hash" | "/block/hash/latest" => Some(RoutePrefix::BlockHash),
+        _ => None,
     }
-    if matches!(route, "/latest/height" | "/block/height/latest") {
-        return Some(RoutePrefix::BlockHeight);
-    }
-    if matches!(route, "/latest/hash" | "/block/hash/latest") {
-        return Some(RoutePrefix::BlockHash);
-    }
-    None
 }
 
 pub async fn get_on_addr<T: DeserializeOwned>(

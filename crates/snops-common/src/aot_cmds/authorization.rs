@@ -28,6 +28,9 @@ impl FromStr for Authorization {
     }
 }
 
+const AUTHORIZATION_PROGRAM: u8 = 0;
+const AUTHORIZATION_DEPLOY: u8 = 1;
+
 impl DataFormat for Authorization {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1u8;
@@ -39,7 +42,7 @@ impl DataFormat for Authorization {
         match self {
             Authorization::Program { auth, fee_auth } => {
                 let mut written = 0;
-                written += 0u8.write_data(writer)?;
+                written += AUTHORIZATION_PROGRAM.write_data(writer)?;
                 written += auth.write_data(writer)?;
                 written += fee_auth.write_data(writer)?;
                 Ok(written)
@@ -50,7 +53,7 @@ impl DataFormat for Authorization {
                 fee_auth,
             } => {
                 let mut written = 0;
-                written += 1u8.write_data(writer)?;
+                written += AUTHORIZATION_DEPLOY.write_data(writer)?;
                 written += owner.write_data(writer)?;
                 written += deployment.write_data(writer)?;
                 written += fee_auth.write_data(writer)?;
@@ -73,12 +76,12 @@ impl DataFormat for Authorization {
 
         let tag = u8::read_data(reader, &())?;
         match tag {
-            0 => {
+            AUTHORIZATION_PROGRAM => {
                 let auth = Value::read_data(reader, &())?;
                 let fee_auth = Option::<Value>::read_data(reader, &())?;
                 Ok(Authorization::Program { auth, fee_auth })
             }
-            1 => {
+            AUTHORIZATION_DEPLOY => {
                 let owner = Value::read_data(reader, &())?;
                 let deployment = Value::read_data(reader, &())?;
                 let fee_auth = Option::<Value>::read_data(reader, &())?;

@@ -16,8 +16,13 @@ use crate::{
 };
 
 type ExtPeerPair = (NodeKey, SocketAddr);
-type PendingBlockRequests =
-    HashMap<(EnvId, NetworkId), HashMap<ABlockHash, (u32, Vec<ExtPeerPair>)>>;
+
+struct BlockRequestPeers {
+    height: u32,
+    peers: Vec<ExtPeerPair>,
+}
+
+type PendingBlockRequests = HashMap<(EnvId, NetworkId), HashMap<ABlockHash, BlockRequestPeers>>;
 
 /// Hit all the external peers to update their latest block infos.
 ///
@@ -51,7 +56,7 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
                             .ok()
                             .and_then(|hash| hash.map(|h| (key.clone(), addr, h)));
                             // mark down a successful request
-                            req_ok_tx.send((env, key, res.is_some())).ok();
+                            let _ = req_ok_tx.send((env, key, res.is_some()));
                             res
                         }
                     }))
@@ -110,12 +115,15 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
                     // in the time between the height and hash requests.
                     Occupied(e) => {
                         let e = e.into_mut();
-                        e.0 = e.0.min(height);
-                        e.1.push((key, addr));
+                        e.height = e.height.min(height);
+                        e.peers.push((key, addr));
                     }
                     // insert this height and peer into the list of peers that can provide
                     Vacant(e) => {
-                        e.insert((height, vec![(key, addr)]));
+                        e.insert(BlockRequestPeers {
+                            height,
+                            peers: vec![(key, addr)],
+                        });
                     }
                 }
             }
@@ -126,7 +134,11 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
         let block_request_tasks = future::join_all(blocks_pending_request.into_iter().map(
             |((env, network), requests)| {
                 // highest height of all requests
-                let max_height = requests.values().map(|(height, _)| *height).max().unwrap();
+                let max_height = requests
+                    .values()
+                    .map(|BlockRequestPeers { height, .. }| *height)
+                    .max()
+                    .unwrap();
                 // list of agents that could fulfil this request (rather than making slow rest &
                 // deserialize requests)
                 let agents = Arc::new(online_agents_above_height(&state, env, max_height));
@@ -135,43 +147,43 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
                 async move {
                     (
                         env,
-                        future::join_all(requests.into_iter().map(|(hash, peers)| {
-                            let req_ok_tx = req_ok_tx.clone();
-                            let agents = agents.clone();
+                        future::join_all(requests.into_iter().map(
+                            |(hash, BlockRequestPeers { peers, .. })| {
+                                let req_ok_tx = req_ok_tx.clone();
+                                let agents = agents.clone();
 
-                            // peer keys to update (or request)
-                            let keys = peers
-                                .1
-                                .iter()
-                                .map(|(key, _)| key.clone())
-                                .collect::<Vec<_>>();
+                                // peer keys to update (or request)
+                                let keys =
+                                    peers.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>();
 
-                            async move {
-                                // attempt to use agents to get the block
-                                if let Some(res) =
-                                    get_block_from_agents(&agents, Arc::clone(&hash)).await
-                                {
-                                    return Some((res, keys));
-                                }
-
-                                // if agents failed, fallback on external peers
-                                let mut failures = 0u8;
-                                for (key, addr) in peers.1 {
-                                    if let Some(res) = get_block_info_for_peer(network, addr).await
+                                async move {
+                                    // attempt to use agents to get the block
+                                    if let Some(res) =
+                                        get_block_from_agents(&agents, Arc::clone(&hash)).await
                                     {
-                                        let _ = req_ok_tx.send((env, key, true)).ok();
                                         return Some((res, keys));
                                     }
-                                    let _ = req_ok_tx.send((env, key, false)).ok();
-                                    failures += 1;
-                                    if failures >= MAX_BLOCK_REQUEST_FAILURES {
-                                        break;
-                                    }
-                                }
 
-                                None
-                            }
-                        }))
+                                    // if agents failed, fallback on external peers
+                                    let mut failures = 0u8;
+                                    for (key, addr) in peers {
+                                        if let Some(res) =
+                                            get_block_info_for_peer(network, addr).await
+                                        {
+                                            let _ = req_ok_tx.send((env, key, true));
+                                            return Some((res, keys));
+                                        }
+                                        let _ = req_ok_tx.send((env, key, false));
+                                        failures += 1;
+                                        if failures >= MAX_BLOCK_REQUEST_FAILURES {
+                                            break;
+                                        }
+                                    }
+
+                                    None
+                                }
+                            },
+                        ))
                         .await,
                     )
                 }
