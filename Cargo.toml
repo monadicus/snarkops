@@ -21,17 +21,12 @@ incremental = true
 lto = "fat"
 opt-level = 3
 panic = "unwind"
-strip = true
-
-# For testing cargo bloat
-[profile.release-no-strip]
-inherits = "release"
-strip = false
 
 # This one optimizes binary size
 [profile.release-small]
 inherits = "release"
 opt-level = "z"
+strip = true
 
 [profile.release-big]
 inherits = "release"
@@ -39,7 +34,6 @@ codegen-units = 16
 incremental = true
 lto = "thin"
 opt-level = 1
-panic = "unwind"
 
 [workspace.dependencies]
 aleo-std = "=0.1.24"

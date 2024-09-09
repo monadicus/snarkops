@@ -118,7 +118,7 @@ impl PersistStorage {
 
         // load accounts json
         for name in &self.accounts {
-            let path = storage_path.join(&format!("{name}.json"));
+            let path = storage_path.join(format!("{name}.json"));
 
             let res = if *name == *ACCOUNTS_KEY_ID {
                 read_to_addrs(pick_additional_addr, &path).await

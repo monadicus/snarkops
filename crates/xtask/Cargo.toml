@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 xshell = "0.2"
+clap.workspace = true
