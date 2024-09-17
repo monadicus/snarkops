@@ -162,6 +162,10 @@ impl KeyState {
             _ => None,
         }
     }
+
+    pub fn is_none(&self) -> bool {
+        matches!(self, KeyState::None)
+    }
 }
 
 #[derive(

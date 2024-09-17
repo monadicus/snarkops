@@ -1,11 +1,6 @@
 pub mod tps;
 
-use std::{
-    collections::HashMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use self::tps::TpsMetric;
 use crate::state::GlobalState;
@@ -39,7 +34,7 @@ pub fn init(state: Arc<GlobalState>) {
                 let response = match client
                     .get(format!(
                         "http://{}/",
-                        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), state.cli.ports.metrics)
+                        SocketAddr::new(state.cli.get_local_ip(), state.cli.ports.metrics)
                     ))
                     .send()
                     .await

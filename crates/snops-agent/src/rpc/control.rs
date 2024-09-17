@@ -428,7 +428,8 @@ impl AgentService for AgentRpcServer {
             .network;
 
         let url = format!(
-            "http://127.0.0.1:{}/{network}{route}",
+            "http://{}:{}/{network}{route}",
+            self.state.cli.get_local_ip(),
             self.state.cli.ports.rest
         );
         let response = reqwest::get(&url)
@@ -460,7 +461,8 @@ impl AgentService for AgentRpcServer {
             .network;
 
         let url = format!(
-            "http://127.0.0.1:{}/{network}/transaction/broadcast",
+            "http://{}:{}/{network}/transaction/broadcast",
+            self.state.cli.get_local_ip(),
             self.state.cli.ports.rest
         );
         let response = reqwest::Client::new()

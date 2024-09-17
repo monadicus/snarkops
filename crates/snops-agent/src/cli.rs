@@ -101,6 +101,14 @@ impl Cli {
         std::process::exit(0);
     }
 
+    pub fn get_local_ip(&self) -> IpAddr {
+        if self.bind_addr.is_unspecified() {
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        } else {
+            self.bind_addr
+        }
+    }
+
     pub fn endpoint_and_uri(&self) -> (String, Uri) {
         // get the endpoint
         let endpoint = self

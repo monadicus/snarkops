@@ -4607,6 +4607,7 @@ dependencies = [
  "reqwest 0.12.7",
  "serde_json",
  "snops-common",
+ "thiserror",
 ]
 
 [[package]]
