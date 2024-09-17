@@ -62,6 +62,14 @@ pub trait AgentService {
     ) -> Result<Option<SnarkOSLiteBlock>, AgentError>;
 
     async fn set_aot_log_level(verbosity: u8) -> Result<(), AgentError>;
+
+    async fn get_status() -> Result<AgentStatus, AgentError>;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentStatus {
+    pub aot_online: bool,
+    pub version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

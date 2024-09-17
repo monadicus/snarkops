@@ -189,6 +189,7 @@ async fn main() {
             .execute(
                 AgentRpcServer {
                     state: state.to_owned(),
+                    version: env!("CARGO_PKG_VERSION"),
                 }
                 .serve(),
             )

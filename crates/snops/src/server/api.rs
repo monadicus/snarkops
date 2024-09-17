@@ -44,6 +44,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/log/:level", post(set_log_level))
         .route("/agents", get(get_agents))
         .route("/agents/:id", get(get_agent))
+        .route("/agents/:id/status", get(get_agent_status))
         .route("/agents/:id/kill", post(kill_agent))
         .route("/agents/:id/tps", get(get_agent_tps))
         .route("/agents/:id/log/:level", post(set_agent_log_level))
@@ -331,6 +332,20 @@ async fn get_agent(state: State<AppState>, Path(id): Path<String>) -> Response {
     let agent = unwrap_or_not_found!(state.pool.get(&id));
 
     Json(AgentStatusResponse::from(agent.value())).into_response()
+}
+
+async fn get_agent_status(state: State<AppState>, Path(id): Path<String>) -> Response {
+    let id = unwrap_or_not_found!(id_or_none(&id));
+    let agent = unwrap_or_not_found!(state.pool.get(&id));
+
+    let Some(rpc) = agent.rpc() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+
+    match rpc.get_status(tarpc::context::current()).await {
+        Ok(status) => Json(status).into_response(),
+        Err(_e) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 async fn kill_agent(state: State<AppState>, Path(id): Path<String>) -> Response {
