@@ -15,7 +15,8 @@ use snops_common::{
     rpc::{
         control::{
             agent::{
-                AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, Handshake,
+                AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, AgentStatus,
+                Handshake,
             },
             ControlServiceRequest, ControlServiceResponse,
         },
@@ -42,6 +43,7 @@ define_rpc_mux!(child;
 #[derive(Clone)]
 pub struct AgentRpcServer {
     pub state: AppState,
+    pub version: &'static str,
 }
 
 impl AgentService for AgentRpcServer {
@@ -623,5 +625,15 @@ impl AgentService for AgentRpcServer {
             .find_transaction(context, tx_id)
             .await
             .map_err(|_| AgentError::FailedToMakeRequest)?
+    }
+
+    async fn get_status(self, ctx: context::Context) -> Result<AgentStatus, AgentError> {
+        let lock = self.state.node_client.lock().await;
+        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
+
+        Ok(AgentStatus {
+            aot_online: node_client.status(ctx).await.is_ok(),
+            version: self.version.to_string(),
+        })
     }
 }

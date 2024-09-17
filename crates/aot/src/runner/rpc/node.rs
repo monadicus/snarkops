@@ -34,9 +34,11 @@ pub struct NodeRpcServer<N: Network> {
 }
 
 impl<N: Network> NodeService for NodeRpcServer<N> {
-    async fn set_log_level(self, _: context::Context, verbosity: u8) -> Result<(), AgentError> {
-        tracing::debug!("NodeService Setting log verbosity {verbosity:?}");
+    async fn status(self, _: context::Context) -> Result<(), AgentError> {
+        Ok(())
+    }
 
+    async fn set_log_level(self, _: context::Context, verbosity: u8) -> Result<(), AgentError> {
         self.log_level_handler
             .modify(|filter| *filter = make_env_filter(verbosity))
             .map_err(|_| AgentError::FailedToChangeLogLevel)?;
