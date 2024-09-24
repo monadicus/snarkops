@@ -2,7 +2,6 @@ use std::{os::fd::AsRawFd, path::PathBuf};
 
 use aleo_std::StorageMode;
 use anyhow::{bail, ensure, Result};
-use checkpoint::{Checkpoint, CheckpointManager, RetentionPolicy};
 use clap::{Args, Parser};
 use nix::{
     sys::wait::waitpid,
@@ -13,6 +12,7 @@ use snarkvm::{
     ledger::Block,
     utilities::{FromBytes, ToBytes},
 };
+use snops_checkpoint::{Checkpoint, CheckpointManager, RetentionPolicy};
 use tracing::info;
 
 use crate::{ledger::util, DbLedger};

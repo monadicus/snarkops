@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use checkpoint::RetentionSpan;
+use snops_checkpoint::RetentionSpan;
 
 use crate::format::{DataFormat, DataFormatReader, DataHeaderOf, DataReadError};
 
@@ -20,7 +20,7 @@ pub enum DocHeightRequest {
     /// height) Setting to 0 will reset the height to the genesis block
     Absolute(u32),
     /// Use the next checkpoint that matches this checkpoint span
-    Checkpoint(checkpoint::RetentionSpan),
+    Checkpoint(snops_checkpoint::RetentionSpan),
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
@@ -96,7 +96,7 @@ pub enum HeightRequest {
     /// height) Setting to 0 will reset the height to the genesis block
     Absolute(u32),
     /// Use the next checkpoint that matches this checkpoint span
-    Checkpoint(checkpoint::RetentionSpan),
+    Checkpoint(snops_checkpoint::RetentionSpan),
     // the control plane doesn't know the heights the nodes are at
     // TruncateHeight(u32),
     // TruncateTime(i64),
