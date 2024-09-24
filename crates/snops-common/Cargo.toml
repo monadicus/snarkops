@@ -13,7 +13,6 @@ mangen = ["anyhow", "clap_mangen"]
 anyhow = { workspace = true, optional = true }
 bincode.workspace = true
 bytes.workspace = true
-checkpoint = { workspace = true, features = ["serde"] }
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
 clap_mangen = { workspace = true, optional = true }
@@ -30,6 +29,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sled.workspace = true
+snops-checkpoint = { workspace = true, features = ["serde"] }
 strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true

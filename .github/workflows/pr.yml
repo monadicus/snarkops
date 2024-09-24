@@ -5,6 +5,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # https://releases.rs/docs/1.81.0/ release date
+  NIGHTLY_TOOLCHAIN: nightly-2024-09-05
 
 # Cancel in progress workflows on pull_requests.
 # https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-a-fallback-value
@@ -51,7 +53,7 @@ jobs:
   #     - name: Build
   #       env:
   #         RUSTFLAGS: -Zcodegen-backend=cranelift -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
-  #       run: cargo +nightly build --verbose
+  #       run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} build --verbose
 
   fmt:
     runs-on: ubuntu-latest
@@ -63,10 +65,11 @@ jobs:
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: ${{ env.NIGHTLY_TOOLCHAIN }}
           components: rustfmt
 
       - name: 📋 Format Check
-        run: cargo +nightly fmt -- --check
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} fmt -- --check
 
   test:
     runs-on: ubuntu-latest
@@ -84,6 +87,7 @@ jobs:
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: ${{ env.NIGHTLY_TOOLCHAIN }}
           components: rustc-codegen-cranelift-preview clippy
 
       - name: 🫙 Cache
@@ -101,7 +105,7 @@ jobs:
       # - name: 📋 Clippy Check
       #   env:
       #     RUSTFLAGS: -Zcodegen-backend=cranelift
-      #   run: cargo +nightly clippy --all --all-targets -- -D warnings
+      #   run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy --all --all-targets -- -D warnings
 
       # - name: 📋 Check Unused Deps
       #   if: always()
@@ -131,38 +135,38 @@ jobs:
 
       - name: 🧪 Test All
         if: steps.changes.outputs.top_toml == 'true'
-        run: cargo +nightly nextest run --all --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run --all --verbose --fail-fast --all-features
 
       - name: 🧪 Test Aot
         if: steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly nextest run -p snarkos-aot --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snarkos-aot --verbose --fail-fast --all-features
 
       - name: 🧪 Test Checkpoint
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
         if: steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly nextest run -p checkpoint --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p checkpoint --verbose --fail-fast --all-features
 
       - name: 🧪 Test Common
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
         if: steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly nextest run -p snops-common --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-common --verbose --fail-fast --all-features
 
       - name: 🧪 Test Control Plane
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
         if: (steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly nextest run -p snops --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops --verbose --fail-fast --all-features
 
       - name: 🧪 Test Agent
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
         if: (steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly nextest run -p snops-agent --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-agent --verbose --fail-fast --all-features
 
       - name: 🧪 Test Scli
         env:
           RUSTFLAGS: -Zcodegen-backend=cranelift
         if: (steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
-        run: cargo +nightly nextest run -p snops-cli --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-cli --verbose --fail-fast --all-features

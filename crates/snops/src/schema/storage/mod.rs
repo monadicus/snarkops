@@ -5,9 +5,9 @@ use std::{
     sync::Arc,
 };
 
-use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use snops_checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     aot_cmds::error::CommandError,
     binaries::{BinaryEntry, BinarySource},

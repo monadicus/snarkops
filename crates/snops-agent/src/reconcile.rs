@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use checkpoint::{CheckpointHeader, CheckpointManager, RetentionSpan};
+use snops_checkpoint::{CheckpointHeader, CheckpointManager, RetentionSpan};
 use snops_common::{
     api::{CheckpointMeta, EnvInfo},
     binaries::{BinaryEntry, BinarySource},

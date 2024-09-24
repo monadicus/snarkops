@@ -48,7 +48,7 @@ pub enum StorageError {
     #[error("parsing balances {0:#?}: {1}")]
     ParseBalances(PathBuf, #[source] serde_json::Error),
     #[error("error loading checkpoints: {0}")]
-    CheckpointManager(#[from] checkpoint::errors::ManagerLoadError),
+    CheckpointManager(#[from] snops_checkpoint::errors::ManagerLoadError),
     #[error("binary with id `{0}` does not exist for storage id: {1}")]
     BinaryDoesNotExist(InternedId, StorageId),
     #[error("failed fetching binary with id `{0}` from url `{1}`: {2}")]

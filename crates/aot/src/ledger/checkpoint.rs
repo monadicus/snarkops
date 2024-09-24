@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use checkpoint::{path_from_height, Checkpoint, CheckpointManager, RetentionPolicy};
 use clap::Parser;
 use snarkvm::{console::program::Network, ledger::Block, utilities::ToBytes};
+use snops_checkpoint::{path_from_height, Checkpoint, CheckpointManager, RetentionPolicy};
 use tracing::{info, trace};
 
 use super::truncate::Truncate;

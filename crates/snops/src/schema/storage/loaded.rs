@@ -1,10 +1,10 @@
 use std::{fs, io::Write, os::unix::fs::PermissionsExt, path::PathBuf};
 
-use checkpoint::CheckpointManager;
 use futures_util::StreamExt;
 use indexmap::IndexMap;
 use rand::seq::IteratorRandom;
 use sha2::{Digest, Sha256};
+use snops_checkpoint::CheckpointManager;
 use snops_common::{
     api::{CheckpointMeta, StorageInfo},
     binaries::{BinaryEntry, BinarySource},
