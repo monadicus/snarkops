@@ -98,12 +98,12 @@ strum_macros = { version = "0.26", default-features = false }
 tarpc = { version = "0.34", features = ["tokio1", "serde1"] }
 thiserror = "1.0"
 tokio = "1"
-tokio-tungstenite = { version = "0.23", features = [
+tokio-tungstenite = { version = "0.24", features = [
 	"rustls-tls-native-roots",
 	"rustls-tls-webpki-roots",
 ] }
 tower = { version = "0.5", default-features = false }
-tower-http = { version = "0.5", features = ["fs", "trace"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-appender = "0.2"
 tracing-flame = "0.2"
