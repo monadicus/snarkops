@@ -8,7 +8,7 @@ use crate::{Authorization, Key, Network, Value};
 #[derive(Debug, Args)]
 pub struct AuthProgramOptions<N: Network> {
     /// Query to load the program with.
-    #[clap(short, long)]
+    #[clap(env, short, long)]
     pub query: Option<String>,
     /// Program ID and function name (eg. credits.aleo/transfer_public)
     locator: Locator<N>,

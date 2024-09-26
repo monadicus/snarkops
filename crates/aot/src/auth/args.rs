@@ -190,10 +190,10 @@ impl<N: Network> From<Authorization<N>> for ProxyAuthorization<N> {
 #[group(multiple = false)]
 pub struct FeeKey<N: Network> {
     /// Specify the account private key of the node
-    #[clap(long = "fee-private-key")]
+    #[clap(env, long)]
     pub fee_private_key: Option<PrivateKey<N>>,
     /// Specify the account private key of the node
-    #[clap(long = "fee-private-key-file")]
+    #[clap(env, long)]
     pub fee_private_key_file: Option<PathBuf>,
 }
 
