@@ -131,4 +131,4 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 ] }
 url = "2.5"
 uuid = { version = "1.10", default-features = false }
-wildmatch = "2.3"
+wildmatch = "2.4"
