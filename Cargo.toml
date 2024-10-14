@@ -118,10 +118,10 @@ uuid = { version = "1.10", default-features = false }
 wildmatch = "2.4"
 
 # snops-checkpoint = { path = "./crates/snops-checkpoint" }
-snops-common = { path = "./crates/snops-common" }
+# snops-common = { path = "./crates/snops-common" }
 
 snops-checkpoint = { version = "0.1" }
-# snops-common = { path = "./crates/snops-common" }
+snops-common = { version = "0.1" }
 
 # snarkos-account = { path = "../snarkos/account" }
 # snarkos-node = { path = "../snarkos/node" }

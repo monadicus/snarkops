@@ -3325,7 +3325,7 @@ dependencies = [
  "snarkos-node-metrics",
  "snarkvm",
  "snops-checkpoint 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "snops-common",
+ "snops-common 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tarpc",
  "tikv-jemallocator",
  "tokio",
@@ -4601,7 +4601,7 @@ dependencies = [
  "sha2",
  "sled",
  "snops-checkpoint 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "snops-common",
+ "snops-common 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "strum_macros",
  "tarpc",
  "thiserror",
@@ -4637,7 +4637,7 @@ dependencies = [
  "simple_moving_average",
  "sled",
  "snops-checkpoint 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "snops-common",
+ "snops-common 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tarpc",
  "tokio",
  "tokio-tungstenite",
@@ -4693,13 +4693,48 @@ dependencies = [
  "clap_mangen",
  "reqwest 0.12.8",
  "serde_json",
- "snops-common",
+ "snops-common 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
 [[package]]
 name = "snops-common"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "bytes",
+ "chrono",
+ "clap",
+ "clap-markdown",
+ "clap_mangen",
+ "futures",
+ "http 1.1.0",
+ "indexmap 2.6.0",
+ "lasso",
+ "lazy_static",
+ "paste",
+ "rand",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sled",
+ "snops-checkpoint 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "strum_macros",
+ "tarpc",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+ "wildmatch",
+]
+
+[[package]]
+name = "snops-common"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41f7471a6639601ea80c6a6717b333303f217df6e7bb75fe79cfa0c8ecd6a5f3"
 dependencies = [
  "anyhow",
  "bincode",
