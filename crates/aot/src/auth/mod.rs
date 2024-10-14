@@ -42,7 +42,7 @@ pub enum AuthCommand<N: Network> {
 #[derive(Debug, Args)]
 pub struct CostCommand<N: Network> {
     /// The query to use for the program.
-    #[clap(long)]
+    #[clap(env, short, long)]
     query: Option<String>,
     #[clap(flatten)]
     auth: AuthArgs<N>,

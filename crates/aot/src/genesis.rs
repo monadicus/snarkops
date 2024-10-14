@@ -39,7 +39,7 @@ impl<N: Network, T: DeserializeOwned> FromStr for AddressMap<N, T> {
 pub struct Genesis<N: Network> {
     /// The private key to use when generating the genesis block. Generates one
     /// randomly if not passed.
-    #[clap(short, long)]
+    #[clap(env, short, long)]
     pub genesis_key: Option<PrivateKey<N>>,
 
     /// Where to write the genesis block to.

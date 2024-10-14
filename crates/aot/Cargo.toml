@@ -29,7 +29,8 @@ anyhow.workspace = true
 axum.workspace = true
 bincode.workspace = true
 bech32.workspace = true
-clap.workspace = true
+checkpoint = { workspace = true, features = ["write"] }
+clap = { workspace = true, features = ["env"] }
 clap-stdin.workspace = true
 colored.workspace = true
 crossterm = { workspace = true, optional = true }

@@ -11,10 +11,10 @@ use crate::{Network, PrivateKey};
 #[group(required = true, multiple = false)]
 pub struct Key<N: Network> {
     /// Specify the account private key of the node
-    #[clap(long = "private-key")]
+    #[clap(env, long)]
     pub private_key: Option<PrivateKey<N>>,
     /// Specify the account private key of the node
-    #[clap(long = "private-key-file")]
+    #[clap(env, long)]
     pub private_key_file: Option<PathBuf>,
 }
 

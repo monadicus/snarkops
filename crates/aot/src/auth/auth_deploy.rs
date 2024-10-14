@@ -13,7 +13,7 @@ use crate::Network;
 #[derive(Debug, Args)]
 pub struct AuthDeployOptions<N: Network> {
     /// The query to use for the program.
-    #[clap(short, long)]
+    #[clap(env, short, long)]
     pub query: Option<String>,
     /// The program to deploy.
     /// This can be a file or stdin.

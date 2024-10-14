@@ -25,7 +25,7 @@ pub struct Execute<N: Network> {
     #[arg(short, long, value_enum, default_value_t = ExecMode::Local)]
     pub exec_mode: ExecMode,
     /// Query endpoint.
-    #[arg(short, long)]
+    #[arg(env, short, long)]
     pub query: String,
     /// Whether to broadcast the transaction.
     #[arg(short, long, default_value_t = false)]
