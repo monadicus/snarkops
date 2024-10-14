@@ -3324,7 +3324,7 @@ dependencies = [
  "snarkos-node",
  "snarkos-node-metrics",
  "snarkvm",
- "snops-checkpoint",
+ "snops-checkpoint 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "snops-common",
  "tarpc",
  "tikv-jemallocator",
@@ -4600,7 +4600,7 @@ dependencies = [
  "serde_yml",
  "sha2",
  "sled",
- "snops-checkpoint",
+ "snops-checkpoint 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "snops-common",
  "strum_macros",
  "tarpc",
@@ -4636,7 +4636,7 @@ dependencies = [
  "sha2",
  "simple_moving_average",
  "sled",
- "snops-checkpoint",
+ "snops-checkpoint 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "snops-common",
  "tarpc",
  "tokio",
@@ -4650,6 +4650,24 @@ dependencies = [
 [[package]]
 name = "snops-checkpoint"
 version = "0.1.0"
+dependencies = [
+ "aleo-std",
+ "anyhow",
+ "chrono",
+ "glob",
+ "rayon",
+ "serde",
+ "snarkos-node",
+ "snarkvm",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "snops-checkpoint"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4961856f5e1a381fdddd1158b477927f44a746a5ef2d0fafc0591bfc32ba726b"
 dependencies = [
  "aleo-std",
  "anyhow",
@@ -4702,7 +4720,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sled",
- "snops-checkpoint",
+ "snops-checkpoint 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "strum_macros",
  "tarpc",
  "thiserror",

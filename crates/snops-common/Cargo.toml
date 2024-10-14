@@ -21,7 +21,7 @@ clap_mangen = { workspace = true, optional = true }
 clap-markdown = { workspace = true, optional = true }
 futures.workspace = true
 http.workspace = true
-indexmap.workspace = true
+indexmap = { workspace = true, features = ["std"] }
 lasso.workspace = true
 lazy_static.workspace = true
 paste.workspace = true
