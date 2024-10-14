@@ -2,6 +2,8 @@
 name = "snops-agent"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "A snarkops agent for communicating with snarkos nodes and the control plane"
 
 [features]
 default = []

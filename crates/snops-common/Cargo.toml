@@ -2,6 +2,8 @@
 name = "snops-common"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Common types and utilities for snops"
 
 [features]
 default = []

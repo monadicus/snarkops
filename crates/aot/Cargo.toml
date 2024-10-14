@@ -2,8 +2,8 @@
 edition = "2021"
 name = "snarkos-aot"
 version = "0.1.0"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "Ahead of time utilities for SnarkVM, and a wrapper around the SnarkOS node for more options"
 
 [features]
 default = ["node"]
