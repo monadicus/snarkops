@@ -1,6 +1,6 @@
-use checkpoint::RetentionPolicy;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use snops_checkpoint::RetentionPolicy;
 
 use crate::{
     binaries::BinaryEntry,

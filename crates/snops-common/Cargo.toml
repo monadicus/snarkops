@@ -2,6 +2,8 @@
 name = "snops-common"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Common types and utilities for snops"
 
 [features]
 default = []
@@ -13,14 +15,13 @@ mangen = ["anyhow", "clap_mangen"]
 anyhow = { workspace = true, optional = true }
 bincode.workspace = true
 bytes.workspace = true
-checkpoint = { workspace = true, features = ["serde"] }
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
 clap_mangen = { workspace = true, optional = true }
 clap-markdown = { workspace = true, optional = true }
 futures.workspace = true
 http.workspace = true
-indexmap.workspace = true
+indexmap = { workspace = true, features = ["std"] }
 lasso.workspace = true
 lazy_static.workspace = true
 paste.workspace = true
@@ -30,6 +31,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sled.workspace = true
+snops-checkpoint = { workspace = true, features = ["serde"] }
 strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true

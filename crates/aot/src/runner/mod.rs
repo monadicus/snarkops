@@ -6,7 +6,6 @@ use std::{
 
 use aleo_std::StorageMode;
 use anyhow::Result;
-use checkpoint::{CheckpointManager, RetentionPolicy};
 use clap::Args;
 use rpc::RpcClient;
 use snarkos_node::Node;
@@ -18,6 +17,7 @@ use snarkvm::{
     prelude::Block,
     utilities::FromBytes,
 };
+use snops_checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::state::{snarkos_status::SnarkOSStatus, NodeType};
 
 use crate::{cli::ReloadHandler, Account, DbLedger, Key, Network};

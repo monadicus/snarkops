@@ -1,5 +1,5 @@
-use checkpoint::{CheckpointManager, RetentionPolicy};
 use indexmap::IndexMap;
+use snops_checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::{
     binaries::BinaryEntry,
     constant::LEDGER_BASE_DIR,
@@ -209,8 +209,8 @@ mod tests {
 
     use std::str::FromStr;
 
-    use checkpoint::RetentionPolicy;
     use indexmap::IndexMap;
+    use snops_checkpoint::RetentionPolicy;
     use snops_common::{
         binaries::BinaryEntry,
         format::{read_dataformat, write_dataformat, DataFormat},

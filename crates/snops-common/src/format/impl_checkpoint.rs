@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use checkpoint::{RetentionPolicy, RetentionRule, RetentionSpan};
+use snops_checkpoint::{RetentionPolicy, RetentionRule, RetentionSpan};
 
 use super::{DataFormat, DataFormatReader, DataHeaderOf, DataReadError, DataWriteError};
 
@@ -99,7 +99,7 @@ impl DataFormat for RetentionPolicy {
 #[rustfmt::skip]
 mod test {
     use crate::format::DataFormat;
-    use checkpoint::{RetentionPolicy, RetentionSpan};
+    use snops_checkpoint::{RetentionPolicy, RetentionSpan};
 
 
     macro_rules! case {

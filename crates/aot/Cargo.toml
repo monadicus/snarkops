@@ -2,8 +2,8 @@
 edition = "2021"
 name = "snarkos-aot"
 version = "0.1.0"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "Ahead of time utilities for SnarkVM, and a wrapper around the SnarkOS node for more options"
 
 [features]
 default = ["node"]
@@ -29,7 +29,6 @@ anyhow.workspace = true
 axum.workspace = true
 bincode.workspace = true
 bech32.workspace = true
-checkpoint = { workspace = true, features = ["write"] }
 clap = { workspace = true, features = ["env"] }
 clap-stdin.workspace = true
 colored.workspace = true
@@ -50,6 +49,7 @@ snarkos-account.workspace = true
 snarkos-node = { workspace = true, optional = true }
 snarkos-node-metrics = { workspace = true, optional = true }
 snarkvm = { workspace = true, features = ["ledger"] }
+snops-checkpoint = { workspace = true, features = ["write"] }
 snops-common.workspace = true
 tarpc.workspace = true
 tokio.workspace = true
