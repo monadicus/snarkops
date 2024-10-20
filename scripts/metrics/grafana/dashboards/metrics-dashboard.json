@@ -964,8 +964,8 @@
       {
         "current": {
           "selected": true,
-          "text": "canary-clients-2",
-          "value": "canary-clients-2"
+          "text": "default",
+          "value": "default"
         },
         "datasource": {
           "type": "prometheus"
@@ -990,8 +990,8 @@
       {
         "current": {
           "selected": true,
-          "text": "client/gcp-0",
-          "value": "client/gcp-0"
+          "text": "client/default-0",
+          "value": "client/default-0"
         },
         "datasource": {
           "type": "prometheus"
