@@ -1,0 +1,34 @@
+---
+version: storage.snarkos.testing.monadic.us/v1
+
+id: base
+name: base-ledger
+
+generate:
+  genesis:
+    seed: 1
+
+---
+version: nodes.snarkos.testing.monadic.us/v1
+name: 4-validators
+network: testnet
+
+nodes:
+  validator/test:
+    replicas: 4
+    key: committee.$
+    height: 0
+    validators: validator/*
+    peers: []
+
+---
+version: cannon.snarkos.testing.monadic.us/v1
+
+name: default
+
+source:
+  query: "*/*" # all node targets
+  labels: [] # all labels
+
+sink:
+  file-name: txs.json
