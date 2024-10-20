@@ -2,6 +2,9 @@
 
 ENDPOINT="$1"
 NUM_BLOCKS="$2"
+if [ -z "$NETWORK"]; then
+  NETWORK="testnet"
+fi
 
 # check if mode is client, validator, or prover
 if [ -z "$ENDPOINT" ]; then
@@ -14,7 +17,7 @@ if [ -z "$NUM_BLOCKS" ]; then
   NUM_BLOCKS=10
 fi
 
-HEIGHT="$(curl -s $ENDPOINT/mainnet/latest/height)"
+HEIGHT="$(curl -s $ENDPOINT/$NETWORK/latest/height)"
 if [ -z "$HEIGHT" ]; then
   echo "error: failed to get height from $ENDPOINT"
   exit 1
@@ -48,7 +51,7 @@ prev_block_time=""
 
 # get all the blocks from (HEIGHT-NUM_BLOCKS) to HEIGHT
 for i in $(seq $((HEIGHT-NUM_BLOCKS+1)) $HEIGHT); do
-  block="$(curl -s $ENDPOINT/mainnet/block/$i)"
+  block="$(curl -s $ENDPOINT/$NETWORK/block/$i)"
 
   # update timestamps
   LAST_TIMESTAMP="$(echo $block | jq '.header.metadata.timestamp')"
