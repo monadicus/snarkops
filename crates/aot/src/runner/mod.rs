@@ -208,6 +208,7 @@ impl<N: Network> Runner<N> {
                     genesis,
                     None,
                     storage_mode.clone(),
+                    false,
                     shutdown,
                 )
                 .await?

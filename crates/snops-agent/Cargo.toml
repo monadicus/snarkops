@@ -43,3 +43,4 @@ tracing-appender.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
+rustls = { version = "0.23.15", features = ["ring"] }
