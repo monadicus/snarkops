@@ -1528,9 +1528,7 @@ dependencies = [
  "http 1.1.0",
  "hyper 1.4.1",
  "hyper-util",
- "log",
  "rustls",
- "rustls-native-certs",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls",
@@ -1970,16 +1968,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "metrics"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "884adb57038347dfbaf2d5065887b6cf4312330dc8e94bc30a1a839bd79d3261"
-dependencies = [
- "ahash",
- "portable-atomic",
-]
-
-[[package]]
 name = "metrics-exporter-prometheus"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1990,29 +1978,8 @@ dependencies = [
  "hyper-tls 0.5.0",
  "indexmap 2.6.0",
  "ipnet",
- "metrics 0.22.3",
- "metrics-util 0.16.3",
- "quanta",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "metrics-exporter-prometheus"
-version = "0.15.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4f0c8427b39666bf970460908b213ec09b3b350f20c0c2eabcbba51704a08e6"
-dependencies = [
- "base64 0.22.1",
- "http-body-util",
- "hyper 1.4.1",
- "hyper-rustls",
- "hyper-util",
- "indexmap 2.6.0",
- "ipnet",
- "metrics 0.23.0",
- "metrics-util 0.17.0",
+ "metrics",
+ "metrics-util",
  "quanta",
  "thiserror",
  "tokio",
@@ -2028,22 +1995,7 @@ dependencies = [
  "crossbeam-epoch",
  "crossbeam-utils",
  "hashbrown 0.14.5",
- "metrics 0.22.3",
- "num_cpus",
- "quanta",
- "sketches-ddsketch",
-]
-
-[[package]]
-name = "metrics-util"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4259040465c955f9f2f1a4a8a16dc46726169bca0f88e8fb2dbeced487c3e828"
-dependencies = [
- "crossbeam-epoch",
- "crossbeam-utils",
- "hashbrown 0.14.5",
- "metrics 0.23.0",
+ "metrics",
  "num_cpus",
  "quanta",
  "sketches-ddsketch",
@@ -3309,7 +3261,7 @@ dependencies = [
  "futures-util",
  "http 1.1.0",
  "indexmap 2.6.0",
- "metrics-exporter-prometheus 0.15.3",
+ "metrics-exporter-prometheus",
  "nix",
  "num_cpus",
  "rand",
@@ -3493,7 +3445,7 @@ name = "snarkos-node-metrics"
 version = "3.0.0"
 source = "git+https://github.com/AleoNet/snarkOS?rev=ba2ce9a#ba2ce9affbd8d2b1a124942fc38f6cbcd29265c0"
 dependencies = [
- "metrics-exporter-prometheus 0.13.1",
+ "metrics-exporter-prometheus",
  "parking_lot 0.12.3",
  "rayon",
  "snarkvm",
@@ -4355,8 +4307,8 @@ name = "snarkvm-metrics"
 version = "1.0.0"
 source = "git+https://github.com/AleoNet/snarkVM?rev=dea322b#dea322b3d374ac0fa7dae26cf006bf67acd52e9e"
 dependencies = [
- "metrics 0.22.3",
- "metrics-exporter-prometheus 0.13.1",
+ "metrics",
+ "metrics-exporter-prometheus",
 ]
 
 [[package]]
