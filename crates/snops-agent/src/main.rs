@@ -64,6 +64,10 @@ fn make_env_filter(level: LevelFilter) -> EnvFilter {
 
 #[tokio::main]
 async fn main() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     let (stdout, _guard) = tracing_appender::non_blocking(std::io::stdout());
     let start_time = Instant::now();
 
