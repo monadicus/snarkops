@@ -53,7 +53,7 @@ impl<N: Network> AuthorizeDeploy<N> {
 
         Ok(AuthBlob::Deploy {
             owner,
-            deployment,
+            deployment: Box::new(deployment),
             fee_auth: None,
         })
     }

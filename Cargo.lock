@@ -419,7 +419,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.11.0",
  "lazy_static",
  "lazycell",
  "log",
@@ -472,6 +472,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "blst"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4378725facc195f1a538864863f6de233b500a8862747e7f165078a419d5e874"
+dependencies = [
+ "cc",
+ "glob",
+ "threadpool",
+ "zeroize",
 ]
 
 [[package]]
@@ -3257,13 +3269,8 @@ dependencies = [
  "clap",
  "clap-stdin",
  "colored",
- "crossterm",
- "futures-util",
- "http 1.1.0",
  "indexmap 2.6.0",
- "metrics-exporter-prometheus",
  "nix",
- "num_cpus",
  "rand",
  "rand_chacha",
  "rayon",
@@ -3272,19 +3279,14 @@ dependencies = [
  "serde",
  "serde_json",
  "snarkos-account",
- "snarkos-node",
- "snarkos-node-metrics",
  "snarkvm",
  "snops-checkpoint",
  "snops-common",
- "tarpc",
  "tikv-jemallocator",
  "tokio",
- "tokio-tungstenite",
  "tracing",
  "tracing-appender",
  "tracing-flame",
- "tracing-loki",
  "tracing-subscriber",
 ]
 
@@ -3309,7 +3311,6 @@ dependencies = [
  "snarkos-node-bft",
  "snarkos-node-cdn",
  "snarkos-node-consensus",
- "snarkos-node-metrics",
  "snarkos-node-rest",
  "snarkos-node-router",
  "snarkos-node-sync",
@@ -3343,7 +3344,6 @@ dependencies = [
  "snarkos-node-bft-events",
  "snarkos-node-bft-ledger-service",
  "snarkos-node-bft-storage-service",
- "snarkos-node-metrics",
  "snarkos-node-sync",
  "snarkos-node-tcp",
  "snarkvm",
@@ -3364,7 +3364,6 @@ dependencies = [
  "indexmap 2.6.0",
  "rayon",
  "serde",
- "snarkos-node-metrics",
  "snarkos-node-sync-locators",
  "snarkvm",
  "tokio-util",
@@ -3381,7 +3380,6 @@ dependencies = [
  "lru",
  "parking_lot 0.12.3",
  "rand",
- "snarkos-node-metrics",
  "snarkvm",
  "tokio",
  "tracing",
@@ -3434,7 +3432,6 @@ dependencies = [
  "snarkos-node-bft",
  "snarkos-node-bft-ledger-service",
  "snarkos-node-bft-storage-service",
- "snarkos-node-metrics",
  "snarkvm",
  "tokio",
  "tracing",
@@ -3500,7 +3497,6 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "snarkos-account",
- "snarkos-node-metrics",
  "snarkos-node-router-messages",
  "snarkos-node-sync-locators",
  "snarkos-node-tcp",
@@ -3582,7 +3578,6 @@ dependencies = [
  "futures-util",
  "once_cell",
  "parking_lot 0.12.3",
- "snarkos-node-metrics",
  "tokio",
  "tokio-util",
  "tracing",
@@ -3606,6 +3601,7 @@ dependencies = [
  "rayon",
  "self_update",
  "serde_json",
+ "snarkvm-algorithms",
  "snarkvm-circuit",
  "snarkvm-console",
  "snarkvm-ledger",
@@ -3641,11 +3637,23 @@ dependencies = [
  "serde",
  "sha2",
  "smallvec",
+ "snarkvm-algorithms-cuda",
  "snarkvm-curves",
  "snarkvm-fields",
  "snarkvm-parameters",
  "snarkvm-utilities",
  "thiserror",
+]
+
+[[package]]
+name = "snarkvm-algorithms-cuda"
+version = "1.0.0"
+source = "git+https://github.com/AleoNet/snarkVM?rev=dea322b#dea322b3d374ac0fa7dae26cf006bf67acd52e9e"
+dependencies = [
+ "blst",
+ "cc",
+ "sppark",
+ "which",
 ]
 
 [[package]]
@@ -4548,14 +4556,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "clap-markdown",
  "clap-stdin",
  "clap_complete",
- "clap_mangen",
  "reqwest 0.12.8",
  "serde_json",
  "snops-common",
- "thiserror",
 ]
 
 [[package]]
@@ -4589,6 +4594,44 @@ dependencies = [
  "tracing",
  "url",
  "wildmatch",
+]
+
+[[package]]
+name = "snops-node"
+version = "0.1.0"
+dependencies = [
+ "aleo-std",
+ "anyhow",
+ "bech32",
+ "bincode",
+ "clap",
+ "colored",
+ "crossterm",
+ "futures-util",
+ "http 1.1.0",
+ "indexmap 2.6.0",
+ "metrics-exporter-prometheus",
+ "num_cpus",
+ "rand",
+ "rand_chacha",
+ "rayon",
+ "reqwest 0.12.8",
+ "serde_json",
+ "snarkos-account",
+ "snarkos-node",
+ "snarkos-node-metrics",
+ "snarkvm",
+ "snops-checkpoint",
+ "snops-common",
+ "tarpc",
+ "tikv-jemallocator",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-appender",
+ "tracing-flame",
+ "tracing-loki",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4626,6 +4669,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d96d2d1d716fb500937168cc09353ffdc7a012be8475ac7308e1bdf0e3923300"
 dependencies = [
  "lock_api",
+]
+
+[[package]]
+name = "sppark"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c55f3833d30846a26110dccb1d5366314c2c52516a9173b74238c16b24b1a9f9"
+dependencies = [
+ "cc",
+ "which",
 ]
 
 [[package]]
@@ -4812,6 +4865,15 @@ checksum = "8b9ef9bad013ada3808854ceac7b46812a6465ba368859a37e2100283d2d719c"
 dependencies = [
  "cfg-if",
  "once_cell",
+]
+
+[[package]]
+name = "threadpool"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d050e60b33d41c19108b32cea32164033a9013fe3b46cbd4457559bfbf77afaa"
+dependencies = [
+ "num_cpus",
 ]
 
 [[package]]

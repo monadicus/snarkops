@@ -1,14 +1,13 @@
 pub mod accounts;
-pub mod auth;
 pub mod cli;
-pub mod genesis;
 mod key;
-pub mod ledger;
-pub mod program;
+
+pub use key::Key;
+
+pub mod runner;
 
 use std::sync::OnceLock;
 
-pub use key::Key;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use snarkvm::{

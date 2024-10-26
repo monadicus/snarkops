@@ -42,12 +42,15 @@ enum Command {
 
 #[derive(Parser)]
 struct Build {
-    #[clap(long)]
+    #[clap(long, short)]
     compress: bool,
     #[clap(short, long, default_value = "release-big")]
     profile: Profile,
     #[clap(long)]
     cranelift: bool,
+    #[clap(long)]
+    /// Only applies to aot and node
+    cuda: bool,
     target: BuildTarget,
 }
 
@@ -63,6 +66,12 @@ impl Build {
             cmd!(sh, "cargo build")
         };
         let cmd = cmd.arg("--profile").arg(profile).arg("-p").arg(package);
+
+        let cmd = if self.cuda && matches!(self.target, BuildTarget::Aot | BuildTarget::Node) {
+            cmd.arg("--features").arg("cuda")
+        } else {
+            cmd
+        };
 
         // This is broken idk why
         // // if cranelift is enabled, and the target is not AOT, we can pass additional
@@ -102,19 +111,24 @@ impl Build {
 
 #[derive(Clone, ValueEnum)]
 enum BuildTarget {
+    All,
+    Agent,
     Aot,
-    Snops,
-    SnopsAgent,
-    SnopsCli,
+    Cli,
+    #[clap(alias = "cp")]
+    ControlPlane,
+    Node,
 }
 
 impl AsRef<str> for BuildTarget {
     fn as_ref(&self) -> &str {
         match self {
+            BuildTarget::All => "snarkos-aot snops snops-agent snops-cli snops-node",
             BuildTarget::Aot => "snarkos-aot",
-            BuildTarget::Snops => "snops",
-            BuildTarget::SnopsAgent => "snops-agent",
-            BuildTarget::SnopsCli => "snops-cli",
+            BuildTarget::ControlPlane => "snops",
+            BuildTarget::Agent => "snops-agent",
+            BuildTarget::Cli => "snops-cli",
+            BuildTarget::Node => "snops-node",
         }
     }
 }
@@ -191,6 +205,7 @@ fn clipages(sh: &Shell) -> Result<()> {
     )
     .run()?;
     cmd!(sh, "cargo run -p snops-cli --features=docpages -- md").run()?;
+    cmd!(sh, "cargo run -p snops-node --features=docpages -- md").run()?;
     Ok(())
 }
 
@@ -199,6 +214,7 @@ fn manpages(sh: &Shell) -> Result<()> {
     cmd!(sh, "cargo run -p snops --features=docpages -- man").run()?;
     cmd!(sh, "cargo run -p snops-agent --features=docpages -- man").run()?;
     cmd!(sh, "cargo run -p snops-cli --features=docpages -- man").run()?;
+    cmd!(sh, "cargo run -p snops-node --features=docpages -- man").run()?;
     Ok(())
 }
 
@@ -216,9 +232,9 @@ fn install_cargo_subcommands(sh: &Shell, subcmd: &'static str) -> Result<()> {
 }
 
 fn udeps(sh: &Shell, fix: bool) -> Result<()> {
-    install_cargo_subcommands(sh, "cargo-machete")?;
-    let cmd = cmd!(sh, "cargo-machete");
-    let cmd = if fix { cmd.arg("fix") } else { cmd };
+    install_cargo_subcommands(sh, "cargo-shear")?;
+    let cmd = cmd!(sh, "cargo-shear");
+    let cmd = if fix { cmd.arg("--fix") } else { cmd };
     cmd.run()?;
     Ok(())
 }
@@ -249,20 +265,32 @@ fn dev(sh: &Shell, target: BuildTarget) -> Result<()> {
     install_cargo_subcommands(sh, "cargo-watch")?;
 
     match target {
+        BuildTarget::All => cmd!(
+            sh,
+            "cargo watch -x 'build --profile release-big -p snops-agent' -w ./crates/snops-agent -w ./crates/snops-common -w ./crates/snops-checkpoint -w ./crates/snops-node"
+        )
+        .run(),
+        BuildTarget::Agent => cmd!(
+            sh,
+            "cargo watch -x 'build -p snops-agent --profile release-big' -w ./crates/snops-agent"
+        )
+        .run(),
         BuildTarget::Aot => cmd!(
             sh,
             "cargo watch -x 'build -p snarkos-aot --profile release-big' -w ./crates/aot"
         )
         .run(),
-        BuildTarget::Snops => cmd!(sh, "cargo watch -x 'run -p snops' -w ./crates/snops").run(),
-        BuildTarget::SnopsAgent => cmd!(
-            sh,
-            "cargo watch -x 'build -p snops-agent --profile release-big' -w ./crates/snops-agent"
-        )
-        .run(),
-        BuildTarget::SnopsCli => cmd!(
+        BuildTarget::Cli => cmd!(
             sh,
             "cargo watch -x 'build -p snops-cli' -w ./crates/snops-cli"
+        )
+        .run(),
+        BuildTarget::ControlPlane => {
+            cmd!(sh, "cargo watch -x 'run -p snops' -w ./crates/snops").run()
+        }
+        BuildTarget::Node => cmd!(
+            sh,
+            "cargo watch -x 'build -p snops-node --profile release-big' -w ./crates/snops-node"
         )
         .run(),
     }?;

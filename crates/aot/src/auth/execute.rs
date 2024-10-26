@@ -89,7 +89,7 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
                     query,
                     rng,
                 )?;
-                Ok(Transaction::from_deployment(owner, deployment, fee)?)
+                Ok(Transaction::from_deployment(owner, *deployment, fee)?)
             }
         }
     } else {
@@ -126,7 +126,7 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
                     query,
                     rng,
                 )?;
-                Ok(Transaction::from_deployment(owner, deployment, fee)?)
+                Ok(Transaction::from_deployment(owner, *deployment, fee)?)
             }
         }
     }

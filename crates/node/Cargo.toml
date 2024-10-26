@@ -1,9 +1,9 @@
 [package]
-edition = "2021"
-name = "snarkos-aot"
+name = "snops-node"
 version = "0.1.0"
+edition = "2021"
 license = "MIT"
-description = "Ahead of time utilities for SnarkVM, and a wrapper around the SnarkOS node for more options"
+description = "A snarkops node which wraps the snarkos node runner and adds extra functionality"
 
 [features]
 default = []
@@ -16,34 +16,40 @@ mangen = ["snops-common/mangen"]
 [dependencies]
 aleo-std.workspace = true
 anyhow.workspace = true
-axum.workspace = true
 bincode.workspace = true
 bech32.workspace = true
 clap = { workspace = true, features = ["env"] }
-clap-stdin.workspace = true
 colored.workspace = true
+crossterm.workspace = true
+futures-util.workspace = true
+http.workspace = true
 indexmap.workspace = true
-nix.workspace = true
+metrics-exporter-prometheus.workspace = true
+num_cpus.workspace = true
 rayon.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
-serde.workspace = true
 serde_json.workspace = true
 snarkos-account.workspace = true
+snarkos-node.workspace = true
+snarkos-node-metrics.workspace = true
 snarkvm = { workspace = true, features = ["ledger"] }
 snops-checkpoint = { workspace = true, features = ["write"] }
 snops-common.workspace = true
+tarpc.workspace = true
 tokio.workspace = true
+tokio-tungstenite.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-flame = { workspace = true, optional = true }
+tracing-loki = "0.2.4"
 tracing-subscriber.workspace = true
-rocksdb = { workspace = true, features = ["lz4"] }
+# rocksdb = { workspace = true, features = ["lz4"] }
 
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-tikv-jemallocator = { version = "0.6", default-features = false }
+tikv-jemallocator = "0.6"
 
 # [dependencies.metrics]
 # package = "snarkos-node-metrics"

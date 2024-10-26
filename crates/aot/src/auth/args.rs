@@ -47,7 +47,7 @@ impl<N: Network> AuthArgs<N> {
                 }),
                 (None, Some(owner), Some(deployment)) => Some(AuthBlob::Deploy {
                     owner,
-                    deployment,
+                    deployment: Box::new(deployment),
                     fee_auth: self.fee_auth,
                 }),
                 _ => None,
@@ -77,7 +77,7 @@ pub enum AuthBlob<N: Network> {
         /// The owner of the program.
         owner: ProgramOwner<N>,
         /// The deployment of the program.
-        deployment: Deployment<N>,
+        deployment: Box<Deployment<N>>,
         /// The optional fee authorization for the deployment.
         #[serde(skip_serializing_if = "Option::is_none")]
         fee_auth: Option<ProxyAuthorization<N>>,
