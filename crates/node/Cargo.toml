@@ -16,8 +16,8 @@ mangen = ["snops-common/mangen"]
 [dependencies]
 aleo-std.workspace = true
 anyhow.workspace = true
-bincode.workspace = true
 bech32.workspace = true
+bincode.workspace = true
 clap = { workspace = true, features = ["env"] }
 colored.workspace = true
 crossterm.workspace = true
@@ -26,9 +26,9 @@ http.workspace = true
 indexmap.workspace = true
 metrics-exporter-prometheus.workspace = true
 num_cpus.workspace = true
-rayon.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
+rayon.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
 serde_json.workspace = true
 snarkos-account.workspace = true
