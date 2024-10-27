@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use xshell::{cmd, Shell};
 
@@ -51,6 +51,8 @@ struct Build {
     #[clap(long)]
     /// Only applies to aot and node
     cuda: bool,
+    #[clap(long, short)]
+    linker: Linker,
     target: BuildTarget,
 }
 
@@ -60,7 +62,7 @@ impl Build {
         let package = self.target.as_ref();
 
         // if crane lift is enabled, we need to build with nightly
-        let cmd = if self.cranelift {
+        let cmd = if self.cranelift || matches!(self.linker, Linker::RustLld) {
             cmd!(sh, "cargo +nightly build")
         } else {
             cmd!(sh, "cargo build")
@@ -73,28 +75,25 @@ impl Build {
             cmd
         };
 
-        // This is broken idk why
-        // // if cranelift is enabled, and the target is not AOT, we can pass additional
-        // // flags
-        // let cmd = if !matches!(self.target, BuildTarget::Aot) && self.cranelift {
-        //     cmd.arg("-Zbuild-std=std,panic_abort")
-        //         .arg("-Zbuild-std-features=panic_immediate_abort")
-        // } else {
-        //     cmd
-        // };
-
         // if cranelift is enabled we need to set the env var, and also specify the
         // target
+        let mut env_flags = self.linker.as_ref().to_string();
         let cmd = if self.cranelift {
             // -C panic=abort
-            cmd.env(
-                "RUSTFLAGS",
-                "-Zlocation-detail=none -Zcodegen-backend=cranelift",
-            )
-            .arg("--target")
-            .arg("x86_64-unknown-linux-gnu")
+            env_flags.push_str(" -C lto=no -Zlocation-detail=none -Zcodegen-backend=cranelift");
+            // if cranelift is enabled, and the target is not AOT, we can pass additional
+            // flags
+            if !matches!(self.target, BuildTarget::Aot | BuildTarget::Node) {
+                env_flags.push_str(
+                    " -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort",
+                );
+            }
+
+            cmd.env("RUSTFLAGS", env_flags)
+                .arg("--target")
+                .arg("x86_64-unknown-linux-gnu")
         } else {
-            cmd
+            cmd.env("RUSTFLAGS", env_flags)
         };
 
         cmd.run()?;
@@ -129,6 +128,47 @@ impl AsRef<str> for BuildTarget {
             BuildTarget::Agent => "snops-agent",
             BuildTarget::Cli => "snops-cli",
             BuildTarget::Node => "snops-node",
+        }
+    }
+}
+
+#[derive(Clone, ValueEnum, Default)]
+enum Linker {
+    #[default]
+    Default,
+    Lld,
+    Mold,
+    RustLld,
+}
+
+impl Linker {
+    fn check_installed(&self, sh: &Shell) -> Result<()> {
+        match self {
+            Linker::Default => Ok(()),
+            Linker::Lld => {
+                if cmd!(sh, "command -v ld.lld").read()?.is_empty() {
+                    bail!("lld is not installed, please install it")
+                }
+                Ok(())
+            }
+            Linker::Mold => {
+                if cmd!(sh, "command -v mold").read()?.is_empty() {
+                    bail!("mold is not installed, please install it")
+                }
+                Ok(())
+            }
+            Linker::RustLld => Ok(()),
+        }
+    }
+}
+
+impl AsRef<str> for Linker {
+    fn as_ref(&self) -> &str {
+        match self {
+            Linker::Default => "",
+            Linker::Lld => "-C link-arg=-fuse-ld=lld",
+            Linker::Mold => "-C linker=clang -C link-arg=-fuse-ld=mold",
+            Linker::RustLld => "-Zlinker-features=-lld",
         }
     }
 }
