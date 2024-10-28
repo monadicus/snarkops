@@ -79,7 +79,7 @@ impl Build {
         let mut env_flags = self.linker.as_ref().to_string();
         let cmd = if self.cranelift {
             // -C panic=abort
-            env_flags.push_str(" -C lto=no -Zlocation-detail=none -Zcodegen-backend=cranelift");
+            env_flags.push_str(" -C lto=no -Zlocation-detail=none -Zcodegen-backend=cranelift -C target-cpu=native");
             // This is broken >.<
             // // if cranelift is enabled, and the target is not AOT, we can pass additional
             // // flags
@@ -108,7 +108,7 @@ impl Build {
     }
     fn run(self, sh: &Shell) -> Result<()> {
         // this is broken...
-        // self.linker.check_installed(sh)?;
+        self.linker.check_installed(sh)?;
 
         if matches!(self.target, BuildTarget::All) {
             self.run_inner(sh, "snops-agent")?;
@@ -162,13 +162,13 @@ impl Linker {
         match self {
             Linker::Default => Ok(()),
             Linker::Lld => {
-                if cmd!(sh, "command -v ld.lld").read()?.is_empty() {
+                if cmd!(sh, "which ld.lld").read().is_err() {
                     bail!("lld is not installed, please install it")
                 }
                 Ok(())
             }
             Linker::Mold => {
-                if cmd!(sh, "command -v mold").read()?.is_empty() {
+                if cmd!(sh, "which mold").read().is_err() {
                     bail!("mold is not installed, please install it")
                 }
                 Ok(())
@@ -298,7 +298,7 @@ fn udeps(sh: &Shell, fix: bool) -> Result<()> {
 #[cfg(target_os = "linux")]
 fn install_upx(sh: &Shell) -> Result<()> {
     // Check if upx is already installed and return early if it is
-    if !cmd!(sh, "command -v upx").read()?.is_empty() {
+    if !cmd!(sh, "which upx").read()?.is_empty() {
         return Ok(());
     }
 
