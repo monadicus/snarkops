@@ -74,8 +74,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     permissions: read-all
-    env:
-      RUSTFLAGS: -Zcodegen-backend=cranelift
+    # env:
+    #   RUSTFLAGS: -Zcodegen-backend=cranelift
 
     steps:
       - name: 📥 Checkout
@@ -160,8 +160,8 @@ jobs:
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops --verbose --fail-fast --all-features
 
       - name: 🧪 Test Agent
-        env:
-          RUSTFLAGS: ""
+        # env:
+        #   RUSTFLAGS: ""
         if: (steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true')
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-agent --verbose --fail-fast --all-features
 
