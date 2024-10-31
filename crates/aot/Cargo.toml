@@ -6,7 +6,20 @@ license = "MIT"
 description = "Ahead of time utilities for SnarkVM, and a wrapper around the SnarkOS node for more options"
 
 [features]
-default = []
+default = ["node"]
+node = [
+	"dep:crossterm",
+	"dep:futures-util",
+	"dep:http",
+	"dep:metrics-exporter-prometheus",
+	"dep:num_cpus",
+	"dep:snarkos-node",
+	"snarkos-node/metrics",
+	"dep:snarkos-node-metrics",
+	"dep:tarpc",
+	"dep:tokio-tungstenite",
+	"dep:tracing-loki",
+]
 cuda = ["snarkvm/cuda"]
 flame = ["dep:tracing-flame"]
 docpages = ["clipages", "mangen"]
@@ -22,8 +35,13 @@ bech32.workspace = true
 clap = { workspace = true, features = ["env"] }
 clap-stdin.workspace = true
 colored.workspace = true
+crossterm = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
 indexmap.workspace = true
+metrics-exporter-prometheus = { workspace = true, optional = true }
 nix.workspace = true
+num_cpus = { workspace = true, optional = true }
 rayon.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
@@ -31,14 +49,19 @@ reqwest = { workspace = true, features = ["blocking", "json"] }
 serde.workspace = true
 serde_json.workspace = true
 snarkos-account.workspace = true
+snarkos-node = { workspace = true, optional = true }
+snarkos-node-metrics = { workspace = true, optional = true }
 snarkvm = { workspace = true, features = ["ledger"] }
 snops-checkpoint = { workspace = true, features = ["write"] }
 snops-common.workspace = true
+tarpc = { workspace = true, optional = true }
 tokio.workspace = true
+tokio-tungstenite = { workspace = true, optional = true }
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-flame = { workspace = true, optional = true }
 tracing-subscriber.workspace = true
+tracing-loki = { version = "0.2.4", optional = true }
 rocksdb = { workspace = true, features = ["lz4"] }
 
 

@@ -6,7 +6,6 @@ members = [
 	"crates/cli",
 	"crates/common",
 	"crates/controlplane",
-	"crates/node",
 	"crates/xtask",
 ]
 resolver = "2"

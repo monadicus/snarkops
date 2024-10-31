@@ -6,6 +6,9 @@ mod key;
 pub mod ledger;
 pub mod program;
 
+#[cfg(feature = "node")]
+pub mod runner;
+
 use std::sync::OnceLock;
 
 pub use key::Key;

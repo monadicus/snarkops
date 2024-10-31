@@ -143,10 +143,6 @@ jobs:
         if: steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snarkos-aot --verbose --fail-fast --all-features
 
-      - name: 🧪 Test Node
-        if: steps.changes.outputs.node == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-checkpoint --verbose --fail-fast --all-features
-
       - name: 🧪 Test Checkpoint
         # env:
         #   RUSTFLAGS: -Zcodegen-backend=cranelift
