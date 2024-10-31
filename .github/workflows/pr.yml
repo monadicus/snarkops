@@ -135,7 +135,7 @@ jobs:
 
       - name: 🧪 Test All
         if: steps.changes.outputs.top_toml == 'true'
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run --all --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run --all --verbose --fail-fast --all-features --exclude snops-agent --exclude xtask
 
       - name: 🧪 Test Aot
         if: steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
@@ -160,9 +160,9 @@ jobs:
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops --verbose --fail-fast --all-features
 
       - name: 🧪 Test Agent
-        # env:
-        #   RUSTFLAGS: -Zcodegen-backend=cranelift
-        if: (steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        env:
+          RUSTFLAGS: ""
+        if: (steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true')
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-agent --verbose --fail-fast --all-features
 
       - name: 🧪 Test Scli
