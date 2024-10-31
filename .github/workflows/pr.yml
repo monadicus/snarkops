@@ -5,8 +5,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # https://releases.rs/docs/1.81.0/ release date
-  NIGHTLY_TOOLCHAIN: nightly-2024-09-05
+  # https://releases.rs/docs/1.82.0/ release date
+  NIGHTLY_TOOLCHAIN: nightly-2024-10-17
 
 # Cancel in progress workflows on pull_requests.
 # https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-a-fallback-value
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: read-all
     env:
-      RUSTFLAGS: -Zcodegen-backend=cranelift broken for snarkos/vm atm
+      RUSTFLAGS: -Zcodegen-backend=cranelift
 
     steps:
       - name: 📥 Checkout
@@ -132,8 +132,6 @@ jobs:
               - 'crates/cli/**/*'
             common:
               - 'crates/common/**/*'
-            node:
-              - 'crates/node/**/*'
 
       - name: 🧪 Test All
         if: steps.changes.outputs.top_toml == 'true'
