@@ -55,7 +55,7 @@ struct Build {
     #[clap(long)]
     cuda: bool,
     /// The linker to use for compilation.
-    #[clap(long, short, default)]
+    #[clap(long, short, default_value = "default")]
     linker: Linker,
     /// The target binary to build.
     target: BuildTarget,
