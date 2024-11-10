@@ -327,7 +327,7 @@ fn dev(sh: &Shell, target: BuildTarget) -> Result<()> {
         .run(),
         BuildTarget::Agent => cmd!(
             sh,
-            "cargo watch -x 'build -p snops-agent --profile release-big' -w ./crates/agent"
+            "cargo watch -x 'build -p snops-agent --profile release-big' -w ./crates/agent -w ./crates/common -w ./crates/checkpoint"
         )
         .run(),
         BuildTarget::Aot => cmd!(
@@ -341,7 +341,7 @@ fn dev(sh: &Shell, target: BuildTarget) -> Result<()> {
         )
         .run(),
         BuildTarget::ControlPlane => {
-            cmd!(sh, "cargo watch -x 'run -p snops' -w ./crates/controlplane").run()
+            cmd!(sh, "cargo watch -x 'run -p snops' -w ./crates/controlplane -w ./crates/common -w ./crates/checkpoint").run()
         }
 
     }?;

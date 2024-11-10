@@ -42,12 +42,12 @@ To learn more about `snops` we recommend checking out the mdbook [here](https://
     The cli is used to interact with the controlplane and manage environments.
     It provides JSON based output. We recommend pairing our cli with [`jq`](https://jqlang.github.io/jq/) when leveraging other scripts and tools
 
-1. Build the agent: `cargo build --profile release-big -p snops-agent`
+1. Build the agent: `cargo xtask build agent`
 
     The agent is a lightweight service that starts up `snarkos-aot` which
     automatically configures snarkos nodes, or executes transactions.
 
-1. Build `snarkos-aot` (for running nodes): `cargo build --profile release-big -p snarkos-aot`
+1. Build `snarkos-aot` (for running nodes): `cargo xtask build aot`
 
     `snarkos-aot` is an alternative snarkOS CLI providing more developer-oriented
     features as well as tooling for distributed transaction generation and execution.
