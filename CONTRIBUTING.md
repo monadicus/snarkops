@@ -4,13 +4,26 @@ This file describes the process for contributing to `snarkops`.
 
 ## Starting
 
+We use the [xtask convention](https://github.com/matklad/cargo-xtask) to add helpful commands for development.
+We also recommend usage of [cargo-watch](https://github.com/watchexec/cargo-watch), to help for development purposes.
+
+The `xtask` commands can be triggered by doing `cargo xtask cmd`.
+The list of commands are as follows, and you can always do `--help` for more info:
+- `clipages`: updates the markdown files in `./snops_book/user_guide/clis`.
+- `mangen`: generates man files and puts them in the target directory.
+- `fmt`: can be used to format the codebase, requires nightly, or check the formatting is ok.
+- `lint`: runs clippy against the codebase, requires nightly.
+- `udeps`: installs [cargo-shear](https://github.com/boshen/cargo-shear) to do a naive unused dependencies check.
+- `install-upx`: linux only command to install [upx](https://github.com/upx/upx), which can be used in the build command to super compress binaries.
+- `build: gives makes building the different binaries easier, by automatically setting flags and etc for specific linkers, cranelift, or other options.
+- `dev`: runs [cargo-watch](https://github.com/watchexec/cargo-watch) for the specified binary target.
 <!-- TODO DEVELOPING DOCS -->
 <!-- Then please read the
 [developing instructions](https://github.com/monadicus/snarkops/blob/main/DEVELOPING.md) for setting up your environment. -->
 
-## Commits
+<!-- ## Commits
 
-Your commits must follow specific guidelines.
+Your commits must follow specific guidelines. -->
 
 <!-- TODO IDR if we enforce this -->
 <!-- ### Signed Commits

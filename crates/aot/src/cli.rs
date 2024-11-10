@@ -2,21 +2,16 @@
 use std::fs::File;
 #[cfg(feature = "flame")]
 use std::io::BufWriter;
-use std::{io, path::PathBuf, thread};
+use std::{io, path::PathBuf};
 
 use anyhow::Result;
 #[cfg(any(feature = "clipages", feature = "mangen"))]
 use clap::CommandFactory;
 use clap::Parser;
-#[cfg(feature = "node")]
-use crossterm::tty::IsTty;
-use reqwest::Url;
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter, Layer};
 
-#[cfg(feature = "node")]
-use crate::runner::Runner;
 use crate::{
     accounts::GenAccounts, auth::AuthCommand, genesis::Genesis, ledger::Ledger,
     program::ProgramCommand, Network,
@@ -34,9 +29,10 @@ pub struct Cli<N: Network> {
     /// The verbosity level of the logs.
     #[arg(long, default_value_t = 4)]
     pub verbosity: u8,
+    #[cfg(feature = "node")]
     /// The optional loki url to send logs to.
     #[arg(long)]
-    pub loki: Option<Url>,
+    pub loki: Option<reqwest::Url>,
 
     #[clap(subcommand)]
     pub command: Command<N>,
@@ -45,19 +41,19 @@ pub struct Cli<N: Network> {
 /// The different AOT commands.
 #[derive(Debug, Parser)]
 pub enum Command<N: Network> {
-    Genesis(Genesis<N>),
+    Genesis(Box<Genesis<N>>),
     Accounts(GenAccounts),
     Ledger(Ledger<N>),
-    #[cfg(feature = "node")]
-    Run(Runner<N>),
     #[clap(subcommand)]
-    Auth(AuthCommand<N>),
+    Auth(Box<AuthCommand<N>>),
     #[clap(subcommand)]
     Program(ProgramCommand<N>),
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
     #[cfg(feature = "clipages")]
     Md(snops_common::clipages::Clipages),
+    #[cfg(feature = "node")]
+    Run(crate::runner::Runner<N>),
 }
 
 pub trait Flushable {
@@ -90,53 +86,51 @@ pub fn make_env_filter(verbosity: u8) -> EnvFilter {
     };
 
     // Filter out undesirable logs. (unfortunately EnvFilter cannot be cloned)
-    {
-        let filter = tracing_subscriber::EnvFilter::builder()
-            .with_env_var("AOT_LOG")
-            .with_default_directive(level.into())
-            .from_env_lossy()
-            .add_directive("mio=off".parse().unwrap())
-            .add_directive("tarpc=off".parse().unwrap())
-            .add_directive("tokio_util=off".parse().unwrap())
-            .add_directive("tokio_tungstenite=off".parse().unwrap())
-            .add_directive("tracing_tungstenite=off".parse().unwrap())
-            .add_directive("tungstenite=off".parse().unwrap())
-            .add_directive("hyper=off".parse().unwrap())
-            .add_directive("reqwest=off".parse().unwrap())
-            .add_directive("want=off".parse().unwrap())
-            .add_directive("warp=off".parse().unwrap());
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_env_var("AOT_LOG")
+        .with_default_directive(level.into())
+        .from_env_lossy()
+        .add_directive("mio=off".parse().unwrap())
+        .add_directive("tarpc=off".parse().unwrap())
+        .add_directive("tokio_util=off".parse().unwrap())
+        .add_directive("tokio_tungstenite=off".parse().unwrap())
+        .add_directive("tracing_tungstenite=off".parse().unwrap())
+        .add_directive("tungstenite=off".parse().unwrap())
+        .add_directive("hyper=off".parse().unwrap())
+        .add_directive("reqwest=off".parse().unwrap())
+        .add_directive("want=off".parse().unwrap())
+        .add_directive("warp=off".parse().unwrap());
 
-        let filter = if verbosity >= 2 {
-            filter.add_directive("snarkos_node_sync=trace".parse().unwrap())
-        } else {
-            filter.add_directive("snarkos_node_sync=debug".parse().unwrap())
-        };
+    let filter = if verbosity >= 2 {
+        filter.add_directive("snarkos_node_sync=trace".parse().unwrap())
+    } else {
+        filter.add_directive("snarkos_node_sync=debug".parse().unwrap())
+    };
 
-        let filter = if verbosity >= 3 {
-            filter
-                .add_directive("snarkos_node_bft=trace".parse().unwrap())
-                .add_directive("snarkos_node_bft::gateway=debug".parse().unwrap())
-        } else {
-            filter.add_directive("snarkos_node_bft=debug".parse().unwrap())
-        };
+    let filter = if verbosity >= 3 {
+        filter
+            .add_directive("snarkos_node_bft=trace".parse().unwrap())
+            .add_directive("snarkos_node_bft::gateway=debug".parse().unwrap())
+    } else {
+        filter.add_directive("snarkos_node_bft=debug".parse().unwrap())
+    };
 
-        let filter = if verbosity >= 4 {
-            filter.add_directive("snarkos_node_bft::gateway=trace".parse().unwrap())
-        } else {
-            filter.add_directive("snarkos_node_bft::gateway=debug".parse().unwrap())
-        };
+    let filter = if verbosity >= 4 {
+        filter.add_directive("snarkos_node_bft::gateway=trace".parse().unwrap())
+    } else {
+        filter.add_directive("snarkos_node_bft::gateway=debug".parse().unwrap())
+    };
 
-        let filter = if verbosity >= 5 {
-            filter.add_directive("snarkos_node_router=trace".parse().unwrap())
-        } else {
-            filter.add_directive("snarkos_node_router=debug".parse().unwrap())
-        };
+    let filter = if verbosity >= 5 {
+        filter.add_directive("snarkos_node_router=trace".parse().unwrap())
+    } else {
+        filter.add_directive("snarkos_node_router=debug".parse().unwrap())
+    };
 
-        if verbosity >= 6 {
-            filter.add_directive("snarkos_node_tcp=trace".parse().unwrap())
-        } else {
-            filter.add_directive("snarkos_node_tcp=off".parse().unwrap())
-        }
+    if verbosity >= 6 {
+        filter.add_directive("snarkos_node_tcp=trace".parse().unwrap())
+    } else {
+        filter.add_directive("snarkos_node_tcp=off".parse().unwrap())
     }
 }
 
@@ -214,6 +208,7 @@ impl<N: Network> Cli<N> {
         match self.command {
             #[cfg(feature = "node")]
             Command::Run(_) => {
+                use crossterm::tty::IsTty;
                 non_blocking_appender!(stdout = (io::stdout()));
                 layers.push(
                     tracing_subscriber::fmt::layer()
@@ -229,6 +224,7 @@ impl<N: Network> Cli<N> {
             }
         }
 
+        #[cfg(feature = "node")]
         if let Some(loki) = &self.loki {
             let mut builder = tracing_loki::builder();
 
@@ -246,7 +242,7 @@ impl<N: Network> Cli<N> {
             }
 
             let (layer, task) = builder.build_url(loki.to_owned()).expect("bad loki url");
-            thread::spawn(|| {
+            std::thread::spawn(|| {
                 let rt = tokio::runtime::Runtime::new().unwrap();
                 let handle = rt.spawn(task);
                 rt.block_on(handle).unwrap();
@@ -268,8 +264,6 @@ impl<N: Network> Cli<N> {
             Command::Accounts(command) => command.parse::<N>(),
             Command::Genesis(command) => command.parse(),
             Command::Ledger(command) => command.parse(log_level_handler),
-            #[cfg(feature = "node")]
-            Command::Run(command) => command.parse(log_level_handler),
             Command::Auth(command) => command.parse(),
             Command::Program(command) => command.parse(),
             #[cfg(feature = "mangen")]
@@ -280,6 +274,8 @@ impl<N: Network> Cli<N> {
             ),
             #[cfg(feature = "clipages")]
             Command::Md(clipages) => clipages.run::<Cli<N>>(env!("CARGO_PKG_NAME")),
+            #[cfg(feature = "node")]
+            Command::Run(command) => command.parse(log_level_handler),
         }
     }
 }

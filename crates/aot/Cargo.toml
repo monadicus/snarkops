@@ -7,18 +7,21 @@ description = "Ahead of time utilities for SnarkVM, and a wrapper around the Sna
 
 [features]
 default = ["node"]
-flame = ["tracing-flame"]
 node = [
-	"snarkos-node",
-	"crossterm",
+	"dep:crossterm",
+	"dep:futures-util",
+	"dep:http",
+	"dep:metrics-exporter-prometheus",
+	"dep:num_cpus",
+	"dep:snarkos-node",
 	"snarkos-node/metrics",
-	"snarkos-node-metrics",
-	"metrics-exporter-prometheus",
-	"num_cpus",
-	"futures-util",
-	"tokio-tungstenite",
-	"http",
+	"dep:snarkos-node-metrics",
+	"dep:tarpc",
+	"dep:tokio-tungstenite",
+	"dep:tracing-loki",
 ]
+cuda = ["snarkvm/cuda"]
+flame = ["dep:tracing-flame"]
 docpages = ["clipages", "mangen"]
 clipages = ["snops-common/clipages"]
 mangen = ["snops-common/mangen"]
@@ -38,7 +41,7 @@ http = { workspace = true, optional = true }
 indexmap.workspace = true
 metrics-exporter-prometheus = { workspace = true, optional = true }
 nix.workspace = true
-num_cpus = { optional = true, workspace = true }
+num_cpus = { workspace = true, optional = true }
 rayon.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
@@ -51,19 +54,19 @@ snarkos-node-metrics = { workspace = true, optional = true }
 snarkvm = { workspace = true, features = ["ledger"] }
 snops-checkpoint = { workspace = true, features = ["write"] }
 snops-common.workspace = true
-tarpc.workspace = true
+tarpc = { workspace = true, optional = true }
 tokio.workspace = true
 tokio-tungstenite = { workspace = true, optional = true }
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-flame = { workspace = true, optional = true }
-tracing-loki = "0.2.4"
 tracing-subscriber.workspace = true
+tracing-loki = { version = "0.2.4", optional = true }
 rocksdb = { workspace = true, features = ["lz4"] }
 
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-tikv-jemallocator = "0.6"
+tikv-jemallocator = { version = "0.6", default-features = false }
 
 # [dependencies.metrics]
 # package = "snarkos-node-metrics"

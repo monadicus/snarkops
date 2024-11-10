@@ -19,14 +19,3 @@ clap-stdin.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
 serde_json.workspace = true
 snops-common = { workspace = true, features = ["aot_cmds"] }
-thiserror.workspace = true
-
-[build-dependencies]
-anyhow.workspace = true
-clap.workspace = true
-clap_complete.workspace = true
-clap_mangen = { workspace = true, optional = true }
-clap-markdown.workspace = true
-reqwest = { workspace = true, features = ["blocking", "json"] }
-serde_json.workspace = true
-snops-common.workspace = true

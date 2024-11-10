@@ -45,7 +45,7 @@ pub enum Commands<N: Network> {
     View(view::View<N>),
     #[clap(flatten)]
     Truncate(truncate::Truncate),
-    Execute(Execute<N>),
+    Execute(Box<Execute<N>>),
     Query(query::LedgerQuery<N>),
     /// Hash the ledger.
     Hash,

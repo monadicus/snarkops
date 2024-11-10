@@ -13,3 +13,7 @@
 
 # mdbook files
 book
+
+# report files
+report.html
+report.json

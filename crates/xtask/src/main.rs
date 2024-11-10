@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use xshell::{cmd, Shell};
 
@@ -31,8 +31,8 @@ enum Command {
         fix: bool,
     },
 
-    #[cfg(target_os = "linux")]
     /// Install's UPX only on linux.
+    #[cfg(target_os = "linux")]
     InstallUpx,
     /// Builds the project
     Build(Build),
@@ -42,50 +42,63 @@ enum Command {
 
 #[derive(Parser)]
 struct Build {
-    #[clap(long)]
+    /// Uses UPX to compress the binary.
+    #[clap(long, short)]
     compress: bool,
+    /// The profile to build with.
     #[clap(short, long, default_value = "release-big")]
     profile: Profile,
+    /// Use cranelift as the compiler.
     #[clap(long)]
     cranelift: bool,
+    /// Only applies to aot.
+    #[clap(long)]
+    cuda: bool,
+    /// The linker to use for compilation.
+    #[clap(long, short, default_value = "default")]
+    linker: Linker,
+    /// The target binary to build.
     target: BuildTarget,
 }
 
 impl Build {
-    fn run(self, sh: &Shell) -> Result<()> {
+    fn run_inner(&self, sh: &Shell, package: &str) -> Result<()> {
         let profile = self.profile.as_ref();
-        let package = self.target.as_ref();
 
         // if crane lift is enabled, we need to build with nightly
-        let cmd = if self.cranelift {
+        let cmd = if self.cranelift || matches!(self.linker, Linker::RustLld) {
             cmd!(sh, "cargo +nightly build")
         } else {
             cmd!(sh, "cargo build")
         };
         let cmd = cmd.arg("--profile").arg(profile).arg("-p").arg(package);
 
-        // This is broken idk why
-        // // if cranelift is enabled, and the target is not AOT, we can pass additional
-        // // flags
-        // let cmd = if !matches!(self.target, BuildTarget::Aot) && self.cranelift {
-        //     cmd.arg("-Zbuild-std=std,panic_abort")
-        //         .arg("-Zbuild-std-features=panic_immediate_abort")
-        // } else {
-        //     cmd
-        // };
+        let cmd = if self.cuda && matches!(self.target, BuildTarget::Aot) {
+            cmd.arg("--features").arg("cuda")
+        } else {
+            cmd
+        };
 
         // if cranelift is enabled we need to set the env var, and also specify the
         // target
+        let mut env_flags = self.linker.as_ref().to_string();
         let cmd = if self.cranelift {
             // -C panic=abort
-            cmd.env(
-                "RUSTFLAGS",
-                "-Zlocation-detail=none -Zcodegen-backend=cranelift",
-            )
-            .arg("--target")
-            .arg("x86_64-unknown-linux-gnu")
+            env_flags.push_str(" -C lto=no -Zlocation-detail=none -Zcodegen-backend=cranelift -C target-cpu=native");
+            // This is broken >.<
+            // // if cranelift is enabled, and the target is not AOT, we can pass additional
+            // // flags
+            // if !matches!(self.target, BuildTarget::Aot) {
+            //     env_flags.push_str(
+            //         " -Zbuild-std=std,panic_abort
+            // -Zbuild-std-features=panic_immediate_abort",     );
+            // }
+
+            cmd.env("RUSTFLAGS", env_flags)
+                .arg("--target")
+                .arg("x86_64-unknown-linux-gnu")
         } else {
-            cmd
+            cmd.env("RUSTFLAGS", env_flags)
         };
 
         cmd.run()?;
@@ -98,23 +111,81 @@ impl Build {
 
         Ok(())
     }
+    fn run(self, sh: &Shell) -> Result<()> {
+        self.linker.check_installed(sh)?;
+
+        if matches!(self.target, BuildTarget::All) {
+            self.run_inner(sh, "snops-agent")?;
+            self.run_inner(sh, "snops-cli")?;
+            self.run_inner(sh, "snops")?;
+            self.run_inner(sh, "snarkos-aot")?;
+        } else {
+            self.run_inner(sh, self.target.as_ref())?;
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, ValueEnum)]
 enum BuildTarget {
+    All,
+    Agent,
     Aot,
-    Snops,
-    SnopsAgent,
-    SnopsCli,
+    Cli,
+    #[clap(alias = "cp")]
+    ControlPlane,
 }
 
 impl AsRef<str> for BuildTarget {
     fn as_ref(&self) -> &str {
         match self {
+            BuildTarget::All => "",
             BuildTarget::Aot => "snarkos-aot",
-            BuildTarget::Snops => "snops",
-            BuildTarget::SnopsAgent => "snops-agent",
-            BuildTarget::SnopsCli => "snops-cli",
+            BuildTarget::ControlPlane => "snops",
+            BuildTarget::Agent => "snops-agent",
+            BuildTarget::Cli => "snops-cli",
+        }
+    }
+}
+
+#[derive(Clone, ValueEnum, Default)]
+enum Linker {
+    #[default]
+    Default,
+    Lld,
+    Mold,
+    RustLld,
+}
+
+impl Linker {
+    fn check_installed(&self, sh: &Shell) -> Result<()> {
+        match self {
+            Linker::Default => Ok(()),
+            Linker::Lld => {
+                if cmd!(sh, "which ld.lld").read().is_err() {
+                    bail!("lld is not installed, please install it")
+                }
+                Ok(())
+            }
+            Linker::Mold => {
+                if cmd!(sh, "which mold").read().is_err() {
+                    bail!("mold is not installed, please install it")
+                }
+                Ok(())
+            }
+            Linker::RustLld => Ok(()),
+        }
+    }
+}
+
+impl AsRef<str> for Linker {
+    fn as_ref(&self) -> &str {
+        match self {
+            Linker::Default => "",
+            Linker::Lld => "-C link-arg=-fuse-ld=lld",
+            Linker::Mold => "-C linker=clang -C link-arg=-fuse-ld=mold",
+            Linker::RustLld => "-Zlinker-features=-lld",
         }
     }
 }
@@ -216,9 +287,9 @@ fn install_cargo_subcommands(sh: &Shell, subcmd: &'static str) -> Result<()> {
 }
 
 fn udeps(sh: &Shell, fix: bool) -> Result<()> {
-    install_cargo_subcommands(sh, "cargo-machete")?;
-    let cmd = cmd!(sh, "cargo-machete");
-    let cmd = if fix { cmd.arg("fix") } else { cmd };
+    install_cargo_subcommands(sh, "cargo-shear")?;
+    let cmd = cmd!(sh, "cargo-shear");
+    let cmd = if fix { cmd.arg("--fix") } else { cmd };
     cmd.run()?;
     Ok(())
 }
@@ -226,7 +297,7 @@ fn udeps(sh: &Shell, fix: bool) -> Result<()> {
 #[cfg(target_os = "linux")]
 fn install_upx(sh: &Shell) -> Result<()> {
     // Check if upx is already installed and return early if it is
-    if !cmd!(sh, "command -v upx").read()?.is_empty() {
+    if !cmd!(sh, "which upx").read()?.is_empty() {
         return Ok(());
     }
 
@@ -249,22 +320,30 @@ fn dev(sh: &Shell, target: BuildTarget) -> Result<()> {
     install_cargo_subcommands(sh, "cargo-watch")?;
 
     match target {
+        BuildTarget::All => cmd!(
+            sh,
+            "cargo watch -x 'build --profile release-big' -w ./crates/agent -w ./crates/common -w ./crates/checkpoint -w ./crates/controlplane -w ./crates/cli -w ./crates/aot"
+        )
+        .run(),
+        BuildTarget::Agent => cmd!(
+            sh,
+            "cargo watch -x 'build -p snops-agent --profile release-big' -w ./crates/agent -w ./crates/common -w ./crates/checkpoint"
+        )
+        .run(),
         BuildTarget::Aot => cmd!(
             sh,
             "cargo watch -x 'build -p snarkos-aot --profile release-big' -w ./crates/aot"
         )
         .run(),
-        BuildTarget::Snops => cmd!(sh, "cargo watch -x 'run -p snops' -w ./crates/snops").run(),
-        BuildTarget::SnopsAgent => cmd!(
+        BuildTarget::Cli => cmd!(
             sh,
-            "cargo watch -x 'build -p snops-agent --profile release-big' -w ./crates/snops-agent"
+            "cargo watch -x 'build -p snops-cli' -w ./crates/cli"
         )
         .run(),
-        BuildTarget::SnopsCli => cmd!(
-            sh,
-            "cargo watch -x 'build -p snops-cli' -w ./crates/snops-cli"
-        )
-        .run(),
+        BuildTarget::ControlPlane => {
+            cmd!(sh, "cargo watch -x 'run -p snops' -w ./crates/controlplane -w ./crates/common -w ./crates/checkpoint").run()
+        }
+
     }?;
 
     Ok(())
