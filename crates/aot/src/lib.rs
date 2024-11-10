@@ -92,7 +92,7 @@ macro_rules! network_to_circuit {
 
             fn process<'a>() -> &'a Process<$net_name> {
                 static PROCESS: OnceLock<Process<$net_name>> = OnceLock::new();
-                PROCESS.get_or_init(|| Process::load().unwrap())
+                PROCESS.get_or_init(|| Process::load_no_storage().unwrap())
             }
 
             fn credits() -> ProgramID<$net_name> {

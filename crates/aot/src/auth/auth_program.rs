@@ -33,7 +33,7 @@ impl<N: Network> AuthorizeProgram<N> {
     pub fn parse(self) -> Result<(Authorization<N>, u64)> {
         let private_key = self.key.try_get()?;
 
-        let mut process = Process::load()?;
+        let mut process = Process::load_no_storage()?;
         match (self.options.query, self.options.locator.program_id()) {
             (_, id) if *id == N::credits() => {}
             (None, id) => {
