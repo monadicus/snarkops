@@ -6,7 +6,7 @@ use snarkvm::{
     ledger::Deployment,
     prelude::Field,
     synthesizer::{
-        process::{cost_in_microcredits, deployment_cost},
+        process::{cost_in_microcredits_v2, deployment_cost},
         Process,
     },
     utilities::ToBytes,
@@ -181,7 +181,7 @@ pub fn estimate_cost<N: Network>(process: &Process<N>, func: &Authorization<N>) 
         // Retrieve the function name, program id, and program.
         let function_name = *transition.function_name();
         let stack = process.get_stack(transition.program_id())?;
-        let cost = cost_in_microcredits(&stack, &function_name)?;
+        let cost = cost_in_microcredits_v2(&stack, &function_name)?;
 
         // Accumulate the finalize cost.
         if let Some(cost) = finalize_cost.checked_add(cost) {

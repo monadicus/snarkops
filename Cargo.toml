@@ -129,9 +129,9 @@ snops-common = { path = "./crates/common" }
 # snarkos-node-metrics = { version = "3.0" }
 # snarkvm = { version = "1.0", features = ["rocks"] }
 
-snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "c6de459" }
-snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "c6de459" }
-snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "c6de459" }
-snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "4eb83d7", default-features = false, features = [
+snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "6cce476" }
+snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "6cce476" }
+snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "6cce476" }
+snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "0b391d2", default-features = false, features = [
 	"rocks",
 ] }
