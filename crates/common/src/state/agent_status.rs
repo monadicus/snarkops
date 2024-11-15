@@ -3,6 +3,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use super::snarkos_status::SnarkOSStatus;
+use crate::format::DataFormat;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeStatus {
@@ -144,4 +145,45 @@ pub struct AgentStatus {
     pub connected_time: Option<DateTime<Utc>>,
     /// A map of transfers in progress
     pub transfers: IndexMap<TransferId, TransferStatus>,
+}
+
+impl DataFormat for LatestBlockInfo {
+    type Header = u8;
+
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = self.height.write_data(writer)?;
+        written += self.state_root.write_data(writer)?;
+        written += self.block_hash.write_data(writer)?;
+        written += self.previous_hash.write_data(writer)?;
+        written += self.block_timestamp.write_data(writer)?;
+        written += self.update_time.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(crate::format::DataReadError::unsupported(
+                "LatestBlockInfo",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        Ok(LatestBlockInfo {
+            height: u32::read_data(reader, &())?,
+            state_root: String::read_data(reader, &())?,
+            block_hash: String::read_data(reader, &())?,
+            previous_hash: String::read_data(reader, &())?,
+            block_timestamp: i64::read_data(reader, &())?,
+            update_time: DateTime::read_data(reader, &())?,
+        })
+    }
 }

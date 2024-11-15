@@ -4,6 +4,7 @@ use snops_checkpoint::RetentionPolicy;
 
 use crate::{
     binaries::BinaryEntry,
+    format::{DataFormat, DataHeaderOf},
     prelude::StorageId,
     state::{InternedId, LatestBlockInfo, NetworkId},
 };
@@ -40,4 +41,199 @@ pub struct StorageInfo {
     /// A map of the snarkos binary ids to a potential download url (when None,
     /// download from the control plane)
     pub binaries: IndexMap<InternedId, BinaryEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnvInfoHeader {
+    pub version: u8,
+    pub network: DataHeaderOf<NetworkId>,
+    pub storage: DataHeaderOf<StorageInfo>,
+    pub block: DataHeaderOf<LatestBlockInfo>,
+}
+
+impl DataFormat for EnvInfoHeader {
+    type Header = (u8, DataHeaderOf<DataHeaderOf<StorageInfo>>);
+    const LATEST_HEADER: Self::Header = (1, DataHeaderOf::<StorageInfo>::LATEST_HEADER);
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = self.version.write_data(writer)?;
+        written += self.network.write_data(writer)?;
+        written += self.storage.write_data(writer)?;
+        written += self.block.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if header.0 != Self::LATEST_HEADER.0 {
+            return Err(crate::format::DataReadError::unsupported(
+                "EnvInfoHeader",
+                Self::LATEST_HEADER.0,
+                header.0,
+            ));
+        }
+        Ok(Self {
+            version: u8::read_data(reader, &())?,
+            network: DataHeaderOf::<NetworkId>::read_data(reader, &())?,
+            storage: DataHeaderOf::<StorageInfo>::read_data(reader, &header.1)?,
+            block: DataHeaderOf::<LatestBlockInfo>::read_data(reader, &())?,
+        })
+    }
+}
+
+impl DataFormat for EnvInfo {
+    type Header = EnvInfoHeader;
+    const LATEST_HEADER: Self::Header = EnvInfoHeader {
+        version: 1,
+        network: NetworkId::LATEST_HEADER,
+        storage: StorageInfo::LATEST_HEADER,
+        block: LatestBlockInfo::LATEST_HEADER,
+    };
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = self.network.write_data(writer)?;
+        written += self.storage.write_data(writer)?;
+        written += self.block.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if header.version != 1 {
+            return Err(crate::format::DataReadError::unsupported(
+                "EnvInfo",
+                1,
+                header.version,
+            ));
+        }
+        Ok(Self {
+            network: NetworkId::read_data(reader, &header.network)?,
+            storage: StorageInfo::read_data(reader, &header.storage)?,
+            block: Option::<LatestBlockInfo>::read_data(reader, &header.block)?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StorageInfoHeader {
+    pub version: u8,
+    pub retention_policy: DataHeaderOf<RetentionPolicy>,
+    pub binaries: DataHeaderOf<BinaryEntry>,
+}
+
+impl DataFormat for StorageInfoHeader {
+    type Header = u8;
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = self.version.write_data(writer)?;
+        written += self.retention_policy.write_data(writer)?;
+        written += self.binaries.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(crate::format::DataReadError::unsupported(
+                "StorageInfoHeader",
+                Self::LATEST_HEADER,
+                header,
+            ));
+        }
+        Ok(Self {
+            version: u8::read_data(reader, &())?,
+            retention_policy: DataHeaderOf::<RetentionPolicy>::read_data(reader, &((), ()))?,
+            binaries: DataHeaderOf::<BinaryEntry>::read_data(reader, &())?,
+        })
+    }
+}
+
+impl DataFormat for StorageInfo {
+    type Header = StorageInfoHeader;
+
+    const LATEST_HEADER: Self::Header = StorageInfoHeader {
+        version: 1,
+        retention_policy: RetentionPolicy::LATEST_HEADER,
+        binaries: BinaryEntry::LATEST_HEADER,
+    };
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = self.id.write_data(writer)?;
+        written += self.retention_policy.write_data(writer)?;
+        written += self
+            .checkpoints
+            .iter()
+            .map(
+                |CheckpointMeta {
+                     height,
+                     timestamp,
+                     filename,
+                 }| (*height, *timestamp, filename.to_owned()),
+            )
+            .collect::<Vec<_>>()
+            .write_data(writer)?;
+        written += self.persist.write_data(writer)?;
+        written += self.version.write_data(writer)?;
+        written += self.native_genesis.write_data(writer)?;
+        written += self.binaries.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if header.version != 1 {
+            return Err(crate::format::DataReadError::unsupported(
+                "StorageInfo",
+                1,
+                header.version,
+            ));
+        }
+
+        let id = StorageId::read_data(reader, &())?;
+        let retention_policy =
+            Option::<RetentionPolicy>::read_data(reader, &header.retention_policy)?;
+        let checkpoints = Vec::<(u32, i64, String)>::read_data(reader, &((), (), ()))?
+            .into_iter()
+            .map(|(height, timestamp, filename)| CheckpointMeta {
+                height,
+                timestamp,
+                filename,
+            })
+            .collect();
+        let persist = bool::read_data(reader, &())?;
+        let version = u16::read_data(reader, &())?;
+        let native_genesis = bool::read_data(reader, &())?;
+        let binaries =
+            IndexMap::<InternedId, BinaryEntry>::read_data(reader, &((), header.binaries))?;
+        Ok(Self {
+            id,
+            retention_policy,
+            checkpoints,
+            persist,
+            version,
+            native_genesis,
+            binaries,
+        })
+    }
 }

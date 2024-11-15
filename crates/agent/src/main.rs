@@ -35,6 +35,7 @@ use tarpc::server::Channel;
 use tokio::{
     select,
     signal::unix::{signal, Signal, SignalKind},
+    sync::RwLock,
 };
 use tokio_tungstenite::{
     connect_async,
@@ -152,16 +153,27 @@ async fn main() {
     // create the client state
     let state = Arc::new(GlobalState {
         client,
-        db: OpaqueDebug(db),
         _started: Instant::now(),
         connected: Mutex::new(Instant::now()),
         external_addr,
         internal_addrs,
         cli: args,
         endpoint,
-        loki: Default::default(),
-        env_info: Default::default(),
-        agent_state: Default::default(),
+        loki: Mutex::new(db.loki_url()),
+        env_info: RwLock::new(
+            db.env_info()
+                .inspect_err(|e| {
+                    error!("failed to load env info from db: {e}");
+                })
+                .unwrap_or_default(),
+        ),
+        agent_state: RwLock::new(
+            db.agent_state()
+                .inspect_err(|e| {
+                    error!("failed to load agent state from db: {e}");
+                })
+                .unwrap_or_default(),
+        ),
         reconcilation_handle: Default::default(),
         child: Default::default(),
         resolved_addrs: Default::default(),
@@ -171,6 +183,7 @@ async fn main() {
         transfers,
         node_client: Default::default(),
         log_level_handler: reload_handler,
+        db: OpaqueDebug(db),
     });
 
     // start the metrics watcher
@@ -211,6 +224,10 @@ async fn main() {
 
             // invalidate env info cache
             state.env_info.write().await.take();
+            state
+                .db
+                .set_env_info(None)
+                .expect("failed to clear env info");
 
             // attach JWT if we have one
             if let Some(jwt) = state.db.jwt() {

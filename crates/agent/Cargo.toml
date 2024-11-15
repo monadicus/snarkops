@@ -15,6 +15,7 @@ mangen = ["snops-common/mangen"]
 anyhow.workspace = true
 axum = { workspace = true, features = ["http2", "json", "tokio", "ws"] }
 bincode.workspace = true
+bytes.workspace = true
 chrono.workspace = true
 clap.workspace = true
 dashmap.workspace = true

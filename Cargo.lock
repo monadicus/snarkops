@@ -4581,6 +4581,7 @@ dependencies = [
  "anyhow",
  "axum",
  "bincode",
+ "bytes",
  "chrono",
  "clap",
  "dashmap 6.1.0",

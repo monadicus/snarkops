@@ -21,7 +21,7 @@ use tokio::{
     sync::{Mutex as AsyncMutex, RwLock},
     task::AbortHandle,
 };
-use tracing::info;
+use tracing::{error, info};
 
 use crate::{cli::Cli, db::Database, metrics::Metrics, transfers::TransferTx, ReloadHandler};
 
@@ -86,7 +86,11 @@ impl GlobalState {
             bail!("failed to get env info: env not found {env_id}");
         };
 
-        *self.env_info.write().await = Some((env_id, info.clone()));
+        let env_info = (env_id, info.clone());
+        if let Err(e) = self.db.set_env_info(Some(&env_info)) {
+            error!("failed to save env info to db: {e}");
+        }
+        *self.env_info.write().await = Some(env_info);
 
         Ok(info)
     }

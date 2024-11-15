@@ -14,6 +14,7 @@ mod impl_strings;
 mod impl_tuples;
 mod packed_int;
 
+pub use impl_collections::BinaryData;
 pub use packed_int::*;
 use thiserror::Error;
 

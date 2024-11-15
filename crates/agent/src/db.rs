@@ -4,10 +4,14 @@ use std::{
     sync::Mutex,
 };
 
+use bytes::Buf;
 use snops_common::{
+    api::EnvInfo,
     db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
-    format::{DataFormat, DataReadError, DataWriteError},
+    format::{self, read_dataformat, DataFormat, DataReadError, DataWriteError},
+    state::{AgentState, EnvId},
 };
+use url::Url;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -16,6 +20,12 @@ pub enum AgentDbString {
     Jwt,
     /// Process ID of node. Used to keep track of zombie node processes.
     NodePid,
+    // Url to Loki instance, configured by the endpoint.
+    LokiUrl,
+    /// Current state of the agent.
+    AgentState,
+    /// Latest stored environment info.
+    EnvInfo,
 }
 
 impl DataFormat for AgentDbString {
@@ -34,6 +44,9 @@ impl DataFormat for AgentDbString {
         Ok(match u8::read_data(reader, &())? {
             0 => Self::Jwt,
             1 => Self::NodePid,
+            2 => Self::LokiUrl,
+            3 => Self::AgentState,
+            4 => Self::EnvInfo,
             _ => return Err(DataReadError::custom("invalid agent DB string type")),
         })
     }
@@ -49,18 +62,21 @@ pub struct Database {
 
     pub jwt_mutex: Mutex<Option<String>>,
     pub strings: DbTree<AgentDbString, String>,
+    pub documents: DbTree<AgentDbString, format::BinaryData>,
 }
 
 impl DatabaseTrait for Database {
     fn open(path: &Path) -> Result<Self, DatabaseError> {
         let db = sled::open(path)?;
         let strings = DbTree::new(db.open_tree(b"v1/strings")?);
+        let documents = DbTree::new(db.open_tree(b"v1/documents")?);
         let jwt_mutex = Mutex::new(strings.restore(&AgentDbString::Jwt)?);
 
         Ok(Self {
             db,
             jwt_mutex,
             strings,
+            documents,
         })
     }
 }
@@ -76,5 +92,61 @@ impl Database {
             .save_option(&AgentDbString::Jwt, jwt.as_ref())?;
         *lock = jwt;
         Ok(())
+    }
+
+    pub fn set_loki_url(&self, url: Option<String>) -> Result<(), DatabaseError> {
+        self.strings
+            .save_option(&AgentDbString::LokiUrl, url.as_ref())
+    }
+
+    pub fn loki_url(&self) -> Option<Url> {
+        self.strings
+            .restore(&AgentDbString::LokiUrl)
+            .ok()?
+            .and_then(|url| url.parse::<Url>().ok())
+    }
+
+    pub fn env_info(&self) -> Result<Option<(EnvId, EnvInfo)>, DatabaseError> {
+        self.documents
+            .restore(&AgentDbString::EnvInfo)?
+            .map(|format::BinaryData(bytes)| read_dataformat(&mut bytes.reader()))
+            .transpose()
+            .map_err(DatabaseError::from)
+    }
+
+    pub fn set_env_info(&self, info: Option<&(EnvId, EnvInfo)>) -> Result<(), DatabaseError> {
+        if let Some(info) = info {
+            self.documents.save(
+                &AgentDbString::EnvInfo,
+                &format::BinaryData(info.to_byte_vec()?),
+            )
+        } else {
+            self.documents.delete(&AgentDbString::EnvInfo).map(|_| ())
+        }
+    }
+
+    pub fn agent_state(&self) -> Result<AgentState, DatabaseError> {
+        Ok(
+            if let Some(format::BinaryData(bytes)) =
+                self.documents.restore(&AgentDbString::AgentState)?
+            {
+                read_dataformat(&mut bytes.reader())?
+            } else {
+                AgentState::default()
+            },
+        )
+    }
+
+    pub fn set_agent_state(&self, state: Option<&AgentState>) -> Result<(), DatabaseError> {
+        if let Some(state) = state {
+            self.documents.save(
+                &AgentDbString::AgentState,
+                &format::BinaryData(state.to_byte_vec()?),
+            )
+        } else {
+            self.documents
+                .delete(&AgentDbString::AgentState)
+                .map(|_| ())
+        }
     }
 }

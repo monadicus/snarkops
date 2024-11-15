@@ -69,12 +69,23 @@ impl AgentService for AgentRpcServer {
         }
 
         // store loki server URL
-        if let Some(loki) = handshake.loki.and_then(|l| l.parse::<url::Url>().ok()) {
-            self.state
-                .loki
-                .lock()
-                .expect("failed to acquire loki URL lock")
-                .replace(loki);
+        let loki_url = handshake.loki.and_then(|l| l.parse::<url::Url>().ok());
+
+        if let Err(e) = self
+            .state
+            .db
+            .set_loki_url(loki_url.as_ref().map(|u| u.to_string()))
+        {
+            error!("failed to save loki URL to db: {e}");
+        }
+
+        match self.state.loki.lock() {
+            Ok(mut guard) => {
+                *guard = loki_url;
+            }
+            Err(e) => {
+                error!("failed to acquire loki URL lock: {e}");
+            }
         }
 
         // emit the transfer statuses
@@ -191,6 +202,9 @@ impl AgentService for AgentRpcServer {
                 AgentState::Inventory => {
                     // wipe the env info cache. don't want to have stale storage info
                     state.env_info.write().await.take();
+                    if let Err(e) = state.db.set_env_info(None) {
+                        error!("failed to clear env info from db: {e}");
+                    }
                 }
 
                 // start snarkOS node when node
@@ -364,6 +378,9 @@ impl AgentService for AgentRpcServer {
 
             // After completing the reconcilation, update the agent state
             let mut agent_state = state.agent_state.write().await;
+            if let Err(e) = state.db.set_agent_state(Some(&target)) {
+                error!("failed to save agent state to db: {e}");
+            }
             *agent_state = target;
 
             Ok(())

@@ -10,6 +10,37 @@ use super::{
     DataWriteError,
 };
 
+#[derive(Debug, Clone)]
+pub struct BinaryData(pub Vec<u8>);
+impl From<Vec<u8>> for BinaryData {
+    fn from(data: Vec<u8>) -> Self {
+        Self(data)
+    }
+}
+impl From<BinaryData> for Vec<u8> {
+    fn from(data: BinaryData) -> Self {
+        data.0
+    }
+}
+
+impl DataFormat for BinaryData {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        let written = PackedUint::from(self.0.len()).write_data(writer)?;
+        writer.write_all(&self.0)?;
+        Ok(written + self.0.len())
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        let len = usize::from(PackedUint::read_data(reader, &())?);
+        let mut data = Vec::with_capacity(len);
+        reader.read_exact(&mut data)?;
+        Ok(Self(data))
+    }
+}
+
 impl<T: DataFormat + Default + Copy, const N: usize> DataFormat for [T; N] {
     type Header = T::Header;
     const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
