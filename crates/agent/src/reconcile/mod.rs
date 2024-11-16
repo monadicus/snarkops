@@ -1,8 +1,8 @@
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, fmt::Display, time::Duration};
 
 use indexmap::IndexSet;
 
-mod agent;
+pub mod agent;
 mod checkpoint;
 mod files;
 pub use files::*;
@@ -17,11 +17,12 @@ pub enum ReconcileCondition {
     PendingProcess(String),
 }
 
-trait Reconcile<T, E> {
-    async fn reconcile(&self) -> Result<ReconcileStatus<T>, E>;
+pub trait Reconcile<T, E> {
+    async fn reconcile(self) -> Result<ReconcileStatus<T>, E>;
 }
 
 pub struct ReconcileStatus<T> {
+    pub scopes: Vec<String>,
     pub inner: Option<T>,
     pub requeue_after: Option<Duration>,
     pub conditions: IndexSet<ReconcileCondition>,
@@ -36,10 +37,15 @@ impl<T: Default> Default for ReconcileStatus<T> {
 impl<T> ReconcileStatus<T> {
     pub fn new(inner: Option<T>) -> Self {
         Self {
+            scopes: Vec::new(),
             inner,
             requeue_after: None,
             conditions: IndexSet::new(),
         }
+    }
+
+    pub fn with(inner: T) -> Self {
+        Self::new(Some(inner))
     }
 
     pub fn empty() -> Self {
@@ -52,6 +58,7 @@ impl<T> ReconcileStatus<T> {
 
     pub fn replace<U>(&self, inner: Option<U>) -> ReconcileStatus<U> {
         ReconcileStatus {
+            scopes: self.scopes.clone(),
             inner,
             requeue_after: self.requeue_after,
             conditions: self.conditions.clone(),
@@ -61,6 +68,7 @@ impl<T> ReconcileStatus<T> {
     pub fn emptied<U>(&self) -> ReconcileStatus<U> {
         ReconcileStatus {
             inner: None,
+            scopes: self.scopes.clone(),
             requeue_after: self.requeue_after,
             conditions: self.conditions.clone(),
         }
@@ -76,6 +84,11 @@ impl<T> ReconcileStatus<T> {
 
     pub fn requeue_after(mut self, duration: Duration) -> Self {
         self.requeue_after = Some(duration);
+        self
+    }
+
+    pub fn add_scope(mut self, scope: impl Display) -> Self {
+        self.scopes.push(scope.to_string());
         self
     }
 

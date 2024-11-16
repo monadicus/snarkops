@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashSet, net::IpAddr, ops::Deref, path::PathBuf, process::Stdio, sync::Arc,
+    time::Duration,
 };
 
 use snops_common::{
@@ -105,11 +106,12 @@ impl AgentService for AgentRpcServer {
             error!("failed to send transfer statuses: {err}");
         }
 
-        // reconcile if state has changed
-        let needs_reconcile = *self.state.agent_state.read().await != handshake.state;
-        if needs_reconcile {
-            Self::reconcile(self, context, handshake.state).await?;
-        }
+        info!("queing reconcilation on handshake...");
+
+        // Queue a reconcile immediately as we have received new state.
+        // The reconciler will decide if anything has actually changed
+        *self.state.agent_state.write().await = Arc::new(handshake.state);
+        self.state.queue_reconcile(Duration::ZERO).await;
 
         Ok(())
     }
@@ -119,7 +121,11 @@ impl AgentService for AgentRpcServer {
         _: context::Context,
         target: AgentState,
     ) -> Result<(), ReconcileError> {
-        info!("beginning reconcilation...");
+        info!("queing reconcilation...");
+        *self.state.agent_state.write().await = Arc::new(target.clone());
+        self.state.queue_reconcile(Duration::ZERO).await;
+
+        // TODO: remove the following code, handled entirely by the reconciler logic
 
         // acquire the handle lock
         let mut handle_container = self.state.reconcilation_handle.lock().await;
@@ -136,7 +142,7 @@ impl AgentService for AgentRpcServer {
             // previous state cleanup
             let old_state = {
                 let agent_state_lock = state.agent_state.read().await;
-                match agent_state_lock.deref() {
+                match agent_state_lock.as_ref() {
                     // kill existing child if running
                     AgentState::Node(_, node) if node.online => {
                         info!("cleaning up snarkos process...");
@@ -151,7 +157,7 @@ impl AgentService for AgentRpcServer {
 
             // download new storage if storage_id changed
             'storage: {
-                let (is_same_env, is_same_index) = match (&old_state, &target) {
+                let (is_same_env, is_same_index) = match (old_state.as_ref(), &target) {
                     (AgentState::Node(old_env, old_node), AgentState::Node(new_env, new_node)) => {
                         (old_env == new_env, old_node.height.0 == new_node.height.0)
                     }
@@ -383,11 +389,11 @@ impl AgentService for AgentRpcServer {
             }
 
             // After completing the reconcilation, update the agent state
-            let mut agent_state = state.agent_state.write().await;
+            let target = Arc::new(target);
             if let Err(e) = state.db.set_agent_state(Some(&target)) {
                 error!("failed to save agent state to db: {e}");
             }
-            *agent_state = target;
+            *state.agent_state.write().await = target;
 
             Ok(())
         });
@@ -421,7 +427,7 @@ impl AgentService for AgentRpcServer {
 
     async fn get_addrs(self, _: context::Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
         (
-            self.state.cli.ports.clone(),
+            self.state.cli.ports,
             self.state.external_addr,
             self.state.internal_addrs.clone(),
         )
@@ -433,7 +439,7 @@ impl AgentService for AgentRpcServer {
         route: String,
     ) -> Result<String, SnarkosRequestError> {
         let env_id =
-            if let AgentState::Node(env_id, state) = self.state.agent_state.read().await.deref() {
+            if let AgentState::Node(env_id, state) = self.state.agent_state.read().await.as_ref() {
                 if !state.online {
                     return Err(SnarkosRequestError::OfflineNode);
                 }
@@ -472,7 +478,7 @@ impl AgentService for AgentRpcServer {
 
     async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {
         let env_id =
-            if let AgentState::Node(env_id, _) = self.state.agent_state.read().await.deref() {
+            if let AgentState::Node(env_id, _) = self.state.agent_state.read().await.as_ref() {
                 *env_id
             } else {
                 return Err(AgentError::InvalidState);

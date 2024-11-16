@@ -12,6 +12,7 @@ mod transfers;
 
 use std::{
     net::Ipv4Addr,
+    ops::Deref,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -20,13 +21,14 @@ use clap::Parser;
 use cli::Cli;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::init_logging;
+use reconcile::{agent::AgentStateReconciler, Reconcile};
 use snops_common::{db::Database, util::OpaqueDebug};
 use tokio::{
     select,
     signal::unix::{signal, Signal, SignalKind},
-    sync::RwLock,
+    sync::{mpsc, RwLock},
 };
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::state::GlobalState;
 mod log;
@@ -71,6 +73,8 @@ async fn main() {
         .expect("failed to get status server port")
         .port();
 
+    let (queue_reconcile_tx, mut reconcile_requests) = mpsc::channel(5);
+
     // create the client state
     let state = Arc::new(GlobalState {
         client,
@@ -79,6 +83,7 @@ async fn main() {
         internal_addrs,
         cli: args,
         endpoint,
+        queue_reconcile_tx,
         loki: Mutex::new(db.loki_url()),
         env_info: RwLock::new(
             db.env_info()
@@ -89,6 +94,7 @@ async fn main() {
         ),
         agent_state: RwLock::new(
             db.agent_state()
+                .map(Arc::new)
                 .inspect_err(|e| {
                     error!("failed to load agent state from db: {e}");
                 })
@@ -96,7 +102,13 @@ async fn main() {
         ),
         reconcilation_handle: Default::default(),
         child: Default::default(),
-        resolved_addrs: Default::default(),
+        resolved_addrs: RwLock::new(
+            db.resolved_addrs()
+                .inspect_err(|e| {
+                    error!("failed to load resolved addrs from db: {e}");
+                })
+                .unwrap_or_default(),
+        ),
         metrics: Default::default(),
         agent_rpc_port,
         transfer_tx,
@@ -132,12 +144,71 @@ async fn main() {
         }
     });
 
+    let state3 = Arc::clone(&state);
+    let reconcile_loop = Box::pin(async move {
+        let mut err_backoff = 0;
+        let mut reconcile_ctx = Default::default();
+
+        // The first reconcile is scheduled for 5 seconds after startup.
+        // Connecting to the controlplane will likely trigger a reconcile sooner.
+        let mut next_reconcile_at = Instant::now() + Duration::from_secs(5);
+        let mut wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
+
+        loop {
+            // await for the next reconcile, allowing for it to be moved up sooner
+            select! {
+                // replace the next_reconcile_at with the soonest reconcile time
+                Some(new_reconcile_at) = reconcile_requests.recv() => {
+                    next_reconcile_at = next_reconcile_at.min(new_reconcile_at);
+                    wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
+                },
+                _ = &mut wait => {}
+            }
+
+            // drain the reconcile request queue
+            while reconcile_requests.try_recv().is_ok() {}
+            // schedule the next reconcile for 5 minutes from now
+            next_reconcile_at = Instant::now() + Duration::from_secs(5 * 60);
+
+            trace!("reconciling agent state...");
+            match (AgentStateReconciler {
+                agent_state: Arc::clone(state3.agent_state.read().await.deref()),
+                state: Arc::clone(&state3),
+                context: std::mem::take(&mut reconcile_ctx),
+            })
+            .reconcile()
+            .await
+            {
+                Ok(mut status) => {
+                    if let Some(context) = status.inner.take() {
+                        trace!("reconcile completed");
+                        reconcile_ctx = context;
+                    }
+                    if !status.conditions.is_empty() {
+                        trace!("reconcile conditions: {:?}", status.conditions);
+                    }
+                    if let Some(requeue_after) = status.requeue_after {
+                        next_reconcile_at = Instant::now() + requeue_after;
+                    }
+                }
+                Err(e) => {
+                    error!("failed to reconcile agent state: {e}");
+                    err_backoff = (err_backoff + 5).min(30);
+                    next_reconcile_at = Instant::now() + Duration::from_secs(err_backoff);
+                }
+            }
+
+            // TODO: announce reconcile status to the server, throttled
+        }
+    });
+
     select! {
         _ = interrupt.recv_any() => {
             info!("Received interrupt signal, shutting down...");
         },
 
-        _ = connection_loop => unreachable!()
+        _ = connection_loop => unreachable!(),
+        _ = reconcile_loop => unreachable!(),
     }
 
     state.node_graceful_shutdown().await;

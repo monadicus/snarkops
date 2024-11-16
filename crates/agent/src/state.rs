@@ -17,7 +17,7 @@ use tarpc::context;
 use tokio::{
     process::Child,
     select,
-    sync::{Mutex as AsyncMutex, RwLock},
+    sync::{mpsc::Sender, Mutex as AsyncMutex, RwLock},
     task::AbortHandle,
 };
 use tracing::{error, info};
@@ -41,7 +41,12 @@ pub struct GlobalState {
     pub cli: Cli,
     pub endpoint: String,
     pub loki: Mutex<Option<Url>>,
-    pub agent_state: RwLock<AgentState>,
+    /// Desired state the agent should be in. After each reconciliation, the
+    /// agent will attempt to transition to this state.
+    pub agent_state: RwLock<Arc<AgentState>>,
+    /// A sender for emitting the next time to reconcile the agent.
+    /// Helpful for scheduling the next reconciliation.
+    pub queue_reconcile_tx: Sender<Instant>,
     pub env_info: RwLock<Option<(EnvId, EnvInfo)>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,
     pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
@@ -73,6 +78,12 @@ impl GlobalState {
                 AgentPeer::External(addr) => Some(addr.to_string()),
             })
             .collect::<Vec<_>>()
+    }
+
+    pub async fn queue_reconcile(&self, duration: Duration) -> bool {
+        self.queue_reconcile_tx
+            .try_send(Instant::now() + duration)
+            .is_ok()
     }
 
     pub async fn set_env_info(&self, info: Option<(EnvId, EnvInfo)>) {
