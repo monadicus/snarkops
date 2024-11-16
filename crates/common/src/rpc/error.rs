@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
+use crate::state::EnvId;
+
 #[macro_export]
 macro_rules! impl_into_type_str {
     ($name:path) => {
@@ -145,4 +147,20 @@ pub enum ReconcileError {
     Database,
     #[error("unknown error")]
     Unknown,
+}
+
+#[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
+pub enum ReconcileError2 {
+    #[error("node is not connected to the controlplane")]
+    Offline,
+    #[error("env {0} not found")]
+    MissingEnv(EnvId),
+    #[error("unknown error")]
+    Unknown,
+    #[error("rpc error: {0}")]
+    RpcError(String),
+    #[error(transparent)]
+    AddressResolve(#[from] ResolveError),
+    #[error("missing local private key")]
+    MissingLocalPrivateKey,
 }

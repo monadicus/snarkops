@@ -1,15 +1,17 @@
 use std::{
     io::{Read, Write},
+    net::IpAddr,
     path::Path,
     sync::Mutex,
 };
 
 use bytes::Buf;
+use indexmap::IndexMap;
 use snops_common::{
     api::EnvInfo,
     db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
     format::{self, read_dataformat, DataFormat, DataReadError, DataWriteError},
-    state::{AgentState, EnvId},
+    state::{AgentId, AgentState, EnvId},
 };
 use url::Url;
 
@@ -26,6 +28,8 @@ pub enum AgentDbString {
     AgentState,
     /// Latest stored environment info.
     EnvInfo,
+    /// Agent addresses resolved by the controlplane.
+    ResolvedAddrs,
 }
 
 impl DataFormat for AgentDbString {
@@ -146,6 +150,34 @@ impl Database {
         } else {
             self.documents
                 .delete(&AgentDbString::AgentState)
+                .map(|_| ())
+        }
+    }
+
+    pub fn resolved_addrs(&self) -> Result<IndexMap<AgentId, IpAddr>, DatabaseError> {
+        Ok(
+            if let Some(format::BinaryData(bytes)) =
+                self.documents.restore(&AgentDbString::ResolvedAddrs)?
+            {
+                read_dataformat(&mut bytes.reader())?
+            } else {
+                IndexMap::new()
+            },
+        )
+    }
+
+    pub fn set_resolved_addrs(
+        &self,
+        addrs: Option<&IndexMap<AgentId, IpAddr>>,
+    ) -> Result<(), DatabaseError> {
+        if let Some(addrs) = addrs {
+            self.documents.save(
+                &AgentDbString::ResolvedAddrs,
+                &format::BinaryData(addrs.to_byte_vec()?),
+            )
+        } else {
+            self.documents
+                .delete(&AgentDbString::ResolvedAddrs)
                 .map(|_| ())
         }
     }

@@ -5,12 +5,11 @@ use std::sync::{
 
 use chrono::{TimeDelta, Utc};
 use dashmap::{mapref::entry::Entry, DashMap};
-use snops_common::{
-    rpc::control::ControlServiceClient,
-    state::{TransferId, TransferStatus, TransferStatusUpdate},
-};
+use snops_common::state::{TransferId, TransferStatus, TransferStatusUpdate};
 use tarpc::context;
 use tokio::{select, sync::mpsc};
+
+use crate::state::ClientLock;
 
 pub type TransferTx = mpsc::UnboundedSender<(TransferId, TransferStatusUpdate)>;
 
@@ -23,9 +22,7 @@ pub fn next_id() -> TransferId {
     TRANSFER_ID_CTR.fetch_add(1, Ordering::AcqRel)
 }
 
-pub fn start_monitor(
-    client: ControlServiceClient,
-) -> (TransferTx, Arc<DashMap<TransferId, TransferStatus>>) {
+pub fn start_monitor(client: ClientLock) -> (TransferTx, Arc<DashMap<TransferId, TransferStatus>>) {
     let (tx, mut rx) = mpsc::unbounded_channel::<(TransferId, TransferStatusUpdate)>();
     let state_transfers = Arc::new(DashMap::new());
 
@@ -39,7 +36,7 @@ pub fn start_monitor(
                 // cleanup transfers that have ended
                 _ = interval.tick() => {
                     let now = Utc::now();
-                    let client = client.clone();
+                    let client = Arc::clone(&client);
                     transfers.retain(|&id, transfer: &mut TransferStatus| {
                         let is_done = transfer.total_bytes == transfer.downloaded_bytes;
                         let is_error = transfer.interruption.is_some();
@@ -57,6 +54,10 @@ pub fn start_monitor(
                             // send the update to the control plane
                             let client = client.clone();
                             tokio::spawn(async move {
+                                let Some(client) = client.read().await.clone() else {
+                                    return
+                                };
+
                                 if let Err(e) = client.post_transfer_status(context::current(), id, TransferStatusUpdate::Cleanup).await {
                                     tracing::error!("failed to send transfer cleanup update: {e}");
                                 }
@@ -105,6 +106,10 @@ pub fn start_monitor(
                     // send the update to the control plane
                     let client = client.clone();
                     tokio::spawn(async move {
+                         let Some(client) = client.read().await.clone() else {
+                            return
+                        };
+
                         if let Err(e) = client.post_transfer_status(context::current(), id, message).await {
                             tracing::error!("failed to send transfer status update: {e}");
                         }

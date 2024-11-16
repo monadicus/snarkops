@@ -18,7 +18,7 @@ use snops_common::{
                 AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, AgentStatus,
                 Handshake,
             },
-            ControlServiceRequest, ControlServiceResponse,
+            ControlServiceClient, ControlServiceRequest, ControlServiceResponse,
         },
         error::{AgentError, ReconcileError, SnarkosRequestError},
     },
@@ -29,7 +29,8 @@ use tokio::process::Command;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
-    api, make_env_filter,
+    api,
+    log::make_env_filter,
     metrics::MetricComputer,
     reconcile::{self, ensure_correct_binary},
     state::AppState,
@@ -42,6 +43,7 @@ define_rpc_mux!(child;
 
 #[derive(Clone)]
 pub struct AgentRpcServer {
+    pub client: ControlServiceClient,
     pub state: AppState,
     pub version: &'static str,
 }
@@ -78,7 +80,6 @@ impl AgentService for AgentRpcServer {
         {
             error!("failed to save loki URL to db: {e}");
         }
-
         match self.state.loki.lock() {
             Ok(mut guard) => {
                 *guard = loki_url;
@@ -90,7 +91,6 @@ impl AgentService for AgentRpcServer {
 
         // emit the transfer statuses
         if let Err(err) = self
-            .state
             .client
             .post_transfer_statuses(
                 context,
@@ -329,7 +329,7 @@ impl AgentService for AgentRpcServer {
                                 .collect::<Vec<_>>()
                                 .join(",")
                         );
-                        let new_addrs = state
+                        let new_addrs = self
                             .client
                             .resolve_addrs(context::current(), unresolved_addrs)
                             .await
@@ -346,7 +346,13 @@ impl AgentService for AgentRpcServer {
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         );
-                        state.resolved_addrs.write().await.extend(new_addrs);
+                        {
+                            let mut guard = state.resolved_addrs.write().await;
+                            guard.extend(new_addrs);
+                            if let Err(e) = state.db.set_resolved_addrs(Some(&guard)) {
+                                error!("failed to save resolved addrs to db: {e}");
+                            }
+                        }
                     }
 
                     if !node.peers.is_empty() {

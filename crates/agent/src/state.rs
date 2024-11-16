@@ -1,16 +1,15 @@
 use std::{
-    collections::HashMap,
     net::IpAddr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-use anyhow::bail;
 use dashmap::DashMap;
+use indexmap::IndexMap;
 use reqwest::Url;
 use snops_common::{
     api::EnvInfo,
-    rpc::{agent::node::NodeServiceClient, control::ControlServiceClient},
+    rpc::{agent::node::NodeServiceClient, control::ControlServiceClient, error::ReconcileError2},
     state::{AgentId, AgentPeer, AgentState, EnvId, TransferId, TransferStatus},
     util::OpaqueDebug,
 };
@@ -23,18 +22,18 @@ use tokio::{
 };
 use tracing::{error, info};
 
-use crate::{cli::Cli, db::Database, metrics::Metrics, transfers::TransferTx, ReloadHandler};
+use crate::{cli::Cli, db::Database, log::ReloadHandler, metrics::Metrics, transfers::TransferTx};
 
 pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub type AppState = Arc<GlobalState>;
+pub type ClientLock = Arc<RwLock<Option<ControlServiceClient>>>;
 
 /// Global state for this agent runner.
 pub struct GlobalState {
-    pub client: ControlServiceClient,
+    pub client: ClientLock,
     pub db: OpaqueDebug<Database>,
     pub _started: Instant,
-    pub connected: Mutex<Instant>,
 
     pub external_addr: Option<IpAddr>,
     pub internal_addrs: Vec<IpAddr>,
@@ -48,7 +47,7 @@ pub struct GlobalState {
     pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
                                        * not sure yet */
     // Map of agent IDs to their resolved addresses.
-    pub resolved_addrs: RwLock<HashMap<AgentId, IpAddr>>,
+    pub resolved_addrs: RwLock<IndexMap<AgentId, IpAddr>>,
     pub metrics: RwLock<Metrics>,
 
     pub transfer_tx: TransferTx,
@@ -76,15 +75,31 @@ impl GlobalState {
             .collect::<Vec<_>>()
     }
 
-    pub async fn get_env_info(&self, env_id: EnvId) -> anyhow::Result<EnvInfo> {
+    pub async fn set_env_info(&self, info: Option<(EnvId, EnvInfo)>) {
+        if let Err(e) = self.db.set_env_info(info.as_ref()) {
+            error!("failed to save env info to db: {e}");
+        }
+        *self.env_info.write().await = info;
+    }
+
+    pub async fn get_env_info(&self, env_id: EnvId) -> Result<EnvInfo, ReconcileError2> {
         match self.env_info.read().await.as_ref() {
             Some((id, info)) if *id == env_id => return Ok(info.clone()),
             _ => {}
         }
 
-        let Some(info) = self.client.get_env_info(context::current(), env_id).await? else {
-            bail!("failed to get env info: env not found {env_id}");
-        };
+        let client = self
+            .client
+            .read()
+            .await
+            .clone()
+            .ok_or(ReconcileError2::Offline)?;
+
+        let info = client
+            .get_env_info(context::current(), env_id)
+            .await
+            .map_err(|e| ReconcileError2::RpcError(e.to_string()))?
+            .ok_or(ReconcileError2::MissingEnv(env_id))?;
 
         let env_info = (env_id, info.clone());
         if let Err(e) = self.db.set_env_info(Some(&env_info)) {

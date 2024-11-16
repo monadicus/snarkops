@@ -13,6 +13,8 @@ use http::Uri;
 use snops_common::state::{AgentId, AgentModeOptions, PortConfig};
 use tracing::{info, warn};
 
+use crate::net;
+
 pub const ENV_ENDPOINT: &str = "SNOPS_ENDPOINT";
 pub const ENV_ENDPOINT_DEFAULT: &str = "127.0.0.1:1234";
 
@@ -166,5 +168,25 @@ impl Cli {
             ),
             ws_uri,
         )
+    }
+
+    pub fn addrs(&self) -> (Vec<IpAddr>, Option<IpAddr>) {
+        let internal_addrs = match (self.internal, self.external) {
+            // use specified internal address
+            (Some(internal), _) => vec![internal],
+            // use no internal address if the external address is loopback
+            (None, Some(external)) if external.is_loopback() => vec![],
+            // otherwise, get the local network interfaces available to this node
+            (None, _) => net::get_internal_addrs().expect("failed to get network interfaces"),
+        };
+
+        let external_addr = self.external;
+        if let Some(addr) = external_addr {
+            info!("using external addr: {}", addr);
+        } else {
+            info!("skipping external addr");
+        }
+
+        (internal_addrs, external_addr)
     }
 }
