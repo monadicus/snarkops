@@ -6,19 +6,21 @@ pub mod agent;
 mod checkpoint;
 mod files;
 pub use files::*;
+use snops_common::state::TransferId;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ReconcileCondition {
-    /// A file is being downloaded.
-    PendingDownload(String),
+    /// A file is being transferred.
+    PendingTransfer(String, TransferId),
     /// A file is being unpacked.
     PendingUnpack(String),
-    /// A process is being spawned / confirmed
+    /// A process is being spawned / confirmed. Could be starting the node or
+    /// manipulating the ledger
     PendingProcess(String),
 }
 
 pub trait Reconcile<T, E> {
-    async fn reconcile(self) -> Result<ReconcileStatus<T>, E>;
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<T>, E>;
 }
 
 pub struct ReconcileStatus<T> {

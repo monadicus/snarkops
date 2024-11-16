@@ -37,27 +37,24 @@ pub struct AgentStateReconcilerContext {
     command: Option<NodeCommand>,
     // TODO: store active transfers here for monitoring
     // TODO: update api::download_file to receive a transfer id
+    // TODO: allow transfers to be interrupted. potentially allow them to be resumed by using the
+    // file range feature.
 }
 
-impl Reconcile<AgentStateReconcilerContext, ReconcileError2> for AgentStateReconciler {
-    async fn reconcile(
-        self,
-    ) -> Result<ReconcileStatus<AgentStateReconcilerContext>, ReconcileError2> {
+impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
         match self.agent_state.as_ref() {
             AgentState::Inventory => {
                 // TODO: cleanup child process
                 // TODO: cleanup other things
 
-                // return a default context because the node, in inventory, has no state
                 return Ok(ReconcileStatus::default().add_scope("agent_state/inventory"));
             }
             AgentState::Node(env_id, node) => {
                 // node is offline, no need to reconcile
                 if !node.online {
                     // TODO: tear down the node if it is running
-                    return Ok(
-                        ReconcileStatus::with(self.context).add_scope("agent_state/node/offline")
-                    );
+                    return Ok(ReconcileStatus::default().add_scope("agent_state/node/offline"));
                 }
 
                 // TODO: download binaries
@@ -227,18 +224,18 @@ impl NodeCommand {
 }
 
 impl Reconcile<NodeCommand, ReconcileError2> for NodeCommandReconciler {
-    async fn reconcile(self) -> Result<ReconcileStatus<NodeCommand>, ReconcileError2> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<NodeCommand>, ReconcileError2> {
         let NodeCommandReconciler {
             node,
             state,
             env_id,
         } = self;
-        let info = state.get_env_info(env_id).await?;
+        let info = state.get_env_info(*env_id).await?;
 
         // Resolve the addresses of the peers and validators
         let res = AddressResolveReconciler {
-            node: Arc::clone(&node),
-            state: Arc::clone(&state),
+            node: Arc::clone(node),
+            state: Arc::clone(state),
         }
         .reconcile()
         .await?;
@@ -265,7 +262,7 @@ impl Reconcile<NodeCommand, ReconcileError2> for NodeCommandReconciler {
         let run = NodeCommand {
             command_path: state.cli.path.join(SNARKOS_FILE),
             quiet: state.cli.quiet,
-            env_id,
+            env_id: *env_id,
             node_key: node.node_key.clone(),
             loki: state.loki.lock().ok().and_then(|l| l.deref().clone()),
             ledger_path,
@@ -311,7 +308,7 @@ struct AddressResolveReconciler {
 }
 
 impl Reconcile<(), ReconcileError2> for AddressResolveReconciler {
-    async fn reconcile(self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
         let AddressResolveReconciler { state, node } = self;
 
         // Find agents that do not have cached addresses

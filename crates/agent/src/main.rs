@@ -147,7 +147,15 @@ async fn main() {
     let state3 = Arc::clone(&state);
     let reconcile_loop = Box::pin(async move {
         let mut err_backoff = 0;
-        let mut reconcile_ctx = Default::default();
+
+        // Root reconciler that walks through configuring the agent.
+        // The context is mutated while reconciling to keep track of things
+        // like downloads, ledger manipulations, node command, and more.
+        let mut root = AgentStateReconciler {
+            agent_state: Arc::clone(state3.agent_state.read().await.deref()),
+            state: Arc::clone(&state3),
+            context: Default::default(),
+        };
 
         // The first reconcile is scheduled for 5 seconds after startup.
         // Connecting to the controlplane will likely trigger a reconcile sooner.
@@ -170,19 +178,15 @@ async fn main() {
             // schedule the next reconcile for 5 minutes from now
             next_reconcile_at = Instant::now() + Duration::from_secs(5 * 60);
 
+            // update the reconciler with the latest agent state
+            // this prevents the agent state from changing during reconciliation
+            root.agent_state = state3.agent_state.read().await.deref().clone();
+
             trace!("reconciling agent state...");
-            match (AgentStateReconciler {
-                agent_state: Arc::clone(state3.agent_state.read().await.deref()),
-                state: Arc::clone(&state3),
-                context: std::mem::take(&mut reconcile_ctx),
-            })
-            .reconcile()
-            .await
-            {
-                Ok(mut status) => {
-                    if let Some(context) = status.inner.take() {
+            match root.reconcile().await {
+                Ok(status) => {
+                    if status.inner.is_some() {
                         trace!("reconcile completed");
-                        reconcile_ctx = context;
                     }
                     if !status.conditions.is_empty() {
                         trace!("reconcile conditions: {:?}", status.conditions);
