@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use tokio::task::AbortHandle;
 
 use super::snarkos_status::SnarkOSStatus;
 use crate::format::DataFormat;
@@ -100,7 +101,11 @@ pub enum TransferStatusUpdate {
         total: u64,
         /// The time the transfer started.
         time: DateTime<Utc>,
+        // The transfer's abort handle, if any.
     },
+    // Client only - specifies a handle to abort the transfer task
+    #[serde(skip)]
+    Handle(AbortHandle),
     /// The transfer has made progress.
     Progress {
         /// The current number of bytes transferred.
@@ -129,6 +134,21 @@ pub struct TransferStatus {
     pub total_bytes: u64,
     /// A transfer interruption reason, if any.
     pub interruption: Option<String>,
+    /// The transfer's abort handle, if any.
+    #[serde(skip)]
+    pub handle: Option<AbortHandle>,
+}
+
+impl TransferStatus {
+    pub fn is_pending(&self) -> bool {
+        self.interruption.is_none() && self.downloaded_bytes < self.total_bytes
+    }
+    pub fn is_interrupted(&self) -> bool {
+        self.interruption.is_some()
+    }
+    pub fn is_complete(&self) -> bool {
+        self.downloaded_bytes >= self.total_bytes
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

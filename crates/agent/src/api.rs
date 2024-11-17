@@ -12,7 +12,8 @@ use reqwest::IntoUrl;
 use sha2::{Digest, Sha256};
 use snops_common::{
     binaries::{BinaryEntry, BinarySource},
-    state::TransferStatusUpdate,
+    rpc::error::ReconcileError2,
+    state::{TransferId, TransferStatusUpdate},
     util::sha256_file,
 };
 use tokio::{fs::File, io::AsyncWriteExt};
@@ -24,6 +25,7 @@ const TRANSFER_UPDATE_RATE: Duration = Duration::from_secs(2);
 
 /// Download a file. Returns a None if 404.
 pub async fn download_file(
+    tx_id: TransferId,
     client: &reqwest::Client,
     url: impl IntoUrl,
     to: impl AsRef<Path>,
@@ -35,8 +37,7 @@ pub async fn download_file(
         return Ok(None);
     }
 
-    // create a new transfer
-    let tx_id = transfers::next_id();
+    // start a new transfer
     transfer_tx.send((
         tx_id,
         TransferStatusUpdate::Start {
@@ -105,7 +106,7 @@ pub async fn check_file(
 ) -> anyhow::Result<()> {
     let client = reqwest::Client::new();
 
-    if !should_download_file(&client, url.as_str(), to, None)
+    if !should_download_file(&client, url.as_str(), to, None, None, false)
         .await
         .unwrap_or(true)
     {
@@ -113,7 +114,9 @@ pub async fn check_file(
     }
 
     info!("downloading {to:?}");
-    download_file(&client, url, to, transfer_tx).await?;
+
+    let tx_id = transfers::next_id();
+    download_file(tx_id, &client, url, to, transfer_tx).await?;
 
     Ok(())
 }
@@ -136,9 +139,16 @@ pub async fn check_binary(
 
     // this also checks for sha256 differences, along with last modified time
     // against the target
-    if !should_download_file(&client, &source_url, path, Some(binary))
-        .await
-        .unwrap_or(true)
+    if !should_download_file(
+        &client,
+        &source_url,
+        path,
+        binary.size,
+        binary.sha256.as_deref(),
+        false,
+    )
+    .await
+    .unwrap_or(true)
     {
         // check permissions and ensure 0o755
         let perms = path.metadata()?.permissions();
@@ -152,7 +162,9 @@ pub async fn check_binary(
     }
     info!("downloading binary update to {}: {binary}", path.display());
 
-    let Some((file, sha256, size)) = download_file(&client, &source_url, path, transfer_tx).await?
+    let tx_id = transfers::next_id();
+    let Some((file, sha256, size)) =
+        download_file(tx_id, &client, &source_url, path, transfer_tx).await?
     else {
         bail!("downloading binary returned 404");
     };
@@ -190,43 +202,73 @@ pub async fn should_download_file(
     client: &reqwest::Client,
     loc: &str,
     path: &Path,
-    binary: Option<&BinaryEntry>,
-) -> anyhow::Result<bool> {
+    size: Option<u64>,
+    sha256: Option<&str>,
+    offline: bool,
+) -> Result<bool, ReconcileError2> {
     if !path.exists() {
         return Ok(true);
     }
 
-    let meta = tokio::fs::metadata(&path).await?;
+    let meta = tokio::fs::metadata(&path)
+        .await
+        .map_err(|e| ReconcileError2::FileStatError(path.to_path_buf(), e.to_string()))?;
     let local_content_length = meta.len();
 
     // if the binary entry is provided, check if the file size and sha256 match
-    if let Some(binary) = binary {
-        // file size is incorrect
-        if binary.size.is_some_and(|s| s != local_content_length) {
-            return Ok(true);
-        }
+    // file size is incorrect
+    if size.is_some_and(|s| s != local_content_length) {
+        return Ok(true);
+    }
 
-        // if sha256 is present, only download if the sha256 is different
-        if let Some(sha256) = binary.sha256.as_ref() {
-            return Ok(sha256_file(&path.to_path_buf())? != sha256.to_ascii_lowercase());
-        }
+    // if sha256 is present, only download if the sha256 is different
+    if let Some(sha256) = sha256 {
+        return Ok(sha256_file(&path.to_path_buf())
+            .map_err(|e| ReconcileError2::FileReadError(path.to_path_buf(), e.to_string()))?
+            != sha256.to_ascii_lowercase());
+    }
+
+    // if we're offline, don't download
+    if offline {
+        return Ok(false);
     }
 
     // check last modified
-    let res = client.head(loc).send().await?;
+    let res = client
+        .head(loc)
+        .send()
+        .await
+        .map_err(|e| ReconcileError2::HttpError {
+            method: String::from("HEAD"),
+            url: loc.to_owned(),
+            error: e.to_string(),
+        })?;
 
-    let Some(last_modified_header) = res.headers().get(http::header::LAST_MODIFIED) else {
+    let Some(last_modified_header) = res
+        .headers()
+        .get(http::header::LAST_MODIFIED)
+        // parse as a string
+        .and_then(|e| e.to_str().ok())
+    else {
         return Ok(true);
     };
 
-    let Some(content_length_header) = res.headers().get(http::header::CONTENT_LENGTH) else {
+    let Some(remote_content_length) = res
+        .headers()
+        .get(http::header::CONTENT_LENGTH)
+        // parse the header as a u64
+        .and_then(|e| e.to_str().ok().and_then(|s| s.parse::<u64>().ok()))
+    else {
         return Ok(true);
     };
 
-    let remote_last_modified = httpdate::parse_http_date(last_modified_header.to_str()?)?;
-    let local_last_modified = meta.modified()?;
+    let remote_last_modified = httpdate::parse_http_date(last_modified_header);
+    let local_last_modified = meta
+        .modified()
+        .map_err(|e| ReconcileError2::FileStatError(path.to_path_buf(), e.to_string()))?;
 
-    let remote_content_length = content_length_header.to_str()?.parse::<u64>()?;
-
-    Ok(remote_last_modified > local_last_modified || remote_content_length != local_content_length)
+    Ok(remote_last_modified
+        .map(|res| res > local_last_modified)
+        .unwrap_or(true)
+        || remote_content_length != local_content_length)
 }

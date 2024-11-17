@@ -4,6 +4,7 @@ use indexmap::IndexSet;
 
 pub mod agent;
 mod checkpoint;
+pub mod command;
 mod files;
 pub use files::*;
 use snops_common::state::TransferId;
@@ -17,6 +18,12 @@ pub enum ReconcileCondition {
     /// A process is being spawned / confirmed. Could be starting the node or
     /// manipulating the ledger
     PendingProcess(String),
+    /// A tranfer was started and interrupted.
+    InterruptedTransfer(String, TransferId, String),
+    /// A file is missing and cannot be downloaded at the moment.
+    MissingFile(String),
+    /// Waiting to reconnect to the controlplane
+    PendingConnection,
 }
 
 pub trait Reconcile<T, E> {

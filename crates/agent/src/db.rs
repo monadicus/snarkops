@@ -2,7 +2,7 @@ use std::{
     io::{Read, Write},
     net::IpAddr,
     path::Path,
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 use bytes::Buf;
@@ -110,7 +110,7 @@ impl Database {
             .and_then(|url| url.parse::<Url>().ok())
     }
 
-    pub fn env_info(&self) -> Result<Option<(EnvId, EnvInfo)>, DatabaseError> {
+    pub fn env_info(&self) -> Result<Option<(EnvId, Arc<EnvInfo>)>, DatabaseError> {
         self.documents
             .restore(&AgentDbString::EnvInfo)?
             .map(|format::BinaryData(bytes)| read_dataformat(&mut bytes.reader()))
@@ -118,7 +118,7 @@ impl Database {
             .map_err(DatabaseError::from)
     }
 
-    pub fn set_env_info(&self, info: Option<&(EnvId, EnvInfo)>) -> Result<(), DatabaseError> {
+    pub fn set_env_info(&self, info: Option<(EnvId, Arc<EnvInfo>)>) -> Result<(), DatabaseError> {
         if let Some(info) = info {
             self.documents.save(
                 &AgentDbString::EnvInfo,

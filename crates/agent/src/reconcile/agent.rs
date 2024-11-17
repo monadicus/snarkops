@@ -1,26 +1,25 @@
 use std::{
-    collections::HashSet, net::IpAddr, ops::Deref, path::PathBuf, process::Stdio, sync::Arc,
+    collections::HashSet,
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
-use indexmap::IndexMap;
-use snops_checkpoint::RetentionPolicy;
 use snops_common::{
     api::EnvInfo,
-    constant::{
-        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
-    },
+    binaries::{BinaryEntry, BinarySource},
+    constant::SNARKOS_FILE,
     rpc::error::ReconcileError2,
     state::{
-        AgentId, AgentPeer, AgentState, EnvId, InternedId, KeyState, NetworkId, NodeKey, NodeState,
-        PortConfig,
+        AgentId, AgentPeer, AgentState, InternedId, NetworkId, NodeState, StorageId, TransferId,
     },
 };
 use tarpc::context;
-use tokio::process::Command;
-use tracing::{error, warn};
-use url::Url;
+use tracing::{error, trace, warn};
 
-use super::{Reconcile, ReconcileStatus};
+use super::{
+    command::NodeCommand, default_binary, FileReconciler, Reconcile, ReconcileCondition,
+    ReconcileStatus,
+};
 use crate::state::GlobalState;
 
 /// Attempt to reconcile the agent's current state.
@@ -32,11 +31,39 @@ pub struct AgentStateReconciler {
 }
 
 #[derive(Default)]
+struct TransfersContext {
+    // TODO: persist network_id, storage_id, and storage_version
+    network_id: NetworkId,
+    storage_id: StorageId,
+    storage_version: u16,
+    /// Metadata about an active binary transfer
+    binary_transfer: Option<(TransferId, BinaryEntry)>,
+    /// Time the binary was marked as OK
+    binary_ok_at: Option<Instant>,
+    /// Metadata about an active genesis block transfer
+    genesis_transfer: Option<TransferId>,
+    /// Time the genesis block was marked as OK
+    genesis_ok_at: Option<Instant>,
+    /// Metadata about an active ledger transfer
+    ledger_transfer: Option<TransferId>,
+    /// Time the ledger was marked as OK
+    ledger_ok_at: Option<Instant>,
+}
+
+impl TransfersContext {
+    pub fn changed(&self, env_info: &EnvInfo) -> bool {
+        env_info.storage.version != self.storage_version
+            || env_info.storage.id != self.storage_id
+            || env_info.network != self.network_id
+    }
+}
+
+#[derive(Default)]
 pub struct AgentStateReconcilerContext {
     /// All parameters needed to build the command to start the node
     command: Option<NodeCommand>,
-    // TODO: store active transfers here for monitoring
-    // TODO: update api::download_file to receive a transfer id
+    /// Information about active transfers
+    transfers: Option<TransfersContext>,
     // TODO: allow transfers to be interrupted. potentially allow them to be resumed by using the
     // file range feature.
 }
@@ -51,10 +78,127 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 return Ok(ReconcileStatus::default().add_scope("agent_state/inventory"));
             }
             AgentState::Node(env_id, node) => {
+                let env_info = self.state.get_env_info(*env_id).await?;
+
+                // Check if the storage version, storage id, or network id has changed
+                let storage_has_changed = self
+                    .context
+                    .transfers
+                    .as_ref()
+                    .map(|t| t.changed(&env_info))
+                    .unwrap_or(true);
+
+                // If the node should be torn down, or the storage has changed, we need to
+                // gracefully shut down the node.
+                let shutdown_pending = !node.online || storage_has_changed;
+
                 // node is offline, no need to reconcile
                 if !node.online {
                     // TODO: tear down the node if it is running
                     return Ok(ReconcileStatus::default().add_scope("agent_state/node/offline"));
+                }
+
+                let node_arc = Arc::new(*node.clone());
+
+                if storage_has_changed {
+                    // TODO: abort any ongoing transfers, then requeue
+                }
+
+                // initialize the transfers context with the current status
+                if self.context.transfers.is_none() {
+                    // TODO: write this to the db
+                    self.context.transfers = Some(TransfersContext {
+                        network_id: env_info.network,
+                        storage_id: env_info.storage.id,
+                        storage_version: env_info.storage.version,
+                        ..Default::default()
+                    });
+                }
+                let transfers = self.context.transfers.as_mut().unwrap();
+
+                // Resolve the node's binary
+                // TODO: move into BinaryReconciler
+                'binary: {
+                    // Binary entry for the node
+                    let default_binary = default_binary(&env_info);
+                    let target_binary = env_info
+                        .storage
+                        .binaries
+                        .get(&node.binary.unwrap_or_default())
+                        .unwrap_or(&default_binary);
+
+                    // Check if the binary has changed
+                    let binary_has_changed = transfers
+                        .binary_transfer
+                        .as_ref()
+                        .map(|(_, b)| b != target_binary)
+                        .unwrap_or(true);
+                    let binary_is_ok = transfers
+                        .binary_ok_at
+                        .map(|ok| ok.elapsed().as_secs() < 300) // check if the binary has been OK for 5 minutes
+                        .unwrap_or(false);
+
+                    // If the binary has not changed and has not expired, we can skip the binary
+                    // reconciler
+                    if !binary_has_changed && binary_is_ok {
+                        break 'binary;
+                    }
+
+                    let src = match &target_binary.source {
+                        BinarySource::Url(url) => url.clone(),
+                        BinarySource::Path(path) => {
+                            let url = format!("{}{}", &self.state.endpoint, path.display());
+                            url.parse::<reqwest::Url>()
+                                .map_err(|e| ReconcileError2::UrlParseError(url, e.to_string()))?
+                        }
+                    };
+                    let dst = self.state.cli.path.join(SNARKOS_FILE);
+
+                    let is_api_offline = self.state.client.read().await.is_none();
+
+                    let binary_res = FileReconciler::new(Arc::clone(&self.state), src, dst)
+                        .with_offline(target_binary.is_api_file() && is_api_offline)
+                        .with_binary(target_binary)
+                        .with_tx_id(transfers.binary_transfer.as_ref().map(|(tx, _)| *tx))
+                        .reconcile()
+                        .await?;
+
+                    // transfer is pending or a failure occurred
+                    if binary_res.is_requeue() {
+                        return Ok(binary_res.emptied().add_scope("binary_reconcile/requeue"));
+                    }
+
+                    match binary_res.inner {
+                        // If the binary is OK, update the context
+                        Some(true) => {
+                            transfers.binary_ok_at = Some(Instant::now());
+                        }
+                        // If the binary is not OK, we will wait for the endpoint to come back
+                        // online...
+                        Some(false) => {
+                            trace!(
+                                "binary is not OK, waiting for the endpoint to come back online..."
+                            );
+                            return Ok(ReconcileStatus::empty()
+                                .add_condition(ReconcileCondition::PendingConnection)
+                                .add_scope("binary_reconcile/offline")
+                                .requeue_after(Duration::from_secs(5)));
+                        }
+                        None => unreachable!("file reconciler returns a result when not requeued"),
+                    }
+                }
+
+                // Resolve the addresses of the peers and validators
+                // TODO: Set an expiry for resolved addresses
+                let addr_res = AddressResolveReconciler {
+                    node: Arc::clone(&node_arc),
+                    state: Arc::clone(&self.state),
+                }
+                .reconcile()
+                .await?;
+
+                if addr_res.is_requeue() {
+                    return Ok(addr_res.add_scope("address_resolve/requeue"));
                 }
 
                 // TODO: download binaries
@@ -63,21 +207,16 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
 
                 // TODO: requeue if the binaries are not ready
 
-                let command_res = NodeCommandReconciler {
-                    env_id: *env_id,
-                    node: Arc::new(*node.clone()),
-                    state: Arc::clone(&self.state),
-                }
-                .reconcile()
+                // Accumulate all the fields that are used to derive the command that starts
+                // the node.
+                // This will be used to determine if the command has changed at all.
+                let command = NodeCommand::new(
+                    Arc::clone(&self.state),
+                    node_arc,
+                    *env_id,
+                    Arc::clone(&env_info),
+                )
                 .await?;
-
-                if command_res.is_requeue() {
-                    return Ok(command_res.emptied().add_scope("agent_state/node/requeue"));
-                }
-
-                let Some(command) = command_res.take() else {
-                    return Ok(ReconcileStatus::default().add_scope("agent_state/node/no_command"));
-                };
 
                 if self.context.command.as_ref() != Some(&command) {
                     // TODO: OK to restart the node -- command has changed
@@ -91,211 +230,6 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
         }
 
         Ok(ReconcileStatus::empty())
-    }
-}
-
-/// Given a node state, construct the command needed to start the node
-struct NodeCommandReconciler {
-    node: Arc<NodeState>,
-    state: Arc<GlobalState>,
-    env_id: EnvId,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct NodeCommand {
-    /// Path to the snarkos binary
-    command_path: PathBuf,
-    /// If true, do not print stdout
-    quiet: bool,
-    /// Environment ID (used in loki)
-    env_id: EnvId,
-    /// Node key (drives NETWORK env)
-    network: NetworkId,
-    /// Node key (derives node type and loki)
-    node_key: NodeKey,
-    /// URL for sending logs to loki
-    loki: Option<Url>,
-    /// Path to the ledger directory
-    ledger_path: PathBuf,
-    /// Path to place the log file
-    log_path: PathBuf,
-    /// Path to genesis block. When absent, use the network's genesis block.
-    genesis_path: Option<PathBuf>,
-    /// Env variables to pass to the node
-    env: IndexMap<String, String>,
-    /// Port to bind the agent's RPC server for node status
-    agent_rpc_port: u16,
-    /// Address to bind the node to
-    bind_addr: IpAddr,
-    /// Port configuration for the node
-    ports: PortConfig,
-    /// Private key to use for the node
-    private_key: Option<String>,
-    /// Path to a file containing the private key
-    private_key_file: Option<PathBuf>,
-    /// Retention policy for the node
-    retention_policy: Option<RetentionPolicy>,
-    /// Resolved peer addresses for the node
-    peers: Vec<String>,
-    /// Resolved validator addresses for the node
-    validators: Vec<String>,
-}
-
-impl NodeCommand {
-    fn build(&self) -> Command {
-        let mut command = Command::new(&self.command_path);
-
-        // set stdio
-        if self.quiet {
-            command.stdout(Stdio::null());
-        } else {
-            command.stdout(std::io::stdout());
-        }
-        command.stderr(std::io::stderr());
-
-        // add loki URL if one is set
-        if let Some(loki) = &self.loki {
-            command
-                .env(
-                    "SNOPS_LOKI_LABELS",
-                    format!("env_id={},node_key={}", self.env_id, self.node_key),
-                )
-                .arg("--loki")
-                .arg(loki.as_str());
-        }
-
-        // setup the run command
-        command
-            .stderr(std::io::stderr())
-            .envs(&self.env)
-            .env("NETWORK", self.network.to_string())
-            .env("HOME", &self.ledger_path)
-            .arg("--log")
-            .arg(&self.log_path)
-            .arg("run")
-            .arg("--agent-rpc-port")
-            .arg(self.agent_rpc_port.to_string())
-            .arg("--type")
-            .arg(self.node_key.ty.to_string())
-            .arg("--ledger")
-            .arg(&self.ledger_path);
-
-        if let Some(genesis) = &self.genesis_path {
-            command.arg("--genesis").arg(genesis);
-        }
-
-        // storage configuration
-        command
-            // port configuration
-            .arg("--bind")
-            .arg(self.bind_addr.to_string())
-            .arg("--bft")
-            .arg(self.ports.bft.to_string())
-            .arg("--rest")
-            .arg(self.ports.rest.to_string())
-            .arg("--metrics")
-            .arg(self.ports.metrics.to_string())
-            .arg("--node")
-            .arg(self.ports.node.to_string());
-
-        if let Some(pk) = &self.private_key {
-            command.arg("--private-key").arg(pk);
-        }
-
-        if let Some(pk_file) = &self.private_key_file {
-            command.arg("--private-key-file").arg(pk_file);
-        }
-
-        // conditionally add retention policy
-        if let Some(policy) = &self.retention_policy {
-            command.arg("--retention-policy").arg(policy.to_string());
-        }
-
-        if !self.peers.is_empty() {
-            command.arg("--peers").arg(self.peers.join(","));
-        }
-
-        if !self.validators.is_empty() {
-            command.arg("--validators").arg(self.validators.join(","));
-        }
-
-        command
-    }
-}
-
-impl Reconcile<NodeCommand, ReconcileError2> for NodeCommandReconciler {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<NodeCommand>, ReconcileError2> {
-        let NodeCommandReconciler {
-            node,
-            state,
-            env_id,
-        } = self;
-        let info = state.get_env_info(*env_id).await?;
-
-        // Resolve the addresses of the peers and validators
-        let res = AddressResolveReconciler {
-            node: Arc::clone(node),
-            state: Arc::clone(state),
-        }
-        .reconcile()
-        .await?;
-
-        if res.is_requeue() {
-            return Ok(res
-                .emptied()
-                .add_scope("node_command/address_resolve/requeue"));
-        }
-
-        let storage_path = state
-            .cli
-            .path
-            .join("storage")
-            .join(info.network.to_string())
-            .join(info.storage.id.to_string());
-
-        let ledger_path = if info.storage.persist {
-            storage_path.join(LEDGER_PERSIST_DIR)
-        } else {
-            state.cli.path.join(LEDGER_BASE_DIR)
-        };
-
-        let run = NodeCommand {
-            command_path: state.cli.path.join(SNARKOS_FILE),
-            quiet: state.cli.quiet,
-            env_id: *env_id,
-            node_key: node.node_key.clone(),
-            loki: state.loki.lock().ok().and_then(|l| l.deref().clone()),
-            ledger_path,
-            log_path: state.cli.path.join(SNARKOS_LOG_FILE),
-            genesis_path: (!info.storage.native_genesis)
-                .then(|| storage_path.join(SNARKOS_GENESIS_FILE)),
-            network: info.network,
-            env: node.env.clone(),
-            agent_rpc_port: state.agent_rpc_port,
-            bind_addr: state.cli.bind_addr,
-            ports: state.cli.ports,
-            private_key: if let KeyState::Literal(pk) = &node.private_key {
-                Some(pk.clone())
-            } else {
-                None
-            },
-            private_key_file: if let KeyState::Local = &node.private_key {
-                Some(
-                    state
-                        .cli
-                        .private_key_file
-                        .clone()
-                        .ok_or(ReconcileError2::MissingLocalPrivateKey)?,
-                )
-            } else {
-                None
-            },
-            peers: state.agentpeers_to_cli(&node.peers).await,
-            validators: state.agentpeers_to_cli(&node.validators).await,
-            retention_policy: info.storage.retention_policy.clone(),
-        };
-
-        Ok(ReconcileStatus::new(Some(run)))
     }
 }
 
@@ -351,6 +285,8 @@ impl Reconcile<(), ReconcileError2> for AddressResolveReconciler {
         );
 
         // Resolve the addresses
+        // TODO: turn this into a background process so the reconcile operation can run
+        // instantly
         let new_addrs = client
             .resolve_addrs(context::current(), unresolved_addrs)
             .await
@@ -379,7 +315,6 @@ impl Reconcile<(), ReconcileError2> for AddressResolveReconciler {
 
 /// Download a specific binary file needed to run the node
 struct BinaryReconciler {
-    binary_id: Option<InternedId>,
     state: Arc<GlobalState>,
     info: EnvInfo,
 }

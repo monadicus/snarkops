@@ -47,7 +47,7 @@ pub struct GlobalState {
     /// A sender for emitting the next time to reconcile the agent.
     /// Helpful for scheduling the next reconciliation.
     pub queue_reconcile_tx: Sender<Instant>,
-    pub env_info: RwLock<Option<(EnvId, EnvInfo)>>,
+    pub env_info: RwLock<Option<(EnvId, Arc<EnvInfo>)>>,
     pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,
     pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
                                        * not sure yet */
@@ -86,14 +86,14 @@ impl GlobalState {
             .is_ok()
     }
 
-    pub async fn set_env_info(&self, info: Option<(EnvId, EnvInfo)>) {
-        if let Err(e) = self.db.set_env_info(info.as_ref()) {
+    pub async fn set_env_info(&self, info: Option<(EnvId, Arc<EnvInfo>)>) {
+        if let Err(e) = self.db.set_env_info(info.clone()) {
             error!("failed to save env info to db: {e}");
         }
         *self.env_info.write().await = info;
     }
 
-    pub async fn get_env_info(&self, env_id: EnvId) -> Result<EnvInfo, ReconcileError2> {
+    pub async fn get_env_info(&self, env_id: EnvId) -> Result<Arc<EnvInfo>, ReconcileError2> {
         match self.env_info.read().await.as_ref() {
             Some((id, info)) if *id == env_id => return Ok(info.clone()),
             _ => {}
@@ -112,13 +112,13 @@ impl GlobalState {
             .map_err(|e| ReconcileError2::RpcError(e.to_string()))?
             .ok_or(ReconcileError2::MissingEnv(env_id))?;
 
-        let env_info = (env_id, info.clone());
-        if let Err(e) = self.db.set_env_info(Some(&env_info)) {
+        let env_info = (env_id, Arc::new(info));
+        if let Err(e) = self.db.set_env_info(Some(env_info.clone())) {
             error!("failed to save env info to db: {e}");
         }
-        *self.env_info.write().await = Some(env_info);
+        *self.env_info.write().await = Some(env_info.clone());
 
-        Ok(info)
+        Ok(env_info.1)
     }
 
     /// Attempt to gracefully shutdown the node if one is running.

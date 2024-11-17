@@ -80,6 +80,7 @@ pub fn start_monitor(client: ClientLock) -> (TransferTx, Arc<DashMap<TransferId,
                                 total_bytes: total,
                                 downloaded_bytes: 0,
                                 interruption: None,
+                                handle: None,
                             });
                         },
 
@@ -98,6 +99,11 @@ pub fn start_monitor(client: ClientLock) -> (TransferTx, Arc<DashMap<TransferId,
                             }
                             transfer.interruption = interruption;
                             transfer.updated_at = Utc::now();
+                        },
+
+                        (Handle(handle), Entry::Occupied(mut ent)) => {
+                            let transfer = ent.get_mut();
+                            transfer.handle = Some(handle);
                         },
 
                         _ => continue,

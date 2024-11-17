@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -163,4 +165,20 @@ pub enum ReconcileError2 {
     AddressResolve(#[from] ResolveError),
     #[error("missing local private key")]
     MissingLocalPrivateKey,
+    #[error("failed to create directory {0}: {1}")]
+    CreateDirectory(PathBuf, String),
+    #[error("failed to get metadata for {0}: {1}")]
+    FileStatError(PathBuf, String),
+    #[error("failed to read file {0}: {1}")]
+    FileReadError(PathBuf, String),
+    #[error("failed to make {method} request {url}: {error}")]
+    HttpError {
+        method: String,
+        url: String,
+        error: String,
+    },
+    #[error("failed to set file permissions {0}: {1}")]
+    FilePermissionError(PathBuf, String),
+    #[error("failed to parse {0} as a url: {1}")]
+    UrlParseError(String, String),
 }

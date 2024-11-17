@@ -1,5 +1,8 @@
-use std::path::PathBuf;
+use std::{
+    fs::Permissions, os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc, time::Duration,
+};
 
+use chrono::{DateTime, TimeDelta, Utc};
 use snops_checkpoint::CheckpointManager;
 use snops_common::{
     api::EnvInfo,
@@ -8,14 +11,30 @@ use snops_common::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, LEDGER_STORAGE_FILE, SNARKOS_FILE,
         SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
-    rpc::error::ReconcileError,
-    state::{HeightRequest, InternedId},
+    rpc::error::{ReconcileError, ReconcileError2},
+    state::{HeightRequest, InternedId, NetworkId, StorageId, TransferId, TransferStatusUpdate},
 };
 use tokio::process::Command;
 use tracing::{debug, error, info, trace};
+use url::Url;
 
-use super::checkpoint;
-use crate::{api, state::GlobalState};
+use super::{checkpoint, Reconcile, ReconcileCondition, ReconcileStatus};
+use crate::{
+    api::{self, download_file, should_download_file},
+    state::GlobalState,
+    transfers,
+};
+
+pub fn default_binary(info: &EnvInfo) -> BinaryEntry {
+    BinaryEntry {
+        source: BinarySource::Path(PathBuf::from(format!(
+            "/content/storage/{}/{}/binaries/default",
+            info.network, info.storage.id
+        ))),
+        sha256: None,
+        size: None,
+    }
+}
 
 /// Ensure the correct binary is present for running snarkos
 pub async fn ensure_correct_binary(
@@ -25,22 +44,13 @@ pub async fn ensure_correct_binary(
 ) -> Result<(), ReconcileError> {
     let base_path = &state.cli.path;
 
-    let default_entry = BinaryEntry {
-        source: BinarySource::Path(PathBuf::from(format!(
-            "/content/storage/{}/{}/binaries/default",
-            info.network, info.storage.id
-        ))),
-        sha256: None,
-        size: None,
-    };
-
     // TODO: store binary based on binary id
     // download the snarkOS binary
     api::check_binary(
         info.storage
             .binaries
             .get(&binary_id.unwrap_or_default())
-            .unwrap_or(&default_entry),
+            .unwrap_or(&default_binary(info)),
         &state.endpoint,
         &base_path.join(SNARKOS_FILE),
         state.transfer_tx(),
@@ -49,6 +59,14 @@ pub async fn ensure_correct_binary(
     .map_err(|e| ReconcileError::BinaryAcquireError(e.to_string()))?;
 
     Ok(())
+}
+
+pub fn get_genesis_route(endpoint: &str, network: NetworkId, storage_id: StorageId) -> String {
+    format!("{endpoint}/content/storage/{network}/{storage_id}/{SNARKOS_GENESIS_FILE}")
+}
+
+pub fn get_ledger_route(endpoint: &str, network: NetworkId, storage_id: StorageId) -> String {
+    format!("{endpoint}/content/storage/{network}/{storage_id}/{LEDGER_STORAGE_FILE}")
 }
 
 /// Ensure all required files are present in the storage directory
@@ -85,15 +103,9 @@ pub async fn check_files(
     })?;
 
     let genesis_path = storage_path.join(SNARKOS_GENESIS_FILE);
-    let genesis_url = format!(
-        "{}/content/storage/{network}/{storage_id}/{SNARKOS_GENESIS_FILE}",
-        &state.endpoint
-    );
+    let genesis_url = get_genesis_route(&state.endpoint, network, *storage_id);
     let ledger_path = storage_path.join(LEDGER_STORAGE_FILE);
-    let ledger_url = format!(
-        "{}/content/storage/{network}/{storage_id}/{LEDGER_STORAGE_FILE}",
-        &state.endpoint
-    );
+    let ledger_url = get_ledger_route(&state.endpoint, network, *storage_id);
 
     // skip genesis download for native genesis storage
     if !info.storage.native_genesis {
@@ -129,6 +141,190 @@ pub async fn check_files(
         })?;
 
     Ok(())
+}
+
+/// This reconciler creates a directory if it does not exist
+pub struct DirectoryReconciler(pub PathBuf);
+impl Reconcile<(), ReconcileError2> for DirectoryReconciler {
+    async fn reconcile(&mut self) -> Result<super::ReconcileStatus<()>, ReconcileError2> {
+        std::fs::create_dir_all(&self.0)
+            .map(ReconcileStatus::with)
+            .map_err(|e| ReconcileError2::CreateDirectory(self.0.clone(), e.to_string()))
+    }
+}
+
+/// The FileReconciler will download a file from a URL and place it in a local
+/// directory. It will also check the file's size and sha256 hash if provided,
+/// and set the file's permissions. If the file already exists, it will not be
+/// downloaded again.
+///
+/// The reconciler will return true when the file is ready, and false when the
+/// file cannot be obtained (offline controlplane).
+pub struct FileReconciler {
+    pub state: Arc<GlobalState>,
+    pub src: Url,
+    pub dst: PathBuf,
+    pub offline: bool,
+    pub tx_id: Option<TransferId>,
+    pub permissions: Option<u32>,
+    pub check_sha256: Option<String>,
+    pub check_size: Option<u64>,
+}
+impl FileReconciler {
+    pub fn new(state: Arc<GlobalState>, src: Url, dst: PathBuf) -> Self {
+        Self {
+            state,
+            src,
+            dst,
+            offline: false,
+            tx_id: None,
+            permissions: None,
+            check_sha256: None,
+            check_size: None,
+        }
+    }
+
+    pub fn with_offline(mut self, offline: bool) -> Self {
+        self.offline = offline;
+        self
+    }
+
+    pub fn with_tx_id(mut self, tx_id: Option<TransferId>) -> Self {
+        self.tx_id = tx_id;
+        self
+    }
+
+    pub fn with_binary(mut self, binary: &BinaryEntry) -> Self {
+        self.permissions = Some(0o755);
+        self.check_sha256 = binary.sha256.clone();
+        self.check_size = binary.size;
+        self
+    }
+
+    pub fn check_and_set_mode(&self) -> Result<(), ReconcileError2> {
+        // ensure the file has the correct permissions
+        let Some(check_perms) = self.permissions else {
+            return Ok(());
+        };
+
+        let perms = self
+            .dst
+            .metadata()
+            .map_err(|e| ReconcileError2::FileStatError(self.dst.clone(), e.to_string()))?
+            .permissions();
+
+        if perms.mode() != check_perms {
+            std::fs::set_permissions(&self.dst, std::fs::Permissions::from_mode(check_perms))
+                .map_err(|e| {
+                    ReconcileError2::FilePermissionError(self.dst.clone(), e.to_string())
+                })?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Reconcile<bool, ReconcileError2> for FileReconciler {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<bool>, ReconcileError2> {
+        let client = reqwest::Client::new();
+
+        // Create a transfer id if one is not provided
+        if self.tx_id.is_none() {
+            self.tx_id = Some(transfers::next_id());
+        }
+
+        let tx_id = self.tx_id.unwrap();
+
+        // transfer is pending
+        match self.state.transfers.entry(tx_id) {
+            dashmap::Entry::Occupied(occupied_entry) => {
+                let entry = occupied_entry.get();
+
+                if entry.is_pending() {
+                    return Ok(ReconcileStatus::empty()
+                        .add_condition(ReconcileCondition::PendingTransfer(
+                            self.src.to_string(),
+                            tx_id,
+                        ))
+                        .requeue_after(Duration::from_secs(1)));
+                }
+
+                if entry.is_interrupted() {
+                    // if the failure is within the last 60 seconds, requeue
+                    if Utc::now().signed_duration_since(entry.updated_at).abs()
+                        < TimeDelta::seconds(60)
+                    {
+                        return Ok(ReconcileStatus::empty()
+                            .add_condition(ReconcileCondition::InterruptedTransfer(
+                                self.src.to_string(),
+                                tx_id,
+                                entry.interruption.clone().unwrap_or_default(),
+                            ))
+                            .requeue_after(Duration::from_secs(60)));
+                    }
+
+                    // if the failure is older than 60 seconds, remove the pending transfer and
+                    // start over.
+                    occupied_entry.remove();
+                    return Ok(ReconcileStatus::empty()
+                        .add_scope("file/interrupt/restart")
+                        .requeue_after(Duration::from_secs(1)));
+                }
+
+                // entry is complete
+            }
+            dashmap::Entry::Vacant(_) => {}
+        }
+
+        let is_file_ready = !should_download_file(
+            &client,
+            self.src.as_str(),
+            self.dst.as_path(),
+            self.check_size,
+            self.check_sha256.as_deref(),
+            self.offline,
+        )
+        .await?;
+
+        // Everything is good. Ensure file permissions
+        if is_file_ready {
+            self.check_and_set_mode()?;
+            return Ok(ReconcileStatus::with(true));
+        }
+
+        // file does not exist and cannot be downloaded right now
+        if !self.dst.exists() && self.offline {
+            return Ok(ReconcileStatus::with(false));
+        }
+
+        let src = self.src.clone();
+        let dst = self.dst.clone();
+        let transfer_tx = self.state.transfer_tx.clone();
+
+        // download the file
+        let handle =
+            tokio::spawn(
+                async move { download_file(tx_id, &client, src, &dst, transfer_tx).await },
+            )
+            .abort_handle();
+
+        // update the transfer with the handle (so it can be canceled if necessary)
+        if let Err(e) = self
+            .state
+            .transfer_tx
+            .send((tx_id, TransferStatusUpdate::Handle(handle)))
+        {
+            error!("failed to send transfer handle: {e}");
+        }
+
+        // transfer is pending - requeue after 1 second with the pending condition
+        Ok(ReconcileStatus::empty()
+            .add_condition(ReconcileCondition::PendingTransfer(
+                self.src.to_string(),
+                tx_id,
+            ))
+            .requeue_after(Duration::from_secs(1)))
+    }
 }
 
 /// Untar the ledger file into the storage directory
