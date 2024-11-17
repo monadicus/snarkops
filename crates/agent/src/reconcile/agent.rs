@@ -1,24 +1,27 @@
 use std::{
     collections::HashSet,
+    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
 
+use futures::stream::AbortHandle;
 use snops_common::{
     api::EnvInfo,
     binaries::{BinaryEntry, BinarySource},
-    constant::SNARKOS_FILE,
+    constant::{SNARKOS_FILE, VERSION_FILE},
     rpc::error::ReconcileError2,
     state::{
         AgentId, AgentPeer, AgentState, InternedId, NetworkId, NodeState, StorageId, TransferId,
     },
 };
 use tarpc::context;
+use tokio::sync::{Mutex, Semaphore};
 use tracing::{error, trace, warn};
 
 use super::{
-    command::NodeCommand, default_binary, FileReconciler, Reconcile, ReconcileCondition,
-    ReconcileStatus,
+    command::NodeCommand, default_binary, get_version_from_path, DirectoryReconciler,
+    FileReconciler, Reconcile, ReconcileCondition, ReconcileStatus,
 };
 use crate::state::GlobalState;
 
@@ -29,6 +32,8 @@ pub struct AgentStateReconciler {
     pub state: Arc<GlobalState>,
     pub context: AgentStateReconcilerContext,
 }
+
+type LedgerModifyResult = Result<bool, ReconcileError2>;
 
 #[derive(Default)]
 struct TransfersContext {
@@ -46,6 +51,14 @@ struct TransfersContext {
     genesis_ok_at: Option<Instant>,
     /// Metadata about an active ledger transfer
     ledger_transfer: Option<TransferId>,
+    /// A handle containing the task that modifies the ledger.
+    /// The mutex is held until the task is complete, and the bool is set to
+    /// true when the task is successful.
+    ledger_modify_handle: Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
+    /// A handle containing the task that unzips the ledger.
+    /// The mutex is held until the task is complete, and the bool is set to
+    /// true when the task is successful.
+    ledger_unpack_handle: Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
     /// Time the ledger was marked as OK
     ledger_ok_at: Option<Instant>,
 }
@@ -92,6 +105,8 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 // gracefully shut down the node.
                 let shutdown_pending = !node.online || storage_has_changed;
 
+                // TODO: check if addrs have changed, and update shutdown_pending
+
                 // node is offline, no need to reconcile
                 if !node.online {
                     // TODO: tear down the node if it is running
@@ -116,76 +131,33 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 }
                 let transfers = self.context.transfers.as_mut().unwrap();
 
+                let storage_path = self
+                    .state
+                    .cli
+                    .storage_path(env_info.network, env_info.storage.id);
+
+                // Ensure the storage version is correct, deleting the storage path
+                // the version changes.
+                StorageVersionReconciler(&storage_path, env_info.storage.version)
+                    .reconcile()
+                    .await?;
+
+                // Create the storage path if it does not exist
+                DirectoryReconciler(&storage_path).reconcile().await?;
+
                 // Resolve the node's binary
-                // TODO: move into BinaryReconciler
-                'binary: {
-                    // Binary entry for the node
-                    let default_binary = default_binary(&env_info);
-                    let target_binary = env_info
-                        .storage
-                        .binaries
-                        .get(&node.binary.unwrap_or_default())
-                        .unwrap_or(&default_binary);
+                let binary_res = BinaryReconciler {
+                    state: Arc::clone(&self.state),
+                    env_info: Arc::clone(&env_info),
+                    node_binary: node.binary,
+                    binary_transfer: &mut transfers.binary_transfer,
+                    binary_ok_at: &mut transfers.binary_ok_at,
+                }
+                .reconcile()
+                .await?;
 
-                    // Check if the binary has changed
-                    let binary_has_changed = transfers
-                        .binary_transfer
-                        .as_ref()
-                        .map(|(_, b)| b != target_binary)
-                        .unwrap_or(true);
-                    let binary_is_ok = transfers
-                        .binary_ok_at
-                        .map(|ok| ok.elapsed().as_secs() < 300) // check if the binary has been OK for 5 minutes
-                        .unwrap_or(false);
-
-                    // If the binary has not changed and has not expired, we can skip the binary
-                    // reconciler
-                    if !binary_has_changed && binary_is_ok {
-                        break 'binary;
-                    }
-
-                    let src = match &target_binary.source {
-                        BinarySource::Url(url) => url.clone(),
-                        BinarySource::Path(path) => {
-                            let url = format!("{}{}", &self.state.endpoint, path.display());
-                            url.parse::<reqwest::Url>()
-                                .map_err(|e| ReconcileError2::UrlParseError(url, e.to_string()))?
-                        }
-                    };
-                    let dst = self.state.cli.path.join(SNARKOS_FILE);
-
-                    let is_api_offline = self.state.client.read().await.is_none();
-
-                    let binary_res = FileReconciler::new(Arc::clone(&self.state), src, dst)
-                        .with_offline(target_binary.is_api_file() && is_api_offline)
-                        .with_binary(target_binary)
-                        .with_tx_id(transfers.binary_transfer.as_ref().map(|(tx, _)| *tx))
-                        .reconcile()
-                        .await?;
-
-                    // transfer is pending or a failure occurred
-                    if binary_res.is_requeue() {
-                        return Ok(binary_res.emptied().add_scope("binary_reconcile/requeue"));
-                    }
-
-                    match binary_res.inner {
-                        // If the binary is OK, update the context
-                        Some(true) => {
-                            transfers.binary_ok_at = Some(Instant::now());
-                        }
-                        // If the binary is not OK, we will wait for the endpoint to come back
-                        // online...
-                        Some(false) => {
-                            trace!(
-                                "binary is not OK, waiting for the endpoint to come back online..."
-                            );
-                            return Ok(ReconcileStatus::empty()
-                                .add_condition(ReconcileCondition::PendingConnection)
-                                .add_scope("binary_reconcile/offline")
-                                .requeue_after(Duration::from_secs(5)));
-                        }
-                        None => unreachable!("file reconciler returns a result when not requeued"),
-                    }
+                if binary_res.is_requeue() {
+                    return Ok(binary_res.add_scope("binary_reconcile/requeue"));
                 }
 
                 // Resolve the addresses of the peers and validators
@@ -201,7 +173,6 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                     return Ok(addr_res.add_scope("address_resolve/requeue"));
                 }
 
-                // TODO: download binaries
                 // TODO: restart the node if the binaries changed. this means storing the hashes
                 // of the downloaded files
 
@@ -314,16 +285,121 @@ impl Reconcile<(), ReconcileError2> for AddressResolveReconciler {
 }
 
 /// Download a specific binary file needed to run the node
-struct BinaryReconciler {
+struct BinaryReconciler<'a> {
     state: Arc<GlobalState>,
-    info: EnvInfo,
+    env_info: Arc<EnvInfo>,
+    node_binary: Option<InternedId>,
+    /// Metadata about an active binary transfer
+    binary_transfer: &'a mut Option<(TransferId, BinaryEntry)>,
+    /// Time the binary was marked as OK
+    binary_ok_at: &'a mut Option<Instant>,
 }
 
-// TODO: binary reconcile behavior:
-// 1. check if the file exists.
-// 2. if not, start downloading the file
-// 3. if the file is already downloading, requeue if not done
-// 4. when the transfer is done, check the sha256 hash and size
+impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+        let BinaryReconciler {
+            state,
+            env_info,
+            node_binary,
+            binary_transfer,
+            binary_ok_at,
+        } = self;
+
+        // Binary entry for the node
+        let default_binary = default_binary(env_info);
+        let target_binary = env_info
+            .storage
+            .binaries
+            .get(&node_binary.unwrap_or_default())
+            .unwrap_or(&default_binary);
+
+        // Check if the binary has changed
+        let binary_has_changed = binary_transfer
+            .as_ref()
+            .map(|(_, b)| b != target_binary)
+            .unwrap_or(true);
+        let binary_is_ok = binary_ok_at
+            .map(|ok| ok.elapsed().as_secs() < 300) // check if the binary has been OK for 5 minutes
+            .unwrap_or(false);
+
+        // If the binary has not changed and has not expired, we can skip the binary
+        // reconciler
+        if !binary_has_changed && binary_is_ok {
+            return Ok(ReconcileStatus::default());
+        }
+
+        let src = match &target_binary.source {
+            BinarySource::Url(url) => url.clone(),
+            BinarySource::Path(path) => {
+                let url = format!("{}{}", &state.endpoint, path.display());
+                url.parse::<reqwest::Url>()
+                    .map_err(|e| ReconcileError2::UrlParseError(url, e.to_string()))?
+            }
+        };
+        let dst = state.cli.path.join(SNARKOS_FILE);
+
+        let is_api_offline = state.client.read().await.is_none();
+
+        let file_res = FileReconciler::new(Arc::clone(state), src, dst)
+            .with_offline(target_binary.is_api_file() && is_api_offline)
+            .with_binary(target_binary)
+            .with_tx_id(binary_transfer.as_ref().map(|(tx, _)| *tx))
+            .reconcile()
+            .await?;
+
+        // transfer is pending or a failure occurred
+        if file_res.is_requeue() {
+            return Ok(file_res.emptied().add_scope("file_reconcile/requeue"));
+        }
+
+        match file_res.inner {
+            // If the binary is OK, update the context
+            Some(true) => {
+                **binary_ok_at = Some(Instant::now());
+                Ok(ReconcileStatus::default())
+            }
+            // If the binary is not OK, we will wait for the endpoint to come back
+            // online...
+            Some(false) => {
+                trace!("binary is not OK, waiting for the endpoint to come back online...");
+                Ok(ReconcileStatus::empty()
+                    .add_condition(ReconcileCondition::PendingConnection)
+                    .add_scope("agent_state/binary/offline")
+                    .requeue_after(Duration::from_secs(5)))
+            }
+            None => unreachable!("file reconciler returns a result when not requeued"),
+        }
+    }
+}
+
+struct StorageVersionReconciler<'a>(&'a Path, u16);
+
+impl<'a> Reconcile<(), ReconcileError2> for StorageVersionReconciler<'a> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+        let StorageVersionReconciler(path, version) = self;
+
+        let version_file = path.join(VERSION_FILE);
+
+        let version_file_data = if !version_file.exists() {
+            None
+        } else {
+            tokio::fs::read_to_string(&version_file)
+                .await
+                .map_err(|e| ReconcileError2::FileReadError(version_file.clone(), e.to_string()))?
+                .parse()
+                .ok()
+        };
+
+        // wipe old storage when the version changes
+        Ok(if version_file_data != Some(*version) && path.exists() {
+            let _ = tokio::fs::remove_dir_all(&path).await;
+            ReconcileStatus::default()
+        } else {
+            // return an empty status if the version is the same
+            ReconcileStatus::empty()
+        })
+    }
+}
 
 // TODO: large file download behavior (ledgers):
 // same as above, except maybe chunk the downloads or
@@ -332,3 +408,6 @@ struct BinaryReconciler {
 // https://ledger.aleo.network/mainnet/snapshot/latest.txt
 // https://ledger.aleo.network/testnet/snapshot/latest.txt
 // https://ledger.aleo.network/canarynet/snapshot/latest.txt
+
+// TODO: some kind of reconciler iterator that attempts to reconcile a chain
+// until hitting a requeue

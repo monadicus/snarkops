@@ -64,10 +64,7 @@ impl NodeCommand {
     ) -> Result<Self, ReconcileError2> {
         let storage_path = state
             .cli
-            .path
-            .join("storage")
-            .join(env_info.network.to_string())
-            .join(env_info.storage.id.to_string());
+            .storage_path(env_info.network, env_info.storage.id);
 
         let ledger_path = if env_info.storage.persist {
             storage_path.join(LEDGER_PERSIST_DIR)

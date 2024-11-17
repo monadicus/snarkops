@@ -10,7 +10,7 @@ use std::{
 use clap::CommandFactory;
 use clap::Parser;
 use http::Uri;
-use snops_common::state::{AgentId, AgentModeOptions, PortConfig};
+use snops_common::state::{AgentId, AgentModeOptions, NetworkId, PortConfig, StorageId};
 use tracing::{info, warn};
 
 use crate::net;
@@ -188,5 +188,12 @@ impl Cli {
         }
 
         (internal_addrs, external_addr)
+    }
+
+    pub fn storage_path(&self, network: NetworkId, storage_id: StorageId) -> PathBuf {
+        let mut path = self.path.join("storage");
+        path.push(network.to_string());
+        path.push(storage_id.to_string());
+        path
     }
 }

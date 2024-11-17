@@ -1,5 +1,9 @@
 use std::{
-    fs::Permissions, os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc, time::Duration,
+    fs::Permissions,
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
 };
 
 use chrono::{DateTime, TimeDelta, Utc};
@@ -76,12 +80,9 @@ pub async fn check_files(
     height: &HeightRequest,
 ) -> Result<(), ReconcileError> {
     let base_path = &state.cli.path;
-    let storage_id = &info.storage.id;
+    let storage_id = info.storage.id;
     let network = info.network;
-    let storage_path = base_path
-        .join("storage")
-        .join(network.to_string())
-        .join(storage_id.to_string());
+    let storage_path = state.cli.storage_path(network, storage_id);
 
     // create the directory containing the storage files
     tokio::fs::create_dir_all(&storage_path)
@@ -103,9 +104,9 @@ pub async fn check_files(
     })?;
 
     let genesis_path = storage_path.join(SNARKOS_GENESIS_FILE);
-    let genesis_url = get_genesis_route(&state.endpoint, network, *storage_id);
+    let genesis_url = get_genesis_route(&state.endpoint, network, storage_id);
     let ledger_path = storage_path.join(LEDGER_STORAGE_FILE);
-    let ledger_url = get_ledger_route(&state.endpoint, network, *storage_id);
+    let ledger_url = get_ledger_route(&state.endpoint, network, storage_id);
 
     // skip genesis download for native genesis storage
     if !info.storage.native_genesis {
@@ -144,12 +145,12 @@ pub async fn check_files(
 }
 
 /// This reconciler creates a directory if it does not exist
-pub struct DirectoryReconciler(pub PathBuf);
-impl Reconcile<(), ReconcileError2> for DirectoryReconciler {
+pub struct DirectoryReconciler<'a>(pub &'a Path);
+impl<'a> Reconcile<(), ReconcileError2> for DirectoryReconciler<'a> {
     async fn reconcile(&mut self) -> Result<super::ReconcileStatus<()>, ReconcileError2> {
-        std::fs::create_dir_all(&self.0)
+        std::fs::create_dir_all(self.0)
             .map(ReconcileStatus::with)
-            .map_err(|e| ReconcileError2::CreateDirectory(self.0.clone(), e.to_string()))
+            .map_err(|e| ReconcileError2::CreateDirectory(self.0.to_path_buf(), e.to_string()))
     }
 }
 
@@ -521,7 +522,7 @@ pub async fn load_ledger(
     Ok(true)
 }
 
-async fn get_version_from_path(path: &PathBuf) -> Result<Option<u16>, ReconcileError> {
+pub async fn get_version_from_path(path: &PathBuf) -> Result<Option<u16>, ReconcileError> {
     if !path.exists() {
         return Ok(None);
     }
