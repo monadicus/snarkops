@@ -9,7 +9,7 @@ mod files;
 pub use files::*;
 pub mod process;
 pub mod storage;
-use snops_common::state::TransferId;
+use snops_common::{rpc::error::ReconcileError2, state::TransferId};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ReconcileCondition {

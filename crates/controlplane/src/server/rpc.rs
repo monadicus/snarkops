@@ -81,6 +81,7 @@ impl ControlService for ControlRpcServer {
                         downloaded_bytes: 0,
                         total_bytes: total,
                         interruption: None,
+                        handle: None,
                     },
                 );
             }

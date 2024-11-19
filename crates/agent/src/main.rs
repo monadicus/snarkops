@@ -52,17 +52,17 @@ async fn main() {
     let (endpoint, ws_uri) = args.endpoint_and_uri();
     info!("Using endpoint {endpoint}");
 
-    // create the data directory
+    // Create the data directory
     tokio::fs::create_dir_all(&args.path)
         .await
         .expect("failed to create data path");
 
-    // open the database
+    // Open the database
     let db = db::Database::open(&args.path.join("store")).expect("failed to open database");
 
     let client = Default::default();
 
-    // start transfer monitor
+    // Start transfer monitor
     let (transfer_tx, transfers) = transfers::start_monitor(Arc::clone(&client));
 
     let agent_rpc_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
@@ -75,7 +75,7 @@ async fn main() {
 
     let (queue_reconcile_tx, mut reconcile_requests) = mpsc::channel(5);
 
-    // create the client state
+    // Create the client state
     let state = Arc::new(GlobalState {
         client,
         _started: Instant::now(),
@@ -118,10 +118,10 @@ async fn main() {
         db: OpaqueDebug(db),
     });
 
-    // start the metrics watcher
+    // Start the metrics watcher
     metrics::init(Arc::clone(&state));
 
-    // start the status server
+    // Start the status server
     let status_state = Arc::clone(&state);
     tokio::spawn(async move {
         info!("starting status API server on port {agent_rpc_port}");
@@ -131,7 +131,7 @@ async fn main() {
         }
     });
 
-    // get the interrupt signals to break the stream connection
+    // Get the interrupt signals to break the stream connection
     let mut interrupt = Signals::new(&[SignalKind::terminate(), SignalKind::interrupt()]);
 
     let state2 = Arc::clone(&state);
@@ -163,9 +163,9 @@ async fn main() {
         let mut wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
 
         loop {
-            // await for the next reconcile, allowing for it to be moved up sooner
+            // Await for the next reconcile, allowing for it to be moved up sooner
             select! {
-                // replace the next_reconcile_at with the soonest reconcile time
+                // Replace the next_reconcile_at with the soonest reconcile time
                 Some(new_reconcile_at) = reconcile_requests.recv() => {
                     next_reconcile_at = next_reconcile_at.min(new_reconcile_at);
                     wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
@@ -173,13 +173,13 @@ async fn main() {
                 _ = &mut wait => {}
             }
 
-            // drain the reconcile request queue
+            // Drain the reconcile request queue
             while reconcile_requests.try_recv().is_ok() {}
-            // schedule the next reconcile for 5 minutes from now
-            next_reconcile_at = Instant::now() + Duration::from_secs(5 * 60);
+            // Schedule the next reconcile for 1 week.
+            next_reconcile_at = Instant::now() + Duration::from_secs(60 * 60 * 24 * 7);
 
-            // update the reconciler with the latest agent state
-            // this prevents the agent state from changing during reconciliation
+            // Update the reconciler with the latest agent state
+            // This prevents the agent state from changing during reconciliation
             root.agent_state = state3.agent_state.read().await.deref().clone();
 
             trace!("reconciling agent state...");

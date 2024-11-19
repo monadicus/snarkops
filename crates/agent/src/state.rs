@@ -64,6 +64,10 @@ pub struct GlobalState {
 }
 
 impl GlobalState {
+    pub fn is_ws_online(&self) -> bool {
+        self.client.try_read().is_ok_and(|c| c.is_some())
+    }
+
     // Resolve the addresses of the given agents.
     // Locks resolve_addrs
     pub async fn agentpeers_to_cli(&self, peers: &[AgentPeer]) -> Vec<String> {

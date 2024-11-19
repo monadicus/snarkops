@@ -5,7 +5,9 @@ use snops_common::{
     api::EnvInfo,
     binaries::BinaryEntry,
     rpc::error::ReconcileError2,
-    state::{AgentId, AgentPeer, AgentState, NetworkId, NodeState, StorageId, TransferId},
+    state::{
+        AgentId, AgentPeer, AgentState, HeightRequest, NetworkId, NodeState, StorageId, TransferId,
+    },
 };
 use tarpc::context;
 use tokio::sync::Mutex;
@@ -14,7 +16,7 @@ use tracing::{error, warn};
 use super::{
     command::NodeCommand,
     process::ProcessContext,
-    storage::{BinaryReconciler, StorageVersionReconciler},
+    storage::{BinaryReconciler, GenesisReconciler, LedgerModifyResult, StorageVersionReconciler},
     DirectoryReconciler, Reconcile, ReconcileStatus,
 };
 use crate::state::GlobalState;
@@ -27,24 +29,32 @@ pub struct AgentStateReconciler {
     pub context: AgentStateReconcilerContext,
 }
 
-type LedgerModifyResult = Result<bool, ReconcileError2>;
-
 #[derive(Default)]
 struct TransfersContext {
     // TODO: persist network_id, storage_id, and storage_version
     network_id: NetworkId,
     storage_id: StorageId,
     storage_version: u16,
+
     /// Metadata about an active binary transfer
     binary_transfer: Option<(TransferId, BinaryEntry)>,
     /// Time the binary was marked as OK
     binary_ok_at: Option<Instant>,
+
     /// Metadata about an active genesis block transfer
     genesis_transfer: Option<TransferId>,
     /// Time the genesis block was marked as OK
     genesis_ok_at: Option<Instant>,
-    /// Metadata about an active ledger transfer
+
+    /// The last ledger height that was successfully configured
+    ledger_last_height: Option<HeightRequest>,
+    /// The height that is currently being configured
+    ledger_pending_height: Option<HeightRequest>,
+
+    /// Metadata about an active ledger tar file transfer
     ledger_transfer: Option<TransferId>,
+    /// Time the ledger tar file was marked as OK
+    ledger_ok_at: Option<Instant>,
     /// A handle containing the task that modifies the ledger.
     /// The mutex is held until the task is complete, and the bool is set to
     /// true when the task is successful.
@@ -53,8 +63,6 @@ struct TransfersContext {
     /// The mutex is held until the task is complete, and the bool is set to
     /// true when the task is successful.
     ledger_unpack_handle: Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
-    /// Time the ledger was marked as OK
-    ledger_ok_at: Option<Instant>,
 }
 
 impl TransfersContext {
@@ -73,6 +81,18 @@ pub struct AgentStateReconcilerContext {
     transfers: Option<TransfersContext>,
     /// Information about the node process
     process: Option<ProcessContext>,
+}
+
+/// Run a reconciler and return early if a requeue is needed. A condition is
+/// added to the scope when a requeue is needed to provide more context when
+/// monitoring the agent.
+macro_rules! reconcile {
+    ($id:ident, $e:expr) => {
+        let res = $e.reconcile().await?;
+        if res.is_requeue() {
+            return Ok(res.add_scope(concat!(stringify!($id), "/requeue")));
+        }
+    };
 }
 
 impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
@@ -108,7 +128,7 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 // node is offline, no need to reconcile
                 if !node.online {
                     // TODO: tear down the node if it is running
-                    return Ok(ReconcileStatus::default().add_scope("agent_state/node/offline"));
+                    return Ok(ReconcileStatus::default().add_scope("agent_state/offline"));
                 }
 
                 let node_arc = Arc::new(*node.clone());
@@ -136,40 +156,46 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
 
                 // Ensure the storage version is correct, deleting the storage path
                 // the version changes.
-                StorageVersionReconciler(&storage_path, env_info.storage.version)
-                    .reconcile()
-                    .await?;
+                reconcile!(
+                    storage,
+                    StorageVersionReconciler(&storage_path, env_info.storage.version)
+                );
 
                 // Create the storage path if it does not exist
-                DirectoryReconciler(&storage_path).reconcile().await?;
+                reconcile!(dir, DirectoryReconciler(&storage_path));
+
+                // Resolve the genesis block
+                reconcile!(
+                    genesis,
+                    GenesisReconciler {
+                        state: Arc::clone(&self.state),
+                        env_info: Arc::clone(&env_info),
+                        transfer: &mut transfers.genesis_transfer,
+                        ok_at: &mut transfers.genesis_ok_at,
+                    }
+                );
 
                 // Resolve the node's binary
-                let binary_res = BinaryReconciler {
-                    state: Arc::clone(&self.state),
-                    env_info: Arc::clone(&env_info),
-                    node_binary: node.binary,
-                    binary_transfer: &mut transfers.binary_transfer,
-                    binary_ok_at: &mut transfers.binary_ok_at,
-                }
-                .reconcile()
-                .await?;
-
-                if binary_res.is_requeue() {
-                    return Ok(binary_res.add_scope("binary_reconcile/requeue"));
-                }
+                reconcile!(
+                    binary,
+                    BinaryReconciler {
+                        state: Arc::clone(&self.state),
+                        env_info: Arc::clone(&env_info),
+                        node_binary: node.binary,
+                        transfer: &mut transfers.binary_transfer,
+                        ok_at: &mut transfers.binary_ok_at,
+                    }
+                );
 
                 // Resolve the addresses of the peers and validators
                 // TODO: Set an expiry for resolved addresses
-                let addr_res = AddressResolveReconciler {
-                    node: Arc::clone(&node_arc),
-                    state: Arc::clone(&self.state),
-                }
-                .reconcile()
-                .await?;
-
-                if addr_res.is_requeue() {
-                    return Ok(addr_res.add_scope("address_resolve/requeue"));
-                }
+                reconcile!(
+                    address_resolve,
+                    AddressResolveReconciler {
+                        node: Arc::clone(&node_arc),
+                        state: Arc::clone(&self.state),
+                    }
+                );
 
                 // TODO: restart the node if the binaries changed. this means storing the hashes
                 // of the downloaded files
@@ -289,6 +315,3 @@ impl Reconcile<(), ReconcileError2> for AddressResolveReconciler {
 // https://ledger.aleo.network/mainnet/snapshot/latest.txt
 // https://ledger.aleo.network/testnet/snapshot/latest.txt
 // https://ledger.aleo.network/canarynet/snapshot/latest.txt
-
-// TODO: some kind of reconciler iterator that attempts to reconcile a chain
-// until hitting a requeue
