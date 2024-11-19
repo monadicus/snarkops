@@ -177,6 +177,8 @@ pub enum ReconcileError2 {
         url: String,
         error: String,
     },
+    #[error("failed to spawn process: {0}")]
+    SpawnError(String),
     #[error("failed to set file permissions {0}: {1}")]
     FilePermissionError(PathBuf, String),
     #[error("failed to parse {0} as a url: {1}")]

@@ -7,6 +7,8 @@ mod checkpoint;
 pub mod command;
 mod files;
 pub use files::*;
+pub mod process;
+pub mod storage;
 use snops_common::state::TransferId;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
