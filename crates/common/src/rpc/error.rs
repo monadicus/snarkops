@@ -115,7 +115,7 @@ pub enum SnarkosRequestError {
     TimedOut,
 }
 
-#[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize, AsRefStr)]
 pub enum ResolveError {
     #[error("source agent not found")]
     SourceAgentNotFound,
@@ -151,7 +151,7 @@ pub enum ReconcileError {
     Unknown,
 }
 
-#[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize, AsRefStr)]
 pub enum ReconcileError2 {
     #[error("node is not connected to the controlplane")]
     Offline,
@@ -187,4 +187,8 @@ pub enum ReconcileError2 {
     CheckpointLoadError(String),
     #[error("missing retention policy for request: {0}")]
     MissingRetentionPolicy(HeightRequest),
+    #[error("no available checkpoints for request: {0}")]
+    NoAvailableCheckpoints(HeightRequest),
+    #[error("failed to apply checkpoint: {0}")]
+    CheckpointApplyError(String),
 }

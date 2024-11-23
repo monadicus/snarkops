@@ -9,7 +9,7 @@ use snops_common::{
     rpc::error::ReconcileError,
     state::{NetworkId, StorageId},
 };
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::{api, state::GlobalState};
 
@@ -28,16 +28,17 @@ impl<'a> CheckpointSource<'a> {
     ) -> Result<PathBuf, ReconcileError> {
         Ok(match self {
             CheckpointSource::Meta(meta) => {
-                info!(
+                trace!(
                     "using checkpoint from control plane with height {} and time {}",
-                    meta.height, meta.timestamp
+                    meta.height,
+                    meta.timestamp
                 );
                 let checkpoint_url = format!(
                     "{}/content/storage/{network}/{storage_id}/{}",
                     &state.endpoint, meta.filename
                 );
                 let path = storage_path.join(&meta.filename);
-                info!("downloading {} from {checkpoint_url}...", meta.filename);
+                trace!("downloading {} from {checkpoint_url}...", meta.filename);
 
                 api::check_file(checkpoint_url, &path, state.transfer_tx())
                     .await
@@ -52,7 +53,7 @@ impl<'a> CheckpointSource<'a> {
                 path
             }
             CheckpointSource::Manager(header, path) => {
-                info!(
+                trace!(
                     "using checkpoint from manager with height {} and time {}",
                     header.block_height,
                     header.time()

@@ -54,15 +54,6 @@ struct TransfersContext {
     /// The mutex is held until the task is complete, and the bool is set to
     /// true when the task is successful.
     ledger_modify_handle: Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
-
-    /// Time the ledger tar file was marked as OK
-    ledger_ok_at: Option<Instant>,
-    /// Metadata about an active ledger tar file transfer
-    ledger_transfer: Option<TransferId>,
-    /// A handle containing the task that unzips the ledger.
-    /// The mutex is held until the task is complete, and the bool is set to
-    /// true when the task is successful.
-    ledger_unpack_handle: Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
 }
 
 impl TransfersContext {
@@ -193,10 +184,7 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                     LedgerReconciler {
                         state: Arc::clone(&self.state),
                         env_info: Arc::clone(&env_info),
-                        ok_at: &mut transfers.ledger_ok_at,
-                        transfer: &mut transfers.ledger_transfer,
                         modify_handle: &mut transfers.ledger_modify_handle,
-                        unpack_handle: &mut transfers.ledger_unpack_handle,
                         target_height: node.height,
                         last_height: &mut transfers.ledger_last_height,
                         pending_height: &mut transfers.ledger_pending_height,

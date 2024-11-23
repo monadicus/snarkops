@@ -15,15 +15,11 @@ use snops_common::{rpc::error::ReconcileError2, state::TransferId};
 pub enum ReconcileCondition {
     /// A file is being transferred.
     PendingTransfer(String, TransferId),
-    /// A file is being unpacked.
-    PendingUnpack(String),
     /// A process is being spawned / confirmed. Could be starting the node or
     /// manipulating the ledger
     PendingProcess(String),
     /// A tranfer was started and interrupted.
     InterruptedTransfer(String, TransferId, String),
-    /// An unpack operation was started and interrupted.
-    InterruptedUnpack(String),
     /// A modify operation was started and interrupted.
     InterruptedModify(String),
     /// A file is missing and cannot be downloaded at the moment.

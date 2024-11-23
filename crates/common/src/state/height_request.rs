@@ -161,7 +161,9 @@ impl HeightRequest {
     }
 
     pub fn reset(&self) -> bool {
-        *self == Self::Absolute(0)
+        // height 0 = genesis block
+        // checkpoint an unlimited time in the past is also a reset
+        *self == Self::Absolute(0) || *self == Self::Checkpoint(RetentionSpan::Unlimited)
     }
 }
 

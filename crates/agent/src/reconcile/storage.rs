@@ -1,9 +1,10 @@
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
 
+use lazysort::SortedBy;
 use snops_checkpoint::CheckpointManager;
 use snops_common::{
     api::EnvInfo,
@@ -11,11 +12,10 @@ use snops_common::{
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
-    db::error,
-    rpc::error::{ReconcileError, ReconcileError2},
+    rpc::error::ReconcileError2,
     state::{HeightRequest, InternedId, TransferId},
 };
-use tokio::{sync::Mutex, task::AbortHandle};
+use tokio::{process::Command, sync::Mutex, task::AbortHandle};
 use tracing::{error, trace};
 use url::Url;
 
@@ -88,7 +88,7 @@ impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
             **transfer = Some((tx_id, target_binary.clone()));
         }
 
-        // transfer is pending or a failure occurred
+        // Transfer is pending or a failure occurred
         if file_res.is_requeue() {
             return Ok(file_res.emptied().add_scope("file/requeue"));
         }
@@ -197,55 +197,157 @@ pub struct LedgerReconciler<'a> {
     pub target_height: (usize, HeightRequest),
     pub last_height: &'a mut Option<(usize, HeightRequest)>,
     pub pending_height: &'a mut Option<(usize, HeightRequest)>,
-    pub ok_at: &'a mut Option<Instant>,
-    pub transfer: &'a mut Option<TransferId>,
     pub modify_handle: &'a mut Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
-    pub unpack_handle: &'a mut Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
+}
+
+impl<'a> LedgerReconciler<'a> {
+    pub fn untar_paths(&self) -> (PathBuf, &'static str) {
+        if self.env_info.storage.persist {
+            (
+                self.state
+                    .cli
+                    .storage_path(self.env_info.network, self.env_info.storage.id),
+                LEDGER_PERSIST_DIR,
+            )
+        } else {
+            (self.state.cli.path.clone(), LEDGER_BASE_DIR)
+        }
+    }
+
+    pub fn ledger_path(&self) -> PathBuf {
+        let (path, dir) = self.untar_paths();
+        path.join(dir)
+    }
+
+    /// Find the checkpoint to apply to the ledger
+    /// Guaranteed error when target height is not the top, 0, or unlimited span
+    pub fn find_checkpoint(&self) -> Result<PathBuf, ReconcileError2> {
+        let (untar_base, ledger_dir) = self.untar_paths();
+        let ledger_path = untar_base.join(ledger_dir);
+
+        // If there's a retention policy, load the checkpoint manager
+        // this is so we can wipe all leftover checkpoints for non-persisted storage
+        // after resets or new environments
+        let manager = self
+            .env_info
+            .storage
+            .retention_policy
+            .clone()
+            .map(|policy| {
+                trace!("loading checkpoints from {untar_base:?}...");
+                CheckpointManager::load(ledger_path.clone(), policy).map_err(|e| {
+                    error!("failed to load checkpoints: {e}");
+                    ReconcileError2::CheckpointLoadError(e.to_string())
+                })
+            })
+            .transpose()?
+            .ok_or(ReconcileError2::MissingRetentionPolicy(
+                self.target_height.1,
+            ))?;
+
+        // Determine which checkpoint to use by the next available height/time
+        match self.target_height.1 {
+            HeightRequest::Absolute(height) => manager
+                .checkpoints()
+                .sorted_by(|(a, _), (b, _)| b.block_height.cmp(&a.block_height))
+                .find_map(|(c, path)| (c.block_height <= height).then_some(path)),
+            HeightRequest::Checkpoint(span) => span.as_timestamp().and_then(|timestamp| {
+                manager
+                    .checkpoints()
+                    .sorted_by(|(a, _), (b, _)| b.timestamp.cmp(&a.timestamp))
+                    .find_map(|(c, path)| (c.timestamp <= timestamp).then_some(path))
+            }),
+            // top cannot be a target height
+            _ => None,
+        }
+        .ok_or(ReconcileError2::NoAvailableCheckpoints(
+            self.target_height.1,
+        ))
+        .cloned()
+    }
+
+    pub fn spawn_modify(
+        &self,
+        checkpoint: PathBuf,
+    ) -> (AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>) {
+        let result = Arc::new(Mutex::new(None));
+        let result2 = Arc::clone(&result);
+
+        let is_native_genesis = self.env_info.storage.native_genesis;
+        let snarkos_path = self.state.cli.path.join(SNARKOS_FILE);
+        let network = self.env_info.network;
+        let storage_path = self
+            .state
+            .cli
+            .storage_path(network, self.env_info.storage.id);
+        let ledger_path = self.ledger_path();
+
+        // apply the checkpoint to the ledger
+        let mut command = Command::new(snarkos_path);
+        command
+            .stdout(std::io::stdout())
+            .stderr(std::io::stderr())
+            .env("NETWORK", network.to_string())
+            .arg("ledger")
+            .arg("--ledger")
+            .arg(&ledger_path);
+
+        if !is_native_genesis {
+            command
+                .arg("--genesis")
+                .arg(storage_path.join(SNARKOS_GENESIS_FILE));
+        }
+
+        command.arg("checkpoint").arg("apply").arg(checkpoint);
+
+        let handle = tokio::spawn(async move {
+            let mut mutex = result.lock().await;
+
+            let res = command
+                .spawn()
+                .map_err(|e| {
+                    error!("failed to spawn checkpoint apply process: {e}");
+                    mutex.replace(Err(ReconcileError2::CheckpointApplyError(String::from(
+                        "spawn checkpoint apply process",
+                    ))));
+                })?
+                .wait()
+                .await
+                .map_err(|e| {
+                    error!("failed to await checkpoint apply process: {e}");
+                    mutex.replace(Err(ReconcileError2::CheckpointApplyError(String::from(
+                        "await checkpoint apply process",
+                    ))));
+                })?;
+
+            mutex.replace(Ok(res.success()));
+
+            Ok::<(), ()>(())
+        })
+        .abort_handle();
+
+        (handle, result2)
+    }
 }
 
 impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
-        let LedgerReconciler {
-            state,
-            env_info,
-            ok_at,
-            transfer,
-            modify_handle,
-            unpack_handle,
-            target_height,
-            last_height,
-            pending_height,
-        } = self;
+        let env_info = self.env_info.clone();
+        let target_height = self.target_height;
 
-        let network = env_info.network;
-        let storage_id = env_info.storage.id;
+        let ledger_path = self.ledger_path();
+
+        // Ledger reconcile behavior is different depending on whether the storage is
+        // persistent.
         let is_persist = env_info.storage.persist;
 
-        let (untar_base, untar_dir) = if env_info.storage.persist {
-            (
-                state.cli.storage_path(network, storage_id),
-                LEDGER_PERSIST_DIR,
-            )
-        } else {
-            (state.cli.path.clone(), LEDGER_BASE_DIR)
-        };
-
-        let ledger_path = untar_base.join(untar_dir);
-
-        // TODO: implement a heightrequest that downloads a remote ledger
-
-        // TODO: only call this after unpacking the ledger
-        DirectoryReconciler(&ledger_path.join(".aleo"))
-            .reconcile()
-            .await?;
-
-        // defaulting the initial height allows the reconciler to treat
+        // Defaulting the initial height allows the reconciler to treat
         // a persisted env with non-top target heights as a request to delete
         // the ledger
-        if last_height.is_none() {
-            // the default last height is the top when persisting
+        if self.last_height.is_none() {
+            // The default last height is the top when persisting
             // and 0 when not persisting (clean ledger)
-            **last_height = Some((
+            *self.last_height = Some((
                 0,
                 if is_persist {
                     HeightRequest::Top
@@ -259,18 +361,24 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
                 let _ = tokio::fs::remove_dir_all(&ledger_path).await;
             }
         }
-        let last_height = last_height.as_mut().unwrap();
+        let last_height = self.last_height.as_mut().unwrap();
+
+        // TODO: only call this after unpacking the ledger
+        // create the ledger path if it doesn't exist
+        DirectoryReconciler(&ledger_path.join(".aleo"))
+            .reconcile()
+            .await?;
 
         // If there is no pending height, check if there should be a pending height
-        if pending_height.is_none() {
+        if self.pending_height.is_none() {
             // target height has been realized
-            if last_height == target_height {
+            if *last_height == target_height {
                 return Ok(ReconcileStatus::default());
             }
 
             // If the target height is the top, we can skip the ledger reconciler
             if target_height.1.is_top() {
-                *last_height = *target_height;
+                *last_height = target_height;
                 // ledger operation is complete
                 return Ok(ReconcileStatus::default());
             }
@@ -278,66 +386,78 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
             // If the target height is 0, we can delete the ledger
             if target_height.1.reset() {
                 let _ = tokio::fs::remove_dir_all(&ledger_path).await;
-                *last_height = *target_height;
-                // ledger operation is complete
-                return Ok(ReconcileStatus::default());
+                *last_height = target_height;
+                // Ledger operation is complete... immediately requeue because the ledger was
+                // wiped
+                return Ok(ReconcileStatus::default().requeue_after(Duration::from_secs(0)));
             }
-
-            // TODO: ledger URL handling here instead of retention policy
 
             // Target height is guaranteed to be different, not top, and not 0, which means
             // it's up to the retention policies
 
-            // If there's a retention policy, load the checkpoint manager
-            // this is so we can wipe all leftover checkpoints for non-persisted storage
-            // after resets or new environments
-            let Some(mut manager) = env_info
-                .storage
-                .retention_policy
-                .clone()
-                .map(|policy| {
-                    trace!("loading checkpoints from {untar_base:?}...");
-                    CheckpointManager::load(ledger_path.clone(), policy).map_err(|e| {
-                        error!("failed to load checkpoints: {e}");
-                        ReconcileError2::CheckpointLoadError(e.to_string())
-                    })
-                })
-                .transpose()?
-            else {
-                // if there is no retention policy, this height request cannot be fulfilled
-                return Err(ReconcileError2::MissingRetentionPolicy(target_height.1));
-            };
+            // TODO: implement a heightrequest that downloads a remote ledger
+            // TODO: ledger URL handling here instead of retention policy
+            // TODO: ledger downloading would enter a new code path that downloads a new one
 
-            // TODO: find_by_span logic
-        }
-        let pending = pending_height.unwrap();
-
-        // If the target height changed while processing the last target height
-        // wait for the previous procedure to complete before starting a new one.
-        if *target_height != pending {
-            // TODO: complete current procedure before starting a new one
-
-            // clear current pending height
-            **pending_height = None;
+            // Find the checkpoint for the reconciler's target height
+            let checkpoint = self.find_checkpoint()?;
+            // Start a task to modify the ledger with the checkpoint
+            *self.modify_handle = Some(self.spawn_modify(checkpoint));
+            // Now that a task is running, set the pending height
+            *self.pending_height = Some(target_height);
 
             return Ok(ReconcileStatus::empty()
+                .add_condition(ReconcileCondition::PendingProcess(format!(
+                    "ledger modification to height {}",
+                    target_height.1
+                )))
+                .requeue_after(Duration::from_secs(5)));
+        }
+        let pending = self.pending_height.unwrap();
+
+        let Some(modify_handle) = self.modify_handle.as_mut() else {
+            // This should be an unreachable condition, but may not be unreachable
+            // when more complex ledger operations are implemented
+            error!("modify handle missing for pending height");
+            *self.pending_height = None;
+            return Ok(ReconcileStatus::empty()
                 .add_condition(ReconcileCondition::InterruptedModify(String::from(
-                    "target height changed",
+                    "modify handle missing",
                 )))
                 .requeue_after(Duration::from_secs(1)));
-        }
+        };
 
-        // If the ledger is OK and the target height is the top, we can skip the ledger
-        // reconciler
-        if is_persist && target_height.1.is_top() && ledger_path.exists() {
-            return Ok(ReconcileStatus::default());
-        }
+        // If the modify handle is locked, requeue until it's unlocked
+        let Ok(Some(handle)) = modify_handle.1.try_lock().map(|r| r.clone()) else {
+            return Ok(ReconcileStatus::empty()
+                .add_condition(ReconcileCondition::PendingProcess(format!(
+                    "ledger modification to height {}",
+                    target_height.1
+                )))
+                .requeue_after(Duration::from_secs(1)));
+        };
 
-        // TODO: if pending_height - check unpack/modify handles
+        match handle {
+            // If the ledger was modified successfully, update the last height
+            Ok(true) => {
+                *last_height = pending;
+            }
+            // A failure in the ledger modification process is handled at the
+            // moment...
+            Ok(false) => {
+                error!("ledger modification to height {} failed", target_height.1);
+                // TODO: handle this failure
+            }
+            // Bubble an actual error up to the caller
+            Err(err) => return Err(err.clone()),
+        };
 
-        // let is_new_env = last_height.is_none();
+        // Modification is complete. The last height is change dhwen the modification
+        // succeeds (above)
+        *self.pending_height = None;
+        *self.modify_handle = None;
 
-        Ok(ReconcileStatus::empty())
+        Ok(ReconcileStatus::default())
     }
 }
 

@@ -4590,6 +4590,7 @@ dependencies = [
  "http 1.1.0",
  "httpdate",
  "indexmap 2.6.0",
+ "lazysort",
  "local-ip-address",
  "nix",
  "reqwest 0.12.8",
