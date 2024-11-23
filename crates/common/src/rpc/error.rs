@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
-use crate::state::EnvId;
+use crate::state::{EnvId, HeightRequest};
 
 #[macro_export]
 macro_rules! impl_into_type_str {
@@ -183,4 +183,8 @@ pub enum ReconcileError2 {
     FilePermissionError(PathBuf, String),
     #[error("failed to parse {0} as a url: {1}")]
     UrlParseError(String, String),
+    #[error("error loading checkpoints: {0}")]
+    CheckpointLoadError(String),
+    #[error("missing retention policy for request: {0}")]
+    MissingRetentionPolicy(HeightRequest),
 }

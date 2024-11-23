@@ -1,6 +1,5 @@
 use std::{collections::HashSet, sync::Arc, time::Instant};
 
-use futures::stream::AbortHandle;
 use snops_common::{
     api::EnvInfo,
     binaries::BinaryEntry,
@@ -10,7 +9,7 @@ use snops_common::{
     },
 };
 use tarpc::context;
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, task::AbortHandle};
 use tracing::{error, warn};
 
 use super::{
@@ -19,7 +18,7 @@ use super::{
     storage::{BinaryReconciler, GenesisReconciler, LedgerModifyResult, StorageVersionReconciler},
     DirectoryReconciler, Reconcile, ReconcileStatus,
 };
-use crate::state::GlobalState;
+use crate::{reconcile::storage::LedgerReconciler, state::GlobalState};
 
 /// Attempt to reconcile the agent's current state.
 /// This will download files and start/stop the node
@@ -31,10 +30,12 @@ pub struct AgentStateReconciler {
 
 #[derive(Default)]
 struct TransfersContext {
-    // TODO: persist network_id, storage_id, and storage_version
+    // TODO: persist network_id, storage_id, storage_version, and ledger_last_height
     network_id: NetworkId,
     storage_id: StorageId,
     storage_version: u16,
+    /// The last ledger height that was successfully configured
+    ledger_last_height: Option<(usize, HeightRequest)>,
 
     /// Metadata about an active binary transfer
     binary_transfer: Option<(TransferId, BinaryEntry)>,
@@ -46,19 +47,18 @@ struct TransfersContext {
     /// Time the genesis block was marked as OK
     genesis_ok_at: Option<Instant>,
 
-    /// The last ledger height that was successfully configured
-    ledger_last_height: Option<HeightRequest>,
     /// The height that is currently being configured
-    ledger_pending_height: Option<HeightRequest>,
+    ledger_pending_height: Option<(usize, HeightRequest)>,
 
-    /// Metadata about an active ledger tar file transfer
-    ledger_transfer: Option<TransferId>,
-    /// Time the ledger tar file was marked as OK
-    ledger_ok_at: Option<Instant>,
     /// A handle containing the task that modifies the ledger.
     /// The mutex is held until the task is complete, and the bool is set to
     /// true when the task is successful.
     ledger_modify_handle: Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
+
+    /// Time the ledger tar file was marked as OK
+    ledger_ok_at: Option<Instant>,
+    /// Metadata about an active ledger tar file transfer
+    ledger_transfer: Option<TransferId>,
     /// A handle containing the task that unzips the ledger.
     /// The mutex is held until the task is complete, and the bool is set to
     /// true when the task is successful.
@@ -134,7 +134,8 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 let node_arc = Arc::new(*node.clone());
 
                 if storage_has_changed {
-                    // TODO: abort any ongoing transfers, then requeue
+                    // TODO: abort any ongoing transfers (binary/file), then
+                    // requeue
                 }
 
                 // initialize the transfers context with the current status
@@ -184,6 +185,21 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                         node_binary: node.binary,
                         transfer: &mut transfers.binary_transfer,
                         ok_at: &mut transfers.binary_ok_at,
+                    }
+                );
+
+                reconcile!(
+                    ledger,
+                    LedgerReconciler {
+                        state: Arc::clone(&self.state),
+                        env_info: Arc::clone(&env_info),
+                        ok_at: &mut transfers.ledger_ok_at,
+                        transfer: &mut transfers.ledger_transfer,
+                        modify_handle: &mut transfers.ledger_modify_handle,
+                        unpack_handle: &mut transfers.ledger_unpack_handle,
+                        target_height: node.height,
+                        last_height: &mut transfers.ledger_last_height,
+                        pending_height: &mut transfers.ledger_pending_height,
                     }
                 );
 

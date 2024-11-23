@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 use snops_checkpoint::RetentionSpan;
 
@@ -41,6 +41,16 @@ impl FromStr for DocHeightRequest {
                     Err(format!("invalid DocHeightRequest: {}", s))
                 }
             }
+        }
+    }
+}
+
+impl Display for HeightRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HeightRequest::Top => write!(f, "top"),
+            HeightRequest::Absolute(h) => write!(f, "{h}"),
+            HeightRequest::Checkpoint(c) => write!(f, "{c}"),
         }
     }
 }

@@ -4,17 +4,19 @@ use std::{
     time::{Duration, Instant},
 };
 
+use snops_checkpoint::CheckpointManager;
 use snops_common::{
     api::EnvInfo,
     binaries::{BinaryEntry, BinarySource},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
-    rpc::error::ReconcileError2,
+    db::error,
+    rpc::error::{ReconcileError, ReconcileError2},
     state::{HeightRequest, InternedId, TransferId},
 };
 use tokio::{sync::Mutex, task::AbortHandle};
-use tracing::trace;
+use tracing::{error, trace};
 use url::Url;
 
 use super::{
@@ -192,9 +194,9 @@ pub type LedgerModifyResult = Result<bool, ReconcileError2>;
 pub struct LedgerReconciler<'a> {
     pub state: Arc<GlobalState>,
     pub env_info: Arc<EnvInfo>,
-    pub target_height: HeightRequest,
-    pub last_height: &'a mut Option<HeightRequest>,
-    pub pending_height: &'a mut Option<HeightRequest>,
+    pub target_height: (usize, HeightRequest),
+    pub last_height: &'a mut Option<(usize, HeightRequest)>,
+    pub pending_height: &'a mut Option<(usize, HeightRequest)>,
     pub ok_at: &'a mut Option<Instant>,
     pub transfer: &'a mut Option<TransferId>,
     pub modify_handle: &'a mut Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
@@ -217,6 +219,7 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
 
         let network = env_info.network;
         let storage_id = env_info.storage.id;
+        let is_persist = env_info.storage.persist;
 
         let (untar_base, untar_dir) = if env_info.storage.persist {
             (
@@ -229,19 +232,110 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
 
         let ledger_path = untar_base.join(untar_dir);
 
+        // TODO: implement a heightrequest that downloads a remote ledger
+
+        // TODO: only call this after unpacking the ledger
         DirectoryReconciler(&ledger_path.join(".aleo"))
             .reconcile()
             .await?;
 
+        // defaulting the initial height allows the reconciler to treat
+        // a persisted env with non-top target heights as a request to delete
+        // the ledger
+        if last_height.is_none() {
+            // the default last height is the top when persisting
+            // and 0 when not persisting (clean ledger)
+            **last_height = Some((
+                0,
+                if is_persist {
+                    HeightRequest::Top
+                } else {
+                    HeightRequest::Absolute(0)
+                },
+            ));
+
+            //  delete ledger because no last_height indicates a fresh env
+            if !is_persist {
+                let _ = tokio::fs::remove_dir_all(&ledger_path).await;
+            }
+        }
+        let last_height = last_height.as_mut().unwrap();
+
+        // If there is no pending height, check if there should be a pending height
+        if pending_height.is_none() {
+            // target height has been realized
+            if last_height == target_height {
+                return Ok(ReconcileStatus::default());
+            }
+
+            // If the target height is the top, we can skip the ledger reconciler
+            if target_height.1.is_top() {
+                *last_height = *target_height;
+                // ledger operation is complete
+                return Ok(ReconcileStatus::default());
+            }
+
+            // If the target height is 0, we can delete the ledger
+            if target_height.1.reset() {
+                let _ = tokio::fs::remove_dir_all(&ledger_path).await;
+                *last_height = *target_height;
+                // ledger operation is complete
+                return Ok(ReconcileStatus::default());
+            }
+
+            // TODO: ledger URL handling here instead of retention policy
+
+            // Target height is guaranteed to be different, not top, and not 0, which means
+            // it's up to the retention policies
+
+            // If there's a retention policy, load the checkpoint manager
+            // this is so we can wipe all leftover checkpoints for non-persisted storage
+            // after resets or new environments
+            let Some(mut manager) = env_info
+                .storage
+                .retention_policy
+                .clone()
+                .map(|policy| {
+                    trace!("loading checkpoints from {untar_base:?}...");
+                    CheckpointManager::load(ledger_path.clone(), policy).map_err(|e| {
+                        error!("failed to load checkpoints: {e}");
+                        ReconcileError2::CheckpointLoadError(e.to_string())
+                    })
+                })
+                .transpose()?
+            else {
+                // if there is no retention policy, this height request cannot be fulfilled
+                return Err(ReconcileError2::MissingRetentionPolicy(target_height.1));
+            };
+
+            // TODO: find_by_span logic
+        }
+        let pending = pending_height.unwrap();
+
+        // If the target height changed while processing the last target height
+        // wait for the previous procedure to complete before starting a new one.
+        if *target_height != pending {
+            // TODO: complete current procedure before starting a new one
+
+            // clear current pending height
+            **pending_height = None;
+
+            return Ok(ReconcileStatus::empty()
+                .add_condition(ReconcileCondition::InterruptedModify(String::from(
+                    "target height changed",
+                )))
+                .requeue_after(Duration::from_secs(1)));
+        }
+
         // If the ledger is OK and the target height is the top, we can skip the ledger
         // reconciler
-        if env_info.storage.persist && target_height.is_top() && ledger_path.exists() {
+        if is_persist && target_height.1.is_top() && ledger_path.exists() {
             return Ok(ReconcileStatus::default());
         }
 
         // TODO: if pending_height - check unpack/modify handles
 
-        let is_new_env = last_height.is_none();
+        // let is_new_env = last_height.is_none();
 
         Ok(ReconcileStatus::empty())
     }

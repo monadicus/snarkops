@@ -22,6 +22,10 @@ pub enum ReconcileCondition {
     PendingProcess(String),
     /// A tranfer was started and interrupted.
     InterruptedTransfer(String, TransferId, String),
+    /// An unpack operation was started and interrupted.
+    InterruptedUnpack(String),
+    /// A modify operation was started and interrupted.
+    InterruptedModify(String),
     /// A file is missing and cannot be downloaded at the moment.
     MissingFile(String),
     /// Waiting to reconnect to the controlplane
