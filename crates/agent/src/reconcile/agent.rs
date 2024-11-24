@@ -1,4 +1,9 @@
-use std::{collections::HashSet, sync::Arc, time::Instant};
+use std::{
+    collections::HashSet,
+    ops::Deref,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use snops_common::{
     api::EnvInfo,
@@ -9,8 +14,12 @@ use snops_common::{
     },
 };
 use tarpc::context;
-use tokio::{sync::Mutex, task::AbortHandle};
-use tracing::{error, warn};
+use tokio::{
+    select,
+    sync::{mpsc::Receiver, Mutex},
+    task::AbortHandle,
+};
+use tracing::{error, info, trace, warn};
 
 use super::{
     command::NodeCommand,
@@ -18,7 +27,10 @@ use super::{
     storage::{BinaryReconciler, GenesisReconciler, LedgerModifyResult, StorageVersionReconciler},
     DirectoryReconciler, Reconcile, ReconcileStatus,
 };
-use crate::{reconcile::storage::LedgerReconciler, state::GlobalState};
+use crate::{
+    reconcile::{process::EndProcessReconciler, storage::LedgerReconciler},
+    state::GlobalState,
+};
 
 /// Attempt to reconcile the agent's current state.
 /// This will download files and start/stop the node
@@ -64,6 +76,60 @@ impl TransfersContext {
     }
 }
 
+impl AgentStateReconciler {
+    pub async fn loop_forever(&mut self, mut reconcile_requests: Receiver<Instant>) {
+        let mut err_backoff = 0;
+
+        // The first reconcile is scheduled for 5 seconds after startup.
+        // Connecting to the controlplane will likely trigger a reconcile sooner.
+        let mut next_reconcile_at = Instant::now() + Duration::from_secs(5);
+        let mut wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
+
+        loop {
+            // Await for the next reconcile, allowing for it to be moved up sooner
+            select! {
+                // Replace the next_reconcile_at with the soonest reconcile time
+                Some(new_reconcile_at) = reconcile_requests.recv() => {
+                    next_reconcile_at = next_reconcile_at.min(new_reconcile_at);
+                    wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
+                },
+                _ = &mut wait => {}
+            }
+
+            // Drain the reconcile request queue
+            while reconcile_requests.try_recv().is_ok() {}
+            // Schedule the next reconcile for 1 week.
+            next_reconcile_at = Instant::now() + Duration::from_secs(60 * 60 * 24 * 7);
+
+            // Update the reconciler with the latest agent state
+            // This prevents the agent state from changing during reconciliation
+            self.agent_state = self.state.agent_state.read().await.deref().clone();
+
+            trace!("reconciling agent state...");
+            match self.reconcile().await {
+                Ok(status) => {
+                    if status.inner.is_some() {
+                        trace!("reconcile completed");
+                    }
+                    if !status.conditions.is_empty() {
+                        trace!("reconcile conditions: {:?}", status.conditions);
+                    }
+                    if let Some(requeue_after) = status.requeue_after {
+                        next_reconcile_at = Instant::now() + requeue_after;
+                    }
+                }
+                Err(e) => {
+                    error!("failed to reconcile agent state: {e}");
+                    err_backoff = (err_backoff + 5).min(30);
+                    next_reconcile_at = Instant::now() + Duration::from_secs(err_backoff);
+                }
+            }
+
+            // TODO: announce reconcile status to the server, throttled
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct AgentStateReconcilerContext {
     // TODO: allow transfers to be interrupted. potentially allow them to be resumed by using the
@@ -71,7 +137,8 @@ pub struct AgentStateReconcilerContext {
     /// Information about active transfers
     transfers: Option<TransfersContext>,
     /// Information about the node process
-    process: Option<ProcessContext>,
+    pub process: Option<ProcessContext>,
+    pub shutdown_pending: bool,
 }
 
 /// Run a reconciler and return early if a requeue is needed. A condition is
@@ -79,10 +146,15 @@ pub struct AgentStateReconcilerContext {
 /// monitoring the agent.
 macro_rules! reconcile {
     ($id:ident, $e:expr) => {
-        let res = $e.reconcile().await?;
-        if res.is_requeue() {
-            return Ok(res.add_scope(concat!(stringify!($id), "/requeue")));
+        reconcile!($id, $e, res => {})
+    };
+    ($id:ident, $e:expr, $v:ident => $rest:expr) => {
+
+        let $v = $e.reconcile().await?;
+        if $v.is_requeue() {
+            return Ok($v.add_scope(concat!(stringify!($id), "/requeue")));
         }
+        $rest
     };
 }
 
@@ -110,8 +182,16 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 // gracefully shut down the node.
                 let shutdown_pending = !node.online || storage_has_changed;
 
-                if let (true, Some(process)) = (shutdown_pending, self.context.process.as_ref()) {
-                    // TODO: reconcile process destruction
+                if let (true, Some(process)) = (
+                    shutdown_pending || self.context.shutdown_pending,
+                    self.context.process.as_mut(),
+                ) {
+                    reconcile!(end_process, EndProcessReconciler(process), res => {
+                        // If the process has exited, clear the process context
+                        if res.inner.is_some() {
+                            self.context.process = None;
+                        }
+                    });
                 }
 
                 // TODO: check if addrs have changed, and update shutdown_pending
@@ -201,11 +281,6 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                     }
                 );
 
-                // TODO: restart the node if the binaries changed. this means storing the hashes
-                // of the downloaded files
-
-                // TODO: requeue if the binaries are not ready
-
                 // Accumulate all the fields that are used to derive the command that starts
                 // the node.
                 // This will be used to determine if the command has changed at all.
@@ -224,7 +299,11 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 // TODO: spawn the command, manage its state, check that it's up
                 // TODO: if possible, use the NodeCommand as configuration for a node service to
                 // allow running the node outside of the agent
-                let _cmd = command.build();
+
+                if self.context.process.is_none() {
+                    info!("Starting node process");
+                    self.context.process = Some(ProcessContext::new(command)?);
+                }
             }
         }
 

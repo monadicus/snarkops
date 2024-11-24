@@ -21,7 +21,7 @@ use clap::Parser;
 use cli::Cli;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::init_logging;
-use reconcile::{agent::AgentStateReconciler, Reconcile};
+use reconcile::{agent::AgentStateReconciler, process::EndProcessReconciler, Reconcile};
 use snops_common::{db::Database, util::OpaqueDebug};
 use tokio::{
     select,
@@ -73,7 +73,7 @@ async fn main() {
         .expect("failed to get status server port")
         .port();
 
-    let (queue_reconcile_tx, mut reconcile_requests) = mpsc::channel(5);
+    let (queue_reconcile_tx, reconcile_requests) = mpsc::channel(5);
 
     // Create the client state
     let state = Arc::new(GlobalState {
@@ -135,7 +135,7 @@ async fn main() {
     let mut interrupt = Signals::new(&[SignalKind::terminate(), SignalKind::interrupt()]);
 
     let state2 = Arc::clone(&state);
-    let connection_loop = Box::pin(async move {
+    tokio::spawn(async move {
         loop {
             let req = client::new_ws_request(&ws_uri, state2.db.jwt());
             client::ws_connection(req, Arc::clone(&state2)).await;
@@ -144,75 +144,24 @@ async fn main() {
         }
     });
 
-    let state3 = Arc::clone(&state);
-    let reconcile_loop = Box::pin(async move {
-        let mut err_backoff = 0;
-
-        // Root reconciler that walks through configuring the agent.
-        // The context is mutated while reconciling to keep track of things
-        // like downloads, ledger manipulations, node command, and more.
-        let mut root = AgentStateReconciler {
-            agent_state: Arc::clone(state3.agent_state.read().await.deref()),
-            state: Arc::clone(&state3),
-            context: Default::default(),
-        };
-
-        // The first reconcile is scheduled for 5 seconds after startup.
-        // Connecting to the controlplane will likely trigger a reconcile sooner.
-        let mut next_reconcile_at = Instant::now() + Duration::from_secs(5);
-        let mut wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
-
-        loop {
-            // Await for the next reconcile, allowing for it to be moved up sooner
-            select! {
-                // Replace the next_reconcile_at with the soonest reconcile time
-                Some(new_reconcile_at) = reconcile_requests.recv() => {
-                    next_reconcile_at = next_reconcile_at.min(new_reconcile_at);
-                    wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
-                },
-                _ = &mut wait => {}
-            }
-
-            // Drain the reconcile request queue
-            while reconcile_requests.try_recv().is_ok() {}
-            // Schedule the next reconcile for 1 week.
-            next_reconcile_at = Instant::now() + Duration::from_secs(60 * 60 * 24 * 7);
-
-            // Update the reconciler with the latest agent state
-            // This prevents the agent state from changing during reconciliation
-            root.agent_state = state3.agent_state.read().await.deref().clone();
-
-            trace!("reconciling agent state...");
-            match root.reconcile().await {
-                Ok(status) => {
-                    if status.inner.is_some() {
-                        trace!("reconcile completed");
-                    }
-                    if !status.conditions.is_empty() {
-                        trace!("reconcile conditions: {:?}", status.conditions);
-                    }
-                    if let Some(requeue_after) = status.requeue_after {
-                        next_reconcile_at = Instant::now() + requeue_after;
-                    }
-                }
-                Err(e) => {
-                    error!("failed to reconcile agent state: {e}");
-                    err_backoff = (err_backoff + 5).min(30);
-                    next_reconcile_at = Instant::now() + Duration::from_secs(err_backoff);
-                }
-            }
-
-            // TODO: announce reconcile status to the server, throttled
-        }
-    });
+    // Root reconciler that walks through configuring the agent.
+    // The context is mutated while reconciling to keep track of things
+    // like downloads, ledger manipulations, node command, and more.
+    let mut root = AgentStateReconciler {
+        agent_state: Arc::clone(state.agent_state.read().await.deref()),
+        state: Arc::clone(&state),
+        context: Default::default(),
+    };
 
     select! {
+        _ = root.loop_forever(reconcile_requests) => unreachable!(),
         _ = interrupt.recv_any() => {
+            if let Some(process) = root.context.process.as_mut() {
+                EndProcessReconciler(process).reconcile().await;
+
+            }
             info!("Received interrupt signal, shutting down...");
         },
-
-        _ = connection_loop => unreachable!(),
-        _ = reconcile_loop => unreachable!(),
     }
 
     state.node_graceful_shutdown().await;

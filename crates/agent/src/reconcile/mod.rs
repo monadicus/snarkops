@@ -9,7 +9,7 @@ mod files;
 pub use files::*;
 pub mod process;
 pub mod storage;
-use snops_common::{rpc::error::ReconcileError2, state::TransferId};
+use snops_common::state::TransferId;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ReconcileCondition {
@@ -26,6 +26,10 @@ pub enum ReconcileCondition {
     MissingFile(String),
     /// Waiting to reconnect to the controlplane
     PendingConnection,
+    /// Waiting for the node to be shut down
+    PendingShutdown,
+    /// Waiting for the node to be gracefully shut down
+    RequestedShutdown,
 }
 
 pub trait Reconcile<T, E> {
@@ -89,10 +93,6 @@ impl<T> ReconcileStatus<T> {
         self.inner
     }
 
-    pub fn take_conditions(&mut self) -> IndexSet<ReconcileCondition> {
-        std::mem::take(&mut self.conditions)
-    }
-
     pub fn requeue_after(mut self, duration: Duration) -> Self {
         self.requeue_after = Some(duration);
         self
@@ -105,11 +105,6 @@ impl<T> ReconcileStatus<T> {
 
     pub fn add_condition(mut self, condition: ReconcileCondition) -> Self {
         self.conditions.insert(condition);
-        self
-    }
-
-    pub fn add_conditions(mut self, conditions: HashSet<ReconcileCondition>) -> Self {
-        self.conditions.extend(conditions);
         self
     }
 }

@@ -59,9 +59,7 @@ impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
             .as_ref()
             .map(|(_, b)| b != target_binary)
             .unwrap_or(true);
-        let binary_is_ok = ok_at
-            .map(|ok| ok.elapsed().as_secs() < 300) // check if the binary has been OK for 5 minutes
-            .unwrap_or(false);
+        let binary_is_ok = ok_at.is_some();
 
         // If the binary has not changed and has not expired, we can skip the binary
         // reconciler
