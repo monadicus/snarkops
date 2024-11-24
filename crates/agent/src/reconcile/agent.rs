@@ -162,8 +162,17 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
         match self.agent_state.as_ref() {
             AgentState::Inventory => {
-                // TODO: cleanup child process
                 // TODO: cleanup other things
+
+                // end the process if it is running
+                if let Some(process) = self.context.process.as_mut() {
+                    reconcile!(end_process, EndProcessReconciler(process), res => {
+                        // If the process has exited, clear the process context
+                        if res.inner.is_some() {
+                            self.context.process = None;
+                        }
+                    });
+                }
 
                 return Ok(ReconcileStatus::default().add_scope("agent_state/inventory"));
             }

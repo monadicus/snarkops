@@ -21,14 +21,14 @@ use clap::Parser;
 use cli::Cli;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::init_logging;
-use reconcile::{agent::AgentStateReconciler, process::EndProcessReconciler, Reconcile};
+use reconcile::agent::AgentStateReconciler;
 use snops_common::{db::Database, util::OpaqueDebug};
 use tokio::{
     select,
     signal::unix::{signal, Signal, SignalKind},
     sync::{mpsc, RwLock},
 };
-use tracing::{error, info, trace};
+use tracing::{error, info};
 
 use crate::state::GlobalState;
 mod log;
@@ -132,7 +132,7 @@ async fn main() {
     });
 
     // Get the interrupt signals to break the stream connection
-    let mut interrupt = Signals::new(&[SignalKind::terminate(), SignalKind::interrupt()]);
+    let mut interrupt = Signals::term_or_interrupt();
 
     let state2 = Arc::clone(&state);
     tokio::spawn(async move {
@@ -156,11 +156,11 @@ async fn main() {
     select! {
         _ = root.loop_forever(reconcile_requests) => unreachable!(),
         _ = interrupt.recv_any() => {
+            info!("Received interrupt signal, shutting down...");
             if let Some(process) = root.context.process.as_mut() {
-                EndProcessReconciler(process).reconcile().await;
+                process.graceful_shutdown().await;
 
             }
-            info!("Received interrupt signal, shutting down...");
         },
     }
 
@@ -177,6 +177,10 @@ impl Signals {
         Self {
             signals: kinds.iter().map(|k| signal(*k).unwrap()).collect(),
         }
+    }
+
+    pub fn term_or_interrupt() -> Self {
+        Self::new(&[SignalKind::terminate(), SignalKind::interrupt()])
     }
 
     async fn recv_any(&mut self) {

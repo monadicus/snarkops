@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, time::Duration};
+use std::{fmt::Display, time::Duration};
 
 use indexmap::IndexSet;
 
@@ -28,8 +28,6 @@ pub enum ReconcileCondition {
     PendingConnection,
     /// Waiting for the node to be shut down
     PendingShutdown,
-    /// Waiting for the node to be gracefully shut down
-    RequestedShutdown,
 }
 
 pub trait Reconcile<T, E> {

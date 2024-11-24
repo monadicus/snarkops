@@ -9,7 +9,7 @@ use snops_common::{
     rpc::error::ReconcileError,
     state::{NetworkId, StorageId},
 };
-use tracing::{error, info, trace};
+use tracing::{error, trace};
 
 use crate::{api, state::GlobalState};
 

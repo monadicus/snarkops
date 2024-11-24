@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use snops_common::rpc::error::ReconcileError2;
-use tokio::process::Child;
+use tokio::{process::Child, select};
 use tracing::{error, info};
 
 use super::{command::NodeCommand, Reconcile, ReconcileCondition, ReconcileStatus};
@@ -45,6 +45,35 @@ impl ProcessContext {
     pub fn is_running(&self) -> bool {
         self.child.id().is_some()
     }
+
+    /// A helper function to gracefully shutdown the node process without
+    /// a reconciler
+    pub async fn graceful_shutdown(&mut self) {
+        if !self.is_running() {
+            return;
+        }
+
+        self.send_sigint();
+
+        select! {
+            _ = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT) => {
+                info!("sending SIGKILL to node process");
+                self.send_sigkill();
+            },
+            _ = tokio::signal::ctrl_c() => {
+                info!("received SIGINT, sending SIGKILL to node process");
+                self.send_sigkill();
+            },
+            _ = self.child.wait() => {
+                info!("node process has exited gracefully");
+                return;
+            }
+        }
+
+        let _ = self.child.wait().await;
+        info!("node process has exited");
+    }
+
     /// Send a SIGINT to the child process
     pub fn send_sigint(&mut self) -> bool {
         use nix::{
