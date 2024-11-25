@@ -12,7 +12,7 @@ pub fn get_internal_addrs() -> Result<Vec<IpAddr>> {
             // loopback addresses can be used when the networks are calculated
             // to be the same, but they are not useful for peer to peer comms
             if ip.is_loopback() {
-                info!("skipping loopback iface {name}: {ip:?}");
+                info!("Skipping loopback iface {name}: {ip:?}");
                 return None;
             }
 
@@ -21,11 +21,11 @@ pub fn get_internal_addrs() -> Result<Vec<IpAddr>> {
             // these addrs are about as useful as their v4 counterpart
             if let IpAddr::V6(v6) = ip {
                 if (v6.segments()[0] & 0xffc0) == 0xfe80 {
-                    info!("skipping link-local iface {name}: {ip:?}");
+                    info!("Skipping link-local iface {name}: {ip:?}");
                     return None;
                 }
             }
-            info!("using iface {name}: {ip:?}");
+            info!("Using iface {name}: {ip:?}");
             Some(ip)
         })
         .collect())

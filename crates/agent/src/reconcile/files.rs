@@ -13,12 +13,12 @@ use snops_common::{
     rpc::error::ReconcileError2,
     state::{NetworkId, StorageId, TransferId, TransferStatusUpdate},
 };
-use tracing::error;
+use tracing::{error, trace, warn};
 use url::Url;
 
 use super::{Reconcile, ReconcileCondition, ReconcileStatus};
 use crate::{
-    api::{download_file, should_download_file},
+    api::{download_file, get_file_issues},
     state::GlobalState,
     transfers,
 };
@@ -131,7 +131,7 @@ impl Reconcile<bool, ReconcileError2> for FileReconciler {
         let tx_id = self.tx_id.unwrap();
 
         // transfer is pending
-        match self.state.transfers.entry(tx_id) {
+        let is_complete = match self.state.transfers.entry(tx_id) {
             dashmap::Entry::Occupied(occupied_entry) => {
                 let entry = occupied_entry.get();
 
@@ -167,11 +167,12 @@ impl Reconcile<bool, ReconcileError2> for FileReconciler {
                 }
 
                 // entry is complete
+                true
             }
-            dashmap::Entry::Vacant(_) => {}
-        }
+            dashmap::Entry::Vacant(_) => false,
+        };
 
-        let is_file_ready = !should_download_file(
+        let file_problems = get_file_issues(
             &client,
             self.src.as_str(),
             self.dst.as_path(),
@@ -181,15 +182,56 @@ impl Reconcile<bool, ReconcileError2> for FileReconciler {
         )
         .await?;
 
+        // There is an issue with the file being complete and not existing
+        if is_complete && !self.dst.exists() {
+            // Clear the download
+            self.tx_id = None;
+            warn!(
+                "File is complete but does not exist: {} (Problem: {file_problems:?})",
+                self.dst.display()
+            );
+
+            return Ok(ReconcileStatus::empty()
+                .add_condition(ReconcileCondition::MissingFile(
+                    self.dst.display().to_string(),
+                ))
+                .requeue_after(Duration::from_secs(1)));
+        }
+
+        if is_complete && file_problems.is_some() {
+            warn!(
+                "Complete file has {file_problems:?} problems: {}",
+                self.dst.display()
+            );
+
+            // if the file is complete, but there are issues, requeue
+            if self.dst.exists() {
+                // delete the file
+                tokio::fs::remove_file(&self.dst).await.map_err(|e| {
+                    ReconcileError2::DeleteFileError(self.dst.clone(), e.to_string())
+                })?;
+            }
+
+            // Clear the download
+            self.tx_id = None;
+
+            return Ok(ReconcileStatus::empty()
+                .add_condition(ReconcileCondition::MissingFile(self.src.to_string()))
+                .requeue_after(Duration::from_secs(1)));
+        }
+
         // Everything is good. Ensure file permissions
-        if is_file_ready {
+        if file_problems.is_none() {
             self.check_and_set_mode()?;
+            trace!("File reconcile complete: {}", self.dst.display());
             return Ok(ReconcileStatus::with(true));
         }
 
         // file does not exist and cannot be downloaded right now
         if !self.dst.exists() && self.offline {
-            return Ok(ReconcileStatus::with(false));
+            return Ok(
+                ReconcileStatus::with(false).add_condition(ReconcileCondition::PendingConnection)
+            );
         }
 
         let src = self.src.clone();
@@ -197,11 +239,13 @@ impl Reconcile<bool, ReconcileError2> for FileReconciler {
         let transfer_tx = self.state.transfer_tx.clone();
 
         // download the file
-        let handle =
-            tokio::spawn(
-                async move { download_file(tx_id, &client, src, &dst, transfer_tx).await },
-            )
-            .abort_handle();
+        let handle = tokio::spawn(async move {
+            download_file(tx_id, &client, src, &dst, transfer_tx)
+                .await
+                // Dropping the File from download_file should close the handle
+                .map(|res| res.is_some())
+        })
+        .abort_handle();
 
         // update the transfer with the handle (so it can be canceled if necessary)
         if let Err(e) = self
@@ -211,6 +255,12 @@ impl Reconcile<bool, ReconcileError2> for FileReconciler {
         {
             error!("failed to send transfer handle: {e}");
         }
+
+        trace!(
+            "Started download of {} to {} via tx_id {tx_id}",
+            self.src,
+            self.dst.display()
+        );
 
         // transfer is pending - requeue after 1 second with the pending condition
         Ok(ReconcileStatus::empty()

@@ -120,7 +120,7 @@ pub struct EndProcessReconciler<'a>(pub &'a mut ProcessContext);
 
 impl<'a> Reconcile<(), ReconcileError2> for EndProcessReconciler<'a> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
-        if !self.0.is_running() {
+        if self.0.child.try_wait().is_ok_and(|status| status.is_some()) {
             return Ok(ReconcileStatus::default());
         }
 

@@ -16,7 +16,7 @@ use snops_common::{
     state::{HeightRequest, InternedId, TransferId},
 };
 use tokio::{process::Command, sync::Mutex, task::AbortHandle};
-use tracing::{error, trace};
+use tracing::{error, info, trace};
 use url::Url;
 
 use super::{
@@ -82,9 +82,8 @@ impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
             .with_binary(target_binary)
             .with_tx_id(transfer.as_ref().map(|(tx, _)| *tx));
         let file_res = file_rec.reconcile().await?;
-        if let Some(tx_id) = file_rec.tx_id {
-            **transfer = Some((tx_id, target_binary.clone()));
-        }
+
+        **transfer = file_rec.tx_id.map(|tx_id| (tx_id, target_binary.clone()));
 
         // Transfer is pending or a failure occurred
         if file_res.is_requeue() {
@@ -140,7 +139,7 @@ impl<'a> Reconcile<(), ReconcileError2> for GenesisReconciler<'a> {
             .map(|ok| ok.elapsed().as_secs() < 300)
             .unwrap_or(false);
 
-        if env_info.storage.native_genesis || !genesis_file_ok {
+        if env_info.storage.native_genesis || genesis_file_ok {
             return Ok(ReconcileStatus::default());
         }
 
@@ -156,9 +155,7 @@ impl<'a> Reconcile<(), ReconcileError2> for GenesisReconciler<'a> {
         .with_tx_id(**transfer);
         let file_res = file_rec.reconcile().await?;
 
-        if let Some(tx_id) = file_rec.tx_id {
-            **transfer = Some(tx_id);
-        }
+        **transfer = file_rec.tx_id;
 
         if file_res.is_requeue() {
             return Ok(file_res.emptied().add_scope("file/requeue"));
@@ -363,7 +360,7 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
 
         // TODO: only call this after unpacking the ledger
         // create the ledger path if it doesn't exist
-        DirectoryReconciler(&ledger_path.join(".aleo"))
+        DirectoryReconciler(&ledger_path.join(".aleo/storage"))
             .reconcile()
             .await?;
 
@@ -489,12 +486,25 @@ impl<'a> Reconcile<(), ReconcileError2> for StorageVersionReconciler<'a> {
         };
 
         // wipe old storage when the version changes
-        Ok(if version_file_data != Some(*version) && path.exists() {
+        if version_file_data != Some(*version) && path.exists() {
+            info!("Removing storage directory for version mismatch: {version_file_data:?} != {version:?}");
             let _ = tokio::fs::remove_dir_all(&path).await;
-            ReconcileStatus::default()
         } else {
             // return an empty status if the version is the same
-            ReconcileStatus::empty()
-        })
+            return Ok(ReconcileStatus::empty());
+        };
+
+        DirectoryReconciler(path).reconcile().await?;
+
+        if !version_file.exists() {
+            tokio::fs::write(&version_file, version.to_string())
+                .await
+                .map_err(|e| {
+                    error!("failed to write storage version: {e}");
+                    ReconcileError2::CreateDirectory(version_file.to_path_buf(), e.to_string())
+                })?;
+        }
+
+        Ok(ReconcileStatus::default())
     }
 }

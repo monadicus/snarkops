@@ -19,6 +19,7 @@ use tokio::{
     select,
     sync::{mpsc::Receiver, Mutex},
     task::AbortHandle,
+    time::sleep_until,
 };
 use tracing::{error, info, trace, warn};
 
@@ -26,7 +27,7 @@ use super::{
     command::NodeCommand,
     process::ProcessContext,
     storage::{BinaryReconciler, GenesisReconciler, LedgerModifyResult, StorageVersionReconciler},
-    DirectoryReconciler, Reconcile, ReconcileStatus,
+    Reconcile, ReconcileStatus,
 };
 use crate::{
     db::Database,
@@ -137,17 +138,19 @@ impl AgentStateReconciler {
         // The first reconcile is scheduled for 5 seconds after startup.
         // Connecting to the controlplane will likely trigger a reconcile sooner.
         let mut next_reconcile_at = Instant::now() + Duration::from_secs(5);
-        let mut wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
 
         loop {
-            // Await for the next reconcile, allowing for it to be moved up sooner
-            select! {
-                // Replace the next_reconcile_at with the soonest reconcile time
-                Some(new_reconcile_at) = reconcile_requests.recv() => {
-                    next_reconcile_at = next_reconcile_at.min(new_reconcile_at);
-                    wait = Box::pin(tokio::time::sleep_until(next_reconcile_at.into()));
-                },
-                _ = &mut wait => {}
+            loop {
+                // Await for the next reconcile, allowing for it to be moved up sooner
+                select! {
+                    // Replace the next_reconcile_at with the soonest reconcile time
+                    Some(new_reconcile_at) = reconcile_requests.recv() => {
+                        next_reconcile_at = next_reconcile_at.min(new_reconcile_at);
+                    },
+                    _ = sleep_until(next_reconcile_at.into()) => {
+                        break
+                    }
+                }
             }
 
             // Drain the reconcile request queue
@@ -160,16 +163,17 @@ impl AgentStateReconciler {
             // This prevents the agent state from changing during reconciliation
             self.agent_state = self.state.agent_state.read().await.deref().clone();
 
-            trace!("reconciling agent state...");
+            trace!("Reconciling agent state...");
             match self.reconcile().await {
                 Ok(status) => {
                     if status.inner.is_some() {
-                        trace!("reconcile completed");
+                        trace!("Reconcile completed");
                     }
                     if !status.conditions.is_empty() {
-                        trace!("reconcile conditions: {:?}", status.conditions);
+                        trace!("Reconcile conditions: {:?}", status.conditions);
                     }
                     if let Some(requeue_after) = status.requeue_after {
+                        trace!("Requeueing after {requeue_after:?}");
                         next_reconcile_at = Instant::now() + requeue_after;
                     }
                 }
@@ -193,9 +197,9 @@ macro_rules! reconcile {
         reconcile!($id, $e, res => {})
     };
     ($id:ident, $e:expr, $v:ident => $rest:expr) => {
-
         let $v = $e.reconcile().await?;
         if $v.is_requeue() {
+            trace!("Requeue needed for {} ({:?}) {:?}", stringify!($id), $v.scopes, $v.conditions);
             return Ok($v.add_scope(concat!(stringify!($id), "/requeue")));
         }
         $rest
@@ -269,19 +273,38 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                     return Ok(ReconcileStatus::default().add_scope("agent_state/offline"));
                 }
 
+                let node_arc = Arc::new(*node.clone());
+
                 // Reconcile behavior while the node is running...
                 if let Some(process) = self.context.process.as_ref() {
                     // If the process has exited, clear the process context
                     if !process.is_running() {
-                        info!("node process has exited...");
+                        info!("Node process has exited...");
                         self.context.process = None;
                     } else {
+                        // Accumulate all the fields that are used to derive the command that starts
+                        // the node.
+                        let command = NodeCommand::new(
+                            Arc::clone(&self.state),
+                            node_arc,
+                            *env_id,
+                            Arc::clone(&env_info),
+                        )
+                        .await?;
+
+                        // If the command has changed, restart the process
+                        if process.command != command {
+                            info!("Node command has changed, restarting process...");
+                            self.context.shutdown_pending = true;
+                            return Ok(ReconcileStatus::empty()
+                                .add_scope("agent_state/command_changed")
+                                .requeue_after(Duration::ZERO));
+                        }
+
                         // Prevent other reconcilers from running while the node is running
                         return Ok(ReconcileStatus::default().add_scope("agent_state/running"));
                     }
                 }
-
-                let node_arc = Arc::new(*node.clone());
 
                 // Initialize the transfers context with the current status
                 if self.context.transfers.is_none() {
@@ -305,12 +328,9 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 // Ensure the storage version is correct, deleting the storage path
                 // the version changes.
                 reconcile!(
-                    storage,
+                    storage_version,
                     StorageVersionReconciler(&storage_path, env_info.storage.version)
                 );
-
-                // Create the storage path if it does not exist
-                reconcile!(dir, DirectoryReconciler(&storage_path));
 
                 // Resolve the genesis block
                 reconcile!(
@@ -357,27 +377,19 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                     }
                 );
 
-                // Accumulate all the fields that are used to derive the command that starts
-                // the node.
-                // This will be used to determine if the command has changed at all.
-                let command = NodeCommand::new(
-                    Arc::clone(&self.state),
-                    node_arc,
-                    *env_id,
-                    Arc::clone(&env_info),
-                )
-                .await?;
-
-                if self.context.process.as_ref().map(|p| &p.command) != Some(&command) {
-                    // TODO: OK to restart the node -- command has changed
-                }
-
-                // TODO: spawn the command, manage its state, check that it's up
                 // TODO: if possible, use the NodeCommand as configuration for a node service to
                 // allow running the node outside of the agent
 
                 if self.context.process.is_none() {
                     info!("Starting node process");
+                    let command = NodeCommand::new(
+                        Arc::clone(&self.state),
+                        node_arc,
+                        *env_id,
+                        Arc::clone(&env_info),
+                    )
+                    .await?;
+
                     let process = ProcessContext::new(command)?;
                     self.context.process = Some(process);
                 }

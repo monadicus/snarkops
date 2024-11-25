@@ -90,7 +90,7 @@ impl AgentService for AgentRpcServer {
             error!("failed to send transfer statuses: {err}");
         }
 
-        info!("queing reconcilation on handshake...");
+        info!("Received control-plane handshake");
 
         // Queue a reconcile immediately as we have received new state.
         // The reconciler will decide if anything has actually changed
@@ -104,7 +104,7 @@ impl AgentService for AgentRpcServer {
         _: context::Context,
         target: AgentState,
     ) -> Result<(), ReconcileError> {
-        info!("queing reconcilation...");
+        info!("Received reconcile request...");
         self.state.update_agent_state(target).await;
         Ok(())
     }

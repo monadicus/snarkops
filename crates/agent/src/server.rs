@@ -43,7 +43,7 @@ async fn node_ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) ->
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let mut node_client = state.node_client.write().await;
     if node_client.is_some() {
-        warn!("a new node RPC connection tried to establish when one was already established");
+        warn!("A new node RPC connection tried to establish when one was already established");
         let _ = socket.send(Message::Close(None)).await;
         return;
     }
@@ -56,7 +56,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let client = NodeServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
     // store the client in state
-    tracing::info!("node client connected");
+    tracing::info!("Node client connected");
     *node_client = Some(client);
     drop(node_client);
 

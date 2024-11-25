@@ -167,6 +167,8 @@ pub enum ReconcileError2 {
     MissingLocalPrivateKey,
     #[error("failed to create directory {0}: {1}")]
     CreateDirectory(PathBuf, String),
+    #[error("failed to delete file {0}: {1}")]
+    DeleteFileError(PathBuf, String),
     #[error("failed to get metadata for {0}: {1}")]
     FileStatError(PathBuf, String),
     #[error("failed to read file {0}: {1}")]

@@ -104,6 +104,9 @@ pub fn start_monitor(client: ClientLock) -> (TransferTx, Arc<DashMap<TransferId,
                         (Handle(handle), Entry::Occupied(mut ent)) => {
                             let transfer = ent.get_mut();
                             transfer.handle = Some(handle);
+
+                            // prevent broadcasting the handle to the control plane
+                            continue;
                         },
 
                         _ => continue,

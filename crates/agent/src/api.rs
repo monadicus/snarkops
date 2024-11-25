@@ -117,7 +117,7 @@ pub async fn check_binary(
 
     // this also checks for sha256 differences, along with last modified time
     // against the target
-    if !should_download_file(
+    if !get_file_issues(
         &client,
         &source_url,
         path,
@@ -126,6 +126,7 @@ pub async fn check_binary(
         false,
     )
     .await
+    .map(|e| e.is_none())
     .unwrap_or(true)
     {
         // check permissions and ensure 0o755
@@ -176,49 +177,62 @@ pub async fn check_binary(
     Ok(())
 }
 
-pub async fn should_download_file(
+#[derive(Debug)]
+pub enum BadFileReason {
+    /// File is missing
+    NotFound,
+    /// File size mismatch
+    Size,
+    /// SHA256 mismatch
+    Sha256,
+    /// A new version is available based on modified header
+    Stale,
+}
+
+pub async fn get_file_issues(
     client: &reqwest::Client,
-    loc: &str,
-    path: &Path,
+    src: &str,
+    dst: &Path,
     size: Option<u64>,
     sha256: Option<&str>,
     offline: bool,
-) -> Result<bool, ReconcileError2> {
-    if !path.exists() {
-        return Ok(true);
+) -> Result<Option<BadFileReason>, ReconcileError2> {
+    if !dst.try_exists().unwrap_or(false) {
+        return Ok(Some(BadFileReason::NotFound));
     }
 
-    let meta = tokio::fs::metadata(&path)
+    let meta = tokio::fs::metadata(&dst)
         .await
-        .map_err(|e| ReconcileError2::FileStatError(path.to_path_buf(), e.to_string()))?;
+        .map_err(|e| ReconcileError2::FileStatError(dst.to_path_buf(), e.to_string()))?;
     let local_content_length = meta.len();
 
     // if the binary entry is provided, check if the file size and sha256 match
     // file size is incorrect
     if size.is_some_and(|s| s != local_content_length) {
-        return Ok(true);
+        return Ok(Some(BadFileReason::Size));
     }
 
     // if sha256 is present, only download if the sha256 is different
     if let Some(sha256) = sha256 {
-        return Ok(sha256_file(&path.to_path_buf())
-            .map_err(|e| ReconcileError2::FileReadError(path.to_path_buf(), e.to_string()))?
-            != sha256.to_ascii_lowercase());
+        let bad_sha256 = sha256_file(&dst.to_path_buf())
+            .map_err(|e| ReconcileError2::FileReadError(dst.to_path_buf(), e.to_string()))?
+            != sha256.to_ascii_lowercase();
+        return Ok(bad_sha256.then_some(BadFileReason::Sha256));
     }
 
     // if we're offline, don't download
     if offline {
-        return Ok(false);
+        return Ok(None);
     }
 
     // check last modified
     let res = client
-        .head(loc)
+        .head(src)
         .send()
         .await
         .map_err(|e| ReconcileError2::HttpError {
             method: String::from("HEAD"),
-            url: loc.to_owned(),
+            url: src.to_owned(),
             error: e.to_string(),
         })?;
 
@@ -228,7 +242,7 @@ pub async fn should_download_file(
         // parse as a string
         .and_then(|e| e.to_str().ok())
     else {
-        return Ok(true);
+        return Ok(Some(BadFileReason::Stale));
     };
 
     let Some(remote_content_length) = res
@@ -237,16 +251,18 @@ pub async fn should_download_file(
         // parse the header as a u64
         .and_then(|e| e.to_str().ok().and_then(|s| s.parse::<u64>().ok()))
     else {
-        return Ok(true);
+        return Ok(Some(BadFileReason::Size));
     };
 
     let remote_last_modified = httpdate::parse_http_date(last_modified_header);
     let local_last_modified = meta
         .modified()
-        .map_err(|e| ReconcileError2::FileStatError(path.to_path_buf(), e.to_string()))?;
+        .map_err(|e| ReconcileError2::FileStatError(dst.to_path_buf(), e.to_string()))?;
 
-    Ok(remote_last_modified
+    let is_stale = remote_last_modified
         .map(|res| res > local_last_modified)
-        .unwrap_or(true)
-        || remote_content_length != local_content_length)
+        .unwrap_or(true);
+    Ok(is_stale
+        .then_some(BadFileReason::Stale)
+        .or_else(|| (remote_content_length != local_content_length).then_some(BadFileReason::Size)))
 }
