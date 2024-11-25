@@ -99,28 +99,6 @@ pub async fn download_file(
     Ok(Some((file, sha256, downloaded)))
 }
 
-pub async fn check_file(
-    url: impl IntoUrl,
-    to: &Path,
-    transfer_tx: TransferTx,
-) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
-
-    if !should_download_file(&client, url.as_str(), to, None, None, false)
-        .await
-        .unwrap_or(true)
-    {
-        return Ok(());
-    }
-
-    info!("downloading {to:?}");
-
-    let tx_id = transfers::next_id();
-    download_file(tx_id, &client, url, to, transfer_tx).await?;
-
-    Ok(())
-}
-
 pub async fn check_binary(
     binary: &BinaryEntry,
     base_url: &str,

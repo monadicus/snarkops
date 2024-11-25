@@ -3,7 +3,6 @@ use std::{fmt::Display, time::Duration};
 use indexmap::IndexSet;
 
 pub mod agent;
-mod checkpoint;
 pub mod command;
 mod files;
 pub use files::*;
@@ -69,15 +68,6 @@ impl<T> ReconcileStatus<T> {
         self.requeue_after.is_some()
     }
 
-    pub fn replace<U>(&self, inner: Option<U>) -> ReconcileStatus<U> {
-        ReconcileStatus {
-            scopes: self.scopes.clone(),
-            inner,
-            requeue_after: self.requeue_after,
-            conditions: self.conditions.clone(),
-        }
-    }
-
     pub fn emptied<U>(&self) -> ReconcileStatus<U> {
         ReconcileStatus {
             inner: None,
@@ -85,10 +75,6 @@ impl<T> ReconcileStatus<T> {
             requeue_after: self.requeue_after,
             conditions: self.conditions.clone(),
         }
-    }
-
-    pub fn take(self) -> Option<T> {
-        self.inner
     }
 
     pub fn requeue_after(mut self, duration: Duration) -> Self {
