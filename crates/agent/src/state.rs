@@ -14,13 +14,8 @@ use snops_common::{
     util::OpaqueDebug,
 };
 use tarpc::context;
-use tokio::{
-    process::Child,
-    select,
-    sync::{mpsc::Sender, Mutex as AsyncMutex, RwLock},
-    task::AbortHandle,
-};
-use tracing::{error, info};
+use tokio::sync::{mpsc::Sender, oneshot, RwLock};
+use tracing::error;
 
 use crate::{cli::Cli, db::Database, log::ReloadHandler, metrics::Metrics, transfers::TransferTx};
 
@@ -48,9 +43,6 @@ pub struct GlobalState {
     /// Helpful for scheduling the next reconciliation.
     pub queue_reconcile_tx: Sender<Instant>,
     pub env_info: RwLock<Option<(EnvId, Arc<EnvInfo>)>>,
-    pub reconcilation_handle: AsyncMutex<Option<AbortHandle>>,
-    pub child: RwLock<Option<Child>>, /* TODO: this may need to be handled by an owning thread,
-                                       * not sure yet */
     // Map of agent IDs to their resolved addresses.
     pub resolved_addrs: RwLock<IndexMap<AgentId, IpAddr>>,
     pub metrics: RwLock<Metrics>,
@@ -58,9 +50,10 @@ pub struct GlobalState {
     pub transfer_tx: TransferTx,
     pub transfers: Arc<DashMap<TransferId, TransferStatus>>,
 
-    pub node_client: AsyncMutex<Option<NodeServiceClient>>,
-
+    pub node_client: RwLock<Option<NodeServiceClient>>,
     pub log_level_handler: ReloadHandler,
+    /// A oneshot sender to shutdown the agent.
+    pub shutdown: RwLock<Option<oneshot::Sender<()>>>,
 }
 
 impl GlobalState {
@@ -125,34 +118,32 @@ impl GlobalState {
         Ok(env_info.1)
     }
 
-    /// Attempt to gracefully shutdown the node if one is running.
-    pub async fn node_graceful_shutdown(&self) {
-        if let Some((mut child, id)) = self.child.write().await.take().and_then(|ch| {
-            let id = ch.id()?;
-            Some((ch, id))
-        }) {
-            use nix::{
-                sys::signal::{self, Signal},
-                unistd::Pid,
-            };
+    pub fn transfer_tx(&self) -> TransferTx {
+        self.transfer_tx.clone()
+    }
 
-            // send SIGINT to the child process
-            signal::kill(Pid::from_raw(id as i32), Signal::SIGINT).unwrap();
-
-            // wait for graceful shutdown or kill process after 10 seconds
-            let timeout = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT);
-
-            select! {
-                _ = child.wait() => (),
-                _ = timeout => {
-                    info!("snarkos process did not gracefully shut down, killing...");
-                    child.kill().await.unwrap();
-                }
-            }
+    pub async fn shutdown(&self) {
+        if let Some(tx) = self.shutdown.write().await.take() {
+            let _ = tx.send(());
         }
     }
 
-    pub fn transfer_tx(&self) -> TransferTx {
-        self.transfer_tx.clone()
+    pub async fn is_node_online(&self) -> bool {
+        self.node_client.read().await.is_some()
+    }
+
+    pub async fn get_node_client(&self) -> Option<NodeServiceClient> {
+        self.node_client.read().await.clone()
+    }
+
+    pub async fn update_agent_state(&self, state: AgentState) {
+        if let Err(e) = self.db.set_agent_state(&state) {
+            error!("failed to save agent state to db: {e}");
+        }
+        let state = Arc::new(state);
+        *self.agent_state.write().await = state;
+
+        // Queue a reconcile to apply the new state
+        self.queue_reconcile(Duration::ZERO).await;
     }
 }

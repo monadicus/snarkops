@@ -13,7 +13,7 @@ pub struct ProcessContext {
     /// the node should be restarted
     pub command: NodeCommand,
     /// The child process that is running the node
-    child: Child,
+    pub child: Child,
     /// Time the child process was started
     #[allow(dead_code)]
     started_at: Instant,

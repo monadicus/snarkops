@@ -21,7 +21,7 @@ use clap::Parser;
 use cli::Cli;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::init_logging;
-use reconcile::agent::AgentStateReconciler;
+use reconcile::agent::{AgentStateReconciler, AgentStateReconcilerContext};
 use snops_common::{db::Database, util::OpaqueDebug};
 use tokio::{
     select,
@@ -75,6 +75,8 @@ async fn main() {
 
     let (queue_reconcile_tx, reconcile_requests) = mpsc::channel(5);
 
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+
     // Create the client state
     let state = Arc::new(GlobalState {
         client,
@@ -100,8 +102,6 @@ async fn main() {
                 })
                 .unwrap_or_default(),
         ),
-        reconcilation_handle: Default::default(),
-        child: Default::default(),
         resolved_addrs: RwLock::new(
             db.resolved_addrs()
                 .inspect_err(|e| {
@@ -116,6 +116,7 @@ async fn main() {
         node_client: Default::default(),
         log_level_handler: reload_handler,
         db: OpaqueDebug(db),
+        shutdown: RwLock::new(Some(shutdown_tx)),
     });
 
     // Start the metrics watcher
@@ -124,7 +125,7 @@ async fn main() {
     // Start the status server
     let status_state = Arc::clone(&state);
     tokio::spawn(async move {
-        info!("starting status API server on port {agent_rpc_port}");
+        info!("Starting status API server on port {agent_rpc_port}");
         if let Err(e) = server::start(agent_rpc_listener, status_state).await {
             error!("status API server crashed: {e:?}");
             std::process::exit(1);
@@ -150,22 +151,21 @@ async fn main() {
     let mut root = AgentStateReconciler {
         agent_state: Arc::clone(state.agent_state.read().await.deref()),
         state: Arc::clone(&state),
-        context: Default::default(),
+        // Recover context from previous state
+        context: AgentStateReconcilerContext::hydrate(&state.db),
     };
 
     select! {
         _ = root.loop_forever(reconcile_requests) => unreachable!(),
-        _ = interrupt.recv_any() => {
-            info!("Received interrupt signal, shutting down...");
-            if let Some(process) = root.context.process.as_mut() {
-                process.graceful_shutdown().await;
-
-            }
-        },
+        _ = interrupt.recv_any() => {},
+        _ = shutdown_rx => {},
     }
 
-    state.node_graceful_shutdown().await;
-    info!("snops agent has shut down gracefully :)");
+    info!("Received interrupt signal, shutting down...");
+    if let Some(process) = root.context.process.as_mut() {
+        process.graceful_shutdown().await;
+        info!("Agent has shut down gracefully");
+    }
 }
 
 struct Signals {

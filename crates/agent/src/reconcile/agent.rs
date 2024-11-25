@@ -8,6 +8,7 @@ use std::{
 use snops_common::{
     api::EnvInfo,
     binaries::BinaryEntry,
+    format::{DataFormat, DataHeaderOf},
     rpc::error::ReconcileError2,
     state::{
         AgentId, AgentPeer, AgentState, HeightRequest, NetworkId, NodeState, StorageId, TransferId,
@@ -28,6 +29,7 @@ use super::{
     DirectoryReconciler, Reconcile, ReconcileStatus,
 };
 use crate::{
+    db::Database,
     reconcile::{process::EndProcessReconciler, storage::LedgerReconciler},
     state::GlobalState,
 };
@@ -40,12 +42,37 @@ pub struct AgentStateReconciler {
     pub context: AgentStateReconcilerContext,
 }
 
-#[derive(Default)]
-struct TransfersContext {
-    // TODO: persist network_id, storage_id, storage_version, and ledger_last_height
+pub struct EnvState {
     network_id: NetworkId,
     storage_id: StorageId,
     storage_version: u16,
+}
+
+impl From<&EnvInfo> for EnvState {
+    fn from(info: &EnvInfo) -> Self {
+        Self {
+            network_id: info.network,
+            storage_id: info.storage.id,
+            storage_version: info.storage.version,
+        }
+    }
+}
+
+impl Default for EnvState {
+    fn default() -> Self {
+        Self {
+            network_id: NetworkId::Mainnet,
+            storage_id: StorageId::default(),
+            storage_version: 0,
+        }
+    }
+}
+
+#[derive(Default)]
+struct TransfersContext {
+    /// Persisted values that determine if the storage has changed
+    env_state: EnvState,
+
     /// The last ledger height that was successfully configured
     ledger_last_height: Option<(usize, HeightRequest)>,
 
@@ -68,11 +95,38 @@ struct TransfersContext {
     ledger_modify_handle: Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
 }
 
-impl TransfersContext {
-    pub fn changed(&self, env_info: &EnvInfo) -> bool {
-        env_info.storage.version != self.storage_version
-            || env_info.storage.id != self.storage_id
-            || env_info.network != self.network_id
+#[derive(Default)]
+pub struct AgentStateReconcilerContext {
+    // TODO: allow transfers to be interrupted. potentially allow them to be resumed by using the
+    // file range feature.
+    /// Information about active transfers
+    transfers: Option<TransfersContext>,
+    /// Information about the node process
+    pub process: Option<ProcessContext>,
+    pub shutdown_pending: bool,
+}
+
+impl AgentStateReconcilerContext {
+    pub fn hydrate(db: &Database) -> Self {
+        let ledger_last_height = db
+            .last_height()
+            .inspect_err(|e| error!("failed to restore last height from db: {e}"))
+            .unwrap_or_default();
+        let env_state = db
+            .env_state()
+            .inspect_err(|e| error!("failed to restore env state from db: {e}"))
+            .unwrap_or_default();
+
+        Self {
+            transfers: (ledger_last_height.is_some() || env_state.is_some()).then(|| {
+                TransfersContext {
+                    env_state: env_state.unwrap_or_default(),
+                    ledger_last_height,
+                    ..Default::default()
+                }
+            }),
+            ..Default::default()
+        }
     }
 }
 
@@ -98,8 +152,9 @@ impl AgentStateReconciler {
 
             // Drain the reconcile request queue
             while reconcile_requests.try_recv().is_ok() {}
-            // Schedule the next reconcile for 1 week.
-            next_reconcile_at = Instant::now() + Duration::from_secs(60 * 60 * 24 * 7);
+            // Schedule the next reconcile for 1 minute (to periodically check if the node
+            // went offline)
+            next_reconcile_at = Instant::now() + Duration::from_secs(60);
 
             // Update the reconciler with the latest agent state
             // This prevents the agent state from changing during reconciliation
@@ -130,17 +185,6 @@ impl AgentStateReconciler {
     }
 }
 
-#[derive(Default)]
-pub struct AgentStateReconcilerContext {
-    // TODO: allow transfers to be interrupted. potentially allow them to be resumed by using the
-    // file range feature.
-    /// Information about active transfers
-    transfers: Option<TransfersContext>,
-    /// Information about the node process
-    pub process: Option<ProcessContext>,
-    pub shutdown_pending: bool,
-}
-
 /// Run a reconciler and return early if a requeue is needed. A condition is
 /// added to the scope when a requeue is needed to provide more context when
 /// monitoring the agent.
@@ -164,7 +208,7 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
             AgentState::Inventory => {
                 // TODO: cleanup other things
 
-                // end the process if it is running
+                // End the process if it is running
                 if let Some(process) = self.context.process.as_mut() {
                     reconcile!(end_process, EndProcessReconciler(process), res => {
                         // If the process has exited, clear the process context
@@ -172,6 +216,20 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                             self.context.process = None;
                         }
                     });
+                }
+
+                if let Some(_transfers) = self.context.transfers.as_mut() {
+                    if let Err(e) = self.state.db.set_env_state(None) {
+                        error!("failed to clear env state from db: {e}");
+                    }
+                    if let Err(e) = self.state.db.set_last_height(None) {
+                        error!("failed to clear last height from db: {e}");
+                    }
+
+                    // TODO: interrupt/kill off pending downloads
+
+                    // Destroy the old transfers context
+                    self.context.transfers = None;
                 }
 
                 return Ok(ReconcileStatus::default().add_scope("agent_state/inventory"));
@@ -184,17 +242,20 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                     .context
                     .transfers
                     .as_ref()
-                    .map(|t| t.changed(&env_info))
+                    .map(|t| t.env_state.changed(&env_info))
                     .unwrap_or(true);
 
                 // If the node should be torn down, or the storage has changed, we need to
                 // gracefully shut down the node.
                 let shutdown_pending = !node.online || storage_has_changed;
 
+                // TODO: check if addrs have changed, then update the command
+
                 if let (true, Some(process)) = (
                     shutdown_pending || self.context.shutdown_pending,
                     self.context.process.as_mut(),
                 ) {
+                    self.context.shutdown_pending = true;
                     reconcile!(end_process, EndProcessReconciler(process), res => {
                         // If the process has exited, clear the process context
                         if res.inner.is_some() {
@@ -203,28 +264,34 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                     });
                 }
 
-                // TODO: check if addrs have changed, and update shutdown_pending
-
                 // node is offline, no need to reconcile
                 if !node.online {
-                    // TODO: tear down the node if it is running
                     return Ok(ReconcileStatus::default().add_scope("agent_state/offline"));
+                }
+
+                // Reconcile behavior while the node is running...
+                if let Some(process) = self.context.process.as_ref() {
+                    // If the process has exited, clear the process context
+                    if !process.is_running() {
+                        info!("node process has exited...");
+                        self.context.process = None;
+                    } else {
+                        // Prevent other reconcilers from running while the node is running
+                        return Ok(ReconcileStatus::default().add_scope("agent_state/running"));
+                    }
                 }
 
                 let node_arc = Arc::new(*node.clone());
 
-                if storage_has_changed {
-                    // TODO: abort any ongoing transfers (binary/file), then
-                    // requeue
-                }
-
-                // initialize the transfers context with the current status
+                // Initialize the transfers context with the current status
                 if self.context.transfers.is_none() {
                     // TODO: write this to the db
+                    let env_state = EnvState::from(env_info.as_ref());
+                    if let Err(e) = self.state.db.set_env_state(Some(&env_state)) {
+                        error!("failed to save env state to db: {e}");
+                    }
                     self.context.transfers = Some(TransfersContext {
-                        network_id: env_info.network,
-                        storage_id: env_info.storage.id,
-                        storage_version: env_info.storage.version,
+                        env_state,
                         ..Default::default()
                     });
                 }
@@ -311,7 +378,8 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
 
                 if self.context.process.is_none() {
                     info!("Starting node process");
-                    self.context.process = Some(ProcessContext::new(command)?);
+                    let process = ProcessContext::new(command)?;
+                    self.context.process = Some(process);
                 }
             }
         }
@@ -407,3 +475,45 @@ impl Reconcile<(), ReconcileError2> for AddressResolveReconciler {
 // https://ledger.aleo.network/mainnet/snapshot/latest.txt
 // https://ledger.aleo.network/testnet/snapshot/latest.txt
 // https://ledger.aleo.network/canarynet/snapshot/latest.txt
+
+impl EnvState {
+    pub fn changed(&self, env_info: &EnvInfo) -> bool {
+        env_info.storage.version != self.storage_version
+            || env_info.storage.id != self.storage_id
+            || env_info.network != self.network_id
+    }
+}
+
+impl DataFormat for EnvState {
+    type Header = (u8, DataHeaderOf<NetworkId>);
+
+    const LATEST_HEADER: Self::Header = (1u8, NetworkId::LATEST_HEADER);
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, snops_common::format::DataWriteError> {
+        Ok(self.network_id.write_data(writer)?
+            + self.storage_id.write_data(writer)?
+            + self.storage_version.write_data(writer)?)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, snops_common::format::DataReadError> {
+        if header.0 != Self::LATEST_HEADER.0 {
+            return Err(snops_common::format::DataReadError::unsupported(
+                "EnvIdentifier",
+                Self::LATEST_HEADER.0,
+                header.0,
+            ));
+        }
+
+        Ok(Self {
+            network_id: NetworkId::read_data(reader, &header.1)?,
+            storage_id: StorageId::read_data(reader, &())?,
+            storage_version: u16::read_data(reader, &())?,
+        })
+    }
+}

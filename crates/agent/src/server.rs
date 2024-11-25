@@ -41,7 +41,7 @@ async fn node_ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) ->
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
-    let mut node_client = state.node_client.lock().await;
+    let mut node_client = state.node_client.write().await;
     if node_client.is_some() {
         warn!("a new node RPC connection tried to establish when one was already established");
         let _ = socket.send(Message::Close(None)).await;
@@ -121,5 +121,5 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
     // abort the RPC server handle
     server_handle.abort();
-    state.node_client.lock().await.take();
+    state.node_client.write().await.take();
 }

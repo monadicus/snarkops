@@ -377,6 +377,10 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
             // If the target height is the top, we can skip the ledger reconciler
             if target_height.1.is_top() {
                 *last_height = target_height;
+                if let Err(e) = self.state.db.set_last_height(Some(target_height)) {
+                    error!("failed to save last height to db: {e}");
+                }
+
                 // ledger operation is complete
                 return Ok(ReconcileStatus::default());
             }
@@ -385,9 +389,13 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
             if target_height.1.reset() {
                 let _ = tokio::fs::remove_dir_all(&ledger_path).await;
                 *last_height = target_height;
+                if let Err(e) = self.state.db.set_last_height(Some(target_height)) {
+                    error!("failed to save last height to db: {e}");
+                }
+
                 // Ledger operation is complete... immediately requeue because the ledger was
                 // wiped
-                return Ok(ReconcileStatus::default().requeue_after(Duration::from_secs(0)));
+                return Ok(ReconcileStatus::default().requeue_after(Duration::ZERO));
             }
 
             // Target height is guaranteed to be different, not top, and not 0, which means
@@ -439,6 +447,9 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
             // If the ledger was modified successfully, update the last height
             Ok(true) => {
                 *last_height = pending;
+                if let Err(e) = self.state.db.set_last_height(Some(pending)) {
+                    error!("failed to save last height to db: {e}");
+                }
             }
             // A failure in the ledger modification process is handled at the
             // moment...

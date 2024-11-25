@@ -19,26 +19,21 @@ pub fn init(state: Arc<GlobalState>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(UPDATE_RATE);
         let client = reqwest::Client::new();
+        let route = format!(
+            "http://{}/",
+            SocketAddr::new(state.cli.get_local_ip(), state.cli.ports.metrics)
+        );
 
         loop {
             interval.tick().await;
 
-            // TODO: this could probably be improved, but we want to avoid scraping metrics
-            // if the child doesn't exist
-            if state.child.read().await.is_none() {
+            if !state.is_node_online().await {
                 continue;
             }
 
             // TODO: maybe this should use bind_addr
             let metrics_text = 'metrics: {
-                let response = match client
-                    .get(format!(
-                        "http://{}/",
-                        SocketAddr::new(state.cli.get_local_ip(), state.cli.ports.metrics)
-                    ))
-                    .send()
-                    .await
-                {
+                let response = match client.get(&route).send().await {
                     Ok(response) => response,
                     Err(_e) => {
                         break 'metrics Default::default();
