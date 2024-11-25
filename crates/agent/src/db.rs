@@ -9,7 +9,11 @@ use bytes::Buf;
 use indexmap::IndexMap;
 use snops_common::{
     api::EnvInfo,
-    db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
+    db::{
+        error::DatabaseError,
+        tree::{DbRecords, DbTree},
+        Database as DatabaseTrait,
+    },
     format::{self, read_dataformat, DataFormat, DataReadError, DataWriteError, PackedUint},
     state::{AgentId, AgentState, EnvId, HeightRequest},
 };
@@ -21,21 +25,21 @@ use crate::reconcile::agent::EnvState;
 #[repr(u8)]
 pub enum AgentDbString {
     /// JSON web token of agent.
-    Jwt,
+    Jwt = 0,
     /// Process ID of node. Used to keep track of zombie node processes.
-    NodePid,
+    NodePid = 1,
     // Url to Loki instance, configured by the endpoint.
-    LokiUrl,
+    LokiUrl = 2,
     /// Current state of the agent.
-    AgentState,
+    AgentState = 3,
     /// Current environment state.
-    EnvState,
+    EnvState = 4,
     /// Latest stored environment info.
-    EnvInfo,
+    EnvInfo = 5,
     /// Agent addresses resolved by the controlplane.
-    ResolvedAddrs,
+    ResolvedAddrs = 6,
     /// Last height of the agent state
-    LastHeight,
+    LastHeight = 7,
 }
 
 impl DataFormat for AgentDbString {
@@ -57,6 +61,9 @@ impl DataFormat for AgentDbString {
             2 => Self::LokiUrl,
             3 => Self::AgentState,
             4 => Self::EnvInfo,
+            5 => Self::EnvState,
+            6 => Self::ResolvedAddrs,
+            7 => Self::LastHeight,
             _ => return Err(DataReadError::custom("invalid agent DB string type")),
         })
     }
@@ -72,14 +79,14 @@ pub struct Database {
 
     pub jwt_mutex: Mutex<Option<String>>,
     pub strings: DbTree<AgentDbString, String>,
-    pub documents: DbTree<AgentDbString, format::BinaryData>,
+    pub documents: DbRecords<AgentDbString>,
 }
 
 impl DatabaseTrait for Database {
     fn open(path: &Path) -> Result<Self, DatabaseError> {
         let db = sled::open(path)?;
         let strings = DbTree::new(db.open_tree(b"v1/strings")?);
-        let documents = DbTree::new(db.open_tree(b"v1/documents")?);
+        let documents = DbRecords::new(db.open_tree(b"v1/documents")?);
         let jwt_mutex = Mutex::new(strings.restore(&AgentDbString::Jwt)?);
 
         Ok(Self {
@@ -118,116 +125,69 @@ impl Database {
 
     pub fn env_info(&self) -> Result<Option<(EnvId, Arc<EnvInfo>)>, DatabaseError> {
         self.documents
-            .restore(&AgentDbString::EnvInfo)?
-            .map(|format::BinaryData(bytes)| read_dataformat(&mut bytes.reader()))
-            .transpose()
+            .restore(&AgentDbString::EnvInfo)
             .map_err(DatabaseError::from)
     }
 
     pub fn set_env_info(&self, info: Option<(EnvId, Arc<EnvInfo>)>) -> Result<(), DatabaseError> {
-        if let Some(info) = info {
-            self.documents.save(
-                &AgentDbString::EnvInfo,
-                &format::BinaryData(info.to_byte_vec()?),
-            )
-        } else {
-            self.documents.delete(&AgentDbString::EnvInfo).map(|_| ())
-        }
+        self.documents
+            .save_option(&AgentDbString::EnvInfo, info.as_ref())
     }
 
     pub fn agent_state(&self) -> Result<AgentState, DatabaseError> {
-        Ok(
-            if let Some(format::BinaryData(bytes)) =
-                self.documents.restore(&AgentDbString::AgentState)?
-            {
-                read_dataformat(&mut bytes.reader())?
-            } else {
-                AgentState::default()
-            },
-        )
+        Ok(self
+            .documents
+            .restore(&AgentDbString::AgentState)?
+            .unwrap_or_default())
     }
 
     pub fn set_agent_state(&self, state: &AgentState) -> Result<(), DatabaseError> {
-        self.documents.save(
-            &AgentDbString::AgentState,
-            &format::BinaryData(state.to_byte_vec()?),
-        )
+        self.documents.save(&AgentDbString::AgentState, state)
     }
 
     pub fn resolved_addrs(&self) -> Result<IndexMap<AgentId, IpAddr>, DatabaseError> {
-        Ok(
-            if let Some(format::BinaryData(bytes)) =
-                self.documents.restore(&AgentDbString::ResolvedAddrs)?
-            {
-                read_dataformat(&mut bytes.reader())?
-            } else {
-                IndexMap::new()
-            },
-        )
+        Ok(self
+            .documents
+            .restore(&AgentDbString::ResolvedAddrs)?
+            .unwrap_or_default())
     }
 
     pub fn set_resolved_addrs(
         &self,
         addrs: Option<&IndexMap<AgentId, IpAddr>>,
     ) -> Result<(), DatabaseError> {
-        if let Some(addrs) = addrs {
-            self.documents.save(
-                &AgentDbString::ResolvedAddrs,
-                &format::BinaryData(addrs.to_byte_vec()?),
-            )
-        } else {
-            self.documents
-                .delete(&AgentDbString::ResolvedAddrs)
-                .map(|_| ())
-        }
+        self.documents
+            .save_option(&AgentDbString::ResolvedAddrs, addrs)
     }
 
     pub fn env_state(&self) -> Result<Option<EnvState>, DatabaseError> {
         Ok(self
             .documents
             .restore(&AgentDbString::EnvState)?
-            .map(|format::BinaryData(bytes)| read_dataformat(&mut bytes.reader()))
+            .map(|format::BytesFormat(bytes)| read_dataformat(&mut bytes.reader()))
             .transpose()?)
     }
 
     pub fn set_env_state(&self, state: Option<&EnvState>) -> Result<(), DatabaseError> {
-        if let Some(state) = state {
-            self.documents.save(
-                &AgentDbString::EnvState,
-                &format::BinaryData(state.to_byte_vec()?),
-            )
-        } else {
-            self.documents.delete(&AgentDbString::EnvState).map(|_| ())
-        }
+        self.documents.save_option(&AgentDbString::EnvState, state)
     }
 
     pub fn last_height(&self) -> Result<Option<(usize, HeightRequest)>, DatabaseError> {
-        Ok(
-            if let Some(format::BinaryData(bytes)) =
-                self.documents.restore(&AgentDbString::LastHeight)?
-            {
-                let (counter, req) =
-                    read_dataformat::<_, (PackedUint, HeightRequest)>(&mut bytes.reader())?;
-                Some((counter.into(), req))
-            } else {
-                None
-            },
-        )
+        Ok(self
+            .documents
+            .restore::<(PackedUint, HeightRequest)>(&AgentDbString::LastHeight)?
+            .map(|(counter, req)| (counter.into(), req)))
     }
 
     pub fn set_last_height(
         &self,
         height: Option<(usize, HeightRequest)>,
     ) -> Result<(), DatabaseError> {
-        if let Some((counter, req)) = height {
-            self.documents.save(
-                &AgentDbString::LastHeight,
-                &format::BinaryData((PackedUint::from(counter), req).to_byte_vec()?),
-            )
-        } else {
-            self.documents
-                .delete(&AgentDbString::LastHeight)
-                .map(|_| ())
-        }
+        self.documents.save_option(
+            &AgentDbString::LastHeight,
+            height
+                .map(|(counter, req)| (PackedUint::from(counter), req))
+                .as_ref(),
+        )
     }
 }

@@ -14,7 +14,7 @@ mod impl_strings;
 mod impl_tuples;
 mod packed_int;
 
-pub use impl_collections::BinaryData;
+pub use impl_collections::{BytesFormat, EncodedFormat};
 pub use packed_int::*;
 use thiserror::Error;
 
@@ -106,6 +106,14 @@ pub trait DataFormat: Sized {
     /// Convert the data to a byte vector
     fn to_byte_vec(&self) -> Result<Vec<u8>, DataWriteError> {
         let mut buf = Vec::new();
+        self.write_data(&mut buf)?;
+        Ok(buf)
+    }
+
+    /// Convert the data to a bytevec and include the header
+    fn to_byte_vec_headered(&self) -> Result<Vec<u8>, DataWriteError> {
+        let mut buf = Vec::new();
+        self.write_header(&mut buf)?;
         self.write_data(&mut buf)?;
         Ok(buf)
     }

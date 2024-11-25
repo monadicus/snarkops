@@ -143,3 +143,48 @@ impl<K: DataFormat, V: DataFormat> DbTree<K, V> {
             .sum())
     }
 }
+
+pub struct DbRecords<K> {
+    tree: sled::Tree,
+    _phantom: std::marker::PhantomData<K>,
+}
+
+impl<K: DataFormat> DbRecords<K> {
+    pub fn new(tree: sled::Tree) -> Self {
+        Self {
+            tree,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    pub fn restore<V: DataFormat>(&self, key: &K) -> Result<Option<V>, DatabaseError> {
+        Ok(self
+            .tree
+            .get(key.to_byte_vec()?)?
+            .map(|value_bytes| read_dataformat(&mut value_bytes.reader()))
+            .transpose()?)
+    }
+
+    pub fn save<V: DataFormat>(&self, key: &K, value: &V) -> Result<(), DatabaseError> {
+        let key_bytes = key.to_byte_vec()?;
+        let mut value_bytes = Vec::new();
+        write_dataformat(&mut value_bytes, value)?;
+        self.tree.insert(key_bytes, value_bytes)?;
+        Ok(())
+    }
+
+    pub fn save_option<V: DataFormat>(
+        &self,
+        key: &K,
+        value: Option<&V>,
+    ) -> Result<(), DatabaseError> {
+        match value {
+            Some(value) => self.save(key, value),
+            None => self.delete(key).map(|_| ()),
+        }
+    }
+
+    pub fn delete(&self, key: &K) -> Result<bool, DatabaseError> {
+        Ok(self.tree.remove(key.to_byte_vec()?)?.is_some())
+    }
+}
