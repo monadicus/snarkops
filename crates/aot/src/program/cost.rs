@@ -37,7 +37,7 @@ impl<N: Network> CostCommand<N> {
         } = self;
 
         let program = program.contents()?;
-        let mut process = Process::load_no_storage()?;
+        let mut process = Process::load()?;
         query::get_process_imports(&mut process, &program, query.as_deref())?;
 
         if let Some(function) = function {

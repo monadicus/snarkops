@@ -126,7 +126,7 @@ impl<N: Network> AuthCommand<N> {
                         // load the programs the auth references into the process
                         // as cost estimation measures the size of values from within the auth's
                         // transitions
-                        let mut process = Process::load_no_storage()?;
+                        let mut process = Process::load()?;
                         if let Some(query) = query.as_deref() {
                             let programs = query::get_programs_from_auth(&auth);
                             query::add_many_programs_to_process(&mut process, programs, query)?;

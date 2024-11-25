@@ -59,7 +59,7 @@ impl<N: Network> AuthorizeFee<N> {
         let (id, base_fee) = match (self.auth, self.deployment, self.id, self.cost) {
             (Some(auth), None, None, None) => {
                 let auth = auth.into_inner();
-                let mut process = Process::load_no_storage()?;
+                let mut process = Process::load()?;
                 if let Some(query) = self.query.as_deref() {
                     let programs = query::get_programs_from_auth(&auth);
                     query::add_many_programs_to_process(&mut process, programs, query)?;
@@ -181,7 +181,7 @@ pub fn estimate_cost<N: Network>(process: &Process<N>, func: &Authorization<N>) 
         // Retrieve the function name, program id, and program.
         let function_name = *transition.function_name();
         let stack = process.get_stack(transition.program_id())?;
-        let cost = cost_in_microcredits_v2(&stack, &function_name)?;
+        let cost = cost_in_microcredits_v2(stack, &function_name)?;
 
         // Accumulate the finalize cost.
         if let Some(cost) = finalize_cost.checked_add(cost) {
