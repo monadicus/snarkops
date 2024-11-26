@@ -14,7 +14,7 @@ pub(super) fn routes() -> Router<AppState> {
 #[derive(Debug, Clone, Serialize)]
 pub struct StaticConfig {
     pub targets: [String; 1],
-    pub labels: HashMap<String, String>,
+    pub labels: HashMap<&'static str, String>,
 }
 
 async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
@@ -51,8 +51,8 @@ async fn get_httpsd(State(state): State<AppState>) -> impl IntoResponse {
             Some(StaticConfig {
                 targets: [format!("{agent_addr}:{}", agent.metrics_port())],
                 labels: [
-                    ("env_id".into(), env_id.to_string()),
-                    ("node_key".into(), node.node_key.to_string()),
+                    ("env_id", env_id.to_string()),
+                    ("node_key", node.node_key.to_string()),
                 ]
                 .into_iter()
                 .collect(),
