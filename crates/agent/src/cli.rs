@@ -129,13 +129,13 @@ impl Cli {
             if fs::metadata(file).is_ok() {
                 query.push_str("&local_pk=true");
             } else {
-                warn!("private-key-file flag ignored as the file was not found: {file:?}")
+                warn!("Private-key-file flag ignored as the file was not found: {file:?}")
             }
         }
 
         // add &labels= if id is present
         if let Some(labels) = &self.labels {
-            info!("using labels: {:?}", labels);
+            info!("Using labels: {:?}", labels);
             query.push_str(&format!(
                 "&labels={}",
                 labels
@@ -182,9 +182,9 @@ impl Cli {
 
         let external_addr = self.external;
         if let Some(addr) = external_addr {
-            info!("using external addr: {}", addr);
+            info!("Using external addr: {}", addr);
         } else {
-            info!("skipping external addr");
+            info!("Skipping external addr");
         }
 
         (internal_addrs, external_addr)

@@ -2,6 +2,7 @@ use std::{fmt::Display, time::Duration};
 
 use serde::de::DeserializeOwned;
 use snops_common::{
+    api::EnvInfo,
     rpc::{
         control::agent::AgentServiceClient,
         error::{ReconcileError, SnarkosRequestError},
@@ -16,14 +17,16 @@ use crate::error::StateError;
 pub struct AgentClient(pub(crate) AgentServiceClient);
 
 impl AgentClient {
-    pub async fn reconcile(
+    pub async fn set_agent_state(
         &self,
         to: AgentState,
+        env_info: Option<(EnvId, EnvInfo)>,
     ) -> Result<Result<AgentState, ReconcileError>, RpcError> {
         let mut ctx = context::current();
         ctx.deadline += Duration::from_secs(300);
+
         self.0
-            .reconcile(ctx, to.clone())
+            .set_agent_state(ctx, to.clone(), env_info)
             .await
             .map(|res| res.map(|_| to))
     }

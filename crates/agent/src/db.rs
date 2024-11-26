@@ -5,7 +5,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use bytes::Buf;
 use indexmap::IndexMap;
 use snops_common::{
     api::EnvInfo,
@@ -14,12 +13,12 @@ use snops_common::{
         tree::{DbRecords, DbTree},
         Database as DatabaseTrait,
     },
-    format::{self, read_dataformat, DataFormat, DataReadError, DataWriteError, PackedUint},
+    format::{DataFormat, DataReadError, DataWriteError, PackedUint},
     state::{AgentId, AgentState, EnvId, HeightRequest},
 };
 use url::Url;
 
-use crate::reconcile::agent::EnvState;
+use crate::reconcile::state::EnvState;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(u8)]
@@ -161,11 +160,7 @@ impl Database {
     }
 
     pub fn env_state(&self) -> Result<Option<EnvState>, DatabaseError> {
-        Ok(self
-            .documents
-            .restore(&AgentDbString::EnvState)?
-            .map(|format::BytesFormat(bytes)| read_dataformat(&mut bytes.reader()))
-            .transpose()?)
+        self.documents.restore(&AgentDbString::EnvState)
     }
 
     pub fn set_env_state(&self, state: Option<&EnvState>) -> Result<(), DatabaseError> {

@@ -28,7 +28,10 @@ pub async fn start(listener: tokio::net::TcpListener, state: AppState) -> Result
     let app = Router::new()
         .route("/node", get(node_ws_handler))
         .with_state(Arc::clone(&state));
-    info!("axum router listening on: {}", listener.local_addr()?);
+    info!(
+        "Starting internal node RPC server on: {}",
+        listener.local_addr()?
+    );
 
     axum::serve(listener, app).await?;
 
@@ -56,7 +59,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let client = NodeServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
     // store the client in state
-    tracing::info!("Node client connected");
+    tracing::info!("Connection established with the node");
     *node_client = Some(client);
     drop(node_client);
 

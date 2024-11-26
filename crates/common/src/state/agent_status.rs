@@ -103,9 +103,6 @@ pub enum TransferStatusUpdate {
         time: DateTime<Utc>,
         // The transfer's abort handle, if any.
     },
-    // Client only - specifies a handle to abort the transfer task
-    #[serde(skip)]
-    Handle(AbortHandle),
     /// The transfer has made progress.
     Progress {
         /// The current number of bytes transferred.
@@ -118,6 +115,9 @@ pub enum TransferStatusUpdate {
     },
     /// The transfer has been cleaned up.
     Cleanup,
+    // Client only - specifies a handle to abort the transfer task
+    #[serde(skip)]
+    Handle(AbortHandle),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

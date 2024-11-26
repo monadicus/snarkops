@@ -42,8 +42,10 @@ impl ProcessContext {
     }
 
     /// Returns true when the child process has not exited
-    pub fn is_running(&self) -> bool {
-        self.child.id().is_some()
+    pub fn is_running(&mut self) -> bool {
+        // This code is mutable because try_wait modifies the Child. Without
+        // mutability, the current running status would never be updated.
+        self.child.try_wait().is_ok_and(|status| status.is_none())
     }
 
     /// A helper function to gracefully shutdown the node process without
@@ -57,21 +59,21 @@ impl ProcessContext {
 
         select! {
             _ = tokio::time::sleep(NODE_GRACEFUL_SHUTDOWN_TIMEOUT) => {
-                info!("sending SIGKILL to node process");
+                info!("Sending SIGKILL to node process");
                 self.send_sigkill();
             },
             _ = tokio::signal::ctrl_c() => {
-                info!("received SIGINT, sending SIGKILL to node process");
+                info!("Received SIGINT, sending SIGKILL to node process");
                 self.send_sigkill();
             },
             _ = self.child.wait() => {
-                info!("node process has exited gracefully");
+                info!("Node process has exited gracefully");
                 return;
             }
         }
 
         let _ = self.child.wait().await;
-        info!("node process has exited");
+        info!("Node process has exited");
     }
 
     /// Send a SIGINT to the child process
@@ -120,13 +122,13 @@ pub struct EndProcessReconciler<'a>(pub &'a mut ProcessContext);
 
 impl<'a> Reconcile<(), ReconcileError2> for EndProcessReconciler<'a> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
-        if self.0.child.try_wait().is_ok_and(|status| status.is_some()) {
+        if !self.0.is_running() {
             return Ok(ReconcileStatus::default());
         }
 
         let Some(sigint_at) = self.0.sigint_at else {
             if self.0.send_sigint() {
-                info!("sent SIGINT to node process");
+                info!("Sent SIGINT to node process");
             }
             return Ok(ReconcileStatus::empty()
                 .add_condition(ReconcileCondition::PendingShutdown)
@@ -137,7 +139,7 @@ impl<'a> Reconcile<(), ReconcileError2> for EndProcessReconciler<'a> {
             && self.0.sigkill_at.is_none()
             && self.0.send_sigkill()
         {
-            info!("sent SIGKILL to node process");
+            info!("Sent SIGKILL to node process");
         }
 
         Ok(ReconcileStatus::empty()

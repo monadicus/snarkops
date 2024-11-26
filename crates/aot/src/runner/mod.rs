@@ -5,7 +5,7 @@ use std::{
 };
 
 use aleo_std::StorageMode;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Args;
 use rpc::RpcClient;
 use snarkos_node::Node;
@@ -116,13 +116,21 @@ impl<N: Network> Runner<N> {
         let bft_ip = SocketAddr::new(bind_addr, self.bft);
         let metrics_ip = SocketAddr::new(bind_addr, self.metrics);
 
-        let account = Account::try_from(self.key.try_get()?)?;
+        let account = Account::try_from(
+            self.key
+                .try_get()
+                .map_err(|e| e.context("obtain private key"))?,
+        )?;
 
-        let genesis = if let Some(path) = self.genesis.as_ref() {
-            Block::read_le(std::fs::File::open(path)?)?
-        } else {
-            Block::read_le(N::genesis_bytes())?
-        };
+        let genesis =
+            if let Some(path) = self.genesis.as_ref() {
+                Block::read_le(std::fs::File::open(path).map_err(|e| {
+                    anyhow!(e).context(format!("open genesis file {}", path.display()))
+                })?)
+                .map_err(|e| anyhow!(e).context("parse genesis block from file"))?
+            } else {
+                Block::read_le(N::genesis_bytes())?
+            };
 
         // conditionally create a checkpoint manager based on the presence
         // of a retention policy
@@ -169,50 +177,47 @@ impl<N: Network> Runner<N> {
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let _node = match self.node_type {
-            NodeType::Validator => {
-                Node::new_validator(
-                    node_ip,
-                    Some(bft_ip),
-                    Some(rest_ip),
-                    self.rest_rps,
-                    account,
-                    &self.peers,
-                    &self.validators,
-                    genesis,
-                    None,
-                    storage_mode.clone(),
-                    false,
-                    false,
-                    shutdown,
-                )
-                .await?
-            }
-            NodeType::Prover => {
-                Node::new_prover(
-                    node_ip,
-                    account,
-                    &self.peers,
-                    genesis,
-                    storage_mode.clone(),
-                    shutdown,
-                )
-                .await?
-            }
-            NodeType::Client => {
-                Node::new_client(
-                    node_ip,
-                    Some(rest_ip),
-                    self.rest_rps,
-                    account,
-                    &self.peers,
-                    genesis,
-                    None,
-                    storage_mode.clone(),
-                    false,
-                    shutdown,
-                )
-                .await?
-            }
+            NodeType::Validator => Node::new_validator(
+                node_ip,
+                Some(bft_ip),
+                Some(rest_ip),
+                self.rest_rps,
+                account,
+                &self.peers,
+                &self.validators,
+                genesis,
+                None,
+                storage_mode.clone(),
+                false,
+                false,
+                shutdown,
+            )
+            .await
+            .map_err(|e| e.context("create validator"))?,
+            NodeType::Prover => Node::new_prover(
+                node_ip,
+                account,
+                &self.peers,
+                genesis,
+                storage_mode.clone(),
+                shutdown,
+            )
+            .await
+            .map_err(|e| e.context("create prover"))?,
+            NodeType::Client => Node::new_client(
+                node_ip,
+                Some(rest_ip),
+                self.rest_rps,
+                account,
+                &self.peers,
+                genesis,
+                None,
+                storage_mode.clone(),
+                false,
+                shutdown,
+            )
+            .await
+            .map_err(|e| e.context("create client"))?,
         };
 
         // only monitor block updates if we have a checkpoint manager or agent status

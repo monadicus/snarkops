@@ -59,13 +59,20 @@ impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
             .as_ref()
             .map(|(_, b)| b != target_binary)
             .unwrap_or(true);
-        let binary_is_ok = ok_at.is_some();
+
+        let dst = state.cli.path.join(SNARKOS_FILE);
+
+        // The binary does not exist and is marked as OK...
+        if ok_at.is_some() && !dst.exists() {
+            **ok_at = None;
+        }
 
         // If the binary has not changed and has not expired, we can skip the binary
         // reconciler
-        if !binary_has_changed && binary_is_ok {
+        if !binary_has_changed && ok_at.is_some() {
             return Ok(ReconcileStatus::default());
         }
+        **ok_at = None;
 
         let src = match &target_binary.source {
             BinarySource::Url(url) => url.clone(),
@@ -75,7 +82,6 @@ impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
                     .map_err(|e| ReconcileError2::UrlParseError(url, e.to_string()))?
             }
         };
-        let dst = state.cli.path.join(SNARKOS_FILE);
 
         let mut file_rec = FileReconciler::new(Arc::clone(state), src, dst)
             .with_offline(target_binary.is_api_file() && !state.is_ws_online())
@@ -134,6 +140,13 @@ impl<'a> Reconcile<(), ReconcileError2> for GenesisReconciler<'a> {
             .cli
             .storage_path(env_info.network, env_info.storage.id);
 
+        let genesis_file = storage_path.join(SNARKOS_GENESIS_FILE);
+
+        // If the genesis file doesn't exist, it's not okay...
+        if !genesis_file.exists() && ok_at.is_some() {
+            **ok_at = None;
+        }
+
         // Genesis block file has been checked within 5 minutes
         let genesis_file_ok = ok_at
             .map(|ok| ok.elapsed().as_secs() < 300)
@@ -142,6 +155,7 @@ impl<'a> Reconcile<(), ReconcileError2> for GenesisReconciler<'a> {
         if env_info.storage.native_genesis || genesis_file_ok {
             return Ok(ReconcileStatus::default());
         }
+        **ok_at = None;
 
         let genesis_url = get_genesis_route(&state.endpoint, env_info.network, env_info.storage.id);
         let mut file_rec = FileReconciler::new(
@@ -149,7 +163,7 @@ impl<'a> Reconcile<(), ReconcileError2> for GenesisReconciler<'a> {
             genesis_url.parse::<Url>().map_err(|e| {
                 ReconcileError2::UrlParseError(genesis_url.to_string(), e.to_string())
             })?,
-            storage_path.join(SNARKOS_GENESIS_FILE),
+            genesis_file,
         )
         .with_offline(!self.state.is_ws_online())
         .with_tx_id(**transfer);
@@ -340,23 +354,15 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
         // a persisted env with non-top target heights as a request to delete
         // the ledger
         if self.last_height.is_none() {
-            // The default last height is the top when persisting
-            // and 0 when not persisting (clean ledger)
-            *self.last_height = Some((
-                0,
-                if is_persist {
-                    HeightRequest::Top
-                } else {
-                    HeightRequest::Absolute(0)
-                },
-            ));
+            // The default last height is top
+            *self.last_height = Some((0, HeightRequest::Top));
 
             //  delete ledger because no last_height indicates a fresh env
             if !is_persist {
                 let _ = tokio::fs::remove_dir_all(&ledger_path).await;
             }
         }
-        let last_height = self.last_height.as_mut().unwrap();
+        let last_height = self.last_height.unwrap();
 
         // TODO: only call this after unpacking the ledger
         // create the ledger path if it doesn't exist
@@ -367,13 +373,13 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
         // If there is no pending height, check if there should be a pending height
         if self.pending_height.is_none() {
             // target height has been realized
-            if *last_height == target_height {
+            if last_height == target_height {
                 return Ok(ReconcileStatus::default());
             }
 
             // If the target height is the top, we can skip the ledger reconciler
             if target_height.1.is_top() {
-                *last_height = target_height;
+                *self.last_height = Some(target_height);
                 if let Err(e) = self.state.db.set_last_height(Some(target_height)) {
                     error!("failed to save last height to db: {e}");
                 }
@@ -385,14 +391,16 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
             // If the target height is 0, we can delete the ledger
             if target_height.1.reset() {
                 let _ = tokio::fs::remove_dir_all(&ledger_path).await;
-                *last_height = target_height;
+                *self.last_height = Some(target_height);
                 if let Err(e) = self.state.db.set_last_height(Some(target_height)) {
                     error!("failed to save last height to db: {e}");
                 }
 
                 // Ledger operation is complete... immediately requeue because the ledger was
                 // wiped
-                return Ok(ReconcileStatus::default().requeue_after(Duration::ZERO));
+                return Ok(ReconcileStatus::default()
+                    .add_scope("ledger/wipe")
+                    .requeue_after(Duration::ZERO));
             }
 
             // Target height is guaranteed to be different, not top, and not 0, which means
@@ -443,7 +451,7 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
         match handle {
             // If the ledger was modified successfully, update the last height
             Ok(true) => {
-                *last_height = pending;
+                *self.last_height = Some(pending);
                 if let Err(e) = self.state.db.set_last_height(Some(pending)) {
                     error!("failed to save last height to db: {e}");
                 }
@@ -485,14 +493,16 @@ impl<'a> Reconcile<(), ReconcileError2> for StorageVersionReconciler<'a> {
                 .ok()
         };
 
-        // wipe old storage when the version changes
-        if version_file_data != Some(*version) && path.exists() {
-            info!("Removing storage directory for version mismatch: {version_file_data:?} != {version:?}");
-            let _ = tokio::fs::remove_dir_all(&path).await;
-        } else {
-            // return an empty status if the version is the same
-            return Ok(ReconcileStatus::empty());
-        };
+        if path.exists() {
+            // wipe old storage when the version changes
+            if version_file_data != Some(*version) {
+                info!("Removing storage directory for version mismatch: local {version_file_data:?} != remote {version:?}");
+                let _ = tokio::fs::remove_dir_all(&path).await;
+            } else {
+                // return an empty status if the version is the same
+                return Ok(ReconcileStatus::default());
+            };
+        }
 
         DirectoryReconciler(path).reconcile().await?;
 
@@ -505,6 +515,6 @@ impl<'a> Reconcile<(), ReconcileError2> for StorageVersionReconciler<'a> {
                 })?;
         }
 
-        Ok(ReconcileStatus::default())
+        Ok(ReconcileStatus::empty())
     }
 }

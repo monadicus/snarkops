@@ -6,7 +6,9 @@ pub mod agent;
 pub mod command;
 mod files;
 pub use files::*;
+pub mod address;
 pub mod process;
+pub mod state;
 pub mod storage;
 use snops_common::state::TransferId;
 

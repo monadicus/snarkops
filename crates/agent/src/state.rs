@@ -19,7 +19,7 @@ use tracing::error;
 
 use crate::{cli::Cli, db::Database, log::ReloadHandler, metrics::Metrics, transfers::TransferTx};
 
-pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+pub const NODE_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub type AppState = Arc<GlobalState>;
 pub type ClientLock = Arc<RwLock<Option<ControlServiceClient>>>;
@@ -136,7 +136,9 @@ impl GlobalState {
         self.node_client.read().await.clone()
     }
 
-    pub async fn update_agent_state(&self, state: AgentState) {
+    pub async fn update_agent_state(&self, state: AgentState, env_info: Option<(EnvId, EnvInfo)>) {
+        self.set_env_info(env_info.map(|(id, e)| (id, Arc::new(e))))
+            .await;
         if let Err(e) = self.db.set_agent_state(&state) {
             error!("failed to save agent state to db: {e}");
         }

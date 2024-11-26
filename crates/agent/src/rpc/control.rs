@@ -4,6 +4,7 @@ use std::{net::IpAddr, path::PathBuf};
 
 use snops_common::{
     aot_cmds::AotCmd,
+    api::EnvInfo,
     binaries::{BinaryEntry, BinarySource},
     define_rpc_mux,
     prelude::snarkos_status::SnarkOSLiteBlock,
@@ -94,18 +95,21 @@ impl AgentService for AgentRpcServer {
 
         // Queue a reconcile immediately as we have received new state.
         // The reconciler will decide if anything has actually changed
-        self.state.update_agent_state(handshake.state).await;
+        self.state
+            .update_agent_state(handshake.state, handshake.env_info)
+            .await;
 
         Ok(())
     }
 
-    async fn reconcile(
+    async fn set_agent_state(
         self,
         _: context::Context,
         target: AgentState,
+        env_info: Option<(EnvId, EnvInfo)>,
     ) -> Result<(), ReconcileError> {
         info!("Received reconcile request...");
-        self.state.update_agent_state(target).await;
+        self.state.update_agent_state(target, env_info).await;
         Ok(())
     }
 

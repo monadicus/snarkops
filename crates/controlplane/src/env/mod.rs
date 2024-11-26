@@ -178,6 +178,7 @@ impl Environment {
 
                     // maps of states and peers that are new to this environment
                     let mut incoming_states = IndexMap::default();
+                    let mut updated_states = IndexMap::<NodeKey, EnvNodeState>::default();
                     let mut incoming_peers = BiMap::default();
 
                     // set of resolved keys that will be present (new and old)
@@ -209,9 +210,16 @@ impl Environment {
                             // where the agent state is the same, insert the new state
                             // otherwise keep the old state
 
+                            // replace the key with a new one
+                            let mut node = doc_node.to_owned();
+                            if let Some(key) = node.key.as_mut() {
+                                *key = key.with_index(i);
+                            }
+
                             // Skip delegating nodes that are already present in the node map
                             if node_peers.contains_left(&node_key) {
-                                info!("{env_id}: skipping node {node_key} - already configured");
+                                info!("{env_id}: updating node {node_key}");
+                                updated_states.insert(node_key, EnvNodeState::Internal(node));
                                 continue;
                             }
 
@@ -219,14 +227,7 @@ impl Environment {
                                 Entry::Occupied(ent) => {
                                     Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
                                 }
-                                Entry::Vacant(ent) => {
-                                    // replace the key with a new one
-                                    let mut node = doc_node.to_owned();
-                                    if let Some(key) = node.key.as_mut() {
-                                        *key = key.with_index(i);
-                                    }
-                                    ent.insert(EnvNodeState::Internal(node))
-                                }
+                                Entry::Vacant(ent) => ent.insert(EnvNodeState::Internal(node)),
                             };
                         }
                     }
@@ -339,6 +340,7 @@ impl Environment {
 
                     node_peers.extend(incoming_peers.into_iter());
                     node_states.extend(incoming_states.into_iter());
+                    node_states.extend(updated_states.into_iter());
                 }
 
                 _ => warn!("ignored unimplemented document type"),

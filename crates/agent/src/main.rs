@@ -140,7 +140,9 @@ async fn main() {
         loop {
             let req = client::new_ws_request(&ws_uri, state2.db.jwt());
             client::ws_connection(req, Arc::clone(&state2)).await;
-            info!("Attempting to reconnect...");
+            // Remove the control client
+            state2.client.write().await.take();
+            info!("Attempting to reconnect to the control plane...");
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });

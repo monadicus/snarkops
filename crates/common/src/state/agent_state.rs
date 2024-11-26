@@ -20,6 +20,16 @@ impl AgentState {
             Self::Node(id, state) => Self::Node(id, Box::new(f(*state))),
         }
     }
+
+    pub fn map_env_id<F, T>(&self, f: F) -> Option<T>
+    where
+        F: Fn(EnvId) -> Option<T>,
+    {
+        match self {
+            Self::Inventory => None,
+            Self::Node(id, _) => f(*id),
+        }
+    }
 }
 
 impl DataFormat for AgentState {

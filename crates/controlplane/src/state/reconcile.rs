@@ -35,7 +35,12 @@ impl GlobalState {
 
             // if the client is present, queue a reconcile
             if let Some(client) = client {
-                handles.push(tokio::spawn(async move { client.reconcile(target).await }));
+                let env_info = target
+                    .map_env_id(|env_id| self.get_env(env_id).map(|env| (env_id, env.info(self))));
+
+                handles.push(tokio::spawn(async move {
+                    client.set_agent_state(target, env_info).await
+                }));
 
                 // otherwise just change the agent state so it'll inventory on
                 // reconnect

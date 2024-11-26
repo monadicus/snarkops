@@ -180,6 +180,9 @@ async fn handle_socket(
 
                 // attach the current known agent state to the handshake
                 agent.state().clone_into(&mut handshake.state);
+                handshake.env_info = handshake
+                    .state
+                    .map_env_id(|id| state.get_env(id).map(|env| (id, env.info(&state))));
 
                 // mark the agent as connected, update the flags as well
                 agent.mark_connected(client, query.flags);
