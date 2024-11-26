@@ -92,8 +92,6 @@ impl GlobalState {
             num_reconciliations
         );
 
-        self.prom_httpsd.lock().await.set_dirty();
-
         if success == num_reconciliations {
             Ok(())
         } else {

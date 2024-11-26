@@ -117,8 +117,6 @@ impl Environment {
         documents: Vec<ItemDocument>,
         state: Arc<GlobalState>,
     ) -> Result<EnvId, EnvError> {
-        state.prom_httpsd.lock().await.set_dirty();
-
         let prev_env = state.get_env(env_id);
 
         let mut storage_doc = None;
@@ -452,9 +450,6 @@ impl Environment {
         if let Some(storage) = state.try_unload_storage(env.network, env.storage.id) {
             info!("[env {id}] unloaded storage {}", storage.id);
         }
-
-        trace!("[env {id}] marking prom as dirty");
-        state.prom_httpsd.lock().await.set_dirty();
 
         trace!("[env {id}] inventorying agents...");
 

@@ -13,7 +13,7 @@ use snops_common::{
     },
     util::OpaqueDebug,
 };
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Semaphore;
 use tracing::info;
 
 use super::{
@@ -26,7 +26,7 @@ use crate::{
     env::{cache::NetworkCache, error::EnvRequestError, Environment, PortType},
     error::StateError,
     schema::storage::{LoadedStorage, STORAGE_DIR},
-    server::{error::StartError, prometheus::HttpsdResponse},
+    server::error::StartError,
     ReloadHandler,
 };
 
@@ -45,7 +45,6 @@ pub struct GlobalState {
     pub envs: EnvMap,
     pub env_network_cache: OpaqueDebug<DashMap<EnvId, NetworkCache>>,
 
-    pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
 
     pub log_level_handler: ReloadHandler,
@@ -95,7 +94,6 @@ impl GlobalState {
             pool,
             storage,
             envs: EnvMap::default(),
-            prom_httpsd: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db: OpaqueDebug(db),
             env_network_cache: Default::default(),
