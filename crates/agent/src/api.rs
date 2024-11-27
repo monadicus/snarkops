@@ -12,7 +12,7 @@ use reqwest::IntoUrl;
 use sha2::{Digest, Sha256};
 use snops_common::{
     binaries::{BinaryEntry, BinarySource},
-    rpc::error::ReconcileError2,
+    rpc::error::ReconcileError,
     state::{TransferId, TransferStatusUpdate},
     util::sha256_file,
 };
@@ -196,14 +196,14 @@ pub async fn get_file_issues(
     size: Option<u64>,
     sha256: Option<&str>,
     offline: bool,
-) -> Result<Option<BadFileReason>, ReconcileError2> {
+) -> Result<Option<BadFileReason>, ReconcileError> {
     if !dst.try_exists().unwrap_or(false) {
         return Ok(Some(BadFileReason::NotFound));
     }
 
     let meta = tokio::fs::metadata(&dst)
         .await
-        .map_err(|e| ReconcileError2::FileStatError(dst.to_path_buf(), e.to_string()))?;
+        .map_err(|e| ReconcileError::FileStatError(dst.to_path_buf(), e.to_string()))?;
     let local_content_length = meta.len();
 
     // if the binary entry is provided, check if the file size and sha256 match
@@ -215,7 +215,7 @@ pub async fn get_file_issues(
     // if sha256 is present, only download if the sha256 is different
     if let Some(sha256) = sha256 {
         let bad_sha256 = sha256_file(&dst.to_path_buf())
-            .map_err(|e| ReconcileError2::FileReadError(dst.to_path_buf(), e.to_string()))?
+            .map_err(|e| ReconcileError::FileReadError(dst.to_path_buf(), e.to_string()))?
             != sha256.to_ascii_lowercase();
         return Ok(bad_sha256.then_some(BadFileReason::Sha256));
     }
@@ -230,7 +230,7 @@ pub async fn get_file_issues(
         .head(src)
         .send()
         .await
-        .map_err(|e| ReconcileError2::HttpError {
+        .map_err(|e| ReconcileError::HttpError {
             method: String::from("HEAD"),
             url: src.to_owned(),
             error: e.to_string(),
@@ -257,7 +257,7 @@ pub async fn get_file_issues(
     let remote_last_modified = httpdate::parse_http_date(last_modified_header);
     let local_last_modified = meta
         .modified()
-        .map_err(|e| ReconcileError2::FileStatError(dst.to_path_buf(), e.to_string()))?;
+        .map_err(|e| ReconcileError::FileStatError(dst.to_path_buf(), e.to_string()))?;
 
     let is_stale = remote_last_modified
         .map(|res| res > local_last_modified)

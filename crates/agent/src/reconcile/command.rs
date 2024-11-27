@@ -3,11 +3,11 @@ use std::{net::IpAddr, ops::Deref, path::PathBuf, process::Stdio, sync::Arc};
 use indexmap::IndexMap;
 use snops_checkpoint::RetentionPolicy;
 use snops_common::{
-    api::EnvInfo,
+    api::AgentEnvInfo,
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
     },
-    rpc::error::ReconcileError2,
+    rpc::error::ReconcileError,
     state::{EnvId, KeyState, NetworkId, NodeKey, NodeState, PortConfig},
 };
 use tokio::process::Command;
@@ -60,8 +60,8 @@ impl NodeCommand {
         state: Arc<GlobalState>,
         node: Arc<NodeState>,
         env_id: EnvId,
-        env_info: Arc<EnvInfo>,
-    ) -> Result<Self, ReconcileError2> {
+        env_info: Arc<AgentEnvInfo>,
+    ) -> Result<Self, ReconcileError> {
         let storage_path = state
             .cli
             .storage_path(env_info.network, env_info.storage.id);
@@ -101,7 +101,7 @@ impl NodeCommand {
                         .cli
                         .private_key_file
                         .clone()
-                        .ok_or(ReconcileError2::MissingLocalPrivateKey)?,
+                        .ok_or(ReconcileError::MissingLocalPrivateKey)?,
                 )
             } else {
                 None

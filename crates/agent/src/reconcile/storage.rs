@@ -7,12 +7,12 @@ use std::{
 use lazysort::SortedBy;
 use snops_checkpoint::CheckpointManager;
 use snops_common::{
-    api::EnvInfo,
+    api::AgentEnvInfo,
     binaries::{BinaryEntry, BinarySource},
     constant::{
         LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE,
     },
-    rpc::error::ReconcileError2,
+    rpc::error::ReconcileError,
     state::{HeightRequest, InternedId, TransferId},
 };
 use tokio::{process::Command, sync::Mutex, task::AbortHandle};
@@ -28,7 +28,7 @@ use crate::state::GlobalState;
 /// Download a specific binary file needed to run the node
 pub struct BinaryReconciler<'a> {
     pub state: Arc<GlobalState>,
-    pub env_info: Arc<EnvInfo>,
+    pub env_info: Arc<AgentEnvInfo>,
     pub node_binary: Option<InternedId>,
     /// Metadata about an active binary transfer
     pub transfer: &'a mut Option<(TransferId, BinaryEntry)>,
@@ -36,8 +36,8 @@ pub struct BinaryReconciler<'a> {
     pub ok_at: &'a mut Option<Instant>,
 }
 
-impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+impl<'a> Reconcile<(), ReconcileError> for BinaryReconciler<'a> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let BinaryReconciler {
             state,
             env_info,
@@ -79,7 +79,7 @@ impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
             BinarySource::Path(path) => {
                 let url = format!("{}{}", &state.endpoint, path.display());
                 url.parse::<reqwest::Url>()
-                    .map_err(|e| ReconcileError2::UrlParseError(url, e.to_string()))?
+                    .map_err(|e| ReconcileError::UrlParseError(url, e.to_string()))?
             }
         };
 
@@ -120,15 +120,15 @@ impl<'a> Reconcile<(), ReconcileError2> for BinaryReconciler<'a> {
 /// Download the genesis block needed to run the node
 pub struct GenesisReconciler<'a> {
     pub state: Arc<GlobalState>,
-    pub env_info: Arc<EnvInfo>,
+    pub env_info: Arc<AgentEnvInfo>,
     /// Metadata about an active genesis transfer
     pub transfer: &'a mut Option<TransferId>,
     /// Time the genesis was marked as OK
     pub ok_at: &'a mut Option<Instant>,
 }
 
-impl<'a> Reconcile<(), ReconcileError2> for GenesisReconciler<'a> {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+impl<'a> Reconcile<(), ReconcileError> for GenesisReconciler<'a> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let GenesisReconciler {
             state,
             env_info,
@@ -161,7 +161,7 @@ impl<'a> Reconcile<(), ReconcileError2> for GenesisReconciler<'a> {
         let mut file_rec = FileReconciler::new(
             Arc::clone(&self.state),
             genesis_url.parse::<Url>().map_err(|e| {
-                ReconcileError2::UrlParseError(genesis_url.to_string(), e.to_string())
+                ReconcileError::UrlParseError(genesis_url.to_string(), e.to_string())
             })?,
             genesis_file,
         )
@@ -198,11 +198,11 @@ impl<'a> Reconcile<(), ReconcileError2> for GenesisReconciler<'a> {
     }
 }
 
-pub type LedgerModifyResult = Result<bool, ReconcileError2>;
+pub type LedgerModifyResult = Result<bool, ReconcileError>;
 
 pub struct LedgerReconciler<'a> {
     pub state: Arc<GlobalState>,
-    pub env_info: Arc<EnvInfo>,
+    pub env_info: Arc<AgentEnvInfo>,
     pub target_height: (usize, HeightRequest),
     pub last_height: &'a mut Option<(usize, HeightRequest)>,
     pub pending_height: &'a mut Option<(usize, HeightRequest)>,
@@ -230,7 +230,7 @@ impl<'a> LedgerReconciler<'a> {
 
     /// Find the checkpoint to apply to the ledger
     /// Guaranteed error when target height is not the top, 0, or unlimited span
-    pub fn find_checkpoint(&self) -> Result<PathBuf, ReconcileError2> {
+    pub fn find_checkpoint(&self) -> Result<PathBuf, ReconcileError> {
         let (untar_base, ledger_dir) = self.untar_paths();
         let ledger_path = untar_base.join(ledger_dir);
 
@@ -246,13 +246,11 @@ impl<'a> LedgerReconciler<'a> {
                 trace!("loading checkpoints from {untar_base:?}...");
                 CheckpointManager::load(ledger_path.clone(), policy).map_err(|e| {
                     error!("failed to load checkpoints: {e}");
-                    ReconcileError2::CheckpointLoadError(e.to_string())
+                    ReconcileError::CheckpointLoadError(e.to_string())
                 })
             })
             .transpose()?
-            .ok_or(ReconcileError2::MissingRetentionPolicy(
-                self.target_height.1,
-            ))?;
+            .ok_or(ReconcileError::MissingRetentionPolicy(self.target_height.1))?;
 
         // Determine which checkpoint to use by the next available height/time
         match self.target_height.1 {
@@ -269,9 +267,7 @@ impl<'a> LedgerReconciler<'a> {
             // top cannot be a target height
             _ => None,
         }
-        .ok_or(ReconcileError2::NoAvailableCheckpoints(
-            self.target_height.1,
-        ))
+        .ok_or(ReconcileError::NoAvailableCheckpoints(self.target_height.1))
         .cloned()
     }
 
@@ -316,7 +312,7 @@ impl<'a> LedgerReconciler<'a> {
                 .spawn()
                 .map_err(|e| {
                     error!("failed to spawn checkpoint apply process: {e}");
-                    mutex.replace(Err(ReconcileError2::CheckpointApplyError(String::from(
+                    mutex.replace(Err(ReconcileError::CheckpointApplyError(String::from(
                         "spawn checkpoint apply process",
                     ))));
                 })?
@@ -324,7 +320,7 @@ impl<'a> LedgerReconciler<'a> {
                 .await
                 .map_err(|e| {
                     error!("failed to await checkpoint apply process: {e}");
-                    mutex.replace(Err(ReconcileError2::CheckpointApplyError(String::from(
+                    mutex.replace(Err(ReconcileError::CheckpointApplyError(String::from(
                         "await checkpoint apply process",
                     ))));
                 })?;
@@ -339,8 +335,8 @@ impl<'a> LedgerReconciler<'a> {
     }
 }
 
-impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let env_info = self.env_info.clone();
         let target_height = self.target_height;
 
@@ -477,8 +473,8 @@ impl<'a> Reconcile<(), ReconcileError2> for LedgerReconciler<'a> {
 
 pub struct StorageVersionReconciler<'a>(pub &'a Path, pub u16);
 
-impl<'a> Reconcile<(), ReconcileError2> for StorageVersionReconciler<'a> {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+impl<'a> Reconcile<(), ReconcileError> for StorageVersionReconciler<'a> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let StorageVersionReconciler(path, version) = self;
 
         let version_file = path.join(VERSION_FILE);
@@ -488,7 +484,7 @@ impl<'a> Reconcile<(), ReconcileError2> for StorageVersionReconciler<'a> {
         } else {
             tokio::fs::read_to_string(&version_file)
                 .await
-                .map_err(|e| ReconcileError2::FileReadError(version_file.clone(), e.to_string()))?
+                .map_err(|e| ReconcileError::FileReadError(version_file.clone(), e.to_string()))?
                 .parse()
                 .ok()
         };
@@ -511,7 +507,7 @@ impl<'a> Reconcile<(), ReconcileError2> for StorageVersionReconciler<'a> {
                 .await
                 .map_err(|e| {
                     error!("failed to write storage version: {e}");
-                    ReconcileError2::CreateDirectory(version_file.to_path_buf(), e.to_string())
+                    ReconcileError::CreateDirectory(version_file.to_path_buf(), e.to_string())
                 })?;
         }
 

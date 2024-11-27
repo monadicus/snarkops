@@ -2,12 +2,8 @@ use std::{fmt::Display, time::Duration};
 
 use serde::de::DeserializeOwned;
 use snops_common::{
-    api::EnvInfo,
-    rpc::{
-        control::agent::AgentServiceClient,
-        error::{ReconcileError, SnarkosRequestError},
-    },
-    state::{snarkos_status::SnarkOSLiteBlock, AgentState, EnvId, NetworkId},
+    rpc::{control::agent::AgentServiceClient, error::SnarkosRequestError},
+    state::{snarkos_status::SnarkOSLiteBlock, AgentId, AgentState, EnvId, NetworkId},
 };
 use tarpc::{client::RpcError, context};
 
@@ -17,18 +13,12 @@ use crate::error::StateError;
 pub struct AgentClient(pub(crate) AgentServiceClient);
 
 impl AgentClient {
-    pub async fn set_agent_state(
-        &self,
-        to: AgentState,
-        env_info: Option<(EnvId, EnvInfo)>,
-    ) -> Result<Result<AgentState, ReconcileError>, RpcError> {
-        let mut ctx = context::current();
-        ctx.deadline += Duration::from_secs(300);
+    pub async fn set_agent_state(&self, to: AgentState) -> Result<(), RpcError> {
+        self.0.set_agent_state(context::current(), to).await
+    }
 
-        self.0
-            .set_agent_state(ctx, to.clone(), env_info)
-            .await
-            .map(|res| res.map(|_| to))
+    pub async fn clear_peer_addr(&self, peer: AgentId) -> Result<(), RpcError> {
+        self.0.clear_peer_addr(context::current(), peer).await
     }
 
     pub async fn snarkos_get<T: DeserializeOwned>(

@@ -180,9 +180,6 @@ async fn handle_socket(
 
                 // attach the current known agent state to the handshake
                 agent.state().clone_into(&mut handshake.state);
-                handshake.env_info = handshake
-                    .state
-                    .map_env_id(|id| state.get_env(id).map(|env| (id, env.info(&state))));
 
                 // mark the agent as connected, update the flags as well
                 agent.mark_connected(client, query.flags);
@@ -205,10 +202,7 @@ async fn handle_socket(
                     let mut ctx = tarpc::context::current();
                     ctx.deadline += Duration::from_secs(300);
                     match client.handshake(ctx, handshake).await {
-                        Ok(Ok(())) => (),
-                        Ok(Err(e)) => {
-                            error!("failed to perform agent {id} handshake reconciliation: {e}")
-                        }
+                        Ok(()) => (),
                         Err(e) => error!("failed to perform agent {id} handshake: {e}"),
                     }
                 });
@@ -246,8 +240,7 @@ async fn handle_socket(
             let mut ctx = tarpc::context::current();
             ctx.deadline += Duration::from_secs(300);
             match client.handshake(ctx, handshake).await {
-                Ok(Ok(())) => (),
-                Ok(Err(e)) => error!("failed to perform agent {id} handshake reconciliation: {e}"),
+                Ok(()) => (),
                 Err(e) => error!("failed to perform agent {id} handshake: {e}"),
             }
         });
@@ -269,21 +262,42 @@ async fn handle_socket(
     // fetch the agent's network addresses on connect/reconnect
     let state2 = Arc::clone(&state);
     tokio::spawn(async move {
-        if let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await {
-            if let Some(mut agent) = state2.pool.get_mut(&id) {
-                info!(
-                    "agent {id} [{}], labels: {:?}, addrs: {external:?} {internal:?} @ {ports}, local pk: {}",
-                    agent.modes(),
-                    agent.str_labels(),
-                    if agent.has_local_pk() { "yes" } else { "no" },
-                );
-                agent.set_ports(ports);
-                agent.set_addrs(external, internal);
-                if let Err(e) = state2.db.agents.save(&id, &agent) {
-                    error!("failed to save agent {id} to the database: {e}");
-                }
-            }
+        let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await
+        else {
+            return;
+        };
+        let Some(mut agent) = state2.pool.get_mut(&id) else {
+            return;
+        };
+
+        info!(
+            "agent {id} [{}], labels: {:?}, addrs: {external:?} {internal:?} @ {ports}, local pk: {}",
+            agent.modes(),
+            agent.str_labels(),
+            if agent.has_local_pk() { "yes" } else { "no" },
+        );
+
+        let is_port_change = agent.set_ports(ports);
+        let is_ip_change = agent.set_addrs(external, internal);
+
+        if let Err(e) = state2.db.agents.save(&id, &agent) {
+            error!("failed to save agent {id} to the database: {e}");
         }
+
+        if !is_ip_change && !is_port_change {
+            return;
+        }
+        let Some(env_id) = agent.env() else {
+            return;
+        };
+        drop(agent);
+        let Some(env) = state2.get_env(env_id) else {
+            return;
+        };
+
+        info!("Agent {id} updated its network addresses... Submitting changes to associated peers");
+        env.update_peer_addr(&state2, id, is_port_change, is_ip_change)
+            .await;
     });
 
     // set up the server, for incoming RPC requests

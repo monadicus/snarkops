@@ -8,8 +8,8 @@ use dashmap::DashMap;
 use indexmap::IndexMap;
 use reqwest::Url;
 use snops_common::{
-    api::EnvInfo,
-    rpc::{agent::node::NodeServiceClient, control::ControlServiceClient, error::ReconcileError2},
+    api::AgentEnvInfo,
+    rpc::{agent::node::NodeServiceClient, control::ControlServiceClient, error::ReconcileError},
     state::{AgentId, AgentPeer, AgentState, EnvId, TransferId, TransferStatus},
     util::OpaqueDebug,
 };
@@ -42,7 +42,7 @@ pub struct GlobalState {
     /// A sender for emitting the next time to reconcile the agent.
     /// Helpful for scheduling the next reconciliation.
     pub queue_reconcile_tx: Sender<Instant>,
-    pub env_info: RwLock<Option<(EnvId, Arc<EnvInfo>)>>,
+    pub env_info: RwLock<Option<(EnvId, Arc<AgentEnvInfo>)>>,
     // Map of agent IDs to their resolved addresses.
     pub resolved_addrs: RwLock<IndexMap<AgentId, IpAddr>>,
     pub metrics: RwLock<Metrics>,
@@ -83,14 +83,14 @@ impl GlobalState {
             .is_ok()
     }
 
-    pub async fn set_env_info(&self, info: Option<(EnvId, Arc<EnvInfo>)>) {
+    pub async fn set_env_info(&self, info: Option<(EnvId, Arc<AgentEnvInfo>)>) {
         if let Err(e) = self.db.set_env_info(info.clone()) {
             error!("failed to save env info to db: {e}");
         }
         *self.env_info.write().await = info;
     }
 
-    pub async fn get_env_info(&self, env_id: EnvId) -> Result<Arc<EnvInfo>, ReconcileError2> {
+    pub async fn get_env_info(&self, env_id: EnvId) -> Result<Arc<AgentEnvInfo>, ReconcileError> {
         match self.env_info.read().await.as_ref() {
             Some((id, info)) if *id == env_id => return Ok(info.clone()),
             _ => {}
@@ -101,13 +101,13 @@ impl GlobalState {
             .read()
             .await
             .clone()
-            .ok_or(ReconcileError2::Offline)?;
+            .ok_or(ReconcileError::Offline)?;
 
         let info = client
             .get_env_info(context::current(), env_id)
             .await
-            .map_err(|e| ReconcileError2::RpcError(e.to_string()))?
-            .ok_or(ReconcileError2::MissingEnv(env_id))?;
+            .map_err(|e| ReconcileError::RpcError(e.to_string()))?
+            .ok_or(ReconcileError::MissingEnv(env_id))?;
 
         let env_info = (env_id, Arc::new(info));
         if let Err(e) = self.db.set_env_info(Some(env_info.clone())) {
@@ -136,9 +136,12 @@ impl GlobalState {
         self.node_client.read().await.clone()
     }
 
-    pub async fn update_agent_state(&self, state: AgentState, env_info: Option<(EnvId, EnvInfo)>) {
-        self.set_env_info(env_info.map(|(id, e)| (id, Arc::new(e))))
-            .await;
+    pub async fn update_agent_state(&self, state: AgentState) {
+        if state.env() != self.env_info.read().await.as_ref().map(|(id, _)| *id) {
+            error!("attempted to set agent state with different env");
+            return;
+        }
+
         if let Err(e) = self.db.set_agent_state(&state) {
             error!("failed to save agent state to db: {e}");
         }

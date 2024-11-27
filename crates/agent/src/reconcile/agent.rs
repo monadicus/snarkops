@@ -6,7 +6,7 @@ use std::{
 
 use snops_common::{
     binaries::BinaryEntry,
-    rpc::error::ReconcileError2,
+    rpc::error::ReconcileError,
     state::{AgentState, HeightRequest, TransferId},
 };
 use tokio::{
@@ -170,7 +170,7 @@ impl AgentStateReconciler {
         }
     }
 
-    pub async fn reconcile_inventory(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+    pub async fn reconcile_inventory(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         // TODO: cleanup other things
 
         // End the process if it is running
@@ -201,8 +201,8 @@ impl AgentStateReconciler {
     }
 }
 
-impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+impl Reconcile<(), ReconcileError> for AgentStateReconciler {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let (env_id, node) = match self.agent_state.as_ref() {
             AgentState::Inventory => {
                 return self.reconcile_inventory().await;
@@ -248,6 +248,17 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
         }
 
         let node_arc = Arc::new(*node.clone());
+
+        // Resolve the addresses of the peers and validators
+        // This is run before the process is started, as the agent can sometimes have
+        // new addresses that need to be resolved.
+        reconcile!(
+            address_resolve,
+            AddressResolveReconciler {
+                node: Arc::clone(&node_arc),
+                state: Arc::clone(&self.state),
+            }
+        );
 
         // Reconcile behavior while the node is running...
         if let Some(process) = self.context.process.as_mut() {
@@ -343,16 +354,6 @@ impl Reconcile<(), ReconcileError2> for AgentStateReconciler {
                 target_height: node.height,
                 last_height: &mut self.context.ledger_last_height,
                 pending_height: &mut transfers.ledger_pending_height,
-            }
-        );
-
-        // Resolve the addresses of the peers and validators
-        // TODO: Set an expiry for resolved addresses
-        reconcile!(
-            address_resolve,
-            AddressResolveReconciler {
-                node: Arc::clone(&node_arc),
-                state: Arc::clone(&self.state),
             }
         );
 

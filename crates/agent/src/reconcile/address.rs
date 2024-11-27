@@ -1,7 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use snops_common::{
-    rpc::error::ReconcileError2,
+    rpc::error::ReconcileError,
     state::{AgentId, AgentPeer, NodeState},
 };
 use tarpc::context;
@@ -18,8 +18,8 @@ pub struct AddressResolveReconciler {
     pub node: Arc<NodeState>,
 }
 
-impl Reconcile<(), ReconcileError2> for AddressResolveReconciler {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+impl Reconcile<(), ReconcileError> for AddressResolveReconciler {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let AddressResolveReconciler { state, node } = self;
 
         // Find agents that do not have cached addresses
@@ -67,8 +67,8 @@ impl Reconcile<(), ReconcileError2> for AddressResolveReconciler {
         let new_addrs = client
             .resolve_addrs(context::current(), unresolved_addrs)
             .await
-            .map_err(|e| ReconcileError2::RpcError(e.to_string()))?
-            .map_err(ReconcileError2::AddressResolve)?;
+            .map_err(|e| ReconcileError::RpcError(e.to_string()))?
+            .map_err(ReconcileError::AddressResolve)?;
 
         tracing::trace!(
             "Resolved new addrs: {}",

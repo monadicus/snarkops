@@ -235,8 +235,10 @@ impl Agent {
     }
 
     /// Set the ports of the agent. This does **not** trigger a reconcile
-    pub fn set_ports(&mut self, ports: PortConfig) {
+    pub fn set_ports(&mut self, ports: PortConfig) -> bool {
+        let changed = self.ports.as_ref() != Some(&ports);
         self.ports = Some(ports);
+        changed
     }
 
     // Gets the bft port of the agent. Assumes the agent is ready, returns 0 if not.
@@ -278,8 +280,11 @@ impl Agent {
 
     /// Set the external and internal addresses of the agent. This does **not**
     /// trigger a reconcile
-    pub fn set_addrs(&mut self, external: Option<IpAddr>, internal: Vec<IpAddr>) {
-        self.addrs = Some(AgentAddrs { external, internal });
+    pub fn set_addrs(&mut self, external: Option<IpAddr>, internal: Vec<IpAddr>) -> bool {
+        let addrs = AgentAddrs { external, internal };
+        let changed = self.addrs.as_ref() != Some(&addrs);
+        self.addrs = Some(addrs);
+        changed
     }
 
     pub fn map_to_reconcile<F>(&self, f: F) -> PendingAgentReconcile
@@ -288,7 +293,6 @@ impl Agent {
     {
         (
             self.id(),
-            self.client_owned(),
             match &self.state {
                 AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone()))),
                 s => s.clone(),
@@ -302,7 +306,6 @@ impl Agent {
     {
         Some((
             self.id(),
-            self.client_owned(),
             match &self.state {
                 AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone())?)),
                 _ => return None,
@@ -318,7 +321,7 @@ pub enum AgentConnection {
 }
 
 /// This is the representation of a public addr or a list of internal addrs.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentAddrs {
     pub external: Option<IpAddr>,
     pub internal: Vec<IpAddr>,

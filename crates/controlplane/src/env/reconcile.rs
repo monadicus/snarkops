@@ -1,15 +1,10 @@
 use snops_common::state::{AgentState, EnvId};
-use tracing::error;
 
 use super::{error::*, EnvNodeState};
-use crate::{env::Environment, state::GlobalState};
+use crate::state::GlobalState;
 
 /// Reconcile all associated nodes with their initial state.
-pub async fn initial_reconcile(
-    env_id: EnvId,
-    state: &GlobalState,
-    is_new_env: bool,
-) -> Result<(), EnvError> {
+pub async fn initial_reconcile(env_id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
     let mut pending_reconciliations = vec![];
     {
         let env = state
@@ -50,23 +45,10 @@ pub async fn initial_reconcile(
 
             let agent_state = AgentState::Node(env_id, Box::new(node_state));
 
-            pending_reconciliations.push((id, state.get_client(id), agent_state));
+            pending_reconciliations.push((id, agent_state));
         }
     }
 
-    if let Err(e) = state.reconcile_agents(pending_reconciliations).await {
-        // if this is a patch to an existing environment, avoid inventorying the agents
-        if !is_new_env {
-            return Err(ReconcileError::Batch(e).into());
-        }
-
-        error!("an error occurred on initial reconciliation, inventorying all agents: {e}");
-        if let Err(e) = Environment::cleanup(env_id, state).await {
-            error!("an error occurred inventorying agents: {e}");
-        }
-
-        Err(ReconcileError::Batch(e).into())
-    } else {
-        Ok(())
-    }
+    state.update_agent_states(pending_reconciliations).await;
+    Ok(())
 }

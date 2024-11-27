@@ -4,7 +4,6 @@ use std::{net::IpAddr, path::PathBuf};
 
 use snops_common::{
     aot_cmds::AotCmd,
-    api::EnvInfo,
     binaries::{BinaryEntry, BinarySource},
     define_rpc_mux,
     prelude::snarkos_status::SnarkOSLiteBlock,
@@ -16,11 +15,11 @@ use snops_common::{
             },
             ControlServiceClient, ControlServiceRequest, ControlServiceResponse,
         },
-        error::{AgentError, ReconcileError, SnarkosRequestError},
+        error::{AgentError, SnarkosRequestError},
     },
-    state::{AgentState, EnvId, InternedId, NetworkId, PortConfig},
+    state::{AgentId, AgentState, EnvId, InternedId, NetworkId, PortConfig},
 };
-use tarpc::context;
+use tarpc::context::Context;
 use tracing::{error, info, trace};
 
 use crate::{api, log::make_env_filter, metrics::MetricComputer, state::AppState};
@@ -38,22 +37,17 @@ pub struct AgentRpcServer {
 }
 
 impl AgentService for AgentRpcServer {
-    async fn kill(self, _: context::Context) {
+    async fn kill(self, _: Context) {
         info!("Kill RPC invoked...");
         self.state.shutdown().await;
     }
 
-    async fn handshake(
-        self,
-        context: context::Context,
-        handshake: Handshake,
-    ) -> Result<(), ReconcileError> {
+    async fn handshake(self, context: Context, handshake: Handshake) {
         if let Some(token) = handshake.jwt {
             // cache the JWT in the state JWT mutex
-            self.state
-                .db
-                .set_jwt(Some(token))
-                .map_err(|_| ReconcileError::Database)?;
+            if let Err(e) = self.state.db.set_jwt(Some(token)) {
+                error!("failed to save JWT to db: {e}");
+            }
         }
 
         // store loki server URL
@@ -95,25 +89,23 @@ impl AgentService for AgentRpcServer {
 
         // Queue a reconcile immediately as we have received new state.
         // The reconciler will decide if anything has actually changed
+        self.state.update_agent_state(handshake.state).await;
+    }
+
+    async fn set_agent_state(self, _: Context, target: AgentState) {
+        info!("Received new agent state, queuing reconcile...");
+        self.state.update_agent_state(target).await;
+    }
+
+    async fn clear_peer_addr(self, _: Context, agent_id: AgentId) {
         self.state
-            .update_agent_state(handshake.state, handshake.env_info)
-            .await;
-
-        Ok(())
+            .resolved_addrs
+            .write()
+            .await
+            .swap_remove(&agent_id);
     }
 
-    async fn set_agent_state(
-        self,
-        _: context::Context,
-        target: AgentState,
-        env_info: Option<(EnvId, EnvInfo)>,
-    ) -> Result<(), ReconcileError> {
-        info!("Received reconcile request...");
-        self.state.update_agent_state(target, env_info).await;
-        Ok(())
-    }
-
-    async fn get_addrs(self, _: context::Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
+    async fn get_addrs(self, _: Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
         (
             self.state.cli.ports,
             self.state.external_addr,
@@ -121,11 +113,7 @@ impl AgentService for AgentRpcServer {
         )
     }
 
-    async fn snarkos_get(
-        self,
-        _: context::Context,
-        route: String,
-    ) -> Result<String, SnarkosRequestError> {
+    async fn snarkos_get(self, _: Context, route: String) -> Result<String, SnarkosRequestError> {
         self.state
             .get_node_client()
             .await
@@ -169,7 +157,7 @@ impl AgentService for AgentRpcServer {
             .map_err(|err| SnarkosRequestError::JsonSerializeError(err.to_string()))
     }
 
-    async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {
+    async fn broadcast_tx(self, _: Context, tx: String) -> Result<(), AgentError> {
         self.state
             .get_node_client()
             .await
@@ -218,7 +206,7 @@ impl AgentService for AgentRpcServer {
         }
     }
 
-    async fn get_metric(self, _: context::Context, metric: AgentMetric) -> f64 {
+    async fn get_metric(self, _: Context, metric: AgentMetric) -> f64 {
         let metrics = self.state.metrics.read().await;
 
         match metric {
@@ -228,7 +216,7 @@ impl AgentService for AgentRpcServer {
 
     async fn execute_authorization(
         self,
-        _: context::Context,
+        _: Context,
         env_id: EnvId,
         network: NetworkId,
         query: String,
@@ -301,7 +289,7 @@ impl AgentService for AgentRpcServer {
         }
     }
 
-    async fn set_log_level(self, _: context::Context, level: String) -> Result<(), AgentError> {
+    async fn set_log_level(self, _: Context, level: String) -> Result<(), AgentError> {
         tracing::debug!("setting log level to {level}");
         let level: tracing_subscriber::filter::LevelFilter = level
             .parse()
@@ -314,11 +302,7 @@ impl AgentService for AgentRpcServer {
         Ok(())
     }
 
-    async fn set_aot_log_level(
-        self,
-        ctx: context::Context,
-        verbosity: u8,
-    ) -> Result<(), AgentError> {
+    async fn set_aot_log_level(self, ctx: Context, verbosity: u8) -> Result<(), AgentError> {
         tracing::debug!("agent setting aot log verbosity to {verbosity:?}");
         self.state
             .get_node_client()
@@ -331,7 +315,7 @@ impl AgentService for AgentRpcServer {
 
     async fn get_snarkos_block_lite(
         self,
-        ctx: context::Context,
+        ctx: Context,
         block_hash: String,
     ) -> Result<Option<SnarkOSLiteBlock>, AgentError> {
         self.state
@@ -345,7 +329,7 @@ impl AgentService for AgentRpcServer {
 
     async fn find_transaction(
         self,
-        context: context::Context,
+        context: Context,
         tx_id: String,
     ) -> Result<Option<String>, AgentError> {
         self.state
@@ -357,7 +341,7 @@ impl AgentService for AgentRpcServer {
             .map_err(|_| AgentError::FailedToMakeRequest)?
     }
 
-    async fn get_status(self, ctx: context::Context) -> Result<AgentStatus, AgentError> {
+    async fn get_status(self, ctx: Context) -> Result<AgentStatus, AgentError> {
         Ok(AgentStatus {
             aot_online: self
                 .state

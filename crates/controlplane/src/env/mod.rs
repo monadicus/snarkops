@@ -6,10 +6,11 @@ use std::{
 
 use bimap::BiMap;
 use dashmap::DashMap;
+use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use snops_common::{
-    api::EnvInfo,
+    api::{AgentEnvInfo, EnvInfo},
     node_targets::NodeTargets,
     state::{
         AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState, TxPipeId,
@@ -400,20 +401,17 @@ impl Environment {
                 agents_to_inventory.len()
             );
             // reconcile agents that are freed up from the delta between environments
-            if let Err(e) = state
-                .reconcile_agents(
+            state
+                .update_agent_states(
                     agents_to_inventory
                         .into_iter()
-                        .map(|id| (id, state.get_client(id), AgentState::Inventory)),
+                        .map(|id| (id, AgentState::Inventory)),
                 )
-                .await
-            {
-                error!("an error occurred while attempting to inventory newly freed agents: {e}");
-            }
+                .await;
         }
 
         // reconcile the nodes
-        initial_reconcile(env_id, &state, prev_env.is_none()).await?;
+        initial_reconcile(env_id, &state).await?;
 
         Ok(env_id)
     }
@@ -453,8 +451,8 @@ impl Environment {
 
         trace!("[env {id}] inventorying agents...");
 
-        if let Err(e) = state
-            .reconcile_agents(
+        state
+            .update_agent_states(
                 env.node_peers
                     .right_values()
                     // find all agents associated with the env
@@ -462,16 +460,13 @@ impl Environment {
                         EnvPeer::Internal(id) => Some(*id),
                         _ => None,
                     })
-                    .map(|id| (id, state.get_client(id), AgentState::Inventory))
+                    .map(|id| (id, AgentState::Inventory))
                     // this collect is necessary because the iter sent to reconcile_agents
                     // must be owned by this thread. Without this, the iter would hold a reference
                     // to the env.node_peers.right_values(), which is NOT Send
                     .collect::<Vec<_>>(),
             )
-            .await
-        {
-            error!("an error occurred while attempting to inventory newly freed agents: {e}");
-        }
+            .await;
 
         Ok(())
     }
@@ -555,6 +550,102 @@ impl Environment {
             })
     }
 
+    fn nodes_with_peer<'a>(
+        &'a self,
+        key: &'a NodeKey,
+    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'a, NodeKey, EnvNodeState>> {
+        self.node_states.iter().filter(move |s| {
+            // Only internal nodes can be agents
+            let EnvNodeState::Internal(node) = s.value() else {
+                return false;
+            };
+
+            // Ignore self-reference
+            if s.key() == key {
+                return false;
+            }
+
+            // Only agents that reference the node are relevant
+            node.peers.matches(key) || node.validators.matches(key)
+        })
+    }
+
+    pub async fn update_peer_addr(
+        &self,
+        state: &GlobalState,
+        agent_id: AgentId,
+        is_port_change: bool,
+        is_ip_change: bool,
+    ) {
+        let Some(key) = self.get_node_key_by_agent(agent_id) else {
+            return;
+        };
+        let pending_reconciles = self
+            .nodes_with_peer(key)
+            .filter_map(|ent| {
+                let EnvNodeState::Internal(env_node) = ent.value() else {
+                    return None;
+                };
+
+                // Lookup agent and get current state
+                let agent_id = self.get_agent_by_key(ent.key())?;
+
+                // If the port didn't change, we're not updating the agents' states
+                if !is_port_change {
+                    return Some((agent_id, None));
+                }
+
+                let agent = state.pool.get(&agent_id)?;
+
+                let AgentState::Node(env_id, node_state) = agent.state() else {
+                    return None;
+                };
+
+                // Determine if the node's peers and validators have changed
+                let (peers, validators) = self.resolve_node_peers(&state.pool, agent_id, env_node);
+                if peers == node_state.peers && validators == node_state.validators {
+                    return None;
+                }
+
+                // Update the node's peers and validators
+                let mut new_state = node_state.clone();
+                new_state.peers = peers;
+                new_state.validators = validators;
+
+                Some((agent_id, Some(AgentState::Node(*env_id, new_state))))
+            })
+            .collect::<Vec<_>>();
+
+        // Call the clear peer addr RPC for all agents that reference the node
+        if is_ip_change {
+            join_all(pending_reconciles.iter().filter_map(|(id, _)| {
+                let client = state.get_client(*id)?;
+
+                Some(tokio::spawn(async move {
+                    client.clear_peer_addr(agent_id).await
+                }))
+            }))
+            .await;
+        }
+
+        // Update the agent states if there's a port change
+        if is_port_change {
+            state
+                .update_agent_states(
+                    pending_reconciles
+                        .into_iter()
+                        .filter_map(|(id, state)| state.map(|s| (id, s))),
+                )
+                .await;
+
+        // Otherwise do a normal reconcile
+        } else {
+            state
+                .queue_many_reconciles(pending_reconciles.into_iter().map(|(id, _)| id))
+                .await;
+        }
+    }
+
     pub fn get_cannon(&self, id: CannonId) -> Option<Arc<CannonInstance>> {
         self.cannons.get(&id).cloned()
     }
@@ -564,6 +655,13 @@ impl Environment {
             network: self.network,
             storage: self.storage.info(),
             block: state.get_env_block_info(self.id),
+        }
+    }
+
+    pub fn agent_info(&self) -> AgentEnvInfo {
+        AgentEnvInfo {
+            network: self.network,
+            storage: self.storage.info(),
         }
     }
 
@@ -585,23 +683,34 @@ impl Environment {
             .map(|key| self.storage.lookup_keysource_pk(key))
             .unwrap_or_default();
 
+        (node_state.peers, node_state.validators) = self.resolve_node_peers(&state.pool, id, node);
+
+        node_state
+    }
+
+    pub fn resolve_node_peers(
+        &self,
+        pool: &DashMap<AgentId, Agent>,
+        id: AgentId,
+        node: &Node,
+    ) -> (Vec<AgentPeer>, Vec<AgentPeer>) {
         // a filter to exclude the current node from the list of peers
         let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);
 
         // resolve the peers and validators from node targets
-        node_state.peers = self
-            .matching_nodes(&node.peers, &state.pool, PortType::Node)
+        let mut peers: Vec<_> = self
+            .matching_nodes(&node.peers, pool, PortType::Node)
             .filter(not_me)
             .collect();
-        node_state.peers.sort();
+        peers.sort();
 
-        node_state.validators = self
-            .matching_nodes(&node.validators, &state.pool, PortType::Bft)
+        let mut validators: Vec<_> = self
+            .matching_nodes(&node.validators, pool, PortType::Bft)
             .filter(not_me)
             .collect();
-        node_state.validators.sort();
+        validators.sort();
 
-        node_state
+        (peers, validators)
     }
 }
 

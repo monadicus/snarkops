@@ -1,5 +1,5 @@
 use snops_common::{
-    api::EnvInfo,
+    api::AgentEnvInfo,
     format::{DataFormat, DataHeaderOf},
     state::{NetworkId, StorageId},
 };
@@ -11,15 +11,15 @@ pub struct EnvState {
 }
 
 impl EnvState {
-    pub fn changed(&self, env_info: &EnvInfo) -> bool {
+    pub fn changed(&self, env_info: &AgentEnvInfo) -> bool {
         env_info.storage.version != self.storage_version
             || env_info.storage.id != self.storage_id
             || env_info.network != self.network_id
     }
 }
 
-impl From<&EnvInfo> for EnvState {
-    fn from(info: &EnvInfo) -> Self {
+impl From<&AgentEnvInfo> for EnvState {
+    fn from(info: &AgentEnvInfo) -> Self {
         Self {
             network_id: info.network,
             storage_id: info.storage.id,

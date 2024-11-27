@@ -123,36 +123,8 @@ pub enum ResolveError {
     AgentHasNoAddresses,
 }
 
-#[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
-pub enum ReconcileError {
-    #[error("aborted by a more recent reconcilation request")]
-    Aborted,
-    #[error("failed setup storage: {0}")]
-    StorageSetupError(String),
-    #[error("failed to download {0} from the control plane")]
-    StorageAcquireError(String),
-    #[error("failed to get the binary from the control plane: {0}")]
-    BinaryAcquireError(String),
-    #[error("failed to find a checkpoint for the requested height/span")]
-    CheckpointAcquireError,
-    #[error("failed to apply checkpoint: {0}")]
-    CheckpointApplyError(String),
-    #[error("failed to resolve addresses of stated peers")]
-    ResolveAddrError(ResolveError),
-    #[error("a rention policy is required to rewind the ledger")]
-    MissingRetentionPolicy,
-    #[error("failed to load checkpoints for storage")]
-    CheckpointLoadError,
-    #[error("agent did not provide a local private key")]
-    NoLocalPrivateKey,
-    #[error("generic database error")]
-    Database,
-    #[error("unknown error")]
-    Unknown,
-}
-
 #[derive(Debug, Clone, Error, Serialize, Deserialize, AsRefStr)]
-pub enum ReconcileError2 {
+pub enum ReconcileError {
     #[error("node is not connected to the controlplane")]
     Offline,
     #[error("env {0} not found")]

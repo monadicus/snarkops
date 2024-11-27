@@ -7,10 +7,10 @@ use std::{
 
 use chrono::{TimeDelta, Utc};
 use snops_common::{
-    api::EnvInfo,
+    api::AgentEnvInfo,
     binaries::{BinaryEntry, BinarySource},
     constant::SNARKOS_GENESIS_FILE,
-    rpc::error::ReconcileError2,
+    rpc::error::ReconcileError,
     state::{NetworkId, StorageId, TransferId, TransferStatusUpdate},
 };
 use tracing::{error, trace, warn};
@@ -23,7 +23,7 @@ use crate::{
     transfers,
 };
 
-pub fn default_binary(info: &EnvInfo) -> BinaryEntry {
+pub fn default_binary(info: &AgentEnvInfo) -> BinaryEntry {
     BinaryEntry {
         source: BinarySource::Path(PathBuf::from(format!(
             "/content/storage/{}/{}/binaries/default",
@@ -40,11 +40,11 @@ pub fn get_genesis_route(endpoint: &str, network: NetworkId, storage_id: Storage
 
 /// This reconciler creates a directory if it does not exist
 pub struct DirectoryReconciler<'a>(pub &'a Path);
-impl<'a> Reconcile<(), ReconcileError2> for DirectoryReconciler<'a> {
-    async fn reconcile(&mut self) -> Result<super::ReconcileStatus<()>, ReconcileError2> {
+impl<'a> Reconcile<(), ReconcileError> for DirectoryReconciler<'a> {
+    async fn reconcile(&mut self) -> Result<super::ReconcileStatus<()>, ReconcileError> {
         std::fs::create_dir_all(self.0)
             .map(ReconcileStatus::with)
-            .map_err(|e| ReconcileError2::CreateDirectory(self.0.to_path_buf(), e.to_string()))
+            .map_err(|e| ReconcileError::CreateDirectory(self.0.to_path_buf(), e.to_string()))
     }
 }
 
@@ -96,7 +96,7 @@ impl FileReconciler {
         self
     }
 
-    pub fn check_and_set_mode(&self) -> Result<(), ReconcileError2> {
+    pub fn check_and_set_mode(&self) -> Result<(), ReconcileError> {
         // ensure the file has the correct permissions
         let Some(check_perms) = self.permissions else {
             return Ok(());
@@ -105,13 +105,13 @@ impl FileReconciler {
         let perms = self
             .dst
             .metadata()
-            .map_err(|e| ReconcileError2::FileStatError(self.dst.clone(), e.to_string()))?
+            .map_err(|e| ReconcileError::FileStatError(self.dst.clone(), e.to_string()))?
             .permissions();
 
         if perms.mode() != check_perms {
             std::fs::set_permissions(&self.dst, std::fs::Permissions::from_mode(check_perms))
                 .map_err(|e| {
-                    ReconcileError2::FilePermissionError(self.dst.clone(), e.to_string())
+                    ReconcileError::FilePermissionError(self.dst.clone(), e.to_string())
                 })?;
         }
 
@@ -119,8 +119,8 @@ impl FileReconciler {
     }
 }
 
-impl Reconcile<bool, ReconcileError2> for FileReconciler {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<bool>, ReconcileError2> {
+impl Reconcile<bool, ReconcileError> for FileReconciler {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<bool>, ReconcileError> {
         let client = reqwest::Client::new();
 
         // Create a transfer id if one is not provided
@@ -208,7 +208,7 @@ impl Reconcile<bool, ReconcileError2> for FileReconciler {
             if self.dst.exists() {
                 // delete the file
                 tokio::fs::remove_file(&self.dst).await.map_err(|e| {
-                    ReconcileError2::DeleteFileError(self.dst.clone(), e.to_string())
+                    ReconcileError::DeleteFileError(self.dst.clone(), e.to_string())
                 })?;
             }
 

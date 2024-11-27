@@ -24,6 +24,13 @@ pub struct EnvInfo {
     pub block: Option<LatestBlockInfo>,
 }
 
+/// Lighter-weight version of EnvInfo for the agent
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AgentEnvInfo {
+    pub network: NetworkId,
+    pub storage: StorageInfo,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StorageInfo {
     /// String id of this storage
@@ -120,6 +127,81 @@ impl DataFormat for EnvInfo {
             network: NetworkId::read_data(reader, &header.network)?,
             storage: StorageInfo::read_data(reader, &header.storage)?,
             block: Option::<LatestBlockInfo>::read_data(reader, &header.block)?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentEnvInfoHeader {
+    pub version: u8,
+    pub network: DataHeaderOf<NetworkId>,
+    pub storage: DataHeaderOf<StorageInfo>,
+}
+
+impl DataFormat for AgentEnvInfoHeader {
+    type Header = (u8, DataHeaderOf<DataHeaderOf<StorageInfo>>);
+    const LATEST_HEADER: Self::Header = (1, DataHeaderOf::<StorageInfo>::LATEST_HEADER);
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = self.version.write_data(writer)?;
+        written += self.network.write_data(writer)?;
+        written += self.storage.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if header.0 != Self::LATEST_HEADER.0 {
+            return Err(crate::format::DataReadError::unsupported(
+                "EnvInfoHeader",
+                Self::LATEST_HEADER.0,
+                header.0,
+            ));
+        }
+        Ok(Self {
+            version: u8::read_data(reader, &())?,
+            network: DataHeaderOf::<NetworkId>::read_data(reader, &())?,
+            storage: DataHeaderOf::<StorageInfo>::read_data(reader, &header.1)?,
+        })
+    }
+}
+
+impl DataFormat for AgentEnvInfo {
+    type Header = AgentEnvInfoHeader;
+    const LATEST_HEADER: Self::Header = AgentEnvInfoHeader {
+        version: 1,
+        network: NetworkId::LATEST_HEADER,
+        storage: StorageInfo::LATEST_HEADER,
+    };
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = self.network.write_data(writer)?;
+        written += self.storage.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if header.version != 1 {
+            return Err(crate::format::DataReadError::unsupported(
+                "EnvInfo",
+                1,
+                header.version,
+            ));
+        }
+        Ok(Self {
+            network: NetworkId::read_data(reader, &header.network)?,
+            storage: StorageInfo::read_data(reader, &header.storage)?,
         })
     }
 }

@@ -2,9 +2,9 @@ use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::EnvInfo;
 use crate::rpc::error::*;
 use crate::state::snarkos_status::SnarkOSLiteBlock;
+use crate::state::AgentId;
 use crate::{
     prelude::EnvId,
     state::{AgentState, NetworkId, PortConfig},
@@ -15,25 +15,24 @@ pub struct Handshake {
     pub jwt: Option<String>,
     pub loki: Option<String>,
     pub state: AgentState,
-    pub env_info: Option<(EnvId, EnvInfo)>,
 }
 
 /// The RPC service that agents implement as a server.
 #[tarpc::service]
 pub trait AgentService {
     /// Handshake with some initial connection details.
-    async fn handshake(handshake: Handshake) -> Result<(), ReconcileError>;
+    async fn handshake(handshake: Handshake);
 
     /// Control plane asks the agent for its external network address, along
     /// with local addrs.
     async fn get_addrs() -> (PortConfig, Option<IpAddr>, Vec<IpAddr>);
 
+    /// An agent is instructed to clear the address of a peer.
+    async fn clear_peer_addr(agent_id: AgentId);
+
     /// Control plane instructs the agent to reconcile towards a particular
     /// state.
-    async fn set_agent_state(
-        to: AgentState,
-        env_info: Option<(EnvId, EnvInfo)>,
-    ) -> Result<(), ReconcileError>;
+    async fn set_agent_state(to: AgentState);
 
     /// Broadcast a transaction locally
     async fn broadcast_tx(tx: String) -> Result<(), AgentError>;

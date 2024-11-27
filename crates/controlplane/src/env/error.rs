@@ -13,7 +13,6 @@ use tokio::task::JoinError;
 use crate::{
     cannon::error::{AuthorizeError, CannonError},
     schema::error::{SchemaError, StorageError},
-    state::error::BatchReconcileError,
 };
 
 #[derive(Debug, Error, AsRefStr)]
@@ -63,8 +62,6 @@ pub enum ExecutionError {
     Cannon(#[from] CannonError),
     #[error(transparent)]
     Join(#[from] JoinError),
-    #[error(transparent)]
-    Reconcile(#[from] BatchReconcileError),
     #[error("env `{0}` timeline `{1}` not found")]
     TimelineNotFound(EnvId, TimelineId),
     #[error("env timeline is already being executed")]
@@ -79,7 +76,6 @@ pub enum ExecutionError {
 
 impl_into_status_code!(ExecutionError, |value| match value {
     Cannon(e) => e.into(),
-    Reconcile(e) => e.into(),
     Storage(e) => e.into(),
     _ => StatusCode::INTERNAL_SERVER_ERROR,
 });
@@ -190,8 +186,6 @@ impl_into_status_code!(CleanupError, |_| StatusCode::NOT_FOUND);
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum ReconcileError {
-    #[error(transparent)]
-    Batch(#[from] BatchReconcileError),
     #[error("env `{0}` not found")]
     EnvNotFound(EnvId),
     #[error("expected internal agent peer for node with key {key}")]
@@ -199,7 +193,6 @@ pub enum ReconcileError {
 }
 
 impl_into_status_code!(ReconcileError, |value| match value {
-    Batch(e) => e.into(),
     EnvNotFound(_) | ExpectedInternalAgentPeer { .. } => StatusCode::NOT_FOUND,
 });
 

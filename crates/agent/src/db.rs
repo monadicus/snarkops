@@ -7,7 +7,7 @@ use std::{
 
 use indexmap::IndexMap;
 use snops_common::{
-    api::EnvInfo,
+    api::AgentEnvInfo,
     db::{
         error::DatabaseError,
         tree::{DbRecords, DbTree},
@@ -122,13 +122,16 @@ impl Database {
             .and_then(|url| url.parse::<Url>().ok())
     }
 
-    pub fn env_info(&self) -> Result<Option<(EnvId, Arc<EnvInfo>)>, DatabaseError> {
+    pub fn env_info(&self) -> Result<Option<(EnvId, Arc<AgentEnvInfo>)>, DatabaseError> {
         self.documents
             .restore(&AgentDbString::EnvInfo)
             .map_err(DatabaseError::from)
     }
 
-    pub fn set_env_info(&self, info: Option<(EnvId, Arc<EnvInfo>)>) -> Result<(), DatabaseError> {
+    pub fn set_env_info(
+        &self,
+        info: Option<(EnvId, Arc<AgentEnvInfo>)>,
+    ) -> Result<(), DatabaseError> {
         self.documents
             .save_option(&AgentDbString::EnvInfo, info.as_ref())
     }

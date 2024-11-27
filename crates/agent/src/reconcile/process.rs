@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use snops_common::rpc::error::ReconcileError2;
+use snops_common::rpc::error::ReconcileError;
 use tokio::{process::Child, select};
 use tracing::{error, info};
 
@@ -24,7 +24,7 @@ pub struct ProcessContext {
 }
 
 impl ProcessContext {
-    pub fn new(command: NodeCommand) -> Result<Self, ReconcileError2> {
+    pub fn new(command: NodeCommand) -> Result<Self, ReconcileError> {
         command
             .build()
             .spawn()
@@ -37,7 +37,7 @@ impl ProcessContext {
             })
             .map_err(|e| {
                 error!("failed to start node process: {e:?}");
-                ReconcileError2::SpawnError(e.to_string())
+                ReconcileError::SpawnError(e.to_string())
             })
     }
 
@@ -120,8 +120,8 @@ impl ProcessContext {
 /// before sending a SIGKILL (if the childi process has not exited),
 pub struct EndProcessReconciler<'a>(pub &'a mut ProcessContext);
 
-impl<'a> Reconcile<(), ReconcileError2> for EndProcessReconciler<'a> {
-    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError2> {
+impl<'a> Reconcile<(), ReconcileError> for EndProcessReconciler<'a> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         if !self.0.is_running() {
             return Ok(ReconcileStatus::default());
         }

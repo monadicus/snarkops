@@ -5,7 +5,7 @@ use std::{
 
 use chrono::Utc;
 use snops_common::{
-    api::EnvInfo,
+    api::AgentEnvInfo,
     define_rpc_mux,
     rpc::{
         control::{
@@ -55,8 +55,8 @@ impl ControlService for ControlRpcServer {
         resolve_addrs(&addr_map, self.agent, &peers).map_err(|_| ResolveError::SourceAgentNotFound)
     }
 
-    async fn get_env_info(self, _: context::Context, env_id: EnvId) -> Option<EnvInfo> {
-        Some(self.state.get_env(env_id)?.info(&self.state))
+    async fn get_env_info(self, _: context::Context, env_id: EnvId) -> Option<AgentEnvInfo> {
+        Some(self.state.get_env(env_id)?.agent_info())
     }
 
     async fn post_transfer_status(
@@ -203,6 +203,22 @@ impl ControlService for ControlRpcServer {
     }
 }
 
+pub fn resolve_one_addr(src_addrs: &AgentAddrs, target_addrs: &AgentAddrs) -> Option<IpAddr> {
+    match (
+        src_addrs.external,
+        target_addrs.external,
+        target_addrs.internal.first(),
+    ) {
+        // if peers have the same external address, use the first internal address
+        (Some(src_ext), Some(peer_ext), Some(peer_int)) if src_ext == peer_ext => Some(*peer_int),
+        // if both peers have only internal addresses, use the internal address
+        (None, None, Some(peer_int)) => Some(*peer_int),
+        // otherwise use the external address
+        (_, Some(peer_ext), _) => Some(peer_ext),
+        _ => None,
+    }
+}
+
 /// Given a map of addresses, resolve the addresses of a set of peers relative
 /// to a source agent.
 fn resolve_addrs(
@@ -214,10 +230,6 @@ fn resolve_addrs(
         .get(&src)
         .ok_or_else(|| StateError::SourceAgentNotFound(src))?;
 
-    let all_internal = addr_map
-        .values()
-        .all(|AgentAddrs { external, .. }| external.is_none());
-
     Ok(peers
         .iter()
         .filter_map(|id| {
@@ -226,24 +238,7 @@ fn resolve_addrs(
                 return None;
             }
 
-            // if the agent has no addresses, skip it
-            let addrs = addr_map.get(id)?;
-
-            // if there are no external addresses in the entire addr map,
-            // use the first internal address
-            if all_internal {
-                return addrs.internal.first().copied().map(|addr| (*id, addr));
-            }
-
-            match (src_addrs.external, addrs.external, addrs.internal.first()) {
-                // if peers have the same external address, use the first internal address
-                (Some(src_ext), Some(peer_ext), Some(peer_int)) if src_ext == peer_ext => {
-                    Some((*id, *peer_int))
-                }
-                // otherwise use the external address
-                (_, Some(peer_ext), _) => Some((*id, peer_ext)),
-                _ => None,
-            }
+            Some((*id, resolve_one_addr(src_addrs, addr_map.get(id)?)?))
         })
         .collect())
 }

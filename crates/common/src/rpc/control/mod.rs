@@ -7,7 +7,7 @@ use std::{
 
 use super::error::ResolveError;
 use crate::{
-    api::EnvInfo,
+    api::AgentEnvInfo,
     state::{AgentId, EnvId, NodeStatus, TransferStatus, TransferStatusUpdate},
 };
 
@@ -21,7 +21,7 @@ pub trait ControlService {
     ) -> Result<HashMap<AgentId, IpAddr>, ResolveError>;
 
     /// Get the environment info for the given environment.
-    async fn get_env_info(env_id: EnvId) -> Option<EnvInfo>;
+    async fn get_env_info(env_id: EnvId) -> Option<AgentEnvInfo>;
 
     /// Emit an agent transfer status update.
     async fn post_transfer_status(id: u32, status: TransferStatusUpdate);

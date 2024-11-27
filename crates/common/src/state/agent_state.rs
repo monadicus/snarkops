@@ -21,6 +21,13 @@ impl AgentState {
         }
     }
 
+    pub fn env(&self) -> Option<EnvId> {
+        match self {
+            Self::Inventory => None,
+            Self::Node(id, _) => Some(*id),
+        }
+    }
+
     pub fn map_env_id<F, T>(&self, f: F) -> Option<T>
     where
         F: Fn(EnvId) -> Option<T>,
