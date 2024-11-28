@@ -8,6 +8,7 @@ use snops_common::{
     rpc::error::ReconcileError,
     state::{AgentState, HeightRequest, ReconcileCondition, TransferId},
 };
+use tarpc::context;
 use tokio::{
     select,
     sync::{mpsc::Receiver, Mutex},
@@ -146,6 +147,15 @@ impl AgentStateReconciler {
 
             trace!("Reconciling agent state...");
             let res = self.reconcile().await;
+            if let Some(client) = self.state.get_ws_client().await {
+                let res = res.clone();
+                // TODO: throttle this broadcast
+                tokio::spawn(async move {
+                    if let Err(e) = client.post_reconcile_status(context::current(), res).await {
+                        error!("failed to post reconcile status: {e}");
+                    }
+                });
+            }
             match res {
                 Ok(status) => {
                     if status.inner.is_some() {
@@ -389,10 +399,14 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
 
             let process = ProcessContext::new(command)?;
             self.context.process = Some(process);
-            return Ok(ReconcileStatus::default().add_scope("agent_state/starting"));
+            return Ok(ReconcileStatus::empty()
+                .add_scope("agent_state/starting")
+                .requeue_after(Duration::from_secs(1)));
         }
 
-        Ok(ReconcileStatus::empty())
+        Ok(ReconcileStatus::empty()
+            .add_scope("agent_state/edge_case")
+            .requeue_after(Duration::from_secs(1)))
     }
 }
 
