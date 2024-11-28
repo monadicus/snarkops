@@ -19,10 +19,11 @@ use snops_common::{
 };
 use tarpc::context;
 
-use super::{actions, error::ServerError, models::AgentStatusResponse, AppState};
+use super::{actions, error::ServerError, models::AgentStatusResponse};
 use crate::{
     cannon::{router::redirect_cannon_routes, source::QueryTarget},
     make_env_filter,
+    state::AppState,
 };
 use crate::{
     env::{EnvPeer, Environment},

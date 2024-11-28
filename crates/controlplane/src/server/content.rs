@@ -15,14 +15,13 @@ use snops_common::{
 use tower::Service;
 use tower_http::services::ServeFile;
 
-use super::AppState;
 use crate::{
     schema::{
         error::StorageError,
         storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY},
     },
     server::error::ServerError,
-    state::GlobalState,
+    state::{AppState, GlobalState},
     unwrap_or_not_found,
 };
 

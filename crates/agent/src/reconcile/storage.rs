@@ -10,19 +10,17 @@ use snops_common::{
     api::AgentEnvInfo,
     binaries::{BinaryEntry, BinarySource},
     constant::{
-        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE,
+        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, NODE_DATA_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE,
+        VERSION_FILE,
     },
     rpc::error::ReconcileError,
-    state::{HeightRequest, InternedId, TransferId},
+    state::{HeightRequest, InternedId, ReconcileCondition, ReconcileStatus, TransferId},
 };
 use tokio::{process::Command, sync::Mutex, task::AbortHandle};
 use tracing::{error, info, trace};
 use url::Url;
 
-use super::{
-    default_binary, get_genesis_route, DirectoryReconciler, FileReconciler, Reconcile,
-    ReconcileCondition, ReconcileStatus,
-};
+use super::{default_binary, get_genesis_route, DirectoryReconciler, FileReconciler, Reconcile};
 use crate::state::GlobalState;
 
 /// Download a specific binary file needed to run the node
@@ -219,7 +217,7 @@ impl<'a> LedgerReconciler<'a> {
                 LEDGER_PERSIST_DIR,
             )
         } else {
-            (self.state.cli.path.clone(), LEDGER_BASE_DIR)
+            (self.state.cli.path.join(NODE_DATA_DIR), LEDGER_BASE_DIR)
         }
     }
 
@@ -408,10 +406,12 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
 
             // Find the checkpoint for the reconciler's target height
             let checkpoint = self.find_checkpoint()?;
+            trace!("Applying checkpoint: {}", checkpoint.display());
             // Start a task to modify the ledger with the checkpoint
             *self.modify_handle = Some(self.spawn_modify(checkpoint));
             // Now that a task is running, set the pending height
             *self.pending_height = Some(target_height);
+            trace!("Pending ledger modification to height {}", target_height.1);
 
             return Ok(ReconcileStatus::empty()
                 .add_condition(ReconcileCondition::PendingProcess(format!(
@@ -420,9 +420,8 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
                 )))
                 .requeue_after(Duration::from_secs(5)));
         }
-        let pending = self.pending_height.unwrap();
 
-        let Some(modify_handle) = self.modify_handle.as_mut() else {
+        let Some(modify_handle) = self.modify_handle.as_ref() else {
             // This should be an unreachable condition, but may not be unreachable
             // when more complex ledger operations are implemented
             error!("modify handle missing for pending height");
@@ -436,6 +435,7 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
 
         // If the modify handle is locked, requeue until it's unlocked
         let Ok(Some(handle)) = modify_handle.1.try_lock().map(|r| r.clone()) else {
+            trace!("Waiting for modify handle to unlock...");
             return Ok(ReconcileStatus::empty()
                 .add_condition(ReconcileCondition::PendingProcess(format!(
                     "ledger modification to height {}",
@@ -444,9 +444,15 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
                 .requeue_after(Duration::from_secs(1)));
         };
 
+        let pending = self.pending_height.unwrap();
+
         match handle {
             // If the ledger was modified successfully, update the last height
             Ok(true) => {
+                info!(
+                    "Ledger modification to height {} succeeded",
+                    target_height.1
+                );
                 *self.last_height = Some(pending);
                 if let Err(e) = self.state.db.set_last_height(Some(pending)) {
                     error!("failed to save last height to db: {e}");
@@ -459,7 +465,13 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
                 // TODO: handle this failure
             }
             // Bubble an actual error up to the caller
-            Err(err) => return Err(err.clone()),
+            Err(err) => {
+                error!(
+                    "ledger modification to height {} errored: {err}",
+                    target_height.1
+                );
+                return Err(err.clone());
+            }
         };
 
         // Modification is complete. The last height is change dhwen the modification
@@ -496,7 +508,7 @@ impl<'a> Reconcile<(), ReconcileError> for StorageVersionReconciler<'a> {
                 let _ = tokio::fs::remove_dir_all(&path).await;
             } else {
                 // return an empty status if the version is the same
-                return Ok(ReconcileStatus::default());
+                return Ok(ReconcileStatus::empty());
             };
         }
 
@@ -511,6 +523,6 @@ impl<'a> Reconcile<(), ReconcileError> for StorageVersionReconciler<'a> {
                 })?;
         }
 
-        Ok(ReconcileStatus::empty())
+        Ok(ReconcileStatus::default())
     }
 }

@@ -11,12 +11,14 @@ use snops_common::{
     binaries::{BinaryEntry, BinarySource},
     constant::SNARKOS_GENESIS_FILE,
     rpc::error::ReconcileError,
-    state::{NetworkId, StorageId, TransferId, TransferStatusUpdate},
+    state::{
+        NetworkId, ReconcileCondition, ReconcileStatus, StorageId, TransferId, TransferStatusUpdate,
+    },
 };
 use tracing::{error, trace, warn};
 use url::Url;
 
-use super::{Reconcile, ReconcileCondition, ReconcileStatus};
+use super::Reconcile;
 use crate::{
     api::{download_file, get_file_issues},
     state::GlobalState,
@@ -41,7 +43,7 @@ pub fn get_genesis_route(endpoint: &str, network: NetworkId, storage_id: Storage
 /// This reconciler creates a directory if it does not exist
 pub struct DirectoryReconciler<'a>(pub &'a Path);
 impl<'a> Reconcile<(), ReconcileError> for DirectoryReconciler<'a> {
-    async fn reconcile(&mut self) -> Result<super::ReconcileStatus<()>, ReconcileError> {
+    async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         std::fs::create_dir_all(self.0)
             .map(ReconcileStatus::with)
             .map_err(|e| ReconcileError::CreateDirectory(self.0.to_path_buf(), e.to_string()))

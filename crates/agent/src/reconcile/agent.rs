@@ -6,7 +6,7 @@ use std::{
 use snops_common::{
     binaries::BinaryEntry,
     rpc::error::ReconcileError,
-    state::{AgentState, HeightRequest, TransferId},
+    state::{AgentState, HeightRequest, ReconcileCondition, TransferId},
 };
 use tokio::{
     select,
@@ -145,9 +145,11 @@ impl AgentStateReconciler {
             self.agent_state = self.state.get_agent_state().await;
 
             trace!("Reconciling agent state...");
-            match self.reconcile().await {
+            let res = self.reconcile().await;
+            match res {
                 Ok(status) => {
                     if status.inner.is_some() {
+                        err_backoff = 0;
                         trace!("Reconcile completed");
                     }
                     if !status.conditions.is_empty() {
@@ -183,9 +185,13 @@ impl AgentStateReconciler {
         }
 
         if let Some(_transfers) = self.context.transfers.as_mut() {
+            // Clear the env state
+            self.context.env_state = None;
             if let Err(e) = self.state.db.set_env_state(None) {
                 error!("failed to clear env state from db: {e}");
             }
+            // Clear the last height
+            self.context.ledger_last_height = None;
             if let Err(e) = self.state.db.set_last_height(None) {
                 error!("failed to clear last height from db: {e}");
             }
@@ -286,7 +292,18 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
                 }
 
                 // Prevent other reconcilers from running while the node is running
-                return Ok(ReconcileStatus::default().add_scope("agent_state/running"));
+                if self.state.is_node_online() {
+                    return Ok(ReconcileStatus::default().add_scope("agent_state/running"));
+                } else {
+                    // If the node is not online, the process is still running, but the node
+                    // has not connected to the controlplane.
+                    // This can happen if the node is still syncing, or if the controlplane
+                    // is not reachable.
+                    return Ok(ReconcileStatus::empty()
+                        .requeue_after(Duration::from_secs(1))
+                        .add_condition(ReconcileCondition::PendingStartup)
+                        .add_scope("agent_state/starting"));
+                }
             }
         }
 
@@ -318,6 +335,7 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
             }
             self.context.env_state = Some(env_state);
             self.context.transfers = Some(Default::default());
+            trace!("Cleared transfers state...");
         }
         let transfers = self.context.transfers.as_mut().unwrap();
 

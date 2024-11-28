@@ -11,6 +11,7 @@ mod node_key;
 mod node_state;
 mod node_type;
 mod port_config;
+mod reconcile;
 pub mod snarkos_status;
 pub mod strings;
 
@@ -24,6 +25,7 @@ pub use node_key::*;
 pub use node_state::*;
 pub use node_type::*;
 pub use port_config::*;
+pub use reconcile::*;
 
 lazy_static! {
     static ref NODE_KEY_REGEX: Regex = Regex::new(

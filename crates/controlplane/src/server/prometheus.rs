@@ -5,8 +5,7 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::Serialize;
 use snops_common::state::AgentState;
 
-use super::AppState;
-use crate::cli::PrometheusLocation;
+use crate::{cli::PrometheusLocation, state::AppState};
 pub(super) fn routes() -> Router<AppState> {
     Router::new().route("/httpsd", get(get_httpsd))
 }

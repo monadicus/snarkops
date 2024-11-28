@@ -5,7 +5,8 @@ use snops_checkpoint::RetentionPolicy;
 use snops_common::{
     api::AgentEnvInfo,
     constant::{
-        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
+        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, NODE_DATA_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE,
+        SNARKOS_LOG_FILE,
     },
     rpc::error::ReconcileError,
     state::{EnvId, KeyState, NetworkId, NodeKey, NodeState, PortConfig},
@@ -69,7 +70,9 @@ impl NodeCommand {
         let ledger_path = if env_info.storage.persist {
             storage_path.join(LEDGER_PERSIST_DIR)
         } else {
-            state.cli.path.join(LEDGER_BASE_DIR)
+            let mut dir = state.cli.path.join(NODE_DATA_DIR);
+            dir.push(LEDGER_BASE_DIR);
+            dir
         };
 
         Ok(NodeCommand {

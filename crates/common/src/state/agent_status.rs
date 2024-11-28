@@ -1,10 +1,12 @@
+use std::time::Instant;
+
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tokio::task::AbortHandle;
 
-use super::snarkos_status::SnarkOSStatus;
-use crate::format::DataFormat;
+use super::{snarkos_status::SnarkOSStatus, ReconcileStatus};
+use crate::{format::DataFormat, rpc::error::ReconcileError};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeStatus {
@@ -151,7 +153,7 @@ impl TransferStatus {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone)]
 pub struct AgentStatus {
     /// Version of the agent binary
     pub agent_version: Option<String>,
@@ -165,6 +167,8 @@ pub struct AgentStatus {
     pub connected_time: Option<DateTime<Utc>>,
     /// A map of transfers in progress
     pub transfers: IndexMap<TransferId, TransferStatus>,
+    /// Latest reconcile status of the agent
+    pub reconcile: Option<(Instant, Result<ReconcileStatus<()>, ReconcileError>)>,
 }
 
 impl DataFormat for LatestBlockInfo {

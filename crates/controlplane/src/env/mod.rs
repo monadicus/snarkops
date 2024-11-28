@@ -38,11 +38,9 @@ use crate::{
     state::{Agent, GlobalState},
 };
 
-pub mod error;
-mod reconcile;
-pub mod set;
-pub use reconcile::*;
 pub mod cache;
+pub mod error;
+pub mod set;
 
 #[derive(Debug)]
 pub struct Environment {
@@ -205,10 +203,6 @@ impl Environment {
                             // nodes in flattened_nodes have replicas unset
                             doc_node.replicas.take();
 
-                            // TODO: compare existing agent state with old node state
-                            // where the agent state is the same, insert the new state
-                            // otherwise keep the old state
-
                             // replace the key with a new one
                             let mut node = doc_node.to_owned();
                             if let Some(key) = node.key.as_mut() {
@@ -216,6 +210,8 @@ impl Environment {
                             }
 
                             // Skip delegating nodes that are already present in the node map
+                            // Agents are able to determine what updates need to be applied
+                            // based on their resolved node states.
                             if node_peers.contains_left(&node_key) {
                                 info!("{env_id}: updating node {node_key}");
                                 updated_states.insert(node_key, EnvNodeState::Internal(node));
@@ -410,10 +406,52 @@ impl Environment {
                 .await;
         }
 
-        // reconcile the nodes
-        initial_reconcile(env_id, &state).await?;
+        // Emit state changes to all agents within this environment
+        env.update_all_agents(&state).await?;
 
         Ok(env_id)
+    }
+
+    async fn update_all_agents(&self, state: &GlobalState) -> Result<(), EnvError> {
+        let mut pending_changes = vec![];
+
+        for entry in self.node_states.iter() {
+            let key = entry.key();
+            let node = entry.value();
+            let EnvNodeState::Internal(node) = node else {
+                continue;
+            };
+            let Some(agent_id) = self.get_agent_by_key(key) else {
+                continue;
+            };
+            let Some(agent) = state.pool.get(&agent_id) else {
+                continue;
+            };
+
+            let mut next_state = self.resolve_node_state(state, agent_id, key, node);
+
+            // determine if this reconcile will reset the agent's height (and potentially
+            // trigger a ledger wipe)
+            match agent.state() {
+                // new environment -> reset height
+                AgentState::Node(old_env, _) if *old_env != self.id => {}
+                // height request is the same -> keep the height
+                AgentState::Node(_, prev_state) if prev_state.height.1 == next_state.height.1 => {
+                    next_state.height.0 = prev_state.height.0;
+                }
+                // otherwise, reset height
+                AgentState::Node(_, _) => {}
+                // moving from inventory -> reset height
+                AgentState::Inventory => {}
+            }
+
+            let agent_state = AgentState::Node(self.id, Box::new(next_state));
+
+            pending_changes.push((agent_id, agent_state));
+        }
+
+        state.update_agent_states(pending_changes).await;
+        Ok(())
     }
 
     pub async fn cleanup(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {

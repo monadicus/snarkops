@@ -17,3 +17,5 @@ pub const LEDGER_PERSIST_DIR: &str = "persist";
 pub const LEDGER_STORAGE_FILE: &str = "ledger.tar.gz";
 /// File containing a version counter for a ledger
 pub const VERSION_FILE: &str = "version";
+/// Directory name for the node's data.
+pub const NODE_DATA_DIR: &str = "node";

@@ -1,12 +1,14 @@
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
+    time::Instant,
 };
 
 use chrono::Utc;
 use snops_common::{
     api::AgentEnvInfo,
     define_rpc_mux,
+    prelude::{error::ReconcileError, ReconcileStatus},
     rpc::{
         control::{
             agent::{AgentServiceRequest, AgentServiceResponse},
@@ -22,10 +24,9 @@ use snops_common::{
 use tarpc::context;
 use tracing::warn;
 
-use super::AppState;
 use crate::{
     error::StateError,
-    state::{AddrMap, AgentAddrs},
+    state::{AddrMap, AgentAddrs, AppState},
 };
 
 define_rpc_mux!(parent;
@@ -200,6 +201,19 @@ impl ControlService for ControlRpcServer {
         };
 
         agent.status.node_status = status;
+    }
+
+    async fn post_reconcile_status(
+        self,
+        _: context::Context,
+        status: Result<ReconcileStatus<()>, ReconcileError>,
+    ) {
+        let Some(mut agent) = self.state.pool.get_mut(&self.agent) else {
+            return;
+        };
+
+        // TODO: pipe these status updates to some event stream
+        agent.status.reconcile = Some((Instant::now(), status));
     }
 }
 

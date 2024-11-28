@@ -5,10 +5,10 @@ use std::{
     net::IpAddr,
 };
 
-use super::error::ResolveError;
+use super::error::{ReconcileError, ResolveError};
 use crate::{
     api::AgentEnvInfo,
-    state::{AgentId, EnvId, NodeStatus, TransferStatus, TransferStatusUpdate},
+    state::{AgentId, EnvId, NodeStatus, ReconcileStatus, TransferStatus, TransferStatusUpdate},
 };
 
 pub const PING_HEADER: &[u8] = b"snops-agent";
@@ -40,4 +40,7 @@ pub trait ControlService {
 
     /// Emit an agent node status update.
     async fn post_node_status(update: NodeStatus);
+
+    /// Emit an agent reconcile status update.
+    async fn post_reconcile_status(status: Result<ReconcileStatus<()>, ReconcileError>);
 }

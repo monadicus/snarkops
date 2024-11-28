@@ -1,10 +1,13 @@
 use std::time::{Duration, Instant};
 
-use snops_common::rpc::error::ReconcileError;
+use snops_common::{
+    rpc::error::ReconcileError,
+    state::{ReconcileCondition, ReconcileStatus},
+};
 use tokio::{process::Child, select};
 use tracing::{error, info};
 
-use super::{command::NodeCommand, Reconcile, ReconcileCondition, ReconcileStatus};
+use super::{command::NodeCommand, Reconcile};
 use crate::state::NODE_GRACEFUL_SHUTDOWN_TIMEOUT;
 
 /// Information about the current process
