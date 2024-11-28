@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     net::IpAddr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -15,7 +16,7 @@ use snops_common::{
 };
 use tarpc::context;
 use tokio::sync::{mpsc::Sender, oneshot, RwLock};
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{cli::Cli, db::Database, log::ReloadHandler, metrics::Metrics, transfers::TransferTx};
 
@@ -59,6 +60,14 @@ pub struct GlobalState {
 impl GlobalState {
     pub fn is_ws_online(&self) -> bool {
         self.client.try_read().is_ok_and(|c| c.is_some())
+    }
+
+    pub async fn get_ws_client(&self) -> Option<ControlServiceClient> {
+        self.client.read().await.clone()
+    }
+
+    pub async fn get_agent_state(&self) -> Arc<AgentState> {
+        self.agent_state.read().await.clone()
     }
 
     // Resolve the addresses of the given agents.
@@ -115,6 +124,12 @@ impl GlobalState {
         }
         *self.env_info.write().await = Some(env_info.clone());
 
+        // clear the resolved addrs cache when the env info changes
+        self.resolved_addrs.write().await.clear();
+        if let Err(e) = self.db.set_resolved_addrs(None) {
+            error!("failed to save resolved addrs to db: {e}");
+        }
+
         Ok(env_info.1)
     }
 
@@ -128,8 +143,8 @@ impl GlobalState {
         }
     }
 
-    pub async fn is_node_online(&self) -> bool {
-        self.node_client.read().await.is_some()
+    pub fn is_node_online(&self) -> bool {
+        self.node_client.try_read().is_ok_and(|c| c.is_some())
     }
 
     pub async fn get_node_client(&self) -> Option<NodeServiceClient> {
@@ -137,11 +152,6 @@ impl GlobalState {
     }
 
     pub async fn update_agent_state(&self, state: AgentState) {
-        if state.env() != self.env_info.read().await.as_ref().map(|(id, _)| *id) {
-            error!("attempted to set agent state with different env");
-            return;
-        }
-
         if let Err(e) = self.db.set_agent_state(&state) {
             error!("failed to save agent state to db: {e}");
         }
@@ -150,5 +160,62 @@ impl GlobalState {
 
         // Queue a reconcile to apply the new state
         self.queue_reconcile(Duration::ZERO).await;
+    }
+
+    pub async fn re_fetch_peer_addrs(&self) {
+        let agent_state = self.get_agent_state().await;
+        let AgentState::Node(_, node) = agent_state.as_ref() else {
+            return;
+        };
+
+        let Some(client) = self.get_ws_client().await else {
+            return;
+        };
+
+        let peer_ids = node
+            .peers
+            .iter()
+            .chain(node.validators.iter())
+            .filter_map(|p| {
+                if let snops_common::state::AgentPeer::Internal(id, _) = p {
+                    Some(*id)
+                } else {
+                    None
+                }
+            })
+            .collect::<HashSet<_>>();
+
+        if peer_ids.is_empty() {
+            return;
+        }
+
+        let new_addrs = match client.resolve_addrs(context::current(), peer_ids).await {
+            Ok(Ok(new_addrs)) => new_addrs,
+            Ok(Err(e)) => {
+                error!("Control plane failed to resolve addresses: {e}");
+                return;
+            }
+            Err(e) => {
+                error!("RPC failed to resolve addresses: {e}");
+                return;
+            }
+        };
+
+        // Extend the cache with the updated addrs
+        let mut lock = self.resolved_addrs.write().await;
+        let has_new_addr = new_addrs
+            .iter()
+            .any(|(id, addr)| lock.get(id) != Some(addr));
+
+        if !has_new_addr {
+            return;
+        }
+
+        info!("Resolved updated addrs from handshake");
+
+        lock.extend(new_addrs);
+        if let Err(e) = self.db.set_resolved_addrs(Some(&lock)) {
+            error!("failed to save resolved addrs to db: {e}");
+        }
     }
 }

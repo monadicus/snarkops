@@ -5,7 +5,7 @@ use axum::{
 use snops_common::action_models::WithTargets;
 
 use super::Env;
-use crate::state::{pending_reconcile_node_map, Agent};
+use crate::state::pending_reconcile_node_map;
 
 pub async fn online(
     Env { env, state, .. }: Env,
@@ -14,8 +14,7 @@ pub async fn online(
     let pending = env
         .matching_agents(&nodes, &state.pool)
         .filter_map(|a| {
-            let agent: &Agent = a.value();
-            agent.filter_map_to_reconcile(|mut s| {
+            a.value().filter_map_to_reconcile(|mut s| {
                 (!s.online).then(|| {
                     s.online = true;
                     s
@@ -38,8 +37,7 @@ pub async fn offline(
     let pending = env
         .matching_agents(&nodes, &state.pool)
         .filter_map(|a| {
-            let agent: &Agent = a.value();
-            agent.filter_map_to_reconcile(|mut s| {
+            a.value().filter_map_to_reconcile(|mut s| {
                 s.online.then(|| {
                     s.online = false;
                     s
@@ -57,6 +55,8 @@ pub async fn offline(
 
 pub async fn reboot(env: Env, json: Json<WithTargets>) -> Response {
     let offline_res = offline(env.clone(), json.clone()).await;
+
+    // TODO: wait for nodes to reconcile offline
 
     if !offline_res.status().is_success() {
         offline_res

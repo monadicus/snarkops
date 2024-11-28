@@ -1,5 +1,4 @@
 use std::{
-    ops::Deref,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -143,7 +142,7 @@ impl AgentStateReconciler {
 
             // Update the reconciler with the latest agent state
             // This prevents the agent state from changing during reconciliation
-            self.agent_state = self.state.agent_state.read().await.deref().clone();
+            self.agent_state = self.state.get_agent_state().await;
 
             trace!("Reconciling agent state...");
             match self.reconcile().await {

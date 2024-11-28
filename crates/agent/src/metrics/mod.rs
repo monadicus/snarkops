@@ -27,7 +27,7 @@ pub fn init(state: Arc<GlobalState>) {
         loop {
             interval.tick().await;
 
-            if !state.is_node_online().await {
+            if !state.is_node_online() {
                 continue;
             }
 

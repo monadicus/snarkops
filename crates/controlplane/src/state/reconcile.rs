@@ -67,9 +67,9 @@ impl GlobalState {
             return (0, 0);
         }
 
-        let num_reconciliations = handles.len();
+        let num_reqs = handles.len();
 
-        info!("Queuing reconciliation...");
+        info!("Requesting reconcile from {num_reqs} agents...");
         let reconciliations = join_all(handles).await;
 
         let mut success = 0;
@@ -79,15 +79,12 @@ impl GlobalState {
                     success += 1;
                 }
                 Ok(Err(e)) => error!("agent {agent_id} experienced a rpc error: {e}"),
-                Err(e) => error!("join error during agent {agent_id} reconcile: {e}"),
+                Err(e) => error!("join error during agent {agent_id} reconcile request: {e}"),
             }
         }
 
-        info!(
-            "reconciliation result: {success}/{} nodes connected",
-            num_reconciliations
-        );
+        info!("Requested {success}/{num_reqs} agents");
 
-        (success, num_reconciliations)
+        (success, num_reqs)
     }
 }

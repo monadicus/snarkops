@@ -12,7 +12,6 @@ mod transfers;
 
 use std::{
     net::Ipv4Addr,
-    ops::Deref,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -151,7 +150,7 @@ async fn main() {
     // The context is mutated while reconciling to keep track of things
     // like downloads, ledger manipulations, node command, and more.
     let mut root = AgentStateReconciler {
-        agent_state: Arc::clone(state.agent_state.read().await.deref()),
+        agent_state: state.get_agent_state().await,
         state: Arc::clone(&state),
         // Recover context from previous state
         context: AgentStateReconcilerContext::hydrate(&state.db),

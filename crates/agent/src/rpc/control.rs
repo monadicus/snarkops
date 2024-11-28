@@ -87,6 +87,9 @@ impl AgentService for AgentRpcServer {
 
         info!("Received control-plane handshake");
 
+        // Re-fetch peer addresses to ensure no addresses changed while offline
+        self.state.re_fetch_peer_addrs().await;
+
         // Queue a reconcile immediately as we have received new state.
         // The reconciler will decide if anything has actually changed
         self.state.update_agent_state(handshake.state).await;
@@ -119,15 +122,12 @@ impl AgentService for AgentRpcServer {
             .await
             .ok_or(SnarkosRequestError::OfflineNode)?;
 
-        let env_id =
-            if let AgentState::Node(env_id, state) = self.state.agent_state.read().await.as_ref() {
-                if !state.online {
-                    return Err(SnarkosRequestError::OfflineNode);
-                }
-                *env_id
-            } else {
-                return Err(SnarkosRequestError::InvalidState);
-            };
+        let env_id = self
+            .state
+            .get_agent_state()
+            .await
+            .env()
+            .ok_or(SnarkosRequestError::InvalidState)?;
 
         let network = self
             .state
@@ -163,12 +163,12 @@ impl AgentService for AgentRpcServer {
             .await
             .ok_or(AgentError::NodeClientNotReady)?;
 
-        let env_id =
-            if let AgentState::Node(env_id, _) = self.state.agent_state.read().await.as_ref() {
-                *env_id
-            } else {
-                return Err(AgentError::InvalidState);
-            };
+        let env_id = self
+            .state
+            .get_agent_state()
+            .await
+            .env()
+            .ok_or(AgentError::InvalidState)?;
 
         let network = self
             .state
@@ -342,15 +342,14 @@ impl AgentService for AgentRpcServer {
     }
 
     async fn get_status(self, ctx: Context) -> Result<AgentStatus, AgentError> {
+        let aot_online = if let Some(c) = self.state.get_node_client().await {
+            c.status(ctx).await.is_ok()
+        } else {
+            false
+        };
+
         Ok(AgentStatus {
-            aot_online: self
-                .state
-                .get_node_client()
-                .await
-                .ok_or(AgentError::NodeClientNotSet)?
-                .status(ctx)
-                .await
-                .is_ok(),
+            aot_online,
             version: self.version.to_string(),
         })
     }

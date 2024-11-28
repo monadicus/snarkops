@@ -418,38 +418,38 @@ impl Environment {
 
     pub async fn cleanup(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {
         // clear the env state
-        info!("[env {id}] deleting persistence...");
+        info!("{id}: Deleting persistence...");
 
         let env = state.remove_env(id).ok_or(CleanupError::EnvNotFound(id))?;
 
         if let Err(e) = state.db.envs.delete(&id) {
-            error!("[env {id}] failed to delete env persistence: {e}");
+            error!("{id}: Failed to delete env persistence: {e}");
         }
 
         // TODO: write all of these values to a file before deleting them
 
         // cleanup cannon transaction trackers
         if let Err(e) = state.db.tx_attempts.delete_with_prefix(&id) {
-            error!("[env {id}] failed to delete env tx_attempts persistence: {e}");
+            error!("{id}: Failed to delete env tx_attempts persistence: {e}");
         }
         if let Err(e) = state.db.tx_auths.delete_with_prefix(&id) {
-            error!("[env {id}] failed to delete env tx_auths persistence: {e}");
+            error!("{id}: Failed to delete env tx_auths persistence: {e}");
         }
         if let Err(e) = state.db.tx_blobs.delete_with_prefix(&id) {
-            error!("[env {id}] failed to delete env tx_blobs persistence: {e}");
+            error!("{id}: Failed to delete env tx_blobs persistence: {e}");
         }
         if let Err(e) = state.db.tx_index.delete_with_prefix(&id) {
-            error!("[env {id}] failed to delete env tx_index persistence: {e}");
+            error!("{id}: Failed to delete env tx_index persistence: {e}");
         }
         if let Err(e) = state.db.tx_status.delete_with_prefix(&id) {
-            error!("[env {id}] failed to delete env tx_status persistence: {e}");
+            error!("{id}: Failed to delete env tx_status persistence: {e}");
         }
 
         if let Some(storage) = state.try_unload_storage(env.network, env.storage.id) {
-            info!("[env {id}] unloaded storage {}", storage.id);
+            info!("{id}: Unloaded storage {}", storage.id);
         }
 
-        trace!("[env {id}] inventorying agents...");
+        trace!("{id}: Inventorying agents...");
 
         state
             .update_agent_states(

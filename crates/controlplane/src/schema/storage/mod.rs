@@ -174,19 +174,19 @@ impl Document {
 
         // warn if an existing block/ledger already exists
         if exists {
-            warn!("the specified storage ID {id} already exists");
+            warn!("The specified storage ID {id} already exists");
         }
 
         let old_version = get_version_from_path(&version_file).await?;
 
         info!(
-            "storage {id} has version {old_version:?}. incoming version is {}",
+            "Storage {id} has version {old_version:?}. incoming version is {}",
             self.regen
         );
 
         // wipe old storage when the version changes
         if old_version != Some(self.regen) && exists {
-            info!("storage {id} version changed, removing old storage");
+            info!("Storage {id} version changed, removing old storage");
             tokio::fs::remove_dir_all(&base)
                 .await
                 .map_err(|e| StorageError::RemoveStorage(version_file.clone(), e))?;
@@ -212,7 +212,7 @@ impl Document {
                     *p = canon
                 }
             }
-            info!("resolved binary {id}: {entry}");
+            info!("Resolved binary {id}: {entry}");
             binaries.insert(id, entry);
         }
 
@@ -232,7 +232,7 @@ impl Document {
 
         // generate the block and ledger if we have generation params
         if let (Some(generation), false) = (self.generate.as_ref(), exists) {
-            tracing::debug!("generating storage for {id}");
+            tracing::debug!("Generating storage for {id}");
             // generate the genesis block using the aot cli
             let output = base.join(SNARKOS_GENESIS_FILE);
 

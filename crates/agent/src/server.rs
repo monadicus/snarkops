@@ -94,8 +94,18 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                         };
 
                         match msg {
-                            MuxedMessageIncoming::Parent(msg) => server_request_in.send(msg).expect("internal RPC channel closed"),
-                            MuxedMessageIncoming::Child(msg) => client_response_in.send(msg).expect("internal RPC channel closed"),
+                            MuxedMessageIncoming::Parent(msg) => {
+                                if let Err(e) = server_request_in.send(msg) {
+                                    error!("internal node RPC channel closed: {e}");
+                                    break;
+                                }
+                            },
+                            MuxedMessageIncoming::Child(msg) => {
+                                if let Err(e) = client_response_in.send(msg) {
+                                    error!("internal node RPC channel closed: {e}");
+                                    break;
+                                }
+                            }
                         }
                     }
                     _ => (),
@@ -104,8 +114,14 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
             // handle outgoing requests
             msg = client_request_out.recv() => {
-                let msg = msg.expect("internal RPC channel closed");
-                let bin = bincode::serialize(&MuxedMessageOutgoing::Child(msg)).expect("failed to serialize request");
+                let Some(msg) = msg else { error!("internal node RPC channel closed"); break; };
+                let bin = match bincode::serialize(&MuxedMessageOutgoing::Child(msg)) {
+                    Ok(bin) => bin,
+                    Err(e) => {
+                        error!("failed to serialize a request to node: {e}");
+                        continue;
+                    }
+                };
                 if socket.send(Message::Binary(bin)).await.is_err() {
                     break;
                 }
@@ -113,8 +129,14 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
             // handle outgoing response
             msg = server_response_out.recv() => {
-                let msg = msg.expect("internal RPC channel closed");
-                let bin = bincode::serialize(&MuxedMessageOutgoing::Parent(msg)).expect("failed to serialize response");
+                let Some(msg) = msg else { error!("internal node RPC channel closed"); break; };
+                let bin = match bincode::serialize(&MuxedMessageOutgoing::Parent(msg)) {
+                    Ok(bin) => bin,
+                    Err(e) => {
+                        error!("failed to serialize a response to node: {e}");
+                        continue;
+                    }
+                };
                 if socket.send(Message::Binary(bin)).await.is_err() {
                     break;
                 }
