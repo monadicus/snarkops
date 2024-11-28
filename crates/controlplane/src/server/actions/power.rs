@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use axum::{
     response::{IntoResponse, Response},
     Json,
@@ -23,9 +25,25 @@ pub async fn online(
         })
         .collect::<Vec<_>>(); // TODO
 
+    let mut awaiting_agents = pending.iter().map(|a| a.0).collect::<HashSet<_>>();
+
     let node_map = pending_reconcile_node_map(pending.iter());
 
     state.update_agent_states(pending).await;
+
+    use crate::events::prelude::*;
+    let mut subscriber = state
+        .events
+        .subscribe_on(NodeTargetIs(nodes) & EnvIs(env.id) & ReconcileComplete);
+
+    while !awaiting_agents.is_empty() {
+        // TODO: expire after some time
+        if let Ok(event) = subscriber.next().await {
+            if let Some(agent) = event.agent {
+                awaiting_agents.remove(&agent);
+            }
+        }
+    }
 
     Json(node_map).into_response()
 }

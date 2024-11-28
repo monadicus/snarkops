@@ -26,6 +26,7 @@ use tracing::warn;
 
 use crate::{
     error::StateError,
+    events::{Event, EventKind},
     state::{AddrMap, AgentAddrs, AppState},
 };
 
@@ -146,6 +147,10 @@ impl ControlService for ControlRpcServer {
             update_time: Utc::now(),
         };
 
+        self.state
+            .events
+            .emit(Event::new(EventKind::Block(info.clone())).with_agent(&agent));
+
         agent.status.block_info = Some(info.clone());
         let agent_id = agent.id();
         let client = agent.client_owned().clone();
@@ -200,7 +205,10 @@ impl ControlService for ControlRpcServer {
             return;
         };
 
-        agent.status.node_status = status;
+        agent.status.node_status = status.clone();
+        self.state
+            .events
+            .emit(Event::new(EventKind::NodeStatus(status)).with_agent(&agent));
     }
 
     async fn post_reconcile_status(
@@ -212,8 +220,21 @@ impl ControlService for ControlRpcServer {
             return;
         };
 
-        // TODO: pipe these status updates to some event stream
-        agent.status.reconcile = Some((Instant::now(), status));
+        agent.status.reconcile = Some((Instant::now(), status.clone()));
+
+        // Emit events for this reconcile
+
+        let ev = Event::new(EventKind::ReconcileComplete).with_agent(&agent);
+        let is_complete = status.as_ref().is_ok_and(|e| e.inner.is_some());
+
+        self.state.events.emit(ev.replace_kind(match status {
+            Ok(res) => EventKind::Reconcile(res),
+            Err(err) => EventKind::ReconcileError(err),
+        }));
+
+        if is_complete {
+            self.state.events.emit(ev);
+        }
     }
 }
 

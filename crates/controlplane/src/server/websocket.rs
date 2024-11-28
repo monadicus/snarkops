@@ -26,6 +26,7 @@ use tracing::{error, info, warn};
 
 use super::{jwt::Claims, rpc::ControlRpcServer};
 use crate::{
+    events::{Event, EventKind},
     server::{
         jwt::JWT_SECRET,
         rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
@@ -134,6 +135,9 @@ async fn handle_socket(
                     warn!("Connecting agent {id} is trying to identify with an invalid nonce");
                     break 'reconnect;
                 }
+                state
+                    .events
+                    .emit(Event::new(EventKind::AgentConnected).with_agent(&agent));
 
                 match agent.env() {
                     Some(env) if !state.envs.contains_key(&env) => {
@@ -244,20 +248,26 @@ async fn handle_socket(
             error!("failed to save agent {id} to the database: {e}");
         }
 
-        if !is_ip_change && !is_port_change {
-            return;
-        }
-        let Some(env_id) = agent.env() else {
-            return;
-        };
-        drop(agent);
-        let Some(env) = state2.get_env(env_id) else {
-            return;
-        };
+        let handshake_event = Event::new(EventKind::AgentHandshakeComplete).with_agent(&agent);
 
-        info!("Agent {id} updated its network addresses... Submitting changes to associated peers");
-        env.update_peer_addr(&state2, id, is_port_change, is_ip_change)
-            .await;
+        'peer_update: {
+            if !is_ip_change && !is_port_change {
+                break 'peer_update;
+            }
+            let Some(env_id) = agent.env() else {
+                break 'peer_update;
+            };
+            drop(agent);
+            let Some(env) = state2.get_env(env_id) else {
+                break 'peer_update;
+            };
+
+            info!("Agent {id} updated its network addresses... Submitting changes to associated peers");
+            env.update_peer_addr(&state2, id, is_port_change, is_ip_change)
+                .await;
+        }
+
+        state2.events.emit(handshake_event);
     });
 
     // set up the server, for incoming RPC requests
@@ -356,6 +366,10 @@ async fn handle_socket(
     // remove the client from the agent in the agent pool
     if let Some(mut agent) = state.pool.get_mut(&id) {
         agent.mark_disconnected();
+
+        state
+            .events
+            .emit(Event::new(EventKind::AgentDisconnected).with_agent(&agent));
     }
 
     info!("Agent {id} disconnected");

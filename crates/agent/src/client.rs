@@ -52,6 +52,15 @@ pub async fn ws_connection(ws_req: Request, state: Arc<GlobalState>) {
     let (mut stream, _response) = match connect_async(ws_req).await {
         Ok(res) => res,
         Err(e) => {
+            match e {
+                // Ignore connection refused errors, we only care if something interesting is
+                // causing the connection to fail.
+                tungstenite::Error::Io(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                    return
+                }
+                _ => {}
+            }
+
             error!("failed to connect to websocket: {e}");
             return;
         }

@@ -25,6 +25,7 @@ use crate::{
     db::Database,
     env::{cache::NetworkCache, error::EnvRequestError, Environment, PortType},
     error::StateError,
+    events::Events,
     schema::storage::{LoadedStorage, STORAGE_DIR},
     server::error::StartError,
     ReloadHandler,
@@ -44,6 +45,7 @@ pub struct GlobalState {
     pub storage: StorageMap,
     pub envs: EnvMap,
     pub env_network_cache: OpaqueDebug<DashMap<EnvId, NetworkCache>>,
+    pub events: Events,
 
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
 
@@ -94,6 +96,7 @@ impl GlobalState {
             pool,
             storage,
             envs: EnvMap::default(),
+            events: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db: OpaqueDebug(db),
             env_network_cache: Default::default(),
