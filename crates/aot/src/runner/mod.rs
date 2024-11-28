@@ -8,7 +8,10 @@ use aleo_std::StorageMode;
 use anyhow::{anyhow, Result};
 use clap::Args;
 use rpc::RpcClient;
-use snarkos_node::Node;
+use snarkos_node::{
+    bft::helpers::{proposal_cache_path, ProposalCache},
+    Node,
+};
 use snarkvm::{
     ledger::store::{
         helpers::rocksdb::{BlockDB, CommitteeDB},
@@ -20,7 +23,7 @@ use snarkvm::{
 use snops_checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::state::{snarkos_status::SnarkOSStatus, NodeType};
 
-use crate::{cli::ReloadHandler, Account, DbLedger, Key, Network};
+use crate::{cli::ReloadHandler, Account, Address, DbLedger, Key, Network};
 
 mod metrics;
 mod rpc;
@@ -177,23 +180,26 @@ impl<N: Network> Runner<N> {
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let _node = match self.node_type {
-            NodeType::Validator => Node::new_validator(
-                node_ip,
-                Some(bft_ip),
-                Some(rest_ip),
-                self.rest_rps,
-                account,
-                &self.peers,
-                &self.validators,
-                genesis,
-                None,
-                storage_mode.clone(),
-                false,
-                false,
-                shutdown,
-            )
-            .await
-            .map_err(|e| e.context("create validator"))?,
+            NodeType::Validator => {
+                Self::check_proposal_cache(account.address());
+                Node::new_validator(
+                    node_ip,
+                    Some(bft_ip),
+                    Some(rest_ip),
+                    self.rest_rps,
+                    account,
+                    &self.peers,
+                    &self.validators,
+                    genesis,
+                    None,
+                    storage_mode.clone(),
+                    false,
+                    false,
+                    shutdown,
+                )
+                .await
+                .map_err(|e| e.context("create validator"))?
+            }
             NodeType::Prover => Node::new_prover(
                 node_ip,
                 account,
@@ -270,6 +276,24 @@ impl<N: Network> Runner<N> {
         std::future::pending::<()>().await;
 
         Ok(())
+    }
+
+    /// Check the proposal cache for this address and remove it if it is
+    /// invalid.
+    fn check_proposal_cache(addr: Address<N>) {
+        let proposal_cache_path = proposal_cache_path(N::ID, None);
+        if !proposal_cache_path.exists() {
+            return;
+        }
+
+        let Err(e) = ProposalCache::<N>::load(addr, None) else {
+            return;
+        };
+
+        tracing::error!("failed to load proposal cache: {e}");
+        if let Err(e) = std::fs::remove_dir_all(&proposal_cache_path) {
+            tracing::error!("failed to remove proposal cache: {e}");
+        }
     }
 
     /// Returns a runtime for the node.
