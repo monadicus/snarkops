@@ -1,4 +1,4 @@
-use super::{EventFilter, EventKind, EventKindFilter};
+use super::{EventFilter, EventKindFilter};
 
 impl std::ops::BitAnd for EventFilter {
     type Output = Self;
@@ -104,6 +104,14 @@ impl std::ops::BitAnd<EventFilter> for EventKindFilter {
     }
 }
 
+impl std::ops::BitXor<EventFilter> for EventKindFilter {
+    type Output = EventFilter;
+
+    fn bitxor(self, rhs: EventFilter) -> Self::Output {
+        EventFilter::EventIs(self) ^ rhs
+    }
+}
+
 impl std::ops::BitOr<EventKindFilter> for EventFilter {
     type Output = EventFilter;
 
@@ -120,6 +128,14 @@ impl std::ops::BitAnd<EventKindFilter> for EventFilter {
     }
 }
 
+impl std::ops::BitXor<EventKindFilter> for EventFilter {
+    type Output = EventFilter;
+
+    fn bitxor(self, rhs: EventKindFilter) -> Self::Output {
+        self ^ EventFilter::EventIs(rhs)
+    }
+}
+
 impl std::ops::BitOr for EventKindFilter {
     type Output = EventFilter;
 
@@ -133,5 +149,13 @@ impl std::ops::BitAnd for EventKindFilter {
 
     fn bitand(self, rhs: Self) -> Self::Output {
         EventFilter::EventIs(self) & EventFilter::EventIs(rhs)
+    }
+}
+
+impl std::ops::BitXor for EventKindFilter {
+    type Output = EventFilter;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        EventFilter::EventIs(self) ^ EventFilter::EventIs(rhs)
     }
 }

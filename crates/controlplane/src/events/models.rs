@@ -38,7 +38,23 @@ pub enum EventKind {
     Block(LatestBlockInfo),
 }
 
-#[derive(Clone, Copy, Debug)]
+impl EventKind {
+    pub fn filter(&self) -> EventKindFilter {
+        match self {
+            EventKind::AgentConnected => EventKindFilter::AgentConnected,
+            EventKind::AgentHandshakeComplete => EventKindFilter::AgentHandshakeComplete,
+            EventKind::AgentDisconnected => EventKindFilter::AgentDisconnected,
+            EventKind::ReconcileComplete => EventKindFilter::ReconcileComplete,
+            EventKind::Reconcile(_) => EventKindFilter::Reconcile,
+            EventKind::ReconcileError(_) => EventKindFilter::ReconcileError,
+            EventKind::NodeStatus(_) => EventKindFilter::NodeStatus,
+            EventKind::Block(_) => EventKindFilter::Block,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u8)]
 pub enum EventKindFilter {
     AgentConnected,
     AgentHandshakeComplete,
@@ -50,6 +66,7 @@ pub enum EventKindFilter {
     Block,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum EventFilter {
     /// No filter
     Unfiltered,
@@ -108,5 +125,45 @@ impl Event {
     pub fn with_env(mut self, env_id: EnvId) -> Self {
         self.env = Some(env_id);
         self
+    }
+}
+
+impl From<EventKindFilter> for EventFilter {
+    fn from(kind: EventKindFilter) -> Self {
+        EventFilter::EventIs(kind)
+    }
+}
+
+impl EventKind {
+    pub fn event(self) -> Event {
+        Event::new(self)
+    }
+
+    pub fn with_agent(self, agent: &Agent) -> Event {
+        let mut event = Event::new(self);
+        event.agent = Some(agent.id);
+        if let AgentState::Node(env_id, node) = &agent.state {
+            event.node_key = Some(node.node_key.clone());
+            event.env = Some(*env_id);
+        }
+        event
+    }
+
+    pub fn with_agent_id(self, agent_id: AgentId) -> Event {
+        let mut event = Event::new(self);
+        event.agent = Some(agent_id);
+        event
+    }
+
+    pub fn with_node_key(self, node_key: NodeKey) -> Event {
+        let mut event = Event::new(self);
+        event.node_key = Some(node_key);
+        event
+    }
+
+    pub fn with_env_id(self, env_id: EnvId) -> Event {
+        let mut event = Event::new(self);
+        event.env = Some(env_id);
+        event
     }
 }

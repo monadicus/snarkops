@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, task::Poll};
 
 use futures_util::Stream;
 use tokio::sync::broadcast::{self, error::TryRecvError};
@@ -33,10 +33,10 @@ impl Events {
         }
     }
 
-    pub fn subscribe_on(&self, filter: EventFilter) -> EventSubscriber {
+    pub fn subscribe_on(&self, filter: impl Into<EventFilter>) -> EventSubscriber {
         EventSubscriber {
             rx: self.tx.subscribe(),
-            filter,
+            filter: filter.into(),
         }
     }
 }
@@ -54,7 +54,31 @@ pub struct EventSubscriber {
 
 impl EventSubscriber {
     pub async fn next(&mut self) -> Result<Arc<Event>, broadcast::error::RecvError> {
-        self.rx.recv().await
+        loop {
+            match self.rx.recv().await {
+                Ok(event) if event.matches(&self.filter) => break Ok(event),
+                // skip events that don't match the filter
+                Ok(_) => continue,
+                Err(e) => break Err(e),
+            }
+        }
+    }
+
+    pub fn collect_many(&mut self) -> Vec<Arc<Event>> {
+        let mut events = Vec::new();
+        loop {
+            match self.rx.try_recv() {
+                Ok(event) if event.matches(&self.filter) => events.push(event),
+                // skip events that don't match the filter
+                Ok(_) => continue,
+                Err(TryRecvError::Closed) => break,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Lagged(n)) => {
+                    tracing::warn!("{n} events dropped by a subscriber");
+                }
+            }
+        }
+        events
     }
 }
 
@@ -64,20 +88,14 @@ impl Stream for EventSubscriber {
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
+    ) -> Poll<Option<Self::Item>> {
         loop {
             match self.rx.try_recv() {
-                Ok(event) if event.matches(&self.filter) => {
-                    return std::task::Poll::Ready(Some(event));
-                }
+                Ok(event) if event.matches(&self.filter) => break Poll::Ready(Some(event)),
                 // skip events that don't match the filter
                 Ok(_) => continue,
-                Err(TryRecvError::Closed) => {
-                    return std::task::Poll::Ready(None);
-                }
-                Err(TryRecvError::Empty) => {
-                    return std::task::Poll::Pending;
-                }
+                Err(TryRecvError::Closed) => break Poll::Ready(None),
+                Err(TryRecvError::Empty) => break Poll::Pending,
                 Err(TryRecvError::Lagged(n)) => {
                     tracing::warn!("{n} events dropped by a subscriber");
                 }

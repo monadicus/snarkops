@@ -5,11 +5,16 @@ pub use stream::*;
 
 mod filter;
 mod filter_ops;
-pub use filter::*;
 
 pub mod prelude {
-    pub use super::filter::*;
     pub use super::models::EventFilter::*;
     pub use super::models::EventKindFilter::*;
     pub use super::models::*;
 }
+
+#[cfg(test)]
+mod test_filter;
+#[cfg(test)]
+mod test_filter_ops;
+#[cfg(test)]
+mod test_stream;

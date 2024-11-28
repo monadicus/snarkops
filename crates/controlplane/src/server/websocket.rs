@@ -26,7 +26,7 @@ use tracing::{error, info, warn};
 
 use super::{jwt::Claims, rpc::ControlRpcServer};
 use crate::{
-    events::{Event, EventKind},
+    events::EventKind,
     server::{
         jwt::JWT_SECRET,
         rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
@@ -137,7 +137,7 @@ async fn handle_socket(
                 }
                 state
                     .events
-                    .emit(Event::new(EventKind::AgentConnected).with_agent(&agent));
+                    .emit(EventKind::AgentConnected.with_agent(&agent));
 
                 match agent.env() {
                     Some(env) if !state.envs.contains_key(&env) => {
@@ -248,7 +248,7 @@ async fn handle_socket(
             error!("failed to save agent {id} to the database: {e}");
         }
 
-        let handshake_event = Event::new(EventKind::AgentHandshakeComplete).with_agent(&agent);
+        let handshake_event = EventKind::AgentHandshakeComplete.with_agent(&agent);
 
         'peer_update: {
             if !is_ip_change && !is_port_change {
@@ -369,7 +369,7 @@ async fn handle_socket(
 
         state
             .events
-            .emit(Event::new(EventKind::AgentDisconnected).with_agent(&agent));
+            .emit(EventKind::AgentDisconnected.with_agent(&agent));
     }
 
     info!("Agent {id} disconnected");
