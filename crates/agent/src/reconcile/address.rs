@@ -23,7 +23,7 @@ impl Reconcile<(), ReconcileError> for AddressResolveReconciler {
         let AddressResolveReconciler { state, node } = self;
 
         // Find agents that do not have cached addresses
-        let unresolved_addrs: HashSet<AgentId> = {
+        let unresolved_addrs: Vec<AgentId> = {
             let resolved_addrs = state.resolved_addrs.read().await;
             node.peers
                 .iter()
@@ -35,11 +35,13 @@ impl Reconcile<(), ReconcileError> for AddressResolveReconciler {
                         None
                     }
                 })
+                // Ensure we only have unique agent ids (can use itertools down the line)
+                .collect::<HashSet<_>>()
+                .into_iter()
                 .collect()
         };
 
         // All addrs have been resolved.
-        // TODO: May need to mark some of these as stale at some point.
         if unresolved_addrs.is_empty() {
             return Ok(ReconcileStatus::default());
         }

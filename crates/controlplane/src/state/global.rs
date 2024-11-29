@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fmt::Display, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use chrono::Utc;
 use dashmap::DashMap;
@@ -162,13 +162,10 @@ impl GlobalState {
 
     /// Get a peer-to-addr mapping for a set of agents
     /// Locks pools for reading
-    pub async fn get_addr_map(
-        &self,
-        filter: Option<&HashSet<AgentId>>,
-    ) -> Result<AddrMap, StateError> {
-        self.pool
+    pub async fn get_addr_map(&self, filter: &[AgentId]) -> Result<AddrMap, StateError> {
+        filter
             .iter()
-            .filter(|agent| filter.is_none() || filter.is_some_and(|p| p.contains(&agent.id())))
+            .filter_map(|id| self.pool.get(id))
             .map(|agent| {
                 let addrs = agent
                     .addrs

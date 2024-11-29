@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-    time::Instant,
-};
+use std::{collections::HashMap, net::IpAddr, time::Instant};
 
 use chrono::Utc;
 use snops_common::{
@@ -45,13 +41,13 @@ impl ControlService for ControlRpcServer {
     async fn resolve_addrs(
         self,
         _: context::Context,
-        mut peers: HashSet<AgentId>,
+        mut peers: Vec<AgentId>,
     ) -> Result<HashMap<AgentId, IpAddr>, ResolveError> {
-        peers.insert(self.agent);
+        peers.push(self.agent);
 
         let addr_map = self
             .state
-            .get_addr_map(Some(&peers))
+            .get_addr_map(&peers)
             .await
             .map_err(|_| ResolveError::AgentHasNoAddresses)?;
         resolve_addrs(&addr_map, self.agent, &peers).map_err(|_| ResolveError::SourceAgentNotFound)
@@ -259,7 +255,7 @@ pub fn resolve_one_addr(src_addrs: &AgentAddrs, target_addrs: &AgentAddrs) -> Op
 fn resolve_addrs(
     addr_map: &AddrMap,
     src: AgentId,
-    peers: &HashSet<AgentId>,
+    peers: &[AgentId],
 ) -> Result<HashMap<AgentId, IpAddr>, StateError> {
     let src_addrs = addr_map
         .get(&src)

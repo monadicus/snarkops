@@ -183,7 +183,10 @@ impl GlobalState {
                     None
                 }
             })
-            .collect::<HashSet<_>>();
+            // Ensure we only have unique agent ids (can use itertools down the line)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
 
         if peer_ids.is_empty() {
             return;

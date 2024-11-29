@@ -1,9 +1,6 @@
 pub mod agent;
 
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-};
+use std::{collections::HashMap, net::IpAddr};
 
 use super::error::{ReconcileError, ResolveError};
 use crate::{
@@ -16,9 +13,7 @@ pub const PING_HEADER: &[u8] = b"snops-agent";
 #[tarpc::service]
 pub trait ControlService {
     /// Resolve the addresses of the given agents.
-    async fn resolve_addrs(
-        peers: HashSet<AgentId>,
-    ) -> Result<HashMap<AgentId, IpAddr>, ResolveError>;
+    async fn resolve_addrs(peers: Vec<AgentId>) -> Result<HashMap<AgentId, IpAddr>, ResolveError>;
 
     /// Get the environment info for the given environment.
     async fn get_env_info(env_id: EnvId) -> Option<AgentEnvInfo>;
