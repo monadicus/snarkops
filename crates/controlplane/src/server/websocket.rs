@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use ::jwt::VerifyWithKey;
 use axum::{
@@ -20,7 +20,7 @@ use snops_common::{
         ControlService,
     },
 };
-use tarpc::server::Channel;
+use tarpc::{context, server::Channel};
 use tokio::select;
 use tracing::{error, info, warn};
 
@@ -107,7 +107,7 @@ async fn handle_socket(
     let client =
         AgentServiceClient::new(tarpc::client::Config::default(), client_transport).spawn();
 
-    let id: AgentId = 'insertion: {
+    let (id, handshake) = 'insertion: {
         let client = client.clone();
         let mut handshake = Handshake {
             loki: state.cli.loki.as_ref().map(|u| u.to_string()),
@@ -158,20 +158,7 @@ async fn handle_socket(
                     error!("failed to save agent {id} to the database: {e}");
                 }
 
-                // drop agent ref to allow for mutable borrow in handshake requests
-                drop(agent);
-
-                tokio::spawn(async move {
-                    // we do this in a separate task because we don't want to hold up pool insertion
-                    let mut ctx = tarpc::context::current();
-                    ctx.deadline += Duration::from_secs(300);
-                    match client.handshake(ctx, handshake).await {
-                        Ok(()) => (),
-                        Err(e) => error!("failed to perform agent {id} handshake: {e}"),
-                    }
-                });
-
-                break 'insertion id;
+                break 'insertion (id, handshake);
             }
         }
 
@@ -198,17 +185,6 @@ async fn handle_socket(
         let signed_jwt = agent.sign_jwt();
         handshake.jwt = Some(signed_jwt);
 
-        // handshake with the client
-        tokio::spawn(async move {
-            // we do this in a separate task because we don't want to hold up pool insertion
-            let mut ctx = tarpc::context::current();
-            ctx.deadline += Duration::from_secs(300);
-            match client.handshake(ctx, handshake).await {
-                Ok(()) => (),
-                Err(e) => error!("failed to perform agent {id} handshake: {e}"),
-            }
-        });
-
         // insert a new agent into the pool
         if let Err(e) = state.db.agents.save(&id, &agent) {
             error!("failed to save agent {id} to the database: {e}");
@@ -220,14 +196,32 @@ async fn handle_socket(
             state.pool.len()
         );
 
-        id
+        (id, handshake)
     };
 
-    // fetch the agent's network addresses on connect/reconnect
+    // Handshake with the client in a separate task because we don't want to hold up
+    // pool insertion
+    let state2 = Arc::clone(&state);
+    let client2 = client.clone();
+    tokio::spawn(async move {
+        let agent = state2.pool.get(&id)?;
+        let event = EventKind::AgentHandshakeComplete.with_agent(&agent);
+
+        // Prevent readonly agent from being held over the handshake RPC
+        drop(agent);
+
+        match client2.handshake(context::current(), handshake).await {
+            Ok(()) => state2.events.emit(event),
+            Err(e) => error!("failed to perform agent {id} handshake: {e}"),
+        }
+
+        Some(())
+    });
+
+    // Fetch the agent's network addresses on connect/reconnect
     let state2 = Arc::clone(&state);
     tokio::spawn(async move {
-        let Ok((ports, external, internal)) = client.get_addrs(tarpc::context::current()).await
-        else {
+        let Ok((ports, external, internal)) = client.get_addrs(context::current()).await else {
             return;
         };
         let Some(mut agent) = state2.pool.get_mut(&id) else {
@@ -248,26 +242,21 @@ async fn handle_socket(
             error!("failed to save agent {id} to the database: {e}");
         }
 
-        let handshake_event = EventKind::AgentHandshakeComplete.with_agent(&agent);
-
-        'peer_update: {
-            if !is_ip_change && !is_port_change {
-                break 'peer_update;
-            }
-            let Some(env_id) = agent.env() else {
-                break 'peer_update;
-            };
-            drop(agent);
-            let Some(env) = state2.get_env(env_id) else {
-                break 'peer_update;
-            };
-
-            info!("Agent {id} updated its network addresses... Submitting changes to associated peers");
-            env.update_peer_addr(&state2, id, is_port_change, is_ip_change)
-                .await;
+        if !is_ip_change && !is_port_change {
+            return;
         }
+        let Some(env_id) = agent.env() else { return };
 
-        state2.events.emit(handshake_event);
+        // Prevent mutable agent from being held over the network address update RPC
+        drop(agent);
+
+        let Some(env) = state2.get_env(env_id) else {
+            return;
+        };
+
+        info!("Agent {id} updated its network addresses... Submitting changes to associated peers");
+        env.update_peer_addr(&state2, id, is_port_change, is_ip_change)
+            .await;
     });
 
     // set up the server, for incoming RPC requests
@@ -291,12 +280,16 @@ async fn handle_socket(
             // handle incoming messages
             msg = socket.recv() => {
                 match msg {
-                    Some(Err(_)) | None => break,
+                    Some(Err(e)) => {
+                        error!("Agent {id} failed to receive a message: {e}");
+                        break;
+                    }
+                    None => break,
                     Some(Ok(Message::Binary(bin))) => {
                         let msg = match bincode::deserialize(&bin) {
                             Ok(msg) => msg,
                             Err(e) => {
-                                error!("failed to deserialize a message from agent {id}: {e}");
+                                error!("Agent {id} failed to deserialize a message: {e}");
                                 break;
                             }
                         };
@@ -304,13 +297,13 @@ async fn handle_socket(
                         match msg {
                             MuxedMessageIncoming::Parent(msg) => {
                                 if let Err(e) = server_request_in.send(msg) {
-                                    error!("internal RPC channel closed: {e}");
+                                    error!("Agent {id} internal RPC channel closed: {e}");
                                     break;
                                 }
                             },
                             MuxedMessageIncoming::Child(msg) => {
                                 if let Err(e) = client_response_in.send(msg) {
-                                    error!("internal RPC channel closed: {e}");
+                                    error!("Agent {id} internal RPC channel closed: {e}");
                                     break;
                                 }
                             }
