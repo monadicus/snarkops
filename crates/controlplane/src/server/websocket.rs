@@ -11,6 +11,7 @@ use axum::{
 };
 use futures_util::stream::StreamExt;
 use http::StatusCode;
+use semver::Version;
 use serde::Deserialize;
 use snops_common::{
     constant::HEADER_AGENT_KEY,
@@ -26,6 +27,7 @@ use tracing::{error, info, warn};
 
 use super::{jwt::Claims, rpc::ControlRpcServer};
 use crate::{
+    agent_version::agent_version_ok,
     events::EventKind,
     server::{
         jwt::JWT_SECRET,
@@ -37,6 +39,7 @@ use crate::{
 #[derive(Debug, Deserialize)]
 pub struct AgentWsQuery {
     pub id: Option<AgentId>,
+    pub version: Option<Version>,
     #[serde(flatten)]
     pub flags: AgentFlags,
 }
@@ -47,6 +50,11 @@ pub async fn agent_ws_handler(
     State(state): State<AppState>,
     Query(query): Query<AgentWsQuery>,
 ) -> Response {
+    // Ensure agent version is compatible
+    if query.version.as_ref().is_none_or(|v| !agent_version_ok(v)) {
+        return StatusCode::UPGRADE_REQUIRED.into_response();
+    };
+
     match (&state.agent_key, headers.get(HEADER_AGENT_KEY)) {
         // assert key equals passed header
         (Some(key), Some(header)) if key == header.to_str().unwrap_or_default() => (),
@@ -71,6 +79,9 @@ async fn handle_socket(
     state: AppState,
     query: AgentWsQuery,
 ) {
+    // Safe because handle socket is only called if version is Some
+    let agent_version = query.version.unwrap();
+
     let claims = headers
         .get("Authorization")
         .and_then(|auth| -> Option<Claims> {
@@ -153,7 +164,7 @@ async fn handle_socket(
                 // mark the agent as connected, update the flags as well
                 agent.mark_connected(client.clone(), query.flags);
 
-                info!("Agent {id} reconnected");
+                info!("Agent {id} reconnected with version {agent_version}");
                 if let Err(e) = state.db.agents.save(&id, &agent) {
                     error!("failed to save agent {id} to the database: {e}");
                 }
@@ -192,7 +203,7 @@ async fn handle_socket(
         state.pool.insert(id, agent);
 
         info!(
-            "Agent {id} connected; pool is now {} nodes",
+            "Agent {id} connected with version {agent_version}; pool is now {} nodes",
             state.pool.len()
         );
 

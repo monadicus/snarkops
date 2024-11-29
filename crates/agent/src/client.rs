@@ -4,7 +4,7 @@ use std::{
 };
 
 use futures::{SinkExt, StreamExt};
-use http::{HeaderValue, Uri};
+use http::{HeaderValue, StatusCode, Uri};
 use snops_common::{
     constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
     rpc::{
@@ -58,10 +58,14 @@ pub async fn ws_connection(ws_req: Request, state: Arc<GlobalState>) {
                 tungstenite::Error::Io(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
                     return
                 }
-                _ => {}
+                // Shutdown the agent if the control plane requires an upgrade
+                tungstenite::Error::Http(e) if e.status() == StatusCode::UPGRADE_REQUIRED => {
+                    error!("The control plane requires an agent upgrade. Shutting down...");
+                    state.shutdown().await;
+                    return;
+                }
+                _ => error!("failed to connect to websocket: {e}"),
             }
-
-            error!("failed to connect to websocket: {e}");
             return;
         }
     };

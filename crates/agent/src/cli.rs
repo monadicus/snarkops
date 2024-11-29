@@ -121,6 +121,9 @@ impl Cli {
 
         let mut query = format!("/agent?mode={}", u8::from(self.modes));
 
+        // Add agent version
+        query.push_str(&format!("&version={}", env!("CARGO_PKG_VERSION")));
+
         // add &id=
         query.push_str(&format!("&id={}", self.id));
 

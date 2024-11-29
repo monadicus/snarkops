@@ -3106,6 +3106,9 @@ name = "semver"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "serde"
@@ -3309,7 +3312,7 @@ dependencies = [
 
 [[package]]
 name = "snarkos-aot"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aleo-std",
  "anyhow",
@@ -4530,7 +4533,7 @@ dependencies = [
 
 [[package]]
 name = "snops"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "bimap",
@@ -4552,6 +4555,7 @@ dependencies = [
  "rand_chacha",
  "rayon",
  "reqwest 0.12.8",
+ "semver",
  "serde",
  "serde_json",
  "serde_yml",
@@ -4574,7 +4578,7 @@ dependencies = [
 
 [[package]]
 name = "snops-agent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -4639,7 +4643,7 @@ dependencies = [
 
 [[package]]
 name = "snops-common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bincode",

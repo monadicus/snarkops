@@ -1,7 +1,7 @@
 [package]
 edition = "2021"
 name = "snarkos-aot"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 description = "Ahead of time utilities for SnarkVM, and a wrapper around the SnarkOS node for more options"
 

@@ -10,6 +10,7 @@ use tokio::select;
 use tracing::{error, info, level_filters::LevelFilter, trace};
 use tracing_subscriber::{prelude::*, reload, EnvFilter};
 
+pub mod agent_version;
 pub mod cannon;
 pub mod cli;
 pub mod db;
