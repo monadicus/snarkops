@@ -1,10 +1,9 @@
 //! Control plane-to-agent RPC.
 
-use std::{net::IpAddr, path::PathBuf};
+use std::net::IpAddr;
 
 use snops_common::{
     aot_cmds::AotCmd,
-    binaries::{BinaryEntry, BinarySource},
     define_rpc_mux,
     prelude::snarkos_status::SnarkOSLiteBlock,
     rpc::{
@@ -22,7 +21,9 @@ use snops_common::{
 use tarpc::context::Context;
 use tracing::{error, info, trace};
 
-use crate::{api, log::make_env_filter, metrics::MetricComputer, state::AppState};
+use crate::{
+    api, log::make_env_filter, metrics::MetricComputer, reconcile::default_binary, state::AppState,
+};
 
 define_rpc_mux!(child;
     ControlServiceRequest => ControlServiceResponse;
@@ -222,11 +223,12 @@ impl AgentService for AgentRpcServer {
         query: String,
         auth: String,
     ) -> Result<String, AgentError> {
-        info!("executing authorization...");
+        info!("Executing authorization for {env_id}...");
 
         // TODO: maybe in the env config store a branch label for the binary so it won't
         // be put in storage and won't overwrite itself
 
+        // TODO: compute agents wiping out env info when alternating environments
         let info = self
             .state
             .get_env_info(env_id)
@@ -239,14 +241,7 @@ impl AgentService for AgentRpcServer {
             .path
             .join(format!("snarkos-aot-{env_id}-compute"));
 
-        let default_entry = BinaryEntry {
-            source: BinarySource::Path(PathBuf::from(format!(
-                "/content/storage/{}/{}/binaries/default",
-                info.network, info.storage.id,
-            ))),
-            sha256: None,
-            size: None,
-        };
+        let default_entry = default_binary(&info);
 
         // download the snarkOS binary
         api::check_binary(
@@ -261,7 +256,7 @@ impl AgentService for AgentRpcServer {
             &self.state.endpoint,
             &aot_bin,
             self.state.transfer_tx(),
-        ) // TODO: http(s)?
+        )
         .await
         .map_err(|e| {
             error!("failed obtain runner binary: {e}");
@@ -278,7 +273,7 @@ impl AgentService for AgentRpcServer {
         {
             Ok(exec) => {
                 let elapsed = start.elapsed().as_millis();
-                info!("authorization executed in {elapsed}ms");
+                info!("Authorization executed in {elapsed}ms");
                 trace!("authorization output: {exec}");
                 Ok(exec)
             }

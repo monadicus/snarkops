@@ -74,7 +74,8 @@ pub struct StorageGeneration {
     pub transactions: Vec<Transaction>,
 }
 
-// TODO: I don't know what this type should look like
+// TODO: Convert this into a struct similar to the execute action, then use
+// compute agents to assemble these on the fly
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct Transaction {
     pub file: PathBuf,
@@ -87,7 +88,6 @@ pub struct Transaction {
 #[derive(Deserialize, Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct GenesisGeneration {
-    // TODO: bonded balances mode, seed, genesis_key
     pub private_key: Option<String>,
     pub seed: Option<u64>,
     pub additional_accounts: Option<u16>,
@@ -150,10 +150,6 @@ impl Document {
         network: NetworkId,
     ) -> Result<Arc<LoadedStorage>, SchemaError> {
         let id = self.id;
-
-        // todo: maybe update the loaded storage in global state if the hash
-        // of the storage document is different I guess...
-        // that might interfere with running tests, so I don't know
 
         // add the prepared storage to the storage map
 

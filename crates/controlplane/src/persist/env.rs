@@ -34,7 +34,6 @@ pub struct PersistEnv {
     /// List of nodes and their states or external node info
     pub nodes: Vec<(NodeKey, PersistNode)>,
     /// Loaded cannon configs in this env
-    /// TODO: persist cannon
     pub cannons: Vec<(CannonId, TxSource, TxSink)>,
 }
 
@@ -197,7 +196,7 @@ impl DataFormat for PersistEnv {
     type Header = PersistEnvFormatHeader;
     const LATEST_HEADER: Self::Header = PersistEnvFormatHeader {
         version: 1,
-        nodes: PersistNode::LATEST_HEADER, // TODO: use PersistNode::LATEST_HEADER
+        nodes: PersistNode::LATEST_HEADER,
         tx_source: TxSource::LATEST_HEADER,
         tx_sink: TxSink::LATEST_HEADER,
         network: NetworkId::LATEST_HEADER,

@@ -31,7 +31,6 @@ pub fn init(state: Arc<GlobalState>) {
                 continue;
             }
 
-            // TODO: maybe this should use bind_addr
             let metrics_text = 'metrics: {
                 let response = match client.get(&route).send().await {
                     Ok(response) => response,

@@ -176,8 +176,6 @@ impl AgentStateReconciler {
                     next_reconcile_at = Instant::now() + Duration::from_secs(err_backoff);
                 }
             }
-
-            // TODO: announce reconcile status to the server, throttled
         }
     }
 

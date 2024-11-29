@@ -92,6 +92,10 @@ impl<N: Network> LedgerQuery<N> {
                 get(Self::latest_state_root),
             )
             .route(
+                &format!("/{network}/stateRoot/latest"),
+                get(Self::latest_state_root),
+            )
+            .route(
                 &format!("/{network}/block/height/latest"),
                 get(Self::latest_height),
             )

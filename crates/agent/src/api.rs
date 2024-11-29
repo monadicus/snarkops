@@ -135,8 +135,6 @@ pub async fn check_binary(
             tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
         }
 
-        // TODO: check sha256 and size
-
         return Ok(());
     }
     info!("downloading binary update to {}: {binary}", path.display());

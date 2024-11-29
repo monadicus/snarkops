@@ -40,7 +40,6 @@ pub struct Database {
     pub(crate) tx_index: DbTree<TxEntry, PackedUint>,
     /// Number of attempts for the transaction's current state
     pub(crate) tx_attempts: DbTree<TxEntry, PackedUint>,
-    // TODO: tx_attempts for tracking retries (of broadcast and execution)
 }
 
 impl DatabaseTrait for Database {

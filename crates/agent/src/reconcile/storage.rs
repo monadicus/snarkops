@@ -462,7 +462,7 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
             // moment...
             Ok(false) => {
                 error!("ledger modification to height {} failed", target_height.1);
-                // TODO: handle this failure
+                // TODO: handle this failure.. maybe even by deleting the ledger
             }
             // Bubble an actual error up to the caller
             Err(err) => {
