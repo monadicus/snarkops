@@ -4,9 +4,12 @@ use std::{
 };
 
 use snops_common::{
+    api::AgentEnvInfo,
     binaries::BinaryEntry,
     rpc::error::ReconcileError,
-    state::{AgentState, HeightRequest, ReconcileCondition, TransferId},
+    state::{
+        AgentState, HeightRequest, NodeState, ReconcileCondition, ReconcileOptions, TransferId,
+    },
 };
 use tarpc::context;
 use tokio::{
@@ -27,7 +30,8 @@ use super::{
 use crate::{
     db::Database,
     reconcile::{
-        address::AddressResolveReconciler, process::EndProcessReconciler, storage::LedgerReconciler,
+        address::AddressResolveReconciler, default_binary, process::EndProcessReconciler,
+        storage::LedgerReconciler,
     },
     state::GlobalState,
 };
@@ -113,12 +117,16 @@ macro_rules! reconcile {
 }
 
 impl AgentStateReconciler {
-    pub async fn loop_forever(&mut self, mut reconcile_requests: Receiver<Instant>) {
+    pub async fn loop_forever(
+        &mut self,
+        mut reconcile_requests: Receiver<(Instant, ReconcileOptions)>,
+    ) {
         let mut err_backoff = 0;
 
         // The first reconcile is scheduled for 5 seconds after startup.
         // Connecting to the controlplane will likely trigger a reconcile sooner.
         let mut next_reconcile_at = Instant::now() + Duration::from_secs(5);
+        let mut next_opts = ReconcileOptions::default();
 
         // Repeated reconcile loop
         loop {
@@ -126,8 +134,9 @@ impl AgentStateReconciler {
             loop {
                 select! {
                     // Replace the next_reconcile_at with the soonest reconcile time
-                    Some(new_reconcile_at) = reconcile_requests.recv() => {
+                    Some((new_reconcile_at, opts)) = reconcile_requests.recv() => {
                         next_reconcile_at = next_reconcile_at.min(new_reconcile_at);
+                        next_opts = next_opts.union(opts);
                     },
                     _ = sleep_until(next_reconcile_at.into()) => {
                         break
@@ -144,6 +153,16 @@ impl AgentStateReconciler {
             // Update the reconciler with the latest agent state
             // This prevents the agent state from changing during reconciliation
             self.agent_state = self.state.get_agent_state().await;
+
+            // Clear the env info if refetch_info is set to force it to be fetched again
+            if next_opts.refetch_info {
+                self.state.set_env_info(None).await;
+            }
+
+            // If the agent is forced to shutdown, set the shutdown_pending flag
+            if next_opts.force_shutdown && self.has_process() {
+                self.context.shutdown_pending = true;
+            }
 
             trace!("Reconciling agent state...");
             let res = self.reconcile().await;
@@ -212,6 +231,77 @@ impl AgentStateReconciler {
 
         Ok(ReconcileStatus::default().add_scope("agent_state/inventory"))
     }
+
+    pub fn has_process(&self) -> bool {
+        self.context.process.is_some()
+    }
+
+    pub fn is_shutdown_pending(&self, node: &NodeState, env_info: &AgentEnvInfo) -> bool {
+        // Ensure the process is running
+        if !self.has_process() {
+            return false;
+        }
+
+        // Node was already marked for shutdown
+        if self.context.shutdown_pending {
+            return true;
+        }
+
+        // Node is now configured to be offline
+        if !node.online {
+            info!("Node is marked offline");
+            return true;
+        }
+
+        // Check if the storage version, storage id, or network id has changed
+        if self
+            .context
+            .env_state
+            .as_ref()
+            .is_none_or(|e| e.changed(env_info))
+        {
+            info!("Node storage version, storage id, or network id has changed");
+            return true;
+        }
+
+        // Check if the ledger height is not resolved
+        if self.context.ledger_last_height != Some(node.height) && !node.height.1.is_top() {
+            info!("Node ledger target height has changed");
+            return true;
+        }
+
+        let default_binary = default_binary(env_info);
+        let target_binary = env_info
+            .storage
+            .binaries
+            .get(&node.binary.unwrap_or_default())
+            .unwrap_or(&default_binary);
+
+        // Check if the binary this node is running is different from the one in storage
+        if self.context.process.as_ref().is_some_and(|p| {
+            target_binary
+                .sha256
+                .as_ref()
+                .is_some_and(|sha256| !p.is_sha256_eq(sha256))
+        }) {
+            info!("Node binary for the running process has changed");
+            return true;
+        }
+
+        // Check if the binary this node is running is different from the one in storage
+        if self
+            .context
+            .transfers
+            .as_ref()
+            .and_then(|t| t.binary_transfer.as_ref())
+            .is_some_and(|(_, bin)| bin != target_binary)
+        {
+            info!("Node binary has changed");
+            return true;
+        }
+
+        false
+    }
 }
 
 impl Reconcile<(), ReconcileError> for AgentStateReconciler {
@@ -225,27 +315,13 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
 
         let env_info = self.state.get_env_info(*env_id).await?;
 
-        // Check if the storage version, storage id, or network id has changed
-        let storage_has_changed = self
-            .context
-            .env_state
-            .as_ref()
-            .map(|e| e.changed(&env_info))
-            .unwrap_or(true);
-
-        // Check if the ledger height is not resolved
-        let height_has_changed =
-            self.context.ledger_last_height != Some(node.height) && !node.height.1.is_top();
-
-        // If the node should be torn down, or the storage has changed, we need to
+        // If the node should be torn down because a configuration changed, we need to
         // gracefully shut down the node.
-        let shutdown_pending = !node.online || storage_has_changed || height_has_changed;
-
-        if let (true, Some(process)) = (
-            shutdown_pending || self.context.shutdown_pending,
-            self.context.process.as_mut(),
-        ) {
+        if self.is_shutdown_pending(node, &env_info) {
             self.context.shutdown_pending = true;
+            // Unwrap safety - is_shutdown_pending ensures the process exists.
+            let process = self.context.process.as_mut().unwrap();
+
             reconcile!(end_process, EndProcessReconciler(process), res => {
                 // If the process has exited, clear the process context
                 if res.inner.is_some() {
@@ -279,40 +355,44 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
             if !process.is_running() {
                 info!("Node process has exited...");
                 self.context.process = None;
-            } else {
-                // Accumulate all the fields that are used to derive the command that starts
-                // the node.
-                let command = NodeCommand::new(
-                    Arc::clone(&self.state),
-                    node_arc,
-                    *env_id,
-                    Arc::clone(&env_info),
-                )
-                .await?;
 
-                // If the command has changed, restart the process
-                if process.command != command {
-                    info!("Node command has changed, restarting process...");
-                    self.context.shutdown_pending = true;
-                    return Ok(ReconcileStatus::empty()
-                        .add_scope("agent_state/command_changed")
-                        .requeue_after(Duration::ZERO));
-                }
-
-                // Prevent other reconcilers from running while the node is running
-                if self.state.is_node_online() {
-                    return Ok(ReconcileStatus::default().add_scope("agent_state/running"));
-                } else {
-                    // If the node is not online, the process is still running, but the node
-                    // has not connected to the controlplane.
-                    // This can happen if the node is still syncing, or if the controlplane
-                    // is not reachable.
-                    return Ok(ReconcileStatus::empty()
-                        .requeue_after(Duration::from_secs(1))
-                        .add_condition(ReconcileCondition::PendingStartup)
-                        .add_scope("agent_state/starting"));
-                }
+                return Ok(ReconcileStatus::empty()
+                    .requeue_after(Duration::ZERO)
+                    .add_scope("agent_state/exited"));
             }
+
+            // Accumulate all the fields that are used to derive the command that starts
+            // the node.
+            let command = NodeCommand::new(
+                Arc::clone(&self.state),
+                node_arc,
+                *env_id,
+                Arc::clone(&env_info),
+            )
+            .await?;
+
+            // If the command has changed, restart the process
+            if process.command != command {
+                info!("Node command has changed, restarting process...");
+                self.context.shutdown_pending = true;
+                return Ok(ReconcileStatus::empty()
+                    .add_scope("agent_state/command_changed")
+                    .requeue_after(Duration::ZERO));
+            }
+
+            // Prevent other reconcilers from running while the node is running
+            if self.state.is_node_online() {
+                return Ok(ReconcileStatus::default().add_scope("agent_state/running"));
+            }
+
+            // If the node is not online, the process is still running, but the node
+            // has not connected to the controlplane.
+            // This can happen if the node is still syncing, or if the controlplane
+            // is not reachable.
+            return Ok(ReconcileStatus::empty()
+                .requeue_after(Duration::from_secs(1))
+                .add_condition(ReconcileCondition::PendingStartup)
+                .add_scope("agent_state/starting"));
         }
 
         let storage_path = self
@@ -385,25 +465,20 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
         // TODO: if possible, use the NodeCommand as configuration for a node service to
         // allow running the node outside of the agent
 
-        if self.context.process.is_none() {
-            info!("Starting node process");
-            let command = NodeCommand::new(
-                Arc::clone(&self.state),
-                node_arc,
-                *env_id,
-                Arc::clone(&env_info),
-            )
-            .await?;
+        info!("Starting node process");
+        let command = NodeCommand::new(
+            Arc::clone(&self.state),
+            node_arc,
+            *env_id,
+            Arc::clone(&env_info),
+        )
+        .await?;
 
-            let process = ProcessContext::new(command)?;
-            self.context.process = Some(process);
-            return Ok(ReconcileStatus::empty()
-                .add_scope("agent_state/starting")
-                .requeue_after(Duration::from_secs(1)));
-        }
-
+        let process = ProcessContext::new(command)?;
+        self.context.process = Some(process);
+        self.context.shutdown_pending = false;
         Ok(ReconcileStatus::empty()
-            .add_scope("agent_state/edge_case")
+            .add_scope("agent_state/starting")
             .requeue_after(Duration::from_secs(1)))
     }
 }

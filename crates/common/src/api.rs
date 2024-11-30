@@ -31,7 +31,7 @@ pub struct AgentEnvInfo {
     pub storage: StorageInfo,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct StorageInfo {
     /// String id of this storage
     pub id: StorageId,

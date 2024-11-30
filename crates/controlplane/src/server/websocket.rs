@@ -122,6 +122,11 @@ async fn handle_socket(
         let client = client.clone();
         let mut handshake = Handshake {
             loki: state.cli.loki.as_ref().map(|u| u.to_string()),
+            // Encourage the agent to refetch its info on connect
+            reconcile_opts: ReconcileOptions {
+                refetch_info: true,
+                ..Default::default()
+            },
             ..Default::default()
         };
 

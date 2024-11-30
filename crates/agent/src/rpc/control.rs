@@ -16,7 +16,7 @@ use snops_common::{
         },
         error::{AgentError, SnarkosRequestError},
     },
-    state::{AgentId, AgentState, EnvId, InternedId, NetworkId, PortConfig},
+    state::{AgentId, AgentState, EnvId, InternedId, NetworkId, PortConfig, ReconcileOptions},
 };
 use tarpc::context::Context;
 use tracing::{error, info, trace};
@@ -93,12 +93,14 @@ impl AgentService for AgentRpcServer {
 
         // Queue a reconcile immediately as we have received new state.
         // The reconciler will decide if anything has actually changed
-        self.state.update_agent_state(handshake.state).await;
+        self.state
+            .update_agent_state(handshake.state, handshake.reconcile_opts)
+            .await;
     }
 
-    async fn set_agent_state(self, _: Context, target: AgentState) {
+    async fn set_agent_state(self, _: Context, target: AgentState, opts: ReconcileOptions) {
         info!("Received new agent state, queuing reconcile...");
-        self.state.update_agent_state(target).await;
+        self.state.update_agent_state(target, opts).await;
     }
 
     async fn clear_peer_addr(self, _: Context, agent_id: AgentId) {

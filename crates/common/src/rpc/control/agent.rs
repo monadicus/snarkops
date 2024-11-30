@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpc::error::*;
 use crate::state::snarkos_status::SnarkOSLiteBlock;
-use crate::state::AgentId;
+use crate::state::{AgentId, ReconcileOptions};
 use crate::{
     prelude::EnvId,
     state::{AgentState, NetworkId, PortConfig},
@@ -15,6 +15,7 @@ pub struct Handshake {
     pub jwt: Option<String>,
     pub loki: Option<String>,
     pub state: AgentState,
+    pub reconcile_opts: ReconcileOptions,
 }
 
 /// The RPC service that agents implement as a server.
@@ -32,7 +33,7 @@ pub trait AgentService {
 
     /// Control plane instructs the agent to reconcile towards a particular
     /// state.
-    async fn set_agent_state(to: AgentState);
+    async fn set_agent_state(to: AgentState, opts: ReconcileOptions);
 
     /// Broadcast a transaction locally
     async fn broadcast_tx(tx: String) -> Result<(), AgentError>;

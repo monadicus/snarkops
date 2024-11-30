@@ -11,7 +11,7 @@ use reqwest::Url;
 use snops_common::{
     api::AgentEnvInfo,
     rpc::{agent::node::NodeServiceClient, control::ControlServiceClient, error::ReconcileError},
-    state::{AgentId, AgentPeer, AgentState, EnvId, TransferId, TransferStatus},
+    state::{AgentId, AgentPeer, AgentState, EnvId, ReconcileOptions, TransferId, TransferStatus},
     util::OpaqueDebug,
 };
 use tarpc::context;
@@ -42,7 +42,7 @@ pub struct GlobalState {
     pub agent_state: RwLock<Arc<AgentState>>,
     /// A sender for emitting the next time to reconcile the agent.
     /// Helpful for scheduling the next reconciliation.
-    pub queue_reconcile_tx: Sender<Instant>,
+    pub queue_reconcile_tx: Sender<(Instant, ReconcileOptions)>,
     pub env_info: RwLock<Option<(EnvId, Arc<AgentEnvInfo>)>>,
     // Map of agent IDs to their resolved addresses.
     pub resolved_addrs: RwLock<IndexMap<AgentId, IpAddr>>,
@@ -86,9 +86,9 @@ impl GlobalState {
             .collect::<Vec<_>>()
     }
 
-    pub async fn queue_reconcile(&self, duration: Duration) -> bool {
+    pub async fn queue_reconcile(&self, duration: Duration, opts: ReconcileOptions) -> bool {
         self.queue_reconcile_tx
-            .try_send(Instant::now() + duration)
+            .try_send((Instant::now() + duration, opts))
             .is_ok()
     }
 
@@ -99,6 +99,7 @@ impl GlobalState {
         *self.env_info.write().await = info;
     }
 
+    /// Fetch the environment info for the given env_id, caching the result.
     pub async fn get_env_info(&self, env_id: EnvId) -> Result<Arc<AgentEnvInfo>, ReconcileError> {
         match self.env_info.read().await.as_ref() {
             Some((id, info)) if *id == env_id => return Ok(info.clone()),
@@ -151,7 +152,7 @@ impl GlobalState {
         self.node_client.read().await.clone()
     }
 
-    pub async fn update_agent_state(&self, state: AgentState) {
+    pub async fn update_agent_state(&self, state: AgentState, opts: ReconcileOptions) {
         if let Err(e) = self.db.set_agent_state(&state) {
             error!("failed to save agent state to db: {e}");
         }
@@ -159,7 +160,7 @@ impl GlobalState {
         *self.agent_state.write().await = state;
 
         // Queue a reconcile to apply the new state
-        self.queue_reconcile(Duration::ZERO).await;
+        self.queue_reconcile(Duration::ZERO, opts).await;
     }
 
     pub async fn re_fetch_peer_addrs(&self) {

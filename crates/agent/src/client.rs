@@ -72,12 +72,6 @@ pub async fn ws_connection(ws_req: Request, state: Arc<GlobalState>) {
 
     info!("Connection established with the control plane");
 
-    // Clear old info cache. we will get new info from the control plane
-    state.set_env_info(None).await;
-    if let Err(e) = state.db.set_env_info(None) {
-        error!("failed to clear old env info cache: {e}");
-    }
-
     // create rpc channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
     let (server_request_in, server_transport, mut server_response_out) = RpcTransport::new();

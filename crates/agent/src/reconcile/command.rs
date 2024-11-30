@@ -19,7 +19,7 @@ use crate::state::GlobalState;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NodeCommand {
     /// Path to the snarkos binary
-    command_path: PathBuf,
+    pub command_path: PathBuf,
     /// If true, do not print stdout
     quiet: bool,
     /// Environment ID (used in loki)

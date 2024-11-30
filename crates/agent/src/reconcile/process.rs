@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use snops_common::{
     rpc::error::ReconcileError,
     state::{ReconcileCondition, ReconcileStatus},
+    util::sha256_file,
 };
 use tokio::{process::Child, select};
 use tracing::{error, info};
@@ -24,10 +25,15 @@ pub struct ProcessContext {
     sigint_at: Option<Instant>,
     /// Time a sigkill was sent to the child process
     sigkill_at: Option<Instant>,
+    /// The sha256 hash of the running binary
+    binary_sha256: String,
 }
 
 impl ProcessContext {
     pub fn new(command: NodeCommand) -> Result<Self, ReconcileError> {
+        let binary_sha256 = sha256_file(&command.command_path).map_err(|e| {
+            ReconcileError::FileReadError(command.command_path.clone(), e.to_string())
+        })?;
         command
             .build()
             .spawn()
@@ -37,6 +43,7 @@ impl ProcessContext {
                 started_at: Instant::now(),
                 sigint_at: None,
                 sigkill_at: None,
+                binary_sha256,
             })
             .map_err(|e| {
                 error!("failed to start node process: {e:?}");
@@ -49,6 +56,11 @@ impl ProcessContext {
         // This code is mutable because try_wait modifies the Child. Without
         // mutability, the current running status would never be updated.
         self.child.try_wait().is_ok_and(|status| status.is_none())
+    }
+
+    /// Check if the running binary matches the provided sha256 hash
+    pub fn is_sha256_eq(&self, sha256: &str) -> bool {
+        self.binary_sha256 == sha256
     }
 
     /// A helper function to gracefully shutdown the node process without

@@ -5,6 +5,23 @@ use serde::{Deserialize, Serialize};
 
 use super::TransferId;
 
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReconcileOptions {
+    /// When true, the reconciler will fetch the latest env info
+    pub refetch_info: bool,
+    /// When true, the reconciler will force the node to shut down
+    pub force_shutdown: bool,
+}
+
+impl ReconcileOptions {
+    pub fn union(self, other: Self) -> Self {
+        Self {
+            refetch_info: self.refetch_info || other.refetch_info,
+            force_shutdown: self.force_shutdown || other.force_shutdown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ReconcileCondition {
     /// A file is being transferred.

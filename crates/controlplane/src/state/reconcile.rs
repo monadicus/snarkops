@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use futures_util::future::join_all;
-use snops_common::state::{AgentId, AgentState, NodeKey};
+use snops_common::state::{AgentId, AgentState, NodeKey, ReconcileOptions};
 use tracing::{error, info};
 
 use super::GlobalState;
@@ -22,8 +22,17 @@ pub fn pending_reconcile_node_map<'a>(
 }
 
 impl GlobalState {
-    /// Reconcile a bunch of agents at once.
     pub async fn update_agent_states(&self, iter: impl IntoIterator<Item = PendingAgentReconcile>) {
+        self.update_agent_states_opts(iter, Default::default())
+            .await;
+    }
+
+    /// Reconcile a bunch of agents at once.
+    pub async fn update_agent_states_opts(
+        &self,
+        iter: impl IntoIterator<Item = PendingAgentReconcile>,
+        opts: ReconcileOptions,
+    ) {
         let mut agent_ids = vec![];
 
         for (id, target) in iter {
@@ -36,12 +45,13 @@ impl GlobalState {
             }
         }
 
-        self.queue_many_reconciles(agent_ids).await;
+        self.queue_many_reconciles(agent_ids, opts).await;
     }
 
     pub async fn queue_many_reconciles(
         &self,
         iter: impl IntoIterator<Item = AgentId>,
+        opts: ReconcileOptions,
     ) -> (usize, usize) {
         let mut handles = vec![];
         let mut agent_ids = vec![];
@@ -58,9 +68,9 @@ impl GlobalState {
             agent_ids.push(id);
             let target = agent.state.clone();
 
-            handles.push(tokio::spawn(
-                async move { client.set_agent_state(target).await },
-            ));
+            handles.push(tokio::spawn(async move {
+                client.set_agent_state(target, opts).await
+            }));
         }
 
         if handles.is_empty() {

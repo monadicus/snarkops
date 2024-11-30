@@ -4,7 +4,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use lazysort::SortedBy;
 use snops_checkpoint::CheckpointManager;
 use snops_common::{
     api::AgentEnvInfo,
@@ -53,15 +52,12 @@ impl<'a> Reconcile<(), ReconcileError> for BinaryReconciler<'a> {
             .unwrap_or(&default_binary);
 
         // Check if the binary has changed
-        let binary_has_changed = transfer
-            .as_ref()
-            .map(|(_, b)| b != target_binary)
-            .unwrap_or(true);
+        let binary_has_changed = transfer.as_ref().is_none_or(|(_, b)| b != target_binary);
 
         let dst = state.cli.path.join(SNARKOS_FILE);
 
         // The binary does not exist and is marked as OK...
-        if ok_at.is_some() && !dst.exists() {
+        if ok_at.is_some() && (binary_has_changed || !dst.exists()) {
             **ok_at = None;
         }
 
@@ -252,19 +248,12 @@ impl<'a> LedgerReconciler<'a> {
 
         // Determine which checkpoint to use by the next available height/time
         match self.target_height.1 {
-            HeightRequest::Absolute(height) => manager
-                .checkpoints()
-                .sorted_by(|(a, _), (b, _)| b.block_height.cmp(&a.block_height))
-                .find_map(|(c, path)| (c.block_height <= height).then_some(path)),
-            HeightRequest::Checkpoint(span) => span.as_timestamp().and_then(|timestamp| {
-                manager
-                    .checkpoints()
-                    .sorted_by(|(a, _), (b, _)| b.timestamp.cmp(&a.timestamp))
-                    .find_map(|(c, path)| (c.timestamp <= timestamp).then_some(path))
-            }),
+            HeightRequest::Absolute(height) => manager.nearest_with_height(height),
+            HeightRequest::Checkpoint(span) => manager.nearest_with_span(span),
             // top cannot be a target height
             _ => None,
         }
+        .map(|(_, path)| path)
         .ok_or(ReconcileError::NoAvailableCheckpoints(self.target_height.1))
         .cloned()
     }

@@ -13,7 +13,8 @@ use snops_common::{
     api::{AgentEnvInfo, EnvInfo},
     node_targets::NodeTargets,
     state::{
-        AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState, TxPipeId,
+        AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState,
+        ReconcileOptions, TxPipeId,
     },
 };
 use tokio::sync::Semaphore;
@@ -375,6 +376,10 @@ impl Environment {
                 .collect(),
         )?;
 
+        let storage_changed = prev_env
+            .as_ref()
+            .is_some_and(|prev| prev.storage.info() != storage.info());
+
         let env = Arc::new(Environment {
             id: env_id,
             storage,
@@ -407,12 +412,23 @@ impl Environment {
         }
 
         // Emit state changes to all agents within this environment
-        env.update_all_agents(&state).await?;
+        env.update_all_agents(
+            &state,
+            ReconcileOptions {
+                refetch_info: storage_changed,
+                ..Default::default()
+            },
+        )
+        .await?;
 
         Ok(env_id)
     }
 
-    async fn update_all_agents(&self, state: &GlobalState) -> Result<(), EnvError> {
+    async fn update_all_agents(
+        &self,
+        state: &GlobalState,
+        opts: ReconcileOptions,
+    ) -> Result<(), EnvError> {
         let mut pending_changes = vec![];
 
         for entry in self.node_states.iter() {
@@ -450,7 +466,7 @@ impl Environment {
             pending_changes.push((agent_id, agent_state));
         }
 
-        state.update_agent_states(pending_changes).await;
+        state.update_agent_states_opts(pending_changes, opts).await;
         Ok(())
     }
 
@@ -679,7 +695,10 @@ impl Environment {
         // Otherwise do a normal reconcile
         } else {
             state
-                .queue_many_reconciles(pending_reconciles.into_iter().map(|(id, _)| id))
+                .queue_many_reconciles(
+                    pending_reconciles.into_iter().map(|(id, _)| id),
+                    Default::default(),
+                )
                 .await;
         }
     }
