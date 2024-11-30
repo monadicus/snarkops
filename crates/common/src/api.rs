@@ -37,8 +37,6 @@ pub struct StorageInfo {
     pub id: StorageId,
     /// The retention policy used for this storage
     pub retention_policy: Option<RetentionPolicy>,
-    /// The available checkpoints in this storage
-    pub checkpoints: Vec<CheckpointMeta>,
     /// Whether to persist the ledger
     pub persist: bool,
     /// Version identifier for this ledger
@@ -250,7 +248,7 @@ impl DataFormat for StorageInfo {
     type Header = StorageInfoHeader;
 
     const LATEST_HEADER: Self::Header = StorageInfoHeader {
-        version: 1,
+        version: 2,
         retention_policy: RetentionPolicy::LATEST_HEADER,
         binaries: BinaryEntry::LATEST_HEADER,
     };
@@ -261,18 +259,18 @@ impl DataFormat for StorageInfo {
     ) -> Result<usize, crate::format::DataWriteError> {
         let mut written = self.id.write_data(writer)?;
         written += self.retention_policy.write_data(writer)?;
-        written += self
-            .checkpoints
-            .iter()
-            .map(
-                |CheckpointMeta {
-                     height,
-                     timestamp,
-                     filename,
-                 }| (*height, *timestamp, filename.to_owned()),
-            )
-            .collect::<Vec<_>>()
-            .write_data(writer)?;
+        // written += self
+        //     .checkpoints
+        //     .iter()
+        //     .map(
+        //         |CheckpointMeta {
+        //              height,
+        //              timestamp,
+        //              filename,
+        //          }| (*height, *timestamp, filename.to_owned()),
+        //     )
+        //     .collect::<Vec<_>>()
+        //     .write_data(writer)?;
         written += self.persist.write_data(writer)?;
         written += self.version.write_data(writer)?;
         written += self.native_genesis.write_data(writer)?;
@@ -284,10 +282,10 @@ impl DataFormat for StorageInfo {
         reader: &mut R,
         header: &Self::Header,
     ) -> Result<Self, crate::format::DataReadError> {
-        if header.version != 1 {
+        if header.version == 0 || header.version > Self::LATEST_HEADER.version {
             return Err(crate::format::DataReadError::unsupported(
                 "StorageInfo",
-                1,
+                Self::LATEST_HEADER.version,
                 header.version,
             ));
         }
@@ -295,14 +293,12 @@ impl DataFormat for StorageInfo {
         let id = StorageId::read_data(reader, &())?;
         let retention_policy =
             Option::<RetentionPolicy>::read_data(reader, &header.retention_policy)?;
-        let checkpoints = Vec::<(u32, i64, String)>::read_data(reader, &((), (), ()))?
-            .into_iter()
-            .map(|(height, timestamp, filename)| CheckpointMeta {
-                height,
-                timestamp,
-                filename,
-            })
-            .collect();
+
+        // Omit checkpoints from a previous version
+        if header.version == 1 {
+            Vec::<(u32, i64, String)>::read_data(reader, &((), (), ()))?;
+        };
+
         let persist = bool::read_data(reader, &())?;
         let version = u16::read_data(reader, &())?;
         let native_genesis = bool::read_data(reader, &())?;
@@ -311,7 +307,6 @@ impl DataFormat for StorageInfo {
         Ok(Self {
             id,
             retention_policy,
-            checkpoints,
             persist,
             version,
             native_genesis,

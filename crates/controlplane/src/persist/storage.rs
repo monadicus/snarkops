@@ -1,12 +1,11 @@
 use indexmap::IndexMap;
-use snops_checkpoint::{CheckpointManager, RetentionPolicy};
+use snops_checkpoint::RetentionPolicy;
 use snops_common::{
     binaries::BinaryEntry,
-    constant::LEDGER_BASE_DIR,
     key_source::ACCOUNTS_KEY_ID,
     state::{InternedId, NetworkId, StorageId},
 };
-use tracing::{info, warn};
+use tracing::warn;
 
 use super::prelude::*;
 use crate::{
@@ -85,7 +84,7 @@ impl From<&LoadedStorage> for PersistStorage {
             version: storage.version,
             persist: storage.persist,
             accounts: storage.accounts.keys().cloned().collect(),
-            retention_policy: storage.checkpoints.as_ref().map(|c| c.policy().clone()),
+            retention_policy: storage.retention_policy.clone(),
             native_genesis: storage.native_genesis,
             binaries: storage.binaries.clone(),
         }
@@ -99,20 +98,6 @@ impl PersistStorage {
         storage_path.push(self.network.to_string());
         storage_path.push(id.to_string());
         let committee_file = storage_path.join("committee.json");
-
-        let checkpoints = self
-            .retention_policy
-            .map(|policy| {
-                CheckpointManager::load(storage_path.join(LEDGER_BASE_DIR), policy)
-                    .map_err(StorageError::CheckpointManager)
-            })
-            .transpose()?;
-
-        if let Some(checkpoints) = &checkpoints {
-            info!("storage {id} checkpoint manager loaded {checkpoints}");
-        } else {
-            info!("storage {id} loaded without a checkpoint manager");
-        }
 
         let mut accounts = IndexMap::new();
 
@@ -142,7 +127,7 @@ impl PersistStorage {
             version: self.version,
             persist: self.persist,
             committee: read_to_addrs(pick_commitee_addr, &committee_file).await?,
-            checkpoints,
+            retention_policy: self.retention_policy,
             native_genesis: self.native_genesis,
             accounts,
             binaries: self.binaries,

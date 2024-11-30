@@ -81,25 +81,20 @@ async fn serve_binary(
 ) -> Response {
     let storage = unwrap_or_not_found!(state.storage.get(&(network, storage_id))).clone();
 
-    let (id, entry) = match storage.resolve_binary_entry(binary_id) {
-        Ok(res) => res,
-        Err(e) => return ServerError::from(e).into_response(),
-    };
-
-    respond_from_entry(id, entry, req).await
+    match storage.resolve_binary_entry(binary_id) {
+        Ok((id, entry)) => respond_from_entry(id, entry, req).await,
+        Err(e) => ServerError::from(e).into_response(),
+    }
 }
 
 /// Given a binary entry, respond with the binary or a redirect to the binary
 async fn respond_from_entry(id: InternedId, entry: &BinaryEntry, req: Request) -> Response {
     match &entry.source {
         BinarySource::Url(url) => Redirect::temporary(url.as_str()).into_response(),
-        BinarySource::Path(file) => {
-            if !file.exists() {
-                return ServerError::from(StorageError::BinaryFileMissing(id, file.clone()))
-                    .into_response();
-            }
-            ServeFile::new(file).call(req).await.into_response()
+        BinarySource::Path(file) if !file.exists() => {
+            ServerError::from(StorageError::BinaryFileMissing(id, file.clone())).into_response()
         }
+        BinarySource::Path(file) => ServeFile::new(file).call(req).await.into_response(),
     }
 }
 
@@ -109,7 +104,6 @@ async fn serve_file(
     req: Request,
 ) -> Response {
     let storage = unwrap_or_not_found!(state.storage.get(&(network, storage_id))).clone();
-    let file_path = storage.path(&state).join(&file);
 
     match file.as_str() {
         // ensure genesis is only served if native genesis is disabled
@@ -118,15 +112,11 @@ async fn serve_file(
                 return StatusCode::NOT_FOUND.into_response();
             }
         }
-        // allow ledger.tar.gz to be served
-        "ledger.tar.gz" => {}
-        // allow checkpoints to be served
-        _ if file.ends_with(".checkpoint") => {}
-        // serve the version file
-        "version" => {}
         // otherwise, return a 404
         _ => return StatusCode::NOT_FOUND.into_response(),
     }
+
+    let file_path = storage.path(&state).join(&file);
 
     // ensure the file exists
     if !file_path.exists() {

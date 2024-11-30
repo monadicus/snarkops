@@ -148,14 +148,6 @@ async fn set_log_level(Path(level): Path<String>, state: State<AppState>) -> Res
     status_ok()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum StorageType {
-    Genesis,
-    Ledger,
-    Binary,
-}
-
 async fn get_env_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
     let env_id = unwrap_or_not_found!(id_or_none(&env_id));
     let env = unwrap_or_not_found!(state.get_env(env_id));

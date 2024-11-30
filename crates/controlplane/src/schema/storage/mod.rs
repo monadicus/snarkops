@@ -1,17 +1,12 @@
-use std::{
-    ops::Deref,
-    path::PathBuf,
-    process::{ExitStatus, Stdio},
-    sync::Arc,
-};
+use std::{ops::Deref, path::PathBuf, process::Stdio, sync::Arc};
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use snops_checkpoint::{CheckpointManager, RetentionPolicy};
+use snops_checkpoint::RetentionPolicy;
 use snops_common::{
     aot_cmds::error::CommandError,
     binaries::{BinaryEntry, BinarySource},
-    constant::{LEDGER_BASE_DIR, LEDGER_STORAGE_FILE, SNARKOS_GENESIS_FILE, VERSION_FILE},
+    constant::{SNARKOS_GENESIS_FILE, VERSION_FILE},
     key_source::ACCOUNTS_KEY_ID,
     state::{InternedId, NetworkId, StorageId},
 };
@@ -266,9 +261,7 @@ impl Document {
                         .env("NETWORK", network.to_string())
                         .arg("genesis")
                         .arg("--output")
-                        .arg(&output)
-                        .arg("--ledger")
-                        .arg(base.join(LEDGER_BASE_DIR));
+                        .arg(&output);
 
                     // conditional seed flag
                     if let Some(seed) = genesis.seed {
@@ -345,7 +338,7 @@ impl Document {
                             .arg(balance.to_string());
                     }
 
-                    info!("{command:?}");
+                    info!("Generating genesis for {id} with command: {command:?}");
 
                     let res = command
                         .spawn()
@@ -374,45 +367,6 @@ impl Document {
                         .map_err(|e| StorageError::FailedToGenGenesis(id, e))?;
                 }
             }
-        }
-
-        // tar the ledger so that it can be served to agents
-        // the genesis block is not compressed because it is already binary and might
-        // not be served independently
-        let ledger_exists = matches!(
-            tokio::fs::try_exists(base.join(LEDGER_BASE_DIR)).await,
-            Ok(true)
-        );
-        let ledger_tar_exists = matches!(
-            tokio::fs::try_exists(base.join(LEDGER_STORAGE_FILE)).await,
-            Ok(true)
-        );
-
-        if ledger_exists && !ledger_tar_exists {
-            let mut child = Command::new("tar")
-                .current_dir(&base)
-                .arg("czf")
-                .arg(LEDGER_STORAGE_FILE)
-                .arg(LEDGER_BASE_DIR)
-                .kill_on_drop(true)
-                .spawn()
-                .map_err(|e| {
-                    StorageError::Command(CommandError::action("spawning", "tar ledger", e), id)
-                })?;
-
-            if !child
-                .wait()
-                .await
-                .as_ref()
-                .map(ExitStatus::success)
-                .unwrap_or(false)
-            {
-                error!("failed to compress ledger");
-            }
-
-            tokio::fs::try_exists(&base.join(LEDGER_STORAGE_FILE))
-                .await
-                .map_err(|e| StorageError::FailedToTarLedger(id, e))?;
         }
 
         let mut accounts = IndexMap::new();
@@ -472,20 +426,6 @@ impl Document {
             .await
             .map_err(|e| StorageError::WriteVersion(version_file.clone(), e))?;
 
-        let checkpoints = self
-            .retention_policy
-            .map(|policy| {
-                CheckpointManager::load(base.join(LEDGER_BASE_DIR), policy)
-                    .map_err(StorageError::CheckpointManager)
-            })
-            .transpose()?;
-
-        if let Some(checkpoints) = &checkpoints {
-            info!("storage {id} checkpoint manager loaded {checkpoints}");
-        } else {
-            info!("storage {id} loaded without a checkpoint manager");
-        }
-
         let committee_file = base.join("committee.json");
 
         // if the committee was specified in the generation params, use that
@@ -527,7 +467,7 @@ impl Document {
             network,
             committee,
             accounts,
-            checkpoints,
+            retention_policy: self.retention_policy,
             persist: self.persist,
             native_genesis,
             binaries,
