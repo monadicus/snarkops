@@ -17,7 +17,7 @@ fn cp_version() -> &'static VersionReq {
                     op: semver::Op::GreaterEq,
                     major: version.major,
                     minor: Some(version.minor),
-                    patch: Some(version.patch),
+                    patch: Some(0),
                     pre: Prerelease::EMPTY,
                 },
                 Comparator {
