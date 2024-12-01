@@ -291,7 +291,7 @@ impl<N: Network> Runner<N> {
         };
 
         tracing::error!("failed to load proposal cache: {e}");
-        if let Err(e) = std::fs::remove_dir_all(&proposal_cache_path) {
+        if let Err(e) = std::fs::remove_file(&proposal_cache_path) {
             tracing::error!("failed to remove proposal cache: {e}");
         }
     }
