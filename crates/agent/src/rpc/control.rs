@@ -261,7 +261,7 @@ impl AgentService for AgentRpcServer {
         )
         .await
         .map_err(|e| {
-            error!("failed obtain runner binary: {e}");
+            error!("failed obtain compute binary: {e}");
             AgentError::ProcessFailed
         })?;
 
@@ -273,8 +273,16 @@ impl AgentService for AgentRpcServer {
             )
             .await
         {
-            Ok(exec) => {
+            Ok(mut exec) => {
                 let elapsed = start.elapsed().as_millis();
+
+                // Truncate the output to the first {
+                // because Aleo decided to print parameters.aleo.org download
+                // status to stdout...
+                if let Some(index) = exec.find("{") {
+                    exec = exec.split_off(index);
+                }
+
                 info!("Authorization executed in {elapsed}ms");
                 trace!("authorization output: {exec}");
                 Ok(exec)

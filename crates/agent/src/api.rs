@@ -117,7 +117,7 @@ pub async fn check_binary(
 
     // this also checks for sha256 differences, along with last modified time
     // against the target
-    if !get_file_issues(
+    let file_issues = get_file_issues(
         &client,
         &source_url,
         path,
@@ -125,10 +125,9 @@ pub async fn check_binary(
         binary.sha256.as_deref(),
         false,
     )
-    .await
-    .map(|e| e.is_none())
-    .unwrap_or(true)
-    {
+    .await;
+
+    if file_issues.is_ok_and(|issues| issues.is_none()) {
         // check permissions and ensure 0o755
         let perms = path.metadata()?.permissions();
         if perms.mode() != 0o755 {
