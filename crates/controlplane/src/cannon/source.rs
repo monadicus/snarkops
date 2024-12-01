@@ -153,7 +153,7 @@ impl ComputeTarget {
         &self,
         ctx: &ExecutionContext,
         query_path: &str,
-        tx_id: &str,
+        tx_id: &Arc<String>,
         auth: &Authorization,
         events: &TransactionStatusSender,
     ) -> Result<(), CannonError> {

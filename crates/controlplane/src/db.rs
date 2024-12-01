@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use snops_common::{
     aot_cmds::Authorization,
@@ -13,7 +13,7 @@ use crate::{
     state::Agent,
 };
 
-pub type TxEntry = (EnvId, CannonId, String);
+pub type TxEntry = (EnvId, CannonId, Arc<String>);
 
 pub struct Database {
     #[allow(unused)]

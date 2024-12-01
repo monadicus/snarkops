@@ -35,7 +35,7 @@ pub struct ExecutionContext {
     pub(crate) source: TxSource,
     pub(crate) sink: TxSink,
     pub(crate) fired_txs: Arc<AtomicUsize>,
-    pub(crate) transactions: Arc<DashMap<String, TransactionTracker>>,
+    pub(crate) transactions: Arc<DashMap<Arc<String>, TransactionTracker>>,
 }
 
 impl ExecutionContext {
@@ -147,7 +147,7 @@ impl ExecutionContext {
     }
 
     // write the transaction status to the store and update the transaction tracker
-    pub fn write_tx_status(&self, tx_id: &str, status: TransactionSendState) {
+    pub fn write_tx_status(&self, tx_id: &Arc<String>, status: TransactionSendState) {
         let key = (self.env_id, self.id, tx_id.to_owned());
         if let Some(mut tx) = self.transactions.get_mut(tx_id) {
             if let Err(e) = TransactionTracker::write_status(&self.state, &key, status) {
@@ -160,10 +160,10 @@ impl ExecutionContext {
         }
     }
 
-    pub fn remove_tx_tracker(&self, tx_id: String) {
+    pub fn remove_tx_tracker(&self, tx_id: Arc<String>) {
         let _ = self.transactions.remove(&tx_id);
         if let Err(e) =
-            TransactionTracker::delete(&self.state, &(self.env_id, self.id, tx_id.to_owned()))
+            TransactionTracker::delete(&self.state, &(self.env_id, self.id, tx_id.clone()))
         {
             error!(
                 "cannon {}.{} failed to delete transaction {tx_id}: {e:?}",
@@ -175,11 +175,11 @@ impl ExecutionContext {
     /// Execute an authorization on the source's compute target
     async fn execute_auth(
         &self,
-        tx_id: String,
+        tx_id: Arc<String>,
         auth: Arc<Authorization>,
         query_path: &str,
         events: TransactionStatusSender,
-    ) -> Result<(), (String, CannonError)> {
+    ) -> Result<(), (Arc<String>, CannonError)> {
         events.send(TransactionStatusEvent::ExecuteQueued);
         match self
             .source
@@ -207,8 +207,8 @@ impl ExecutionContext {
     async fn fire_tx(
         &self,
         sink_pipe: Option<Arc<TransactionSink>>,
-        tx_id: String,
-    ) -> Result<String, CannonError> {
+        tx_id: Arc<String>,
+    ) -> Result<Arc<String>, CannonError> {
         let latest_height = self
             .state
             .get_env_block_info(self.env_id)
@@ -216,7 +216,7 @@ impl ExecutionContext {
 
         // ensure transaction is being tracked
         let Some(tracker) = self.transactions.get(&tx_id).map(|v| v.value().clone()) else {
-            return Err(CannonError::TransactionLost(self.id, tx_id));
+            return Err(CannonError::TransactionLost(self.id, tx_id.to_string()));
         };
         // ensure transaction is ready to be broadcasted
         if !matches!(
@@ -225,7 +225,7 @@ impl ExecutionContext {
         ) {
             return Err(CannonError::InvalidTransactionState(
                 self.id,
-                tx_id,
+                tx_id.to_string(),
                 format!(
                     "expected unsent or broadcasted, got {}",
                     tracker.status.label()
@@ -235,7 +235,7 @@ impl ExecutionContext {
 
         // ensure transaction blob exists
         let Some(tx_blob) = tracker.transaction else {
-            return Err(CannonError::TransactionLost(self.id, tx_id));
+            return Err(CannonError::TransactionLost(self.id, tx_id.to_string()));
         };
 
         let tx_str = match serde_json::to_string(&tx_blob) {

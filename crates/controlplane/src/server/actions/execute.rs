@@ -27,7 +27,7 @@ use crate::{
 };
 
 pub async fn execute_status(
-    tx_id: String,
+    tx_id: Arc<String>,
     mut rx: mpsc::Receiver<TransactionStatusEvent>,
 ) -> Result<Json<serde_json::Value>, ActionError> {
     use TransactionStatusEvent::*;
@@ -39,15 +39,15 @@ pub async fn execute_status(
     loop {
         select! {
             _ = &mut timeout => {
-                return Err(ActionError::ExecuteStatusTimeout { tx_id, agent_id, retries });
+                return Err(ActionError::ExecuteStatusTimeout { tx_id: tx_id.to_string(), agent_id, retries });
             },
             Some(msg) = rx.recv() => {
                 match msg {
                     ExecuteAborted => {
-                        return Err(ActionError::ExecuteStatusAborted { tx_id, retries});
+                        return Err(ActionError::ExecuteStatusAborted { tx_id: tx_id.to_string(), retries});
                     },
                     ExecuteFailed(msg) => {
-                        return Err(ActionError::ExecuteStatusFailed { message: msg, tx_id, retries });
+                        return Err(ActionError::ExecuteStatusFailed { message: msg, tx_id: tx_id.to_string(), retries });
                     },
                     Executing(id) => {
                         agent_id = Some(id.to_string());
@@ -113,7 +113,7 @@ pub async fn execute_inner(
     env: &Environment,
     events: TransactionStatusSender,
     query: Option<String>,
-) -> Result<String, ExecutionError> {
+) -> Result<Arc<String>, ExecutionError> {
     let ExecuteAction {
         cannon: cannon_id,
         private_key,

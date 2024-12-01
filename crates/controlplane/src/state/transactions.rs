@@ -100,10 +100,10 @@ pub async fn tracking_task(state: Arc<GlobalState>) {
 }
 
 struct PendingTransactions {
-    to_execute: Vec<String>,
-    to_broadcast: Vec<String>,
-    to_remove: Vec<String>,
-    to_confirm: Vec<(String, Option<u32>)>,
+    to_execute: Vec<Arc<String>>,
+    to_broadcast: Vec<Arc<String>>,
+    to_remove: Vec<Arc<String>>,
+    to_confirm: Vec<(Arc<String>, Option<u32>)>,
 }
 
 /// Get a list of transactions that need to be executed, broadcasted, removed,

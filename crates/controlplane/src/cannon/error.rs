@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use axum::http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
@@ -170,12 +170,12 @@ pub enum CannonError {
     #[error("send `auth` error for cannon `{0}`: {1}")]
     SendAuthError(
         CannonId,
-        #[source] tokio::sync::mpsc::error::SendError<(String, TransactionStatusSender)>,
+        #[source] tokio::sync::mpsc::error::SendError<(Arc<String>, TransactionStatusSender)>,
     ),
     #[error("send `tx` error for cannon `{0}`: {1}")]
     SendTxError(
         CannonId,
-        #[source] tokio::sync::mpsc::error::SendError<String>,
+        #[source] tokio::sync::mpsc::error::SendError<Arc<String>>,
     ),
     #[error(transparent)]
     DatabaseWriteError(#[from] DatabaseError),

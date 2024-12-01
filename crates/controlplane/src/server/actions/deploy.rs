@@ -65,7 +65,7 @@ pub async fn deploy_inner(
     env: &Environment,
     events: TransactionStatusSender,
     query: Option<String>,
-) -> Result<String, ExecutionError> {
+) -> Result<Arc<String>, ExecutionError> {
     let DeployAction {
         cannon: cannon_id,
         private_key,

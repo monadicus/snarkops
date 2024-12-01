@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use snops_common::{format::DataFormat, state::AgentId};
 use tokio::sync::mpsc::Sender;
 
@@ -49,7 +50,7 @@ pub enum TransactionStatusEvent {
 
 /// Status of a transaction as presented internally for tracking and
 /// preventing data loss.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TransactionSendState {
     /// Authorization has been received. This step is skipped if a
     /// transaction is created/broadcasted directly.

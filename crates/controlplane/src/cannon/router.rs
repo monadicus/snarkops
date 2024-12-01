@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use axum::{
     extract::{Path, Query, State},
@@ -324,7 +324,7 @@ async fn transaction(
         return ServerError::BadRequest("body missing transaction ID".to_owned()).into_response();
     };
 
-    match cannon.proxy_broadcast(tx_id, body.take()) {
+    match cannon.proxy_broadcast(Arc::new(tx_id), body.take()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
