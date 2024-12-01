@@ -10,6 +10,10 @@ impl Event {
             EventFilter::Not(f) => !self.matches(f),
             EventFilter::AgentIs(agent) => self.agent == Some(*agent),
             EventFilter::EnvIs(env) => self.env == Some(*env),
+            EventFilter::TransactionIs(transaction) => {
+                self.transaction.as_ref() == Some(transaction)
+            }
+            EventFilter::CannonIs(cannon) => self.cannon == Some(*cannon),
             EventFilter::EventIs(kind) => self.kind.filter() == *kind,
             EventFilter::NodeKeyIs(node_key) => self.node_key.as_ref() == Some(node_key),
             EventFilter::NodeTargetIs(node_targets) => self

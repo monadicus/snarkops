@@ -11,11 +11,10 @@ use snops_common::{
     aot_cmds::{AotCmd, Authorization},
     state::KeyState,
 };
-use tokio::sync::mpsc;
 
 use super::{execute::execute_status, Env};
 use crate::{
-    cannon::{error::AuthorizeError, router::AuthQuery, status::TransactionStatusSender},
+    cannon::{error::AuthorizeError, router::AuthQuery},
     env::{error::ExecutionError, Environment},
     server::error::ServerError,
     state::GlobalState,
@@ -28,33 +27,23 @@ pub async fn deploy(
     Json(action): Json<DeployAction>,
 ) -> Response {
     let query_addr = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
+    let cannon_id = action.cannon;
 
     if query.is_async() {
-        return match deploy_inner(
-            &state,
-            action,
-            &env,
-            TransactionStatusSender::empty(),
-            query_addr,
-        )
-        .await
-        {
+        return match deploy_inner(&state, action, &env, query_addr).await {
             Ok(tx_id) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
             Err(e) => ServerError::from(e).into_response(),
         };
     }
 
-    let (tx, rx) = mpsc::channel(10);
-    match deploy_inner(
-        &state,
-        action,
-        &env,
-        TransactionStatusSender::new(tx),
-        query_addr,
-    )
-    .await
-    {
-        Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
+    match deploy_inner(&state, action, &env, query_addr).await {
+        Ok(tx_id) => {
+            use crate::events::EventFilter::*;
+            let subscriber = state
+                .events
+                .subscribe_on(TransactionIs(tx_id.clone()) & EnvIs(env.id) & CannonIs(cannon_id));
+            execute_status(tx_id, subscriber).await.into_response()
+        }
         Err(e) => ServerError::from(e).into_response(),
     }
 }
@@ -63,7 +52,6 @@ pub async fn deploy_inner(
     state: &GlobalState,
     action: DeployAction,
     env: &Environment,
-    events: TransactionStatusSender,
     query: Option<String>,
 ) -> Result<Arc<String>, ExecutionError> {
     let DeployAction {
@@ -119,7 +107,7 @@ pub async fn deploy_inner(
         serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
 
     // proxy it to a listen cannon
-    let tx_id = cannon.proxy_auth(authorization, events).await?;
+    let tx_id = cannon.proxy_auth(authorization).await?;
 
     Ok(tx_id)
 }

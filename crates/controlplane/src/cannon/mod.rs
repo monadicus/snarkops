@@ -23,7 +23,7 @@ use snops_common::{
     format::PackedUint,
     state::{CannonId, EnvId, NetworkId, StorageId},
 };
-use status::{TransactionSendState, TransactionStatusSender};
+use status::TransactionSendState;
 use tokio::{
     sync::{
         mpsc::{UnboundedReceiver, UnboundedSender},
@@ -103,7 +103,7 @@ pub struct CannonInstance {
     /// channel to send transaction ids to the the task
     pub(crate) tx_sender: UnboundedSender<Arc<String>>,
     /// channel to send authorizations (by transaction id) to the the task
-    pub(crate) auth_sender: UnboundedSender<(Arc<String>, TransactionStatusSender)>,
+    pub(crate) auth_sender: UnboundedSender<Arc<String>>,
     /// transaction ids that are currently being processed
     pub(crate) transactions: Arc<DashMap<Arc<String>, TransactionTracker>>,
 
@@ -113,7 +113,7 @@ pub struct CannonInstance {
 
 pub struct CannonReceivers {
     transactions: UnboundedReceiver<Arc<String>>,
-    authorizations: UnboundedReceiver<(Arc<String>, TransactionStatusSender)>,
+    authorizations: UnboundedReceiver<Arc<String>>,
 }
 
 pub type CannonInstanceMeta = (EnvId, NetworkId, StorageId, PathBuf);
@@ -444,11 +444,7 @@ impl CannonInstance {
     }
 
     /// Called by axum to forward /cannon/<id>/auth to a listen source
-    pub async fn proxy_auth(
-        &self,
-        body: Authorization,
-        events: TransactionStatusSender,
-    ) -> Result<Arc<String>, CannonError> {
+    pub async fn proxy_auth(&self, body: Authorization) -> Result<Arc<String>, CannonError> {
         let Some(storage) = self
             .global_state
             .get_env(self.env_id)
@@ -502,7 +498,7 @@ impl CannonInstance {
 
         trace!("cannon {}.{} received auth {tx_id}", self.env_id, self.id);
         self.auth_sender
-            .send((Arc::clone(&tx_id), events))
+            .send(Arc::clone(&tx_id))
             .map_err(|e| CannonError::SendAuthError(self.id, e))?;
 
         Ok(tx_id)

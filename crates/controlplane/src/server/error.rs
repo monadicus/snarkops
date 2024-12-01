@@ -11,6 +11,7 @@ use crate::{
     cannon::error::CannonError,
     env::error::{EnvError, EnvRequestError, ExecutionError},
     error::DeserializeError,
+    events::TransactionAbortReason,
     schema::error::{SchemaError, StorageError},
 };
 
@@ -116,7 +117,11 @@ pub enum ActionError {
         retries: i32,
     },
     #[error("execution aborted")]
-    ExecuteStatusAborted { tx_id: String, retries: i32 },
+    ExecuteStatusAborted {
+        tx_id: String,
+        retries: i32,
+        reason: TransactionAbortReason,
+    },
     #[error("execution failed")]
     ExecuteStatusFailed {
         message: String,

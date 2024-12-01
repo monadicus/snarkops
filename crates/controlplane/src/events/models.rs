@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use snops_common::{
+    aot_cmds::Authorization,
     node_targets::NodeTargets,
     rpc::error::ReconcileError,
     state::{
@@ -58,10 +59,29 @@ pub enum AgentEvent {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum TransactionEvent {
+    /// The authorization was inserted into the cannon
+    AuthorizationReceived(Arc<Authorization>),
+    /// The transaction execution was aborted
     ExecuteAborted(TransactionAbortReason),
-    ExecuteQueued,
+    /// The transaction is awaiting compute resources
     ExecuteAwaitingCompute,
+    /// An execution failed to complete after multiple attempts
+    ExecuteExceeded { attempts: u32 },
+    /// The transaction execution failed
     ExecuteFailed(String),
+    /// The transaction is currently executing
+    Executing,
+    /// The transaction execution is complete
+    ExecuteComplete(Arc<serde_json::Value>),
+    /// The transaction has been broadcasted
+    Broadcasted {
+        height: Option<u32>,
+        timestamp: DateTime<Utc>,
+    },
+    /// The transaction broadcast has exceeded the maximum number of attempts
+    BroadcastExceeded { attempts: u32 },
+    /// The transaction has been confirmed by the network
+    Confirmed { hash: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -83,33 +103,44 @@ pub enum EventKindFilter {
     AgentReconcileError,
     AgentNodeStatus,
     AgentBlockInfo,
+    TransactionAuthorizationReceived,
     TransactionExecuteAborted,
-    TransactionExecuteQueued,
     TransactionExecuteAwaitingCompute,
+    TransactionExecuteExceeded,
     TransactionExecuteFailed,
+    TransactionExecuting,
+    TransactionExecuteComplete,
+    TransactionBroadcasted,
+    TransactionBroadcastExceeded,
+    TransactionConfirmed,
 }
 
 impl EventKind {
     pub fn filter(&self) -> EventKindFilter {
         use AgentEvent::*;
         use EventKind::*;
+        use EventKindFilter::*;
         use TransactionEvent::*;
 
         match self {
-            Agent(Connected) => EventKindFilter::AgentConnected,
-            Agent(HandshakeComplete) => EventKindFilter::AgentHandshakeComplete,
-            Agent(Disconnected) => EventKindFilter::AgentDisconnected,
-            Agent(ReconcileComplete) => EventKindFilter::AgentReconcileComplete,
-            Agent(Reconcile(_)) => EventKindFilter::AgentReconcile,
-            Agent(ReconcileError(_)) => EventKindFilter::AgentReconcileError,
-            Agent(NodeStatus(_)) => EventKindFilter::AgentNodeStatus,
-            Agent(BlockInfo(_)) => EventKindFilter::AgentBlockInfo,
-            Transaction(ExecuteAborted(_)) => EventKindFilter::TransactionExecuteAborted,
-            Transaction(ExecuteQueued) => EventKindFilter::TransactionExecuteQueued,
-            Transaction(ExecuteAwaitingCompute) => {
-                EventKindFilter::TransactionExecuteAwaitingCompute
-            }
-            Transaction(ExecuteFailed(_)) => EventKindFilter::TransactionExecuteFailed,
+            Agent(Connected) => AgentConnected,
+            Agent(HandshakeComplete) => AgentHandshakeComplete,
+            Agent(Disconnected) => AgentDisconnected,
+            Agent(ReconcileComplete) => AgentReconcileComplete,
+            Agent(Reconcile(_)) => AgentReconcile,
+            Agent(ReconcileError(_)) => AgentReconcileError,
+            Agent(NodeStatus(_)) => AgentNodeStatus,
+            Agent(BlockInfo(_)) => AgentBlockInfo,
+            Transaction(AuthorizationReceived(_)) => TransactionAuthorizationReceived,
+            Transaction(ExecuteAborted(_)) => TransactionExecuteAborted,
+            Transaction(ExecuteAwaitingCompute) => TransactionExecuteAwaitingCompute,
+            Transaction(ExecuteExceeded { .. }) => TransactionExecuteExceeded,
+            Transaction(ExecuteFailed(_)) => TransactionExecuteFailed,
+            Transaction(Executing) => TransactionExecuting,
+            Transaction(ExecuteComplete(_)) => TransactionExecuteComplete,
+            Transaction(Broadcasted { .. }) => TransactionBroadcasted,
+            Transaction(BroadcastExceeded { .. }) => TransactionBroadcastExceeded,
+            Transaction(Confirmed { .. }) => TransactionConfirmed,
         }
     }
 }
@@ -132,6 +163,10 @@ pub enum EventFilter {
     AgentIs(AgentId),
     /// Filter by environment ID
     EnvIs(EnvId),
+    /// Filter by transaction ID
+    TransactionIs(Arc<String>),
+    /// Filter by cannon ID
+    CannonIs(InternedId),
     /// Filter by event kind
     EventIs(EventKindFilter),
     /// Filter by node key
