@@ -21,7 +21,8 @@ use super::{
 };
 use crate::{
     cannon::source::ComputeTarget,
-    state::{GlobalState, REST_CLIENT},
+    events::{EventHelpers, TransactionAbortReason, TransactionEvent},
+    state::{GetGlobalState, GlobalState, REST_CLIENT},
 };
 
 /// Information a transaction cannon needs for execution via spawned task
@@ -98,6 +99,7 @@ impl ExecutionContext {
                     let Some(tracker) = self.transactions.get(&tx_id) else {
                         error!("cannon {env_id}.{cannon_id} missing transaction tracker for {tx_id}");
                         events.send(TransactionStatusEvent::ExecuteAborted);
+                        TransactionEvent::ExecuteAborted(TransactionAbortReason::MissingTracker).with_cannon_ctx(&self, tx_id).emit(&self);
                         continue;
                     };
                     // ensure the transaction is in the correct state
@@ -105,6 +107,7 @@ impl ExecutionContext {
                         error!("cannon {env_id}.{cannon_id} unexpected status for {tx_id}: {:?}", tracker.status);
                         // TODO: remove this auth and log it somewhere
                         events.send(TransactionStatusEvent::ExecuteAborted);
+                        TransactionEvent::ExecuteAborted(TransactionAbortReason::UnexpectedStatus(tracker.status)).with_cannon_ctx(&self, tx_id).emit(&self);
                         continue;
                     }
                     // ensure the transaction has an authorization (more than likely unreachable)
@@ -112,6 +115,7 @@ impl ExecutionContext {
                         error!("cannon {env_id}.{cannon_id} missing authorization for {tx_id}");
                         // TODO: remove the auth anyway
                         events.send(TransactionStatusEvent::ExecuteAborted);
+                        TransactionEvent::ExecuteAborted(TransactionAbortReason::MissingAuthorization).with_cannon_ctx(&self, tx_id).emit(&self);
                         continue;
                     };
 
@@ -180,6 +184,9 @@ impl ExecutionContext {
         query_path: &str,
         events: TransactionStatusSender,
     ) -> Result<(), (Arc<String>, CannonError)> {
+        TransactionEvent::ExecuteQueued
+            .with_cannon_ctx(self, tx_id.clone())
+            .emit(self);
         events.send(TransactionStatusEvent::ExecuteQueued);
         match self
             .source
@@ -190,6 +197,9 @@ impl ExecutionContext {
             // Can't execute the auth if no agents are available.
             // The transaction task will handle re-appending the auth.
             Err(CannonError::Source(SourceError::NoAvailableAgents(_))) => {
+                TransactionEvent::ExecuteAwaitingCompute
+                    .with_cannon_ctx(self, tx_id.clone())
+                    .emit(self);
                 events.send(TransactionStatusEvent::ExecuteAwaitingCompute);
                 Ok(())
             }
@@ -197,6 +207,9 @@ impl ExecutionContext {
                 // reset the transaction status to authorized so it can be re-executed
                 self.write_tx_status(&tx_id, TransactionSendState::Authorized);
                 events.send(TransactionStatusEvent::ExecuteFailed(e.to_string()));
+                TransactionEvent::ExecuteFailed(e.to_string())
+                    .with_cannon_ctx(self, tx_id.clone())
+                    .emit(self);
                 Err((tx_id, e))
             }
             res => res.map_err(|e| (tx_id, e)),
@@ -358,5 +371,11 @@ impl ExecutionContext {
             self.remove_tx_tracker(tx_id.clone());
         }
         Ok(tx_id)
+    }
+}
+
+impl<'a> GetGlobalState<'a> for &'a ExecutionContext {
+    fn global_state(self) -> &'a GlobalState {
+        &self.state
     }
 }

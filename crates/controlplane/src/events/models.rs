@@ -1,12 +1,20 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use snops_common::{
     node_targets::NodeTargets,
     rpc::error::ReconcileError,
-    state::{AgentId, AgentState, EnvId, LatestBlockInfo, NodeKey, NodeStatus, ReconcileStatus},
+    state::{
+        AgentId, AgentState, EnvId, InternedId, LatestBlockInfo, NodeKey, NodeStatus,
+        ReconcileStatus,
+    },
 };
 
-use crate::state::Agent;
+use crate::{
+    cannon::{context::ExecutionContext, status::TransactionSendState},
+    state::{Agent, GetGlobalState},
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Event {
@@ -14,6 +22,8 @@ pub struct Event {
     pub agent: Option<AgentId>,
     pub node_key: Option<NodeKey>,
     pub env: Option<EnvId>,
+    pub transaction: Option<Arc<String>>,
+    pub cannon: Option<InternedId>,
     pub kind: EventKind,
 }
 
@@ -21,6 +31,7 @@ pub struct Event {
 #[serde(tag = "type")]
 pub enum EventKind {
     Agent(AgentEvent),
+    Transaction(TransactionEvent),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -44,6 +55,23 @@ pub enum AgentEvent {
     BlockInfo(LatestBlockInfo),
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum TransactionEvent {
+    ExecuteAborted(TransactionAbortReason),
+    ExecuteQueued,
+    ExecuteAwaitingCompute,
+    ExecuteFailed(String),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "reason")]
+pub enum TransactionAbortReason {
+    MissingTracker,
+    UnexpectedStatus(TransactionSendState),
+    MissingAuthorization,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum EventKindFilter {
@@ -55,12 +83,17 @@ pub enum EventKindFilter {
     AgentReconcileError,
     AgentNodeStatus,
     AgentBlockInfo,
+    TransactionExecuteAborted,
+    TransactionExecuteQueued,
+    TransactionExecuteAwaitingCompute,
+    TransactionExecuteFailed,
 }
 
 impl EventKind {
     pub fn filter(&self) -> EventKindFilter {
         use AgentEvent::*;
         use EventKind::*;
+        use TransactionEvent::*;
 
         match self {
             Agent(Connected) => EventKindFilter::AgentConnected,
@@ -71,6 +104,12 @@ impl EventKind {
             Agent(ReconcileError(_)) => EventKindFilter::AgentReconcileError,
             Agent(NodeStatus(_)) => EventKindFilter::AgentNodeStatus,
             Agent(BlockInfo(_)) => EventKindFilter::AgentBlockInfo,
+            Transaction(ExecuteAborted(_)) => EventKindFilter::TransactionExecuteAborted,
+            Transaction(ExecuteQueued) => EventKindFilter::TransactionExecuteQueued,
+            Transaction(ExecuteAwaitingCompute) => {
+                EventKindFilter::TransactionExecuteAwaitingCompute
+            }
+            Transaction(ExecuteFailed(_)) => EventKindFilter::TransactionExecuteFailed,
         }
     }
 }
@@ -108,6 +147,8 @@ impl Event {
             agent: None,
             node_key: None,
             env: None,
+            transaction: None,
+            cannon: None,
             kind,
         }
     }
@@ -118,22 +159,15 @@ impl Event {
             agent: self.agent,
             node_key: self.node_key.clone(),
             env: self.env,
+            transaction: self.transaction.clone(),
+            cannon: self.cannon,
             kind: kind.into().kind,
         }
     }
 
-    pub fn with_agent(mut self, agent: &Agent) -> Self {
-        self.agent = Some(agent.id);
-        if let AgentState::Node(env_id, node) = &agent.state {
-            self.node_key = Some(node.node_key.clone());
-            self.env = Some(*env_id);
-        }
-        self
-    }
-
-    pub fn with_env(mut self, env_id: EnvId) -> Self {
-        self.env = Some(env_id);
-        self
+    #[inline]
+    pub fn emit<'a>(self, state: impl GetGlobalState<'a>) {
+        state.global_state().events.emit(self)
     }
 }
 
@@ -149,6 +183,9 @@ pub trait EventHelpers {
     fn with_agent_id(self, agent_id: AgentId) -> Event;
     fn with_node_key(self, node_key: NodeKey) -> Event;
     fn with_env_id(self, env_id: EnvId) -> Event;
+    fn with_transaction(self, transaction: Arc<String>) -> Event;
+    fn with_cannon(self, cannon: InternedId) -> Event;
+    fn with_cannon_ctx(self, ctx: &ExecutionContext, transaction: Arc<String>) -> Event;
 }
 
 impl<T: Into<Event>> EventHelpers for T {
@@ -183,6 +220,26 @@ impl<T: Into<Event>> EventHelpers for T {
         event.env = Some(env_id);
         event
     }
+
+    fn with_transaction(self, transaction: Arc<String>) -> Event {
+        let mut event = self.into();
+        event.transaction = Some(transaction);
+        event
+    }
+
+    fn with_cannon(self, cannon: InternedId) -> Event {
+        let mut event = self.into();
+        event.cannon = Some(cannon);
+        event
+    }
+
+    fn with_cannon_ctx(self, ctx: &ExecutionContext, transaction: Arc<String>) -> Event {
+        let mut event = self.into();
+        event.cannon = Some(ctx.id);
+        event.env = Some(ctx.env_id);
+        event.transaction = Some(transaction);
+        event
+    }
 }
 
 impl From<EventKind> for Event {
@@ -194,5 +251,11 @@ impl From<EventKind> for Event {
 impl From<AgentEvent> for Event {
     fn from(kind: AgentEvent) -> Self {
         Self::new(EventKind::Agent(kind))
+    }
+}
+
+impl From<TransactionEvent> for Event {
+    fn from(kind: TransactionEvent) -> Self {
+        Self::new(EventKind::Transaction(kind))
     }
 }

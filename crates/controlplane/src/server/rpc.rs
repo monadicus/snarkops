@@ -23,7 +23,7 @@ use tracing::warn;
 use crate::{
     error::StateError,
     events::{AgentEvent, EventHelpers},
-    state::{AddrMap, AgentAddrs, AppState},
+    state::{AddrMap, AgentAddrs, AppState, GetGlobalState, GlobalState},
 };
 
 define_rpc_mux!(parent;
@@ -143,9 +143,9 @@ impl ControlService for ControlRpcServer {
             update_time: Utc::now(),
         };
 
-        self.state
-            .events
-            .emit(AgentEvent::BlockInfo(info.clone()).with_agent(&agent));
+        AgentEvent::BlockInfo(info.clone())
+            .with_agent(&agent)
+            .emit(&self);
 
         agent.status.block_info = Some(info.clone());
         let agent_id = agent.id();
@@ -202,9 +202,9 @@ impl ControlService for ControlRpcServer {
         };
 
         agent.status.node_status = status.clone();
-        self.state
-            .events
-            .emit(AgentEvent::NodeStatus(status).with_agent(&agent));
+        AgentEvent::NodeStatus(status)
+            .with_agent(&agent)
+            .emit(&self);
     }
 
     async fn post_reconcile_status(
@@ -223,13 +223,14 @@ impl ControlService for ControlRpcServer {
         let ev = AgentEvent::ReconcileComplete.with_agent(&agent);
         let is_complete = status.as_ref().is_ok_and(|e| e.inner.is_some());
 
-        self.state.events.emit(ev.replace_kind(match status {
+        ev.replace_kind(match status {
             Ok(res) => AgentEvent::Reconcile(res),
             Err(err) => AgentEvent::ReconcileError(err),
-        }));
+        })
+        .emit(&self);
 
         if is_complete {
-            self.state.events.emit(ev);
+            ev.emit(&self);
         }
     }
 }
@@ -272,4 +273,10 @@ fn resolve_addrs(
             Some((*id, resolve_one_addr(src_addrs, addr_map.get(id)?)?))
         })
         .collect())
+}
+
+impl<'a> GetGlobalState<'a> for &'a ControlRpcServer {
+    fn global_state(self) -> &'a GlobalState {
+        &self.state
+    }
 }

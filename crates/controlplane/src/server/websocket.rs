@@ -151,7 +151,7 @@ async fn handle_socket(
                     warn!("Connecting agent {id} is trying to identify with an invalid nonce");
                     break 'reconnect;
                 }
-                state.events.emit(AgentEvent::Connected.with_agent(&agent));
+                AgentEvent::Connected.with_agent(&agent).emit(&state);
 
                 match agent.env() {
                     Some(env) if !state.envs.contains_key(&env) => {
@@ -225,7 +225,7 @@ async fn handle_socket(
         drop(agent);
 
         match client2.handshake(context::current(), handshake).await {
-            Ok(()) => state2.events.emit(event),
+            Ok(()) => event.emit(&state2),
             Err(e) => error!("failed to perform agent {id} handshake: {e}"),
         }
 

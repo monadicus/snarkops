@@ -47,6 +47,8 @@ fn test_all_of() {
         agent: Some(*A),
         node_key: Some(NodeKey::from_str("client/foo").unwrap()),
         env: Some(*B),
+        transaction: None,
+        cannon: None,
         kind: Agent(Connected),
     };
 
@@ -72,6 +74,8 @@ fn test_any_of() {
         agent: Some(*A),
         node_key: Some(NodeKey::from_str("client/foo").unwrap()),
         env: Some(*B),
+        transaction: None,
+        cannon: None,
         kind: Agent(Connected),
     };
 
@@ -101,6 +105,8 @@ fn test_one_of() {
         agent: Some(*A),
         node_key: Some(NodeKey::from_str("client/foo").unwrap()),
         env: Some(*B),
+        transaction: None,
+        cannon: None,
         kind: Agent(Connected),
     };
 

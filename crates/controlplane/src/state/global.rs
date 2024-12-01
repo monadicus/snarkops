@@ -357,3 +357,20 @@ impl GlobalState {
         Err(EnvRequestError::NoResponsiveNodes)
     }
 }
+
+pub trait GetGlobalState<'a> {
+    /// Returns the global state.
+    fn global_state(self) -> &'a GlobalState;
+}
+
+impl<'a> GetGlobalState<'a> for &'a GlobalState {
+    fn global_state(self) -> &'a GlobalState {
+        self
+    }
+}
+
+impl<'a> GetGlobalState<'a> for &'a Arc<GlobalState> {
+    fn global_state(self) -> &'a GlobalState {
+        self
+    }
+}
