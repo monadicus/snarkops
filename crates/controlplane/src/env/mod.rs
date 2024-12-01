@@ -380,6 +380,8 @@ impl Environment {
             .as_ref()
             .is_some_and(|prev| prev.storage.info() != storage.info());
 
+        let clear_last_height = prev_env.is_none() && !storage.persist;
+
         let env = Arc::new(Environment {
             id: env_id,
             storage,
@@ -416,6 +418,7 @@ impl Environment {
             &state,
             ReconcileOptions {
                 refetch_info: storage_changed,
+                clear_last_height,
                 ..Default::default()
             },
         )

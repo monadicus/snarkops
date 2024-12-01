@@ -11,6 +11,8 @@ pub struct ReconcileOptions {
     pub refetch_info: bool,
     /// When true, the reconciler will force the node to shut down
     pub force_shutdown: bool,
+    /// When true, the reconciler will clear the last height
+    pub clear_last_height: bool,
 }
 
 impl ReconcileOptions {
@@ -18,6 +20,7 @@ impl ReconcileOptions {
         Self {
             refetch_info: self.refetch_info || other.refetch_info,
             force_shutdown: self.force_shutdown || other.force_shutdown,
+            clear_last_height: self.clear_last_height || other.clear_last_height,
         }
     }
 }

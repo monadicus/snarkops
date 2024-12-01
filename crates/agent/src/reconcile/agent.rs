@@ -164,6 +164,14 @@ impl AgentStateReconciler {
                 self.context.shutdown_pending = true;
             }
 
+            // If the agent is forced to clear the last height, clear it
+            if next_opts.clear_last_height {
+                self.context.ledger_last_height = None;
+                if let Err(e) = self.state.db.set_last_height(None) {
+                    error!("failed to clear last height from db: {e}");
+                }
+            }
+
             next_opts = Default::default();
 
             trace!("Reconciling agent state...");
