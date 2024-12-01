@@ -108,7 +108,7 @@ impl<'de> Deserialize<'de> for NodeTargets {
 
 lazy_static! {
     static ref NODE_TARGET_REGEX: Regex =
-        Regex::new(r"^(?P<ty>\*|client|validator|prover)\/(?P<id>[A-Za-z0-9\-*]+)(?:@(?P<ns>[A-Za-z0-9\-*]+))?$")
+        Regex::new(r"^(?P<ty>\*|any|client|validator|prover)\/(?P<id>[A-Za-z0-9\-*]+)(?:@(?P<ns>[A-Za-z0-9\-*]+))?$")
             .unwrap();
 }
 
@@ -184,6 +184,7 @@ impl FromStr for NodeTarget {
         // match the type
         let ty = match &captures["ty"] {
             "*" => NodeTargetType::All,
+            "any" => NodeTargetType::All,
             "client" => NodeTargetType::One(NodeType::Client),
             "validator" => NodeTargetType::One(NodeType::Validator),
             "prover" => NodeTargetType::One(NodeType::Prover),
@@ -194,6 +195,7 @@ impl FromStr for NodeTarget {
         let id = match &captures["id"] {
             // full wildcard
             "*" => NodeTargetId::All,
+            "any" => NodeTargetId::All,
 
             // partial wildcard
             id if id.contains('*') => NodeTargetId::WildcardPattern(WildMatch::new(id)),
@@ -206,6 +208,7 @@ impl FromStr for NodeTarget {
         let ns = match captures.name("ns") {
             // full wildcard
             Some(id) if id.as_str() == "*" => NodeTargetNamespace::All,
+            Some(id) if id.as_str() == "any" => NodeTargetNamespace::All,
 
             // local; either explicitly stated, or empty
             Some(id) if id.as_str() == "local" => NodeTargetNamespace::Local,
