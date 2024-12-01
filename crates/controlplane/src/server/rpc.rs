@@ -22,7 +22,7 @@ use tracing::warn;
 
 use crate::{
     error::StateError,
-    events::EventKind,
+    events::{AgentEvent, EventHelpers},
     state::{AddrMap, AgentAddrs, AppState},
 };
 
@@ -145,7 +145,7 @@ impl ControlService for ControlRpcServer {
 
         self.state
             .events
-            .emit(EventKind::Block(info.clone()).with_agent(&agent));
+            .emit(AgentEvent::BlockInfo(info.clone()).with_agent(&agent));
 
         agent.status.block_info = Some(info.clone());
         let agent_id = agent.id();
@@ -204,7 +204,7 @@ impl ControlService for ControlRpcServer {
         agent.status.node_status = status.clone();
         self.state
             .events
-            .emit(EventKind::NodeStatus(status).with_agent(&agent));
+            .emit(AgentEvent::NodeStatus(status).with_agent(&agent));
     }
 
     async fn post_reconcile_status(
@@ -220,12 +220,12 @@ impl ControlService for ControlRpcServer {
 
         // Emit events for this reconcile
 
-        let ev = EventKind::ReconcileComplete.with_agent(&agent);
+        let ev = AgentEvent::ReconcileComplete.with_agent(&agent);
         let is_complete = status.as_ref().is_ok_and(|e| e.inner.is_some());
 
         self.state.events.emit(ev.replace_kind(match status {
-            Ok(res) => EventKind::Reconcile(res),
-            Err(err) => EventKind::ReconcileError(err),
+            Ok(res) => AgentEvent::Reconcile(res),
+            Err(err) => AgentEvent::ReconcileError(err),
         }));
 
         if is_complete {

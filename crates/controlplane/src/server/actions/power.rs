@@ -28,7 +28,7 @@ async fn wait_for_nodes(
     use crate::events::prelude::*;
     let mut subscriber = state
         .events
-        .subscribe_on(NodeTargetIs(nodes) & EnvIs(env_id) & ReconcileComplete);
+        .subscribe_on(NodeTargetIs(nodes) & EnvIs(env_id) & AgentReconcileComplete);
 
     state.update_agent_states(pending).await;
 
@@ -106,7 +106,7 @@ pub async fn reboot(
     use crate::events::prelude::*;
     let mut subscriber = state
         .events
-        .subscribe_on(NodeTargetIs(nodes) & EnvIs(env.id) & ReconcileComplete);
+        .subscribe_on(NodeTargetIs(nodes) & EnvIs(env.id) & AgentReconcileComplete);
 
     state
         .queue_many_reconciles(

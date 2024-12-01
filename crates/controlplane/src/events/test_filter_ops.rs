@@ -16,10 +16,10 @@ lazy_static! {
 #[test]
 fn test_filter_bitand() {
     assert_eq!(Unfiltered & Unfiltered, Unfiltered);
-    assert_eq!(Block & Unfiltered, EventIs(Block));
+    assert_eq!(AgentBlockInfo & Unfiltered, EventIs(AgentBlockInfo));
     assert_eq!(
-        Block & AgentIs(*A),
-        AllOf(vec![EventIs(Block), AgentIs(*A)])
+        AgentBlockInfo & AgentIs(*A),
+        AllOf(vec![EventIs(AgentBlockInfo), AgentIs(*A)])
     );
     assert_eq!(
         AgentIs(*A) & AgentIs(*B),
@@ -34,10 +34,10 @@ fn test_filter_bitand() {
 #[test]
 fn test_filter_bitor() {
     assert_eq!(Unfiltered | Unfiltered, Unfiltered);
-    assert_eq!(Block | Unfiltered, Unfiltered);
+    assert_eq!(AgentBlockInfo | Unfiltered, Unfiltered);
     assert_eq!(
-        Block | AgentIs(*A),
-        AnyOf(vec![EventIs(Block), AgentIs(*A)])
+        AgentBlockInfo | AgentIs(*A),
+        AnyOf(vec![EventIs(AgentBlockInfo), AgentIs(*A)])
     );
     assert_eq!(
         AgentIs(*A) | AgentIs(*B),
@@ -52,10 +52,10 @@ fn test_filter_bitor() {
 #[test]
 fn test_filter_bitxor() {
     assert_eq!(Unfiltered ^ Unfiltered, Unfiltered);
-    assert_eq!(Block ^ Unfiltered, EventIs(Block));
+    assert_eq!(AgentBlockInfo ^ Unfiltered, EventIs(AgentBlockInfo));
     assert_eq!(
-        Block ^ AgentIs(*A),
-        OneOf(vec![EventIs(Block), AgentIs(*A)])
+        AgentBlockInfo ^ AgentIs(*A),
+        OneOf(vec![EventIs(AgentBlockInfo), AgentIs(*A)])
     );
     assert_eq!(
         AgentIs(*A) ^ AgentIs(*B),
@@ -70,7 +70,7 @@ fn test_filter_bitxor() {
 #[test]
 fn test_filter_not() {
     assert_eq!(!Unfiltered, Not(Box::new(Unfiltered)));
-    assert_eq!(!Block, Not(Box::new(EventIs(Block))));
+    assert_eq!(!AgentBlockInfo, Not(Box::new(EventIs(AgentBlockInfo))));
     assert_eq!(!AgentIs(*A), Not(Box::new(AgentIs(*A))));
     assert_eq!(
         !AgentIs(*A) & AgentIs(*B),

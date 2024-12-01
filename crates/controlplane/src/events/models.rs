@@ -18,14 +18,20 @@ pub struct Event {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "kind")]
+#[serde(tag = "type")]
 pub enum EventKind {
+    Agent(AgentEvent),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum AgentEvent {
     /// An agent connects to the control plane
-    AgentConnected,
+    Connected,
     /// An agent completes a handshake with the control plane
-    AgentHandshakeComplete,
+    HandshakeComplete,
     /// An agent disconnects from the control plane
-    AgentDisconnected,
+    Disconnected,
     /// An agent finishes a reconcile
     ReconcileComplete,
     /// An agent updates its reconcile status
@@ -35,22 +41,7 @@ pub enum EventKind {
     /// An agent emits a node status
     NodeStatus(NodeStatus),
     /// An agent emits a block update
-    Block(LatestBlockInfo),
-}
-
-impl EventKind {
-    pub fn filter(&self) -> EventKindFilter {
-        match self {
-            EventKind::AgentConnected => EventKindFilter::AgentConnected,
-            EventKind::AgentHandshakeComplete => EventKindFilter::AgentHandshakeComplete,
-            EventKind::AgentDisconnected => EventKindFilter::AgentDisconnected,
-            EventKind::ReconcileComplete => EventKindFilter::ReconcileComplete,
-            EventKind::Reconcile(_) => EventKindFilter::Reconcile,
-            EventKind::ReconcileError(_) => EventKindFilter::ReconcileError,
-            EventKind::NodeStatus(_) => EventKindFilter::NodeStatus,
-            EventKind::Block(_) => EventKindFilter::Block,
-        }
-    }
+    BlockInfo(LatestBlockInfo),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -59,11 +50,29 @@ pub enum EventKindFilter {
     AgentConnected,
     AgentHandshakeComplete,
     AgentDisconnected,
-    ReconcileComplete,
-    Reconcile,
-    ReconcileError,
-    NodeStatus,
-    Block,
+    AgentReconcileComplete,
+    AgentReconcile,
+    AgentReconcileError,
+    AgentNodeStatus,
+    AgentBlockInfo,
+}
+
+impl EventKind {
+    pub fn filter(&self) -> EventKindFilter {
+        use AgentEvent::*;
+        use EventKind::*;
+
+        match self {
+            Agent(Connected) => EventKindFilter::AgentConnected,
+            Agent(HandshakeComplete) => EventKindFilter::AgentHandshakeComplete,
+            Agent(Disconnected) => EventKindFilter::AgentDisconnected,
+            Agent(ReconcileComplete) => EventKindFilter::AgentReconcileComplete,
+            Agent(Reconcile(_)) => EventKindFilter::AgentReconcile,
+            Agent(ReconcileError(_)) => EventKindFilter::AgentReconcileError,
+            Agent(NodeStatus(_)) => EventKindFilter::AgentNodeStatus,
+            Agent(BlockInfo(_)) => EventKindFilter::AgentBlockInfo,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -103,13 +112,13 @@ impl Event {
         }
     }
 
-    pub fn replace_kind(&self, kind: EventKind) -> Self {
+    pub fn replace_kind(&self, kind: impl Into<Event>) -> Self {
         Self {
             created_at: Utc::now(),
             agent: self.agent,
             node_key: self.node_key.clone(),
             env: self.env,
-            kind,
+            kind: kind.into().kind,
         }
     }
 
@@ -134,13 +143,21 @@ impl From<EventKindFilter> for EventFilter {
     }
 }
 
-impl EventKind {
-    pub fn event(self) -> Event {
-        Event::new(self)
+pub trait EventHelpers {
+    fn event(self) -> Event;
+    fn with_agent(self, agent: &Agent) -> Event;
+    fn with_agent_id(self, agent_id: AgentId) -> Event;
+    fn with_node_key(self, node_key: NodeKey) -> Event;
+    fn with_env_id(self, env_id: EnvId) -> Event;
+}
+
+impl<T: Into<Event>> EventHelpers for T {
+    fn event(self) -> Event {
+        self.into()
     }
 
-    pub fn with_agent(self, agent: &Agent) -> Event {
-        let mut event = Event::new(self);
+    fn with_agent(self, agent: &Agent) -> Event {
+        let mut event = self.into();
         event.agent = Some(agent.id);
         if let AgentState::Node(env_id, node) = &agent.state {
             event.node_key = Some(node.node_key.clone());
@@ -149,21 +166,33 @@ impl EventKind {
         event
     }
 
-    pub fn with_agent_id(self, agent_id: AgentId) -> Event {
-        let mut event = Event::new(self);
+    fn with_agent_id(self, agent_id: AgentId) -> Event {
+        let mut event = self.into();
         event.agent = Some(agent_id);
         event
     }
 
-    pub fn with_node_key(self, node_key: NodeKey) -> Event {
-        let mut event = Event::new(self);
+    fn with_node_key(self, node_key: NodeKey) -> Event {
+        let mut event = self.into();
         event.node_key = Some(node_key);
         event
     }
 
-    pub fn with_env_id(self, env_id: EnvId) -> Event {
-        let mut event = Event::new(self);
+    fn with_env_id(self, env_id: EnvId) -> Event {
+        let mut event = self.into();
         event.env = Some(env_id);
         event
+    }
+}
+
+impl From<EventKind> for Event {
+    fn from(kind: EventKind) -> Self {
+        Self::new(kind)
+    }
+}
+
+impl From<AgentEvent> for Event {
+    fn from(kind: AgentEvent) -> Self {
+        Self::new(EventKind::Agent(kind))
     }
 }

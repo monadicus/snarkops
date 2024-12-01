@@ -28,7 +28,7 @@ use tracing::{error, info, warn};
 use super::{jwt::Claims, rpc::ControlRpcServer};
 use crate::{
     agent_version::agent_version_ok,
-    events::EventKind,
+    events::{AgentEvent, EventHelpers},
     server::{
         jwt::JWT_SECRET,
         rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
@@ -151,9 +151,7 @@ async fn handle_socket(
                     warn!("Connecting agent {id} is trying to identify with an invalid nonce");
                     break 'reconnect;
                 }
-                state
-                    .events
-                    .emit(EventKind::AgentConnected.with_agent(&agent));
+                state.events.emit(AgentEvent::Connected.with_agent(&agent));
 
                 match agent.env() {
                     Some(env) if !state.envs.contains_key(&env) => {
@@ -221,7 +219,7 @@ async fn handle_socket(
     let client2 = client.clone();
     tokio::spawn(async move {
         let agent = state2.pool.get(&id)?;
-        let event = EventKind::AgentHandshakeComplete.with_agent(&agent);
+        let event = AgentEvent::HandshakeComplete.with_agent(&agent);
 
         // Prevent readonly agent from being held over the handshake RPC
         drop(agent);
@@ -378,7 +376,7 @@ async fn handle_socket(
 
         state
             .events
-            .emit(EventKind::AgentDisconnected.with_agent(&agent));
+            .emit(AgentEvent::Disconnected.with_agent(&agent));
     }
 
     info!("Agent {id} disconnected");
