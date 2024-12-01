@@ -172,11 +172,11 @@ impl NodeCommand {
             .arg(self.ports.node.to_string());
 
         if let Some(pk) = &self.private_key {
-            command.arg("--private-key").arg(pk);
+            command.env("PRIVATE_KEY", pk);
         }
 
         if let Some(pk_file) = &self.private_key_file {
-            command.arg("--private-key-file").arg(pk_file);
+            command.env("PRIVATE_KEY_FILE", pk_file);
         }
 
         // conditionally add retention policy
