@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use axum::{
     response::{IntoResponse, Response},
@@ -7,7 +7,7 @@ use axum::{
 use snops_common::{
     action_models::WithTargets,
     node_targets::NodeTargets,
-    state::{AgentId, AgentState, EnvId},
+    state::{AgentId, AgentState, EnvId, ReconcileOptions},
 };
 use tracing::info;
 
@@ -90,12 +90,48 @@ pub async fn offline(
     wait_for_nodes(&state, env.id, nodes, pending).await
 }
 
-pub async fn reboot(env: Env, json: Json<WithTargets>) -> Response {
-    let offline_res = offline(env.clone(), json.clone()).await;
+pub async fn reboot(
+    Env { env, state, .. }: Env,
+    Json(WithTargets { nodes, .. }): Json<WithTargets>,
+) -> Response {
+    let node_map = env
+        .matching_agents(&nodes, &state.pool)
+        .filter_map(|a| a.node_key().map(|k| (k.clone(), a.id)))
+        .collect::<HashMap<_, _>>();
 
-    if !offline_res.status().is_success() {
-        offline_res
-    } else {
-        online(env, json).await
+    let mut awaiting_agents = node_map.values().copied().collect::<HashSet<_>>();
+
+    // create the subscriber before updating agent states in order to
+    // avoid missing any events
+    use crate::events::prelude::*;
+    let mut subscriber = state
+        .events
+        .subscribe_on(NodeTargetIs(nodes) & EnvIs(env.id) & ReconcileComplete);
+
+    state
+        .queue_many_reconciles(
+            awaiting_agents.iter().copied(),
+            ReconcileOptions {
+                force_shutdown: true,
+                ..Default::default()
+            },
+        )
+        .await;
+
+    // wait at most 30 seconds for all agents to reconcile
+    let expires = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !awaiting_agents.is_empty() {
+        tokio::select! {
+            _ = tokio::time::sleep_until(expires) => {
+                break;
+            }
+            Ok(event) = subscriber.next() => {
+                if let Some(agent) = event.agent {
+                    awaiting_agents.remove(&agent);
+                }
+            }
+        }
     }
+
+    Json(node_map).into_response()
 }

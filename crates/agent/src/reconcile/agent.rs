@@ -164,6 +164,8 @@ impl AgentStateReconciler {
                 self.context.shutdown_pending = true;
             }
 
+            next_opts = Default::default();
+
             trace!("Reconciling agent state...");
             let res = self.reconcile().await;
             if let Some(client) = self.state.get_ws_client().await {

@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use snops_common::{
     lasso::Spur,
     rpc::control::agent::AgentServiceClient,
-    state::{AgentId, AgentModeOptions, AgentState, AgentStatus, EnvId, NodeState, PortConfig},
+    state::{
+        AgentId, AgentModeOptions, AgentState, AgentStatus, EnvId, NodeKey, NodeState, PortConfig,
+    },
     INTERN,
 };
 
@@ -173,6 +175,13 @@ impl Agent {
     pub fn env(&self) -> Option<EnvId> {
         match &self.state {
             AgentState::Node(id, _) => Some(*id),
+            _ => None,
+        }
+    }
+
+    pub fn node_key(&self) -> Option<&NodeKey> {
+        match &self.state {
+            AgentState::Node(_, state) => Some(&state.node_key),
             _ => None,
         }
     }
