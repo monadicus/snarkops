@@ -25,6 +25,9 @@ pub struct CostCommand<N: Network> {
     /// Program inputs (eg. 1u64 5field)
     #[clap(num_args = 1, value_delimiter = ' ')]
     inputs: Vec<Value<N>>,
+    /// Enable cost v1 for the transaction cost estimation (v2 by default)
+    #[clap(long, default_value_t = false)]
+    pub cost_v1: bool,
 }
 
 impl<N: Network> CostCommand<N> {
@@ -34,6 +37,7 @@ impl<N: Network> CostCommand<N> {
             program,
             function,
             inputs,
+            cost_v1,
         } = self;
 
         let program = program.contents()?;
@@ -57,7 +61,7 @@ impl<N: Network> CostCommand<N> {
                     &mut rand::thread_rng(),
                 )?;
 
-            estimate_cost(&process, &auth)
+            estimate_cost(&process, &auth, !cost_v1)
         } else {
             let deployment = process.deploy::<N::Circuit, _>(&program, &mut rand::thread_rng())?;
             Ok(deployment_cost(&deployment)?.0)

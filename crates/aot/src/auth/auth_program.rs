@@ -26,6 +26,9 @@ pub struct AuthorizeProgram<N: Network> {
     /// The seed to use for the authorization generation
     #[clap(long)]
     pub seed: Option<u64>,
+    /// Enable cost v1 for the transaction cost estimation (v2 by default)
+    #[clap(long, default_value_t = false)]
+    pub cost_v1: bool,
 }
 
 impl<N: Network> AuthorizeProgram<N> {
@@ -51,7 +54,7 @@ impl<N: Network> AuthorizeProgram<N> {
                 &mut super::rng_from_seed(self.seed),
             )?;
 
-        let cost = estimate_cost(&process, &auth)?;
+        let cost = estimate_cost(&process, &auth, !self.cost_v1)?;
 
         Ok((auth, cost))
     }

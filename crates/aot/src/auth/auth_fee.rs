@@ -1,10 +1,10 @@
-use anyhow::{bail, Ok, Result};
+use anyhow::{anyhow, bail, Ok, Result};
 use clap::Args;
 use clap_stdin::MaybeStdin;
 use rand::{CryptoRng, Rng};
 use snarkvm::{
     ledger::Deployment,
-    prelude::Field,
+    prelude::{cost_in_microcredits_v1, Field},
     synthesizer::{
         process::{cost_in_microcredits_v2, deployment_cost},
         Process,
@@ -52,6 +52,9 @@ pub struct AuthorizeFee<N: Network> {
     /// The seed to use for the authorization generation
     #[clap(long)]
     pub seed: Option<u64>,
+    /// Enable cost v1 for the transaction cost estimation (v2 by default)
+    #[clap(long, default_value_t = false)]
+    pub cost_v1: bool,
 }
 
 impl<N: Network> AuthorizeFee<N> {
@@ -65,7 +68,10 @@ impl<N: Network> AuthorizeFee<N> {
                     query::add_many_programs_to_process(&mut process, programs, query)?;
                 }
 
-                (auth.to_execution_id()?, estimate_cost(&process, &auth)?)
+                (
+                    auth.to_execution_id()?,
+                    estimate_cost(&process, &auth, !self.cost_v1)?,
+                )
             }
             (None, Some(deployment), None, None) => {
                 let deployment = deployment.into_inner();
@@ -128,7 +134,11 @@ pub fn fee_auth<N: Network>(
     Ok(Some(fee))
 }
 
-pub fn estimate_cost<N: Network>(process: &Process<N>, func: &Authorization<N>) -> Result<u64> {
+pub fn estimate_cost<N: Network>(
+    process: &Process<N>,
+    func: &Authorization<N>,
+    use_cost_v2: bool,
+) -> Result<u64> {
     let transitions = func.transitions();
 
     let storage_cost = {
@@ -174,21 +184,35 @@ pub fn estimate_cost<N: Network>(process: &Process<N>, func: &Authorization<N>) 
     };
     //execution.size_in_bytes().map_err(|e| e.to_string())?;
 
-    // Compute the finalize cost in microcredits.
-    let mut finalize_cost = 0u64;
-    // Iterate over the transitions to accumulate the finalize cost.
-    for (_key, transition) in transitions {
-        // Retrieve the function name, program id, and program.
-        let function_name = *transition.function_name();
+    let finalize_cost = if use_cost_v2 {
+        // cost v2 uses the finalize cost of the first transition
+        let transition = transitions
+            .values()
+            .next()
+            .ok_or(anyhow!("No transitions"))?;
         let stack = process.get_stack(transition.program_id())?;
-        let cost = cost_in_microcredits_v2(stack, &function_name)?;
+        cost_in_microcredits_v2(stack, transition.function_name())?
+    } else {
+        // Compute the finalize cost in microcredits.
+        let mut finalize_cost = 0u64;
 
-        // Accumulate the finalize cost.
-        if let Some(cost) = finalize_cost.checked_add(cost) {
-            finalize_cost = cost;
-        } else {
-            bail!("The finalize cost computation overflowed for an execution")
-        };
-    }
+        // Iterate over the transitions to accumulate the finalize cost.
+        for (_key, transition) in transitions {
+            // Retrieve the function name, program id, and program.
+            let function_name = *transition.function_name();
+            let stack = process.get_stack(transition.program_id())?;
+            let cost = cost_in_microcredits_v1(stack, &function_name)?;
+
+            // Accumulate the finalize cost.
+            if let Some(cost) = finalize_cost.checked_add(cost) {
+                finalize_cost = cost;
+            } else {
+                bail!("The finalize cost computation overflowed for an execution")
+            };
+        }
+
+        finalize_cost
+    };
+
     Ok(storage_cost + finalize_cost)
 }

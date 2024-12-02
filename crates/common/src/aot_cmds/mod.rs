@@ -74,6 +74,7 @@ impl AotCmd {
         query: Option<&String>,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
+        cost_v1: bool,
     ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
@@ -101,6 +102,10 @@ impl AotCmd {
             command.arg("--record").arg(fee_record);
         }
 
+        if cost_v1 {
+            command.arg("--cost-v1");
+        }
+
         command
             .arg(format!("{program_id}/{function_name}"))
             .args(inputs);
@@ -122,6 +127,7 @@ impl AotCmd {
         query: Option<&String>,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
+        cost_v1: bool,
     ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
@@ -148,6 +154,10 @@ impl AotCmd {
 
         if let Some(fee_record) = fee_record {
             command.arg("--record").arg(fee_record);
+        }
+
+        if cost_v1 {
+            command.arg("--cost-v1");
         }
 
         command.arg("-");
@@ -204,6 +214,7 @@ impl AotCmd {
         authorization: &str,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
+        cost_v1: bool,
     ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
@@ -221,6 +232,10 @@ impl AotCmd {
 
         if let Some(fee_record) = fee_record {
             command.arg("--record").arg(fee_record);
+        }
+
+        if cost_v1 {
+            command.arg("--cost-v1");
         }
 
         Self::handle_output(

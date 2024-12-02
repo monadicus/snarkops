@@ -46,6 +46,9 @@ pub struct CostCommand<N: Network> {
     query: Option<String>,
     #[clap(flatten)]
     auth: AuthArgs<N>,
+    /// Enable cost v1 for the transaction cost estimation (v2 by default)
+    #[clap(long, default_value_t = false)]
+    pub cost_v1: bool,
 }
 
 /// Authorize a program execution.
@@ -65,6 +68,9 @@ pub struct AuthProgramCommand<N: Network> {
     /// The seed to use for the authorization generation
     #[clap(long)]
     pub seed: Option<u64>,
+    /// Enable cost v1 for the transaction cost estimation (v2 by default)
+    #[clap(long, default_value_t = false)]
+    pub cost_v1: bool,
 }
 
 /// Deploy a program to the network.
@@ -84,6 +90,9 @@ pub struct AuthDeployCommand<N: Network> {
     /// The seed to use for the authorization generation
     #[clap(long)]
     pub seed: Option<u64>,
+    /// Enable cost v1 for the transaction cost estimation (v2 by default)
+    #[clap(long, default_value_t = false)]
+    pub cost_v1: bool,
 }
 
 impl<N: Network> AuthCommand<N> {
@@ -118,7 +127,11 @@ impl<N: Network> AuthCommand<N> {
                 println!("{id}");
                 Ok(())
             }
-            AuthCommand::Cost(CostCommand { query, auth }) => {
+            AuthCommand::Cost(CostCommand {
+                query,
+                auth,
+                cost_v1,
+            }) => {
                 let cost = match auth.pick()? {
                     AuthBlob::Program { auth, .. } => {
                         let auth = auth.into();
@@ -132,7 +145,7 @@ impl<N: Network> AuthCommand<N> {
                             query::add_many_programs_to_process(&mut process, programs, query)?;
                         }
 
-                        estimate_cost(&process, &auth)?
+                        estimate_cost(&process, &auth, !cost_v1)?
                     }
                     AuthBlob::Deploy { deployment, .. } => deployment_cost(&deployment)?.0,
                 };
@@ -146,6 +159,7 @@ impl<N: Network> AuthCommand<N> {
                 program_opts,
                 fee_opts,
                 seed,
+                cost_v1,
             }) => {
                 let query = program_opts.query.clone();
 
@@ -154,6 +168,7 @@ impl<N: Network> AuthCommand<N> {
                     key: key.clone(),
                     options: program_opts,
                     seed,
+                    cost_v1,
                 }
                 .parse()?;
 
@@ -172,6 +187,7 @@ impl<N: Network> AuthCommand<N> {
                     id: Some(auth.to_execution_id()?),
                     cost: Some(cost),
                     seed,
+                    cost_v1,
                 }
                 .parse()?;
 
@@ -191,6 +207,7 @@ impl<N: Network> AuthCommand<N> {
                 deploy_opts,
                 fee_opts,
                 seed,
+                cost_v1,
             }) => {
                 // authorize the deployment without a fee
                 let AuthBlob::Deploy {
@@ -227,6 +244,7 @@ impl<N: Network> AuthCommand<N> {
                     id: Some(deployment.to_deployment_id()?),
                     cost: Some(deployment_cost(&deployment)?.0),
                     seed,
+                    cost_v1,
                 }
                 .parse()?
                 .map(Into::into);
