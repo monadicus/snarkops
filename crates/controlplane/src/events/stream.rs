@@ -80,6 +80,10 @@ impl EventSubscriber {
         }
         events
     }
+
+    pub fn set_filter(&mut self, filter: impl Into<EventFilter>) {
+        self.filter = filter.into();
+    }
 }
 
 impl Stream for EventSubscriber {
