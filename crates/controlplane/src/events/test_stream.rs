@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
 use lazy_static::lazy_static;
+use snops_common::events::{AgentEvent::*, EventFilter::*, EventHelpers, EventKindFilter::*};
 use snops_common::state::InternedId;
 
-use super::{AgentEvent::*, EventFilter::*, EventKindFilter::*, Events};
-use crate::events::EventHelpers;
+use crate::events::Events;
 
 lazy_static! {
     static ref A: InternedId = InternedId::from_str("a").unwrap();

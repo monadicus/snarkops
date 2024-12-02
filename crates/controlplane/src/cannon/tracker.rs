@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use snops_common::{aot_cmds::Authorization, format::PackedUint};
+use snops_common::{aot_cmds::Authorization, format::PackedUint, state::TransactionSendState};
 
-use super::{error::CannonError, status::TransactionSendState};
+use super::error::CannonError;
 use crate::{db::TxEntry, state::GlobalState};
 
 #[derive(Debug, Clone)]

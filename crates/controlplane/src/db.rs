@@ -4,11 +4,10 @@ use snops_common::{
     aot_cmds::Authorization,
     db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
     format::PackedUint,
-    state::{AgentId, CannonId, EnvId, NetworkId, StorageId},
+    state::{AgentId, CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
 };
 
 use crate::{
-    cannon::status::TransactionSendState,
     persist::{PersistEnv, PersistStorage},
     state::Agent,
 };

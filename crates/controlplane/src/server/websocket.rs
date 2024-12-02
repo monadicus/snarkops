@@ -13,6 +13,7 @@ use futures_util::stream::StreamExt;
 use http::StatusCode;
 use semver::Version;
 use serde::Deserialize;
+use snops_common::events::AgentEvent;
 use snops_common::{
     constant::HEADER_AGENT_KEY,
     prelude::*,
@@ -28,12 +29,11 @@ use tracing::{error, info, warn};
 use super::{jwt::Claims, rpc::ControlRpcServer};
 use crate::{
     agent_version::agent_version_ok,
-    events::{AgentEvent, EventHelpers},
     server::{
         jwt::JWT_SECRET,
         rpc::{MuxedMessageIncoming, MuxedMessageOutgoing},
     },
-    state::{Agent, AgentFlags, AppState},
+    state::{Agent, AgentEventHelpers, AgentFlags, AppState, EmitEvent},
 };
 
 #[derive(Debug, Deserialize)]

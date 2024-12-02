@@ -1,11 +1,10 @@
 use std::{fmt::Display, sync::Arc};
 
-use snops_common::{
+use super::{Event, EventKindFilter};
+use crate::{
     node_targets::NodeTargets,
     state::{AgentId, EnvId, InternedId, NodeKey},
 };
-
-use super::{Event, EventKindFilter};
 
 #[derive(Clone, Debug, PartialEq)]
 

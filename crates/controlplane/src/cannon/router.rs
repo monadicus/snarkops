@@ -369,7 +369,7 @@ async fn authorization(
 
     match cannon.proxy_auth(body).await {
         Ok(tx_id) => {
-            use crate::events::EventFilter::*;
+            use snops_common::events::EventFilter::*;
             let subscriber = state
                 .events
                 .subscribe_on(TransactionIs(tx_id.clone()) & EnvIs(env_id) & CannonIs(cannon_id));

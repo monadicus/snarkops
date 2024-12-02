@@ -2,14 +2,14 @@ use std::str::FromStr;
 
 use chrono::Utc;
 use lazy_static::lazy_static;
-use snops_common::{
+
+use super::{AgentEvent::*, EventFilter::*, EventKind::*, EventKindFilter::*};
+use crate::events::{Event, EventHelpers};
+use crate::{
     node_targets::NodeTargets,
     rpc::error::ReconcileError,
     state::{InternedId, LatestBlockInfo, NodeKey, NodeStatus, ReconcileStatus},
 };
-
-use super::{AgentEvent::*, EventFilter::*, EventKind::*, EventKindFilter::*};
-use crate::events::{Event, EventHelpers};
 
 lazy_static! {
     static ref A: InternedId = InternedId::from_str("a").unwrap();

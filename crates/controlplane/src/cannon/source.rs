@@ -3,22 +3,22 @@ use std::sync::Arc;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use snops_common::events::{EventHelpers, TransactionEvent};
+use snops_common::state::TransactionSendState;
 use snops_common::{
     aot_cmds::Authorization, lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN,
 };
 use tracing::error;
 
+use super::context::CtxEventHelper;
 use super::{
     error::{CannonError, SourceError},
     net::get_available_port,
-    status::TransactionSendState,
     tracker::TransactionTracker,
     ExecutionContext,
 };
-use crate::{
-    env::set::find_compute_agent,
-    events::{EventHelpers, TransactionEvent},
-};
+use crate::env::set::find_compute_agent;
+use crate::state::EmitEvent;
 
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Serialize, Deserialize)]

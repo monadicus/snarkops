@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
 use lazy_static::lazy_static;
-use snops_common::state::InternedId;
 
 use super::EventFilter::*;
 use super::EventKindFilter::*;
+use crate::state::InternedId;
 
 lazy_static! {
     static ref A: InternedId = InternedId::from_str("a").unwrap();

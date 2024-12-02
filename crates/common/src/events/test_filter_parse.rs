@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use snops_common::{node_targets::NodeTargets, state::InternedId};
-
 use super::{
     filter_parse::EventFilterParseError,
     EventFilter::{self, *},
     EventKindFilter::*,
 };
 use crate::events::filter_parse::EventFilterParsable;
+use crate::{node_targets::NodeTargets, state::InternedId};
 
 macro_rules! eq {
     ($s:expr, $f:expr) => {

@@ -1,6 +1,7 @@
 use std::{collections::HashMap, net::IpAddr, time::Instant};
 
 use chrono::Utc;
+use snops_common::events::AgentEvent;
 use snops_common::{
     api::AgentEnvInfo,
     define_rpc_mux,
@@ -20,9 +21,9 @@ use snops_common::{
 use tarpc::context;
 use tracing::warn;
 
+use crate::state::{AgentEventHelpers, EmitEvent};
 use crate::{
     error::StateError,
-    events::{AgentEvent, EventHelpers},
     state::{AddrMap, AgentAddrs, AppState, GetGlobalState, GlobalState},
 };
 

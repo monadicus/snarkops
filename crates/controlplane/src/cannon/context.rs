@@ -6,7 +6,8 @@ use futures_util::{stream::FuturesUnordered, StreamExt};
 use lazysort::SortedBy;
 use snops_common::{
     aot_cmds::Authorization,
-    state::{AgentId, CannonId, EnvId, NetworkId},
+    events::{Event, TransactionAbortReason, TransactionEvent},
+    state::{AgentId, CannonId, EnvId, NetworkId, TransactionSendState},
 };
 use tracing::{error, trace, warn};
 
@@ -15,14 +16,12 @@ use super::{
     file::TransactionSink,
     sink::TxSink,
     source::TxSource,
-    status::TransactionSendState,
     tracker::TransactionTracker,
     CannonReceivers,
 };
 use crate::{
     cannon::source::ComputeTarget,
-    events::{EventHelpers, TransactionAbortReason, TransactionEvent},
-    state::{GetGlobalState, GlobalState, REST_CLIENT},
+    state::{EmitEvent, GetGlobalState, GlobalState, REST_CLIENT},
 };
 
 /// Information a transaction cannon needs for execution via spawned task
@@ -378,5 +377,19 @@ impl ExecutionContext {
 impl<'a> GetGlobalState<'a> for &'a ExecutionContext {
     fn global_state(self) -> &'a GlobalState {
         &self.state
+    }
+}
+
+pub trait CtxEventHelper {
+    fn with_cannon_ctx(self, ctx: &ExecutionContext, transaction: Arc<String>) -> Event;
+}
+
+impl<T: Into<Event>> CtxEventHelper for T {
+    fn with_cannon_ctx(self, ctx: &ExecutionContext, transaction: Arc<String>) -> Event {
+        let mut event = self.into();
+        event.cannon = Some(ctx.id);
+        event.env = Some(ctx.env_id);
+        event.transaction = Some(transaction);
+        event
     }
 }

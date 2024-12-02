@@ -5,7 +5,6 @@ mod net;
 pub mod router;
 pub mod sink;
 pub mod source;
-pub mod status;
 pub mod tracker;
 
 use std::{
@@ -21,9 +20,8 @@ use dashmap::DashMap;
 use snops_common::{
     aot_cmds::{AotCmd, Authorization},
     format::PackedUint,
-    state::{CannonId, EnvId, NetworkId, StorageId},
+    state::{CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
 };
-use status::TransactionSendState;
 use tokio::{
     sync::{
         mpsc::{UnboundedReceiver, UnboundedSender},

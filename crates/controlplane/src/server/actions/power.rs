@@ -25,7 +25,7 @@ async fn wait_for_nodes(
 
     // create the subscriber before updating agent states in order to
     // avoid missing any events
-    use crate::events::prelude::*;
+    use snops_common::events::prelude::*;
     let mut subscriber = state
         .events
         .subscribe_on(NodeTargetIs(nodes) & EnvIs(env_id) & AgentReconcileComplete);
@@ -103,7 +103,7 @@ pub async fn reboot(
 
     // create the subscriber before updating agent states in order to
     // avoid missing any events
-    use crate::events::prelude::*;
+    use snops_common::events::prelude::*;
     let mut subscriber = state
         .events
         .subscribe_on(NodeTargetIs(nodes) & EnvIs(env.id) & AgentReconcileComplete);

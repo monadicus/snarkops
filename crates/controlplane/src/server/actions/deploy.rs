@@ -38,7 +38,7 @@ pub async fn deploy(
 
     match deploy_inner(&state, action, &env, query_addr).await {
         Ok(tx_id) => {
-            use crate::events::EventFilter::*;
+            use snops_common::events::EventFilter::*;
             let subscriber = state
                 .events
                 .subscribe_on(TransactionIs(tx_id.clone()) & EnvIs(env.id) & CannonIs(cannon_id));

@@ -11,6 +11,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use snops_common::{
+    events::Event,
     lasso::Spur,
     rpc::control::agent::AgentServiceClient,
     state::{
@@ -346,5 +347,21 @@ impl AgentAddrs {
 
     pub fn is_some(&self) -> bool {
         self.external.is_some() || !self.internal.is_empty()
+    }
+}
+
+pub trait AgentEventHelpers {
+    fn with_agent(self, agent: &Agent) -> Event;
+}
+
+impl<T: Into<Event>> AgentEventHelpers for T {
+    fn with_agent(self, agent: &Agent) -> Event {
+        let mut event = self.into();
+        event.agent = Some(agent.id);
+        if let AgentState::Node(env_id, node) = &agent.state {
+            event.node_key = Some(node.node_key.clone());
+            event.env = Some(*env_id);
+        }
+        event
     }
 }

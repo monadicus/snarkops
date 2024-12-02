@@ -2,15 +2,14 @@ use std::sync::Arc;
 
 use bimap::BiMap;
 use dashmap::DashMap;
+use snops_common::state::TransactionSendState;
 use snops_common::state::{CannonId, EnvId, NetworkId, NodeKey, StorageId};
 use tokio::sync::Semaphore;
 
 use super::prelude::*;
 use super::PersistNode;
 use crate::{
-    cannon::{
-        sink::TxSink, source::TxSource, status::TransactionSendState, tracker::TransactionTracker,
-    },
+    cannon::{sink::TxSink, source::TxSource, tracker::TransactionTracker},
     env::{
         error::{EnvError, PrepareError},
         prepare_cannons, EnvNodeState, EnvPeer, Environment,

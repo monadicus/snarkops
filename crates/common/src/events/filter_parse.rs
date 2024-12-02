@@ -1,9 +1,8 @@
 use std::{fmt::Display, str::FromStr, sync::Arc};
 
-use snops_common::node_targets::{NodeTarget, NodeTargets};
-
 use super::EventFilter;
 use crate::events::EventKindFilter;
+use crate::node_targets::{NodeTarget, NodeTargets};
 
 /* Example EventFilter string representation:
 

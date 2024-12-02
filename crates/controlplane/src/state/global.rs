@@ -7,6 +7,7 @@ use prometheus_http_query::Client as PrometheusClient;
 use serde::de::DeserializeOwned;
 use snops_common::{
     constant::ENV_AGENT_KEY,
+    events::Event,
     node_targets::NodeTargets,
     state::{
         AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, NodeType, StorageId,
@@ -372,5 +373,16 @@ impl<'a> GetGlobalState<'a> for &'a GlobalState {
 impl<'a> GetGlobalState<'a> for &'a Arc<GlobalState> {
     fn global_state(self) -> &'a GlobalState {
         self
+    }
+}
+
+pub trait EmitEvent {
+    fn emit<'a>(self, state: impl GetGlobalState<'a>);
+}
+
+impl EmitEvent for Event {
+    #[inline]
+    fn emit<'a>(self, state: impl GetGlobalState<'a>) {
+        state.global_state().events.emit(self);
     }
 }

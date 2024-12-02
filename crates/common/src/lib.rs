@@ -9,6 +9,7 @@ pub mod api;
 pub mod binaries;
 pub mod constant;
 pub mod db;
+pub mod events;
 pub mod format;
 pub mod key_source;
 pub mod node_targets;

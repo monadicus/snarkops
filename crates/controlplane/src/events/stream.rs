@@ -1,9 +1,8 @@
 use std::{sync::Arc, task::Poll};
 
 use futures_util::Stream;
+use snops_common::events::{Event, EventFilter};
 use tokio::sync::broadcast::{self, error::TryRecvError};
-
-use super::{Event, EventFilter};
 
 #[derive(Debug)]
 pub struct Events {

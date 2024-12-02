@@ -10,6 +10,7 @@ use serde_json::json;
 use snops_common::{
     action_models::{AleoValue, ExecuteAction},
     aot_cmds::{AotCmd, Authorization},
+    events::{Event, EventKind},
     state::KeyState,
 };
 use tokio::select;
@@ -18,7 +19,7 @@ use super::Env;
 use crate::{
     cannon::{error::AuthorizeError, router::AuthQuery},
     env::{error::ExecutionError, Environment},
-    events::{Event, EventKind, EventSubscriber},
+    events::EventSubscriber,
     server::error::{ActionError, ServerError},
     state::GlobalState,
 };
@@ -27,7 +28,7 @@ pub async fn execute_status(
     tx_id: Arc<String>,
     mut rx: EventSubscriber,
 ) -> Result<Json<serde_json::Value>, ActionError> {
-    use crate::events::TransactionEvent::*;
+    use snops_common::events::TransactionEvent::*;
 
     let mut timeout = Box::pin(tokio::time::sleep(std::time::Duration::from_secs(30)));
     let mut agent_id = None;
@@ -96,7 +97,7 @@ pub async fn execute(
 
     match execute_inner(&state, action, &env, query_addr).await {
         Ok(tx_id) => {
-            use crate::events::EventFilter::*;
+            use snops_common::events::EventFilter::*;
             let subscriber = state
                 .events
                 .subscribe_on(TransactionIs(tx_id.clone()) & EnvIs(env.id) & CannonIs(cannon_id));

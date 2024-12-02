@@ -2,15 +2,15 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::{TimeDelta, Utc};
 use futures_util::future;
-use snops_common::state::{CannonId, EnvId};
+use snops_common::{
+    events::{EventHelpers, TransactionEvent},
+    state::{CannonId, EnvId, TransactionSendState},
+};
 use tokio::time::timeout;
 use tracing::{info, trace};
 
-use super::GlobalState;
-use crate::{
-    cannon::{status::TransactionSendState, tracker::TransactionTracker},
-    events::{EventHelpers, TransactionEvent},
-};
+use super::{EmitEvent, GlobalState};
+use crate::cannon::tracker::TransactionTracker;
 
 /// This task re-sends all transactions that have not been confirmed,
 /// re-computes all transactions that have not been computed, and removes

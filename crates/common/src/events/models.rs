@@ -2,13 +2,15 @@ use std::{fmt::Display, str::FromStr, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use snops_common::{
+
+use crate::{
     aot_cmds::Authorization,
     rpc::error::ReconcileError,
-    state::{AgentId, EnvId, InternedId, LatestBlockInfo, NodeKey, NodeStatus, ReconcileStatus},
+    state::{
+        AgentId, EnvId, InternedId, LatestBlockInfo, NodeKey, NodeStatus, ReconcileStatus,
+        TransactionSendState,
+    },
 };
-
-use crate::{cannon::status::TransactionSendState, state::GetGlobalState};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Event {
@@ -218,10 +220,5 @@ impl Event {
             cannon: self.cannon,
             kind: kind.into().kind,
         }
-    }
-
-    #[inline]
-    pub fn emit<'a>(self, state: impl GetGlobalState<'a>) {
-        state.global_state().events.emit(self)
     }
 }
