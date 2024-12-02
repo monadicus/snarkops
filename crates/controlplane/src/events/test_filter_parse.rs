@@ -100,6 +100,14 @@ fn test_array() -> Result<(), EventFilterParseError> {
         ])
     );
 
+    eq!(
+        "node-target-is(client/any,validator/any)",
+        NodeTargetIs(NodeTargets::Many(vec![
+            "client/any".parse().unwrap(),
+            "validator/any".parse().unwrap(),
+        ]))
+    );
+
     Ok(())
 }
 
@@ -166,4 +174,30 @@ fn test_failed_agent_parse() {
         Err(EventFilterParseError::ParseError(EventFilterParsable::AgentId, e))
             if e.starts_with("invalid InternedId expected pattern")
     );
+}
+
+#[test]
+fn test_str() {
+    macro_rules! test {
+        ($s:expr) => {
+            assert_eq!($s.parse::<EventFilter>().unwrap().to_string(), $s);
+        };
+    }
+
+    test!("unfiltered");
+    test!("any-of(unfiltered)");
+    test!("all-of(unfiltered)");
+    test!("one-of(unfiltered)");
+    test!("not(unfiltered)");
+    test!("agent-is(default)");
+    test!("env-is(default)");
+    test!("transaction-is(foo)");
+    test!("cannon-is(default)");
+    test!("event-is(agent-connected)");
+    test!("node-key-is(client/foo)");
+    test!("node-target-is(client/any)");
+    test!("node-target-is(client/any, validator/any)");
+
+    test!("any-of(unfiltered, unfiltered)");
+    test!("any-of(agent-is(foo), cannon-is(bar))");
 }

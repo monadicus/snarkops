@@ -5,18 +5,15 @@ use snops_common::node_targets::{NodeTarget, NodeTargets};
 use super::EventFilter;
 use crate::events::EventKindFilter;
 
-/*
+/* Example EventFilter string representation:
 
-Example EventFilter string representation:
-
-unfiltered
-any-of(agent-connected, agent-disconnected)
-all-of(not(agent-is(foo-bar)), env-is(default))
-node-key-is(client/foo)
-node-target-is(client/test-*@*)
-node-target-is(client/any)
-not(unfiltered)
-
+    unfiltered
+    any-of(agent-connected, agent-disconnected)
+    all-of(not(agent-is(foo-bar)), env-is(default))
+    node-key-is(client/foo)
+    node-target-is(client/test-*@*)
+    node-target-is(client/any)
+    not(unfiltered)
 */
 
 #[derive(Debug, Copy, Clone)]
@@ -157,7 +154,7 @@ fn expect_token<'a, T>(
     matcher(token).ok_or_else(|| ExpectedToken(label, token.label().to_string()))
 }
 
-fn expect_parsed_text<T: FromStr>(
+fn expect_parsed<T: FromStr>(
     token: Option<Token>,
     label: EventFilterParsable,
 ) -> Result<T, EventFilterParseError>
@@ -191,7 +188,7 @@ impl<'a> FilterParser<'a> {
         self.tokens.next()
     }
 
-    fn expect_parens(
+    fn parens(
         &mut self,
         filter: impl Fn(&mut Self) -> Result<EventFilter, EventFilterParseError>,
     ) -> Result<EventFilter, EventFilterParseError> {
@@ -204,88 +201,77 @@ impl<'a> FilterParser<'a> {
     }
 
     fn expect_filter(&mut self) -> Result<EventFilter, EventFilterParseError> {
-        self.trim_whitespace();
+        use EventFilter::*;
         use EventFilterParsable as P;
-        use EventFilterParseError::*;
+        use EventFilterParseError::InvalidFilter;
+
+        self.trim_whitespace();
 
         let filter_name = expect_token(self.next(), P::FilterName, |token| token.text())?;
 
         match filter_name.trim() {
-            "unfiltered" => Ok(EventFilter::Unfiltered),
-            "any-of" => self.expect_parens(|t| t.expect_filter_vec().map(EventFilter::AnyOf)),
-            "all-of" => self.expect_parens(|t| t.expect_filter_vec().map(EventFilter::AllOf)),
-            "one-of" => self.expect_parens(|t| t.expect_filter_vec().map(EventFilter::OneOf)),
-            "not" => self.expect_parens(|t| Ok(EventFilter::Not(Box::new(t.expect_filter()?)))),
-            "agent-is" => self.expect_parens(|t| {
-                expect_parsed_text(t.next(), P::AgentId).map(EventFilter::AgentIs)
+            "unfiltered" => Ok(Unfiltered),
+            "any-of" => self.parens(|t| t.vec_of(|s| s.expect_filter()).map(AnyOf)),
+            "all-of" => self.parens(|t| t.vec_of(|s| s.expect_filter()).map(AllOf)),
+            "one-of" => self.parens(|t| t.vec_of(|s| s.expect_filter()).map(OneOf)),
+            "not" => self.parens(|t| Ok(Not(Box::new(t.expect_filter()?)))),
+
+            "agent-is" => self.parens(|t| expect_parsed(t.next(), P::AgentId).map(AgentIs)),
+            "env-is" => self.parens(|t| expect_parsed(t.next(), P::EnvId).map(EnvIs)),
+            "transaction-is" => self.parens(|t| {
+                expect_token(t.next(), P::TransactionId, |token| token.text())
+                    .map(|t| TransactionIs(Arc::new(t.to_string())))
             }),
-            "env-is" => self
-                .expect_parens(|t| expect_parsed_text(t.next(), P::EnvId).map(EventFilter::EnvIs)),
-            "transaction-is" => self.expect_parens(|t| {
-                Ok(EventFilter::TransactionIs(Arc::new(
-                    expect_token(t.next(), P::TransactionId, |token| token.text())?.to_string(),
-                )))
-            }),
-            "cannon-is" => self.expect_parens(|t| {
-                expect_parsed_text(t.next(), P::CannonId).map(EventFilter::CannonIs)
-            }),
-            "event-is" => self.expect_parens(|t| {
-                expect_parsed_text(t.next(), P::EventKind).map(EventFilter::EventIs)
-            }),
-            "node-key-is" => self.expect_parens(|t| {
-                expect_parsed_text(t.next(), P::NodeKey).map(EventFilter::NodeKeyIs)
-            }),
-            "node-target-is" => self.expect_parens(|t| {
-                expect_parsed_text::<NodeTarget>(t.next(), P::NodeTarget)
-                    .map(|t| EventFilter::NodeTargetIs(NodeTargets::One(t)))
+            "cannon-is" => self.parens(|t| expect_parsed(t.next(), P::CannonId).map(CannonIs)),
+            "event-is" => self.parens(|t| expect_parsed(t.next(), P::EventKind).map(EventIs)),
+            "node-key-is" => self.parens(|t| expect_parsed(t.next(), P::NodeKey).map(NodeKeyIs)),
+            "node-target-is" => self.parens(|t| {
+                t.vec_of(|t| expect_parsed::<NodeTarget>(t.next(), P::NodeTarget))
+                    .map(|v| NodeTargetIs(NodeTargets::from(v)))
             }),
 
             // Try to parse as an event kind filter as a fallback
             unknown => unknown
                 .parse::<EventKindFilter>()
-                .map(EventFilter::EventIs)
+                .map(EventIs)
                 .map_err(|_| InvalidFilter(unknown.to_string())),
         }
     }
 
-    fn expect_filter_vec(&mut self) -> Result<Vec<EventFilter>, EventFilterParseError> {
+    fn vec_of<T>(
+        &mut self,
+        matcher: impl Fn(&mut Self) -> Result<T, EventFilterParseError>,
+    ) -> Result<Vec<T>, EventFilterParseError> {
+        use EventFilterParsable::*;
+        use EventFilterParseError::ExpectedToken;
+
         self.trim_whitespace();
         let mut filters = Vec::new();
         loop {
             match self.tokens.peek() {
                 Some(Token::CloseParen) => break,
-                Some(_) => {
-                    filters.push(self.expect_filter()?);
-                    self.trim_whitespace();
+                None => return Err(ExpectedToken(CloseParen, "EOF".to_string())),
+                Some(_) => {}
+            }
 
-                    // Expect either a comma or a close paren
-                    match self.tokens.peek() {
-                        // This also supports trailing commas
-                        Some(Token::Comma) => {
-                            self.tokens.next();
-                            self.trim_whitespace();
-                        }
-                        Some(Token::CloseParen) => break,
-                        Some(_) => {
-                            return Err(EventFilterParseError::ExpectedToken(
-                                EventFilterParsable::CommaOrCloseParen,
-                                self.tokens.peek().unwrap().label().to_string(),
-                            ))
-                        }
-                        None => {
-                            return Err(EventFilterParseError::ExpectedToken(
-                                EventFilterParsable::CommaOrCloseParen,
-                                "EOF".to_string(),
-                            ))
-                        }
-                    }
+            filters.push(matcher(self)?);
+            self.trim_whitespace();
+
+            // Expect either a comma or a close paren
+            match self.tokens.peek() {
+                // This also supports trailing commas
+                Some(Token::Comma) => {
+                    self.tokens.next();
+                    self.trim_whitespace();
                 }
-                None => {
-                    return Err(EventFilterParseError::ExpectedToken(
-                        EventFilterParsable::CloseParen,
-                        "EOF".to_string(),
+                Some(Token::CloseParen) => break,
+                Some(_) => {
+                    return Err(ExpectedToken(
+                        CommaOrCloseParen,
+                        self.tokens.peek().unwrap().label().to_string(),
                     ))
                 }
+                None => return Err(ExpectedToken(CommaOrCloseParen, "EOF".to_string())),
             }
         }
         Ok(filters)

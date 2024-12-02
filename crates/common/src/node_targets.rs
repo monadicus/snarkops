@@ -135,13 +135,13 @@ impl fmt::Display for NodeTargets {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NodeTargets::None => write!(f, ""),
-            NodeTargets::One(target) => write!(f, "{}", target),
+            NodeTargets::One(target) => write!(f, "{target}"),
             NodeTargets::Many(targets) => {
                 let mut iter = targets.iter();
                 if let Some(target) = iter.next() {
-                    write!(f, "{}", target)?;
+                    write!(f, "{target}")?;
                     for target in iter {
-                        write!(f, ", {}", target)?;
+                        write!(f, ", {target}")?;
                     }
                 }
                 Ok(())
@@ -228,16 +228,16 @@ impl fmt::Display for NodeTarget {
             f,
             "{}/{}{}",
             match self.ty {
-                NodeTargetType::All => "*".to_owned(),
+                NodeTargetType::All => "any".to_owned(),
                 NodeTargetType::One(ty) => ty.to_string(),
             },
             match &self.id {
-                NodeTargetId::All => "*".to_owned(),
+                NodeTargetId::All => "any".to_owned(),
                 NodeTargetId::WildcardPattern(pattern) => pattern.to_string(),
                 NodeTargetId::Literal(id) => id.to_owned(),
             },
             match &self.ns {
-                NodeTargetNamespace::All => "@*".to_owned(),
+                NodeTargetNamespace::All => "@any".to_owned(),
                 NodeTargetNamespace::Local => "".to_owned(),
                 NodeTargetNamespace::Literal(ns) => format!("@{}", ns),
             }
