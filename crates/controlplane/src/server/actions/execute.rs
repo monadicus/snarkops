@@ -65,7 +65,7 @@ pub async fn execute_status(
                     ExecuteAwaitingCompute => {
                         retries += 1;
                     },
-                    ExecuteComplete(transaction) => {
+                    ExecuteComplete { transaction } => {
                         return Ok(Json(json!({
                             "agent_id": agent_id,
                             "retries": retries,

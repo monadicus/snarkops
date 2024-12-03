@@ -179,9 +179,11 @@ impl ExecutionContext {
         auth: Arc<Authorization>,
         query_path: &str,
     ) -> Result<(), (Arc<String>, CannonError)> {
-        TransactionEvent::AuthorizationReceived(Arc::clone(&auth))
-            .with_cannon_ctx(self, tx_id.clone())
-            .emit(self);
+        TransactionEvent::AuthorizationReceived {
+            authorization: Arc::clone(&auth),
+        }
+        .with_cannon_ctx(self, tx_id.clone())
+        .emit(self);
         match self
             .source
             .compute

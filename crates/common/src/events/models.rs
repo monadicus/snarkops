@@ -68,7 +68,7 @@ pub enum AgentEvent {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TransactionEvent {
     /// The authorization was inserted into the cannon
-    AuthorizationReceived(Arc<Authorization>),
+    AuthorizationReceived { authorization: Arc<Authorization> },
     /// The transaction execution was aborted
     ExecuteAborted(TransactionAbortReason),
     /// The transaction is awaiting compute resources
@@ -80,7 +80,7 @@ pub enum TransactionEvent {
     /// The transaction is currently executing
     Executing,
     /// The transaction execution is complete
-    ExecuteComplete(Arc<serde_json::Value>),
+    ExecuteComplete { transaction: Arc<serde_json::Value> },
     /// The transaction has been broadcasted
     Broadcasted {
         height: Option<u32>,
@@ -138,13 +138,13 @@ impl EventKind {
             Agent(ReconcileError(_)) => AgentReconcileError,
             Agent(NodeStatus(_)) => AgentNodeStatus,
             Agent(BlockInfo(_)) => AgentBlockInfo,
-            Transaction(AuthorizationReceived(_)) => TransactionAuthorizationReceived,
+            Transaction(AuthorizationReceived { .. }) => TransactionAuthorizationReceived,
             Transaction(ExecuteAborted(_)) => TransactionExecuteAborted,
             Transaction(ExecuteAwaitingCompute) => TransactionExecuteAwaitingCompute,
             Transaction(ExecuteExceeded { .. }) => TransactionExecuteExceeded,
             Transaction(ExecuteFailed(_)) => TransactionExecuteFailed,
             Transaction(Executing) => TransactionExecuting,
-            Transaction(ExecuteComplete(_)) => TransactionExecuteComplete,
+            Transaction(ExecuteComplete { .. }) => TransactionExecuteComplete,
             Transaction(Broadcasted { .. }) => TransactionBroadcasted,
             Transaction(BroadcastExceeded { .. }) => TransactionBroadcastExceeded,
             Transaction(Confirmed { .. }) => TransactionConfirmed,

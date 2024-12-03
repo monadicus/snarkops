@@ -243,10 +243,12 @@ impl ComputeTarget {
                     tx.status = TransactionSendState::Unsent;
                     tx.transaction = Some(Arc::clone(&transaction));
                 }
-                TransactionEvent::ExecuteComplete(Arc::clone(&transaction))
-                    .with_cannon_ctx(ctx, Arc::clone(tx_id))
-                    .with_agent_id(agent_id)
-                    .emit(ctx);
+                TransactionEvent::ExecuteComplete {
+                    transaction: Arc::clone(&transaction),
+                }
+                .with_cannon_ctx(ctx, Arc::clone(tx_id))
+                .with_agent_id(agent_id)
+                .emit(ctx);
 
                 Ok(())
             }
