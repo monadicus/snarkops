@@ -70,7 +70,6 @@ pub async fn agent_ws_handler(
     }
 
     ws.on_upgrade(|socket| handle_socket(socket, headers, state, query))
-        .into_response()
 }
 
 async fn handle_socket(

@@ -1,5 +1,7 @@
 use std::{fmt::Display, str::FromStr, sync::Arc};
 
+use serde::{Deserialize, Serialize, Serializer};
+
 use super::EventFilter;
 use crate::events::EventKindFilter;
 use crate::node_targets::{NodeTarget, NodeTargets};
@@ -301,5 +303,25 @@ impl FromStr for EventFilter {
         let filter = parser.expect_filter()?;
         parser.trailing_tokens()?;
         Ok(filter)
+    }
+}
+
+impl<'de> Deserialize<'de> for EventFilter {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for EventFilter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
     }
 }

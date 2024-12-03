@@ -137,7 +137,7 @@ impl Serialize for BinarySource {
 }
 
 impl<'de> Deserialize<'de> for BinarySource {
-    fn deserialize<D>(deserializer: D) -> Result<BinarySource, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {

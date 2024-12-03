@@ -9,18 +9,19 @@ use crate::{
 };
 
 pub mod actions;
+mod agent_ws;
 mod api;
 mod content;
 pub mod error;
+mod event_ws;
 pub mod jwt;
 pub mod models;
 pub mod prometheus;
 mod rpc;
-mod websocket;
 
 pub async fn start(state: Arc<GlobalState>, socket_addr: SocketAddr) -> Result<(), StartError> {
     let app = Router::new()
-        .route("/agent", get(websocket::agent_ws_handler))
+        .route("/agent", get(agent_ws::agent_ws_handler))
         .nest("/api/v1", api::routes())
         .nest("/prometheus", prometheus::routes())
         .nest("/content", content::init_routes(&state).await)

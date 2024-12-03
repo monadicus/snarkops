@@ -3,6 +3,7 @@ use std::{fmt::Display, str::FromStr, sync::Arc};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::EventFilter;
 use crate::{
     aot_cmds::Authorization,
     rpc::error::ReconcileError,
@@ -11,6 +12,13 @@ use crate::{
         TransactionSendState,
     },
 };
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum EventWsRequest {
+    Subscribe { id: u32, filter: EventFilter },
+    Unsubscribe { id: u32 },
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Event {

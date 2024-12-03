@@ -19,7 +19,7 @@ use snops_common::{
 };
 use tarpc::context;
 
-use super::{actions, error::ServerError, models::AgentStatusResponse};
+use super::{actions, error::ServerError, event_ws, models::AgentStatusResponse};
 use crate::{
     cannon::{router::redirect_cannon_routes, source::QueryTarget},
     make_env_filter,
@@ -42,6 +42,7 @@ macro_rules! unwrap_or_not_found {
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .route("/events", get(event_ws::event_ws_handler))
         .route("/log/:level", post(set_log_level))
         .route("/agents", get(get_agents))
         .route("/agents/:id", get(get_agent))
