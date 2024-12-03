@@ -16,6 +16,12 @@ anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 clap-stdin.workspace = true
+futures-util.workspace = true
+http.workspace = true
 reqwest = { workspace = true, features = ["blocking", "json"] }
+rustls.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 snops-common = { workspace = true, features = ["aot_cmds"] }
+tokio = { workspace = true, features = ["macros", "signal", "rt-multi-thread"] }
+tokio-tungstenite.workspace = true

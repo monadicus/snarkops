@@ -49,7 +49,7 @@ fn test_all_of() {
         env: Some(*B),
         transaction: None,
         cannon: None,
-        kind: Agent(Connected),
+        content: Agent(Connected),
     };
 
     assert!(e.matches(&(AgentConnected & AgentIs(*A))));
@@ -76,7 +76,7 @@ fn test_any_of() {
         env: Some(*B),
         transaction: None,
         cannon: None,
-        kind: Agent(Connected),
+        content: Agent(Connected),
     };
 
     assert!(e.matches(&(AgentConnected | AgentIs(*A))));
@@ -107,7 +107,7 @@ fn test_one_of() {
         env: Some(*B),
         transaction: None,
         cannon: None,
-        kind: Agent(Connected),
+        content: Agent(Connected),
     };
 
     assert!(e.matches(&(AgentConnected ^ AgentIs(*B))));

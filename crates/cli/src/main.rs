@@ -6,10 +6,16 @@ use clap::Parser;
 mod cli;
 pub(crate) use cli::*;
 
+mod events;
+
 mod commands;
 pub(crate) use commands::*;
 
 fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     let cli = cli::Cli::parse();
 
     if let Err(err) = cli.run() {

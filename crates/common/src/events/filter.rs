@@ -51,7 +51,7 @@ impl Event {
                 self.transaction.as_ref() == Some(transaction)
             }
             EventFilter::CannonIs(cannon) => self.cannon == Some(*cannon),
-            EventFilter::EventIs(kind) => self.kind.filter() == *kind,
+            EventFilter::EventIs(kind) => self.content.filter() == *kind,
             EventFilter::NodeKeyIs(node_key) => self.node_key.as_ref() == Some(node_key),
             EventFilter::NodeTargetIs(node_targets) => self
                 .node_key

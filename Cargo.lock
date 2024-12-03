@@ -4637,9 +4637,15 @@ dependencies = [
  "clap",
  "clap-stdin",
  "clap_complete",
+ "futures-util",
+ "http 1.1.0",
  "reqwest 0.12.8",
+ "rustls 0.23.15",
+ "serde",
  "serde_json",
  "snops-common",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

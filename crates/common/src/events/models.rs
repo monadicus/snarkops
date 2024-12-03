@@ -23,12 +23,17 @@ pub enum EventWsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Event {
     pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<AgentId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub node_key: Option<NodeKey>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<EnvId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction: Option<Arc<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cannon: Option<InternedId>,
-    pub kind: EventKind,
+    pub content: EventKind,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -206,7 +211,7 @@ impl Display for EventKindFilter {
 }
 
 impl Event {
-    pub fn new(kind: EventKind) -> Self {
+    pub fn new(content: EventKind) -> Self {
         Self {
             created_at: Utc::now(),
             agent: None,
@@ -214,11 +219,11 @@ impl Event {
             env: None,
             transaction: None,
             cannon: None,
-            kind,
+            content,
         }
     }
 
-    pub fn replace_kind(&self, kind: impl Into<Event>) -> Self {
+    pub fn replace_content(&self, content: impl Into<Event>) -> Self {
         Self {
             created_at: Utc::now(),
             agent: self.agent,
@@ -226,7 +231,7 @@ impl Event {
             env: self.env,
             transaction: self.transaction.clone(),
             cannon: self.cannon,
-            kind: kind.into().kind,
+            content: content.into().content,
         }
     }
 }

@@ -224,7 +224,7 @@ impl ControlService for ControlRpcServer {
         let ev = AgentEvent::ReconcileComplete.with_agent(&agent);
         let is_complete = status.as_ref().is_ok_and(|e| e.inner.is_some());
 
-        ev.replace_kind(match status {
+        ev.replace_content(match status {
             Ok(res) => AgentEvent::Reconcile(res),
             Err(err) => AgentEvent::ReconcileError(err),
         })

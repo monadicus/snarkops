@@ -40,7 +40,7 @@ pub async fn execute_status(
                 return Err(ActionError::ExecuteStatusTimeout { tx_id: tx_id.to_string(), agent_id, retries });
             },
             Ok(ev) = rx.next() => {
-                let Event{ kind: EventKind::Transaction(ev), agent, .. } = ev.as_ref() else {
+                let Event{ content: EventKind::Transaction(ev), agent, .. } = ev.as_ref() else {
                     continue;
                 };
 

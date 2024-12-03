@@ -1,8 +1,9 @@
 use anyhow::Result;
 use clap::{CommandFactory, Parser};
 use serde_json::Value;
+use snops_common::events::EventFilter;
 
-use crate::Cli;
+use crate::{events::EventsClient, Cli};
 
 /// The dummy value for the ids to hack around the missing required argument.
 pub(crate) static DUMMY_ID: &str = "dummy_value___";
@@ -25,6 +26,12 @@ pub enum Commands {
     SetLogLevel {
         level: String,
     },
+    /// Listen to events from the control plane, optionally filtered.
+    Events {
+        /// The event filter to apply, such as `agent-connected` or
+        /// `all-of(env-is(default),node-target-is(validator/any))`
+        filter: Option<EventFilter>,
+    },
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
     #[cfg(feature = "clipages")]
@@ -32,7 +39,8 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub fn run(self, url: &str) -> Result<()> {
+    #[tokio::main]
+    pub async fn run(self, url: &str) -> Result<()> {
         let client = reqwest::blocking::Client::new();
 
         let response = match self {
@@ -47,6 +55,20 @@ impl Commands {
             Commands::Env(env) => env.run(url, client),
             Commands::SetLogLevel { level } => {
                 client.post(format!("{url}/api/v1/log/{level}")).send()?;
+                return Ok(());
+            }
+            Commands::Events { filter } => {
+                let mut client = EventsClient::open_with_filter(url, filter).await?;
+                loop {
+                    tokio::select! {
+                        _ = tokio::signal::ctrl_c() => break,
+                        res = client.next() => {
+                            let event = res?;
+                            println!("{}", serde_json::to_string_pretty(&event)?);
+                        }
+                    }
+                }
+                client.close().await?;
                 return Ok(());
             }
             #[cfg(feature = "mangen")]
