@@ -34,7 +34,10 @@ impl EventsClient {
         };
 
         let req = Uri::from_str(&match filter {
-            Some(filter) => format!("{proto}://{hostname}/api/v1/events?filter={filter}"),
+            Some(filter) => format!(
+                "{proto}://{hostname}/api/v1/events?filter={}",
+                urlencoding::encode(&filter.to_string())
+            ),
             None => format!("{proto}://{hostname}/api/v1/events"),
         })
         .context("Invalid URI")?
@@ -104,9 +107,9 @@ impl EventsClient {
                 msg = self.stream.next() => {
                     match msg {
                         Some(Ok(tungstenite::Message::Text(text))) =>
-                        return serde_json::from_str(&text).context("Failed to parse event"),
+                        return serde_json::from_str(&text).with_context(|| format!("Failed to parse event: {text}")),
                         Some(Ok(tungstenite::Message::Binary(bin))) =>
-                        return serde_json::from_slice(&bin).context("Failed to parse event"),
+                        return serde_json::from_slice(&bin).with_context(|| format!("Failed to parse event: {}", String::from_utf8_lossy(&bin))),
                         None | Some(Err(_)) => bail!("Websocket closed"),
                         Some(Ok(_)) => continue,
 

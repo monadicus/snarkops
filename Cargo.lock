@@ -4646,6 +4646,7 @@ dependencies = [
  "snops-common",
  "tokio",
  "tokio-tungstenite",
+ "urlencoding",
 ]
 
 [[package]]
