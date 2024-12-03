@@ -102,7 +102,9 @@ impl<'a> Reconcile<(), ReconcileError> for BinaryReconciler<'a> {
                 trace!("binary is not OK, waiting for the endpoint to come back online...");
                 Ok(ReconcileStatus::empty()
                     .add_condition(ReconcileCondition::PendingConnection)
-                    .add_condition(ReconcileCondition::MissingFile(SNARKOS_FILE.to_string()))
+                    .add_condition(ReconcileCondition::MissingFile {
+                        path: SNARKOS_FILE.to_string(),
+                    })
                     .add_scope("binary/offline")
                     .requeue_after(Duration::from_secs(5)))
             }
@@ -181,9 +183,9 @@ impl<'a> Reconcile<(), ReconcileError> for GenesisReconciler<'a> {
                 trace!("genesis is not OK, waiting for the endpoint to come back online...");
                 Ok(ReconcileStatus::empty()
                     .add_condition(ReconcileCondition::PendingConnection)
-                    .add_condition(ReconcileCondition::MissingFile(
-                        SNARKOS_GENESIS_FILE.to_string(),
-                    ))
+                    .add_condition(ReconcileCondition::MissingFile {
+                        path: SNARKOS_GENESIS_FILE.to_string(),
+                    })
                     .add_scope("genesis/offline")
                     .requeue_after(Duration::from_secs(5)))
             }
@@ -403,10 +405,9 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
             trace!("Pending ledger modification to height {}", target_height.1);
 
             return Ok(ReconcileStatus::empty()
-                .add_condition(ReconcileCondition::PendingProcess(format!(
-                    "ledger modification to height {}",
-                    target_height.1
-                )))
+                .add_condition(ReconcileCondition::PendingProcess {
+                    process: format!("ledger modification to height {}", target_height.1),
+                })
                 .requeue_after(Duration::from_secs(5)));
         }
 
@@ -416,9 +417,9 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
             error!("modify handle missing for pending height");
             *self.pending_height = None;
             return Ok(ReconcileStatus::empty()
-                .add_condition(ReconcileCondition::InterruptedModify(String::from(
-                    "modify handle missing",
-                )))
+                .add_condition(ReconcileCondition::InterruptedModify {
+                    reason: String::from("modify handle missing"),
+                })
                 .requeue_after(Duration::from_secs(1)));
         };
 
@@ -426,10 +427,9 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
         let Ok(Some(handle)) = modify_handle.1.try_lock().map(|r| r.clone()) else {
             trace!("Waiting for modify handle to unlock...");
             return Ok(ReconcileStatus::empty()
-                .add_condition(ReconcileCondition::PendingProcess(format!(
-                    "ledger modification to height {}",
-                    target_height.1
-                )))
+                .add_condition(ReconcileCondition::PendingProcess {
+                    process: format!("ledger modification to height {}", target_height.1),
+                })
                 .requeue_after(Duration::from_secs(1)));
         };
 

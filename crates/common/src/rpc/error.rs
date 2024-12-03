@@ -124,6 +124,7 @@ pub enum ResolveError {
 }
 
 #[derive(Debug, Clone, Error, Serialize, Deserialize, AsRefStr)]
+#[serde(tag = "error", content = "message")]
 pub enum ReconcileError {
     #[error("node is not connected to the controlplane")]
     Offline,

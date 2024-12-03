@@ -118,7 +118,7 @@ pub async fn ws_connection(ws_req: Request, state: Arc<GlobalState>) {
                     error!("internal agent RPC channel closed");
                     break;
                 };
-                let bin = match bincode::serialize(&control::MuxedMessageOutgoing::Child(msg)) {
+                let bin = match snops_common::rpc::codec::encode(&control::MuxedMessageOutgoing::Child(msg)) {
                     Ok(bin) => bin,
                     Err(e) => {
                         error!("failed to serialize response: {e}");
@@ -139,7 +139,7 @@ pub async fn ws_connection(ws_req: Request, state: Arc<GlobalState>) {
                     error!("internal agent RPC channel closed");
                     break;
                 };
-                let bin = match bincode::serialize(&control::MuxedMessageOutgoing::Parent(msg)) {
+                let bin = match snops_common::rpc::codec::encode(&control::MuxedMessageOutgoing::Parent(msg)) {
                     Ok(bin) => bin,
                     Err(e) => {
                         error!("failed to serialize request: {e}");
@@ -193,7 +193,7 @@ pub async fn ws_connection(ws_req: Request, state: Arc<GlobalState>) {
                 }
 
                 Some(Ok(tungstenite::Message::Binary(bin))) => {
-                    let msg = match bincode::deserialize(&bin) {
+                    let msg = match snops_common::rpc::codec::decode(&bin) {
                         Ok(msg) => msg,
                         Err(e) => {
                             error!("failed to deserialize a message from the control plane: {e}");

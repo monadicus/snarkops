@@ -139,10 +139,10 @@ impl Reconcile<bool, ReconcileError> for FileReconciler {
 
                 if entry.is_pending() {
                     return Ok(ReconcileStatus::empty()
-                        .add_condition(ReconcileCondition::PendingTransfer(
-                            self.src.to_string(),
-                            tx_id,
-                        ))
+                        .add_condition(ReconcileCondition::PendingTransfer {
+                            source: self.src.to_string(),
+                            id: tx_id,
+                        })
                         .requeue_after(Duration::from_secs(1)));
                 }
 
@@ -152,11 +152,11 @@ impl Reconcile<bool, ReconcileError> for FileReconciler {
                         < TimeDelta::seconds(60)
                     {
                         return Ok(ReconcileStatus::empty()
-                            .add_condition(ReconcileCondition::InterruptedTransfer(
-                                self.src.to_string(),
-                                tx_id,
-                                entry.interruption.clone().unwrap_or_default(),
-                            ))
+                            .add_condition(ReconcileCondition::InterruptedTransfer {
+                                source: self.src.to_string(),
+                                id: tx_id,
+                                reason: entry.interruption.clone(),
+                            })
                             .requeue_after(Duration::from_secs(60)));
                     }
 
@@ -194,9 +194,9 @@ impl Reconcile<bool, ReconcileError> for FileReconciler {
             );
 
             return Ok(ReconcileStatus::empty()
-                .add_condition(ReconcileCondition::MissingFile(
-                    self.dst.display().to_string(),
-                ))
+                .add_condition(ReconcileCondition::MissingFile {
+                    path: self.dst.display().to_string(),
+                })
                 .requeue_after(Duration::from_secs(1)));
         }
 
@@ -218,7 +218,9 @@ impl Reconcile<bool, ReconcileError> for FileReconciler {
             self.tx_id = None;
 
             return Ok(ReconcileStatus::empty()
-                .add_condition(ReconcileCondition::MissingFile(self.src.to_string()))
+                .add_condition(ReconcileCondition::MissingFile {
+                    path: self.dst.display().to_string(),
+                })
                 .requeue_after(Duration::from_secs(1)));
         }
 
@@ -266,10 +268,10 @@ impl Reconcile<bool, ReconcileError> for FileReconciler {
 
         // transfer is pending - requeue after 1 second with the pending condition
         Ok(ReconcileStatus::empty()
-            .add_condition(ReconcileCondition::PendingTransfer(
-                self.src.to_string(),
-                tx_id,
-            ))
+            .add_condition(ReconcileCondition::PendingTransfer {
+                source: self.src.to_string(),
+                id: tx_id,
+            })
             .requeue_after(Duration::from_secs(1)))
     }
 }

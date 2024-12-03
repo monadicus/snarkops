@@ -5,11 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use super::EventFilter;
 use crate::{
-    aot_cmds::Authorization,
     rpc::error::ReconcileError,
     state::{
-        AgentId, EnvId, InternedId, LatestBlockInfo, NodeKey, NodeStatus, ReconcileStatus,
-        TransactionSendState,
+        AgentId, Authorization, EnvId, InternedId, LatestBlockInfo, NodeKey, NodeStatus,
+        ReconcileStatus, TransactionSendState,
     },
 };
 
@@ -23,28 +22,29 @@ pub enum EventWsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Event {
     pub created_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<AgentId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub node_key: Option<NodeKey>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub env: Option<EnvId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transaction: Option<Arc<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cannon: Option<InternedId>,
+    #[serde(flatten)]
     pub content: EventKind,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "event_kind", rename_all = "snake_case")]
 pub enum EventKind {
     Agent(AgentEvent),
     Transaction(TransactionEvent),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "event_name", content = "data", rename_all = "snake_case")]
 pub enum AgentEvent {
     /// An agent connects to the control plane
     Connected,
@@ -65,7 +65,7 @@ pub enum AgentEvent {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "event_name", content = "data", rename_all = "snake_case")]
 pub enum TransactionEvent {
     /// The authorization was inserted into the cannon
     AuthorizationReceived { authorization: Arc<Authorization> },
@@ -96,7 +96,9 @@ pub enum TransactionEvent {
 #[serde(tag = "reason", rename_all = "snake_case")]
 pub enum TransactionAbortReason {
     MissingTracker,
-    UnexpectedStatus(TransactionSendState),
+    UnexpectedStatus {
+        transaction_status: TransactionSendState,
+    },
     MissingAuthorization,
 }
 

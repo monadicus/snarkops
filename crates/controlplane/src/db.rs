@@ -1,10 +1,9 @@
 use std::{path::Path, sync::Arc};
 
 use snops_common::{
-    aot_cmds::Authorization,
     db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
     format::PackedUint,
-    state::{AgentId, CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
+    state::{AgentId, Authorization, CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
 };
 
 use crate::{

@@ -4582,7 +4582,6 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
- "bincode",
  "bytes",
  "chrono",
  "clap",
@@ -4654,7 +4653,6 @@ name = "snops-common"
 version = "0.2.0"
 dependencies = [
  "anyhow",
- "bincode",
  "bytes",
  "chrono",
  "clap",

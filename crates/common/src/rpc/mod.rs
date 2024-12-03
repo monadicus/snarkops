@@ -22,6 +22,7 @@ use tarpc::transport::channel::ChannelError;
 use tokio::sync::mpsc;
 
 pub mod agent;
+pub mod codec;
 pub mod control;
 pub mod error;
 

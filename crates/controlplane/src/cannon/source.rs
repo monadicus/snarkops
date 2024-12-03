@@ -4,10 +4,8 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use snops_common::events::{EventHelpers, TransactionEvent};
-use snops_common::state::TransactionSendState;
-use snops_common::{
-    aot_cmds::Authorization, lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN,
-};
+use snops_common::state::{Authorization, TransactionSendState};
+use snops_common::{lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN};
 use tracing::error;
 
 use super::context::CtxEventHelper;
@@ -32,7 +30,7 @@ pub struct LocalService {
     /// if the node is out of sync, it will corrupt the ledger...
     ///
     /// requires cannon to have an associated env_id
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sync_from: Option<NodeTargets>,
 }
 

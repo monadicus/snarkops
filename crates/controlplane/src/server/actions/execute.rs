@@ -9,9 +9,9 @@ use http::StatusCode;
 use serde_json::json;
 use snops_common::{
     action_models::{AleoValue, ExecuteAction},
-    aot_cmds::{AotCmd, Authorization},
+    aot_cmds::AotCmd,
     events::{Event, EventKind},
-    state::KeyState,
+    state::{Authorization, KeyState},
 };
 use tokio::select;
 

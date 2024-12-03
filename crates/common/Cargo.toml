@@ -13,7 +13,6 @@ mangen = ["anyhow", "clap_mangen"]
 
 [dependencies]
 anyhow = { workspace = true, optional = true }
-bincode.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
@@ -25,8 +24,8 @@ indexmap = { workspace = true, features = ["std", "serde"] }
 lasso.workspace = true
 lazy_static.workspace = true
 paste.workspace = true
-regex.workspace = true
 rand.workspace = true
+regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

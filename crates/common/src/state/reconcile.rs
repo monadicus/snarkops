@@ -26,18 +26,24 @@ impl ReconcileOptions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(tag = "condition", rename_all = "snake_case")]
 pub enum ReconcileCondition {
     /// A file is being transferred.
-    PendingTransfer(String, TransferId),
+    PendingTransfer { source: String, id: TransferId },
     /// A process is being spawned / confirmed. Could be starting the node or
     /// manipulating the ledger
-    PendingProcess(String),
+    PendingProcess { process: String },
     /// A tranfer was started and interrupted.
-    InterruptedTransfer(String, TransferId, String),
+    InterruptedTransfer {
+        source: String,
+        id: TransferId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
     /// A modify operation was started and interrupted.
-    InterruptedModify(String),
+    InterruptedModify { reason: String },
     /// A file is missing and cannot be downloaded at the moment.
-    MissingFile(String),
+    MissingFile { path: String },
     /// Waiting to reconnect to the controlplane
     PendingConnection,
     /// Waiting for the node to be shut down
@@ -48,10 +54,24 @@ pub enum ReconcileCondition {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReconcileStatus<T> {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inner: Option<T>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requeue_after: Option<Duration>,
+    #[serde(default, skip_serializing_if = "IndexSet::is_empty")]
     pub conditions: IndexSet<ReconcileCondition>,
+}
+
+impl<T: Eq> Eq for ReconcileStatus<T> {}
+impl<T: PartialEq> PartialEq for ReconcileStatus<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+            && self.conditions == other.conditions
+            && self.scopes == other.scopes
+            && self.requeue_after == other.requeue_after
+    }
 }
 
 impl<T: Default> Default for ReconcileStatus<T> {

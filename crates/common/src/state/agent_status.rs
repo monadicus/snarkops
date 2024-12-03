@@ -9,6 +9,7 @@ use super::{snarkos_status::SnarkOSStatus, ReconcileStatus};
 use crate::{format::DataFormat, rpc::error::ReconcileError};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "status")]
 pub enum NodeStatus {
     /// The last known status of the node is unknown
     #[default]
@@ -18,7 +19,7 @@ pub enum NodeStatus {
     /// The node waiting on other tasks to complete before starting
     PendingStart,
     /// The node is running
-    Running(SnarkOSStatus),
+    Running { running_status: SnarkOSStatus },
     /// The node has exited with a status code
     Exited(u8),
     /// The node was online and is in the process of shutting down
@@ -30,7 +31,9 @@ pub enum NodeStatus {
 
 impl From<SnarkOSStatus> for NodeStatus {
     fn from(status: SnarkOSStatus) -> Self {
-        NodeStatus::Running(status)
+        NodeStatus::Running {
+            running_status: status,
+        }
     }
 }
 

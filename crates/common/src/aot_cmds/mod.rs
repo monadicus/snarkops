@@ -5,15 +5,13 @@ use tokio::{
     process::{Child, Command},
 };
 
-mod authorization;
 pub mod error;
-pub use authorization::*;
 pub use error::AotCmdError;
 
 use self::error::CommandError;
 use crate::{
     constant::{LEDGER_BASE_DIR, SNARKOS_GENESIS_FILE},
-    state::NetworkId,
+    state::{Authorization, NetworkId},
 };
 
 pub struct AotCmd {

@@ -5,9 +5,8 @@ use dashmap::DashMap;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use lazysort::SortedBy;
 use snops_common::{
-    aot_cmds::Authorization,
     events::{Event, TransactionAbortReason, TransactionEvent},
-    state::{AgentId, CannonId, EnvId, NetworkId, TransactionSendState},
+    state::{AgentId, Authorization, CannonId, EnvId, NetworkId, TransactionSendState},
 };
 use tracing::{error, trace, warn};
 
@@ -104,7 +103,7 @@ impl ExecutionContext {
                     if tracker.status != TransactionSendState::Authorized {
                         error!("cannon {env_id}.{cannon_id} unexpected status for {tx_id}: {:?}", tracker.status);
                         // TODO: remove this auth and log it somewhere
-                        TransactionEvent::ExecuteAborted(TransactionAbortReason::UnexpectedStatus(tracker.status)).with_cannon_ctx(&self, tx_id).emit(&self);
+                        TransactionEvent::ExecuteAborted(TransactionAbortReason::UnexpectedStatus{ transaction_status: tracker.status}).with_cannon_ctx(&self, tx_id).emit(&self);
                         continue;
                     }
                     // ensure the transaction has an authorization (more than likely unreachable)

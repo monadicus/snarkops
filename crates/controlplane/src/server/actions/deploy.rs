@@ -8,8 +8,8 @@ use axum::{
 use http::StatusCode;
 use snops_common::{
     action_models::DeployAction,
-    aot_cmds::{AotCmd, Authorization},
-    state::KeyState,
+    aot_cmds::AotCmd,
+    state::{Authorization, KeyState},
 };
 
 use super::{execute::execute_status, Env};

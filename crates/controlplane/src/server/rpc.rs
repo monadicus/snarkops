@@ -202,6 +202,11 @@ impl ControlService for ControlRpcServer {
             return;
         };
 
+        // Prevent redundant events
+        if agent.status.node_status == status {
+            return;
+        }
+
         agent.status.node_status = status.clone();
         AgentEvent::NodeStatus(status)
             .with_agent(&agent)
@@ -217,7 +222,18 @@ impl ControlService for ControlRpcServer {
             return;
         };
 
+        let changed = match (agent.status.reconcile.as_ref(), status.as_ref()) {
+            (Some((_, Ok(old))), Ok(new)) => old != new,
+            (Some((_, Err(old))), Err(err)) => old.to_string() != err.to_string(),
+            _ => true,
+        };
+
         agent.status.reconcile = Some((Instant::now(), status.clone()));
+
+        // Prevent redundant events
+        if !changed {
+            return;
+        }
 
         // Emit events for this reconcile
 

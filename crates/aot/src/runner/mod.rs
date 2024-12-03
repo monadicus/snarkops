@@ -226,6 +226,8 @@ impl<N: Network> Runner<N> {
             .map_err(|e| e.context("create client"))?,
         };
 
+        agent.status(SnarkOSStatus::Started);
+
         // only monitor block updates if we have a checkpoint manager or agent status
         // API
         if manager.is_some() || agent.is_enabled() {

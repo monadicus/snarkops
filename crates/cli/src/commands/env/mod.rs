@@ -6,9 +6,8 @@ use clap_stdin::FileOrStdin;
 use reqwest::blocking::{Client, Response};
 use snops_common::{
     action_models::AleoValue,
-    aot_cmds::Authorization,
     key_source::KeySource,
-    state::{CannonId, InternedId, NodeKey},
+    state::{Authorization, CannonId, InternedId, NodeKey},
 };
 
 mod action;

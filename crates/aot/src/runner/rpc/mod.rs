@@ -114,7 +114,7 @@ impl<N: Network> RpcClient<N> {
                                 error!("internal RPC channel closed");
                                 break 'event;
                             };
-                            let bin = bincode::serialize(&MuxedMessageOutgoing::Child(msg)).expect("failed to serialize response");
+                            let bin = snops_common::rpc::codec::encode(&MuxedMessageOutgoing::Child(msg)).expect("failed to serialize response");
                             let send = ws_stream.send(tungstenite::Message::Binary(bin));
                             if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
                                 error!("The connection to the agent was interrupted while sending node message");
@@ -128,7 +128,7 @@ impl<N: Network> RpcClient<N> {
                                 error!("internal RPC channel closed");
                                 break 'event;
                             };
-                            let bin = bincode::serialize(&MuxedMessageOutgoing::Parent(msg)).expect("failed to serialize request");
+                            let bin = snops_common::rpc::codec::encode(&MuxedMessageOutgoing::Parent(msg)).expect("failed to serialize request");
                             let send = ws_stream.send(tungstenite::Message::Binary(bin));
                             if tokio::time::timeout(Duration::from_secs(10), send).await.is_err() {
                                 error!("The connection to the agent was interrupted while sending node message");
@@ -174,7 +174,7 @@ impl<N: Network> RpcClient<N> {
                             }
 
                             Some(Ok(tungstenite::Message::Binary(bin))) => {
-                                let msg = match bincode::deserialize(&bin) {
+                                let msg = match snops_common::rpc::codec::decode(&bin) {
                                     Ok(msg) => msg,
                                     Err(e) => {
                                         error!("failed to deserialize a message from the agent: {e}");

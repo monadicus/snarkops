@@ -299,7 +299,7 @@ async fn handle_socket(
                     }
                     None => break,
                     Some(Ok(Message::Binary(bin))) => {
-                        let msg = match bincode::deserialize(&bin) {
+                        let msg = match snops_common::rpc::codec::decode(&bin) {
                             Ok(msg) => msg,
                             Err(e) => {
                                 error!("Agent {id} failed to deserialize a message: {e}");
@@ -332,7 +332,7 @@ async fn handle_socket(
                     error!("Agent {id} internal RPC channel closed");
                     break;
                 };
-                let bin = match bincode::serialize(&MuxedMessageOutgoing::Child(msg)) {
+                let bin = match snops_common::rpc::codec::encode(&MuxedMessageOutgoing::Child(msg)) {
                     Ok(bin) => bin,
                     Err(e) => {
                         error!("Agent {id} failed to serialize request: {e}");
@@ -351,7 +351,7 @@ async fn handle_socket(
                     error!("Agent {id} internal RPC channel closed");
                     break;
                 };
-                let bin = match bincode::serialize(&MuxedMessageOutgoing::Parent(msg)) {
+                let bin = match snops_common::rpc::codec::encode(&MuxedMessageOutgoing::Parent(msg)) {
                     Ok(bin) => bin,
                     Err(e) => {
                         error!("Agent {id} failed to serialize response: {e}");

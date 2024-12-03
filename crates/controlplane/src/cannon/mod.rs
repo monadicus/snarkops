@@ -18,9 +18,9 @@ use std::{
 use context::ExecutionContext;
 use dashmap::DashMap;
 use snops_common::{
-    aot_cmds::{AotCmd, Authorization},
+    aot_cmds::AotCmd,
     format::PackedUint,
-    state::{CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
+    state::{Authorization, CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
 };
 use tokio::{
     sync::{

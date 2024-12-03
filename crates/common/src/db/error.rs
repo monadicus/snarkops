@@ -8,10 +8,6 @@ pub enum DatabaseError {
     DeleteError(String, String, sled::Error),
     #[error("save error key {0} in {1}: {2}")]
     SaveError(String, String, sled::Error),
-    #[error("deserialize value {0} in {1}: {2}")]
-    DeserializeError(String, String, bincode::Error),
-    #[error("serialize value {0} in {1}: {2}")]
-    SerializeError(String, String, bincode::Error),
     #[error("missing key {0} in {1}")]
     MissingKey(String, String),
     #[error("unknown document version {2} for: {1} in {0}")]
