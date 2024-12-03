@@ -26,7 +26,7 @@ impl ReconcileOptions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(tag = "condition", rename_all = "snake_case")]
+#[serde(tag = "name", rename_all = "snake_case")]
 pub enum ReconcileCondition {
     /// A file is being transferred.
     PendingTransfer { source: String, id: TransferId },
@@ -58,10 +58,33 @@ pub struct ReconcileStatus<T> {
     pub scopes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inner: Option<T>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_duration_as_secs",
+        deserialize_with = "deser_duration_from_secs"
+    )]
     pub requeue_after: Option<Duration>,
     #[serde(default, skip_serializing_if = "IndexSet::is_empty")]
     pub conditions: IndexSet<ReconcileCondition>,
+}
+
+fn ser_duration_as_secs<S>(duration: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match duration {
+        Some(duration) => serializer.serialize_some(&duration.as_secs()),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn deser_duration_from_secs<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let secs = Option::deserialize(deserializer)?;
+    Ok(secs.map(Duration::from_secs))
 }
 
 impl<T: Eq> Eq for ReconcileStatus<T> {}
