@@ -218,14 +218,19 @@ impl<'a> FilterParser<'a> {
             "not" => self.parens(|t| Ok(Not(Box::new(t.expect_filter()?)))),
 
             "agent-is" => self.parens(|t| expect_parsed(t.next(), P::AgentId).map(AgentIs)),
+            "has-agent" => Ok(HasAgent),
             "env-is" => self.parens(|t| expect_parsed(t.next(), P::EnvId).map(EnvIs)),
+            "has-env" => Ok(HasEnv),
             "transaction-is" => self.parens(|t| {
                 expect_token(t.next(), P::TransactionId, |token| token.text())
                     .map(|t| TransactionIs(Arc::new(t.to_string())))
             }),
+            "has-transaction" => Ok(HasTransaction),
             "cannon-is" => self.parens(|t| expect_parsed(t.next(), P::CannonId).map(CannonIs)),
+            "has-cannon" => Ok(HasCannon),
             "event-is" => self.parens(|t| expect_parsed(t.next(), P::EventKind).map(EventIs)),
             "node-key-is" => self.parens(|t| expect_parsed(t.next(), P::NodeKey).map(NodeKeyIs)),
+            "has-node-key" => Ok(HasNodeKey),
             "node-target-is" => self.parens(|t| {
                 t.vec_of(|t| expect_parsed::<NodeTarget>(t.next(), P::NodeTarget))
                     .map(|v| NodeTargetIs(NodeTargets::from(v)))
