@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use action::post_and_wait_tx;
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use clap_stdin::FileOrStdin;
@@ -160,7 +161,12 @@ impl Env {
                     req = req.query(&[("async", "true")]);
                 }
 
-                req.send()?
+                if async_mode {
+                    req.send()?
+                } else {
+                    post_and_wait_tx(url, req).await?;
+                    std::process::exit(0);
+                }
             }
             Balance { address: key } => {
                 let ep = format!("{url}/api/v1/env/{id}/balance/{key}");

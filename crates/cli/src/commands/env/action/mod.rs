@@ -1,12 +1,14 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use anyhow::Result;
 use clap::Parser;
 use clap_stdin::FileOrStdin;
-use reqwest::blocking::{Client, Response};
+use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde_json::json;
+use snops_cli::events::EventsClient;
 use snops_common::{
     action_models::{AleoValue, WithTargets},
+    events::{Event, EventKind, TransactionEvent},
     key_source::KeySource,
     node_targets::{NodeTarget, NodeTargetError, NodeTargets},
     state::{CannonId, DocHeightRequest, EnvId, InternedId},
@@ -267,12 +269,13 @@ impl Action {
                     json["program"] = program.into();
                 }
 
-                let mut builder = client.post(ep);
+                let req = client.post(ep).query(&[("async", "true")]).json(&json);
                 if async_mode {
-                    let query = [("async", "true")];
-                    builder = builder.query(&query);
+                    req.send()?
+                } else {
+                    post_and_wait_tx(url, req).await?;
+                    std::process::exit(0);
                 }
-                builder.json(&json).send()?
             }
             Deploy {
                 private_key,
@@ -305,12 +308,13 @@ impl Action {
                     json["fee_record"] = fee_record.into();
                 }
 
-                let mut builder = client.post(ep);
+                let req = client.post(ep).query(&[("async", "true")]).json(&json);
                 if async_mode {
-                    let query = [("async", "true")];
-                    builder = builder.query(&query);
+                    req.send()?
+                } else {
+                    post_and_wait_tx(url, req).await?;
+                    std::process::exit(0);
                 }
-                builder.json(&json).send()?
             }
             Config {
                 online,
@@ -370,4 +374,91 @@ impl Action {
             }
         })
     }
+}
+
+pub async fn post_and_wait_tx(url: &str, req: RequestBuilder) -> Result<()> {
+    use snops_common::events::EventFilter::*;
+
+    let tx_id: String = req.send()?.json()?;
+
+    let mut events = EventsClient::open_with_filter(url, TransactionIs(Arc::new(tx_id))).await?;
+
+    let mut tx = None;
+    let mut block_hash = None;
+    let mut broadcast_height = None;
+    let mut broadcast_time = None;
+
+    while let Some(event) = events.next().await? {
+        let Event {
+            content: EventKind::Transaction(e),
+            agent,
+            ..
+        } = event
+        else {
+            continue;
+        };
+
+        match e {
+            TransactionEvent::AuthorizationReceived { .. } => {
+                // ignore output of this event
+            }
+            TransactionEvent::Executing => {
+                eprintln!(
+                    "executing on {}",
+                    agent
+                        .map(|a| a.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                );
+            }
+            TransactionEvent::ExecuteAwaitingCompute => {
+                eprintln!("waiting for compute...",);
+            }
+            TransactionEvent::ExecuteExceeded { attempts } => {
+                eprintln!("execution failed after {attempts} attempts");
+                break;
+            }
+            TransactionEvent::ExecuteFailed(reason) => {
+                eprintln!("execution failed: {reason}");
+            }
+            TransactionEvent::ExecuteAborted(reason) => {
+                eprintln!(
+                    "execution aborted: {}",
+                    serde_json::to_string_pretty(&reason)?
+                );
+            }
+            TransactionEvent::ExecuteComplete { transaction } => {
+                eprintln!("execution complete");
+                tx = Some(transaction);
+            }
+            TransactionEvent::BroadcastExceeded { attempts } => {
+                eprintln!("broadcast failed after {attempts} attempts");
+                break;
+            }
+            TransactionEvent::Broadcasted { height, timestamp } => {
+                eprintln!(
+                    "broadcasted at height {} at {timestamp}",
+                    height
+                        .map(|h| h.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                );
+                broadcast_height = height;
+                broadcast_time = Some(timestamp);
+            }
+            TransactionEvent::Confirmed { hash } => {
+                eprintln!("confirmed with hash {hash}");
+                block_hash = Some(hash);
+                break;
+            }
+        }
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "transaction": tx,
+            "broadcast_height": broadcast_height,
+            "broadcast_time": broadcast_time,
+            "block_hash": block_hash,
+        }))?
+    );
+    events.close().await
 }
