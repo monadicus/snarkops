@@ -176,8 +176,11 @@ impl AgentStateReconciler {
 
             trace!("Reconciling agent state...");
             let res = self.reconcile().await;
+
+            // If this reconcile was triggered by a reconcile request, post the status
             if let Some(client) = self.state.get_ws_client().await {
-                let res = res.clone();
+                let res = res.clone().map(|s| s.replace_inner(self.is_node_running()));
+
                 // TODO: throttle this broadcast
                 tokio::spawn(async move {
                     if let Err(e) = client.post_reconcile_status(context::current(), res).await {
@@ -185,6 +188,7 @@ impl AgentStateReconciler {
                     }
                 });
             }
+
             match res {
                 Ok(status) => {
                     if status.inner.is_some() {
@@ -244,6 +248,13 @@ impl AgentStateReconciler {
 
     pub fn has_process(&self) -> bool {
         self.context.process.is_some()
+    }
+
+    pub fn is_node_running(&mut self) -> bool {
+        self.context
+            .process
+            .as_mut()
+            .is_some_and(|p| p.is_running())
     }
 
     pub fn is_shutdown_pending(&self, node: &NodeState, env_info: &AgentEnvInfo) -> bool {

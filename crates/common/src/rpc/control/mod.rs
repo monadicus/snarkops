@@ -37,5 +37,5 @@ pub trait ControlService {
     async fn post_node_status(update: NodeStatus);
 
     /// Emit an agent reconcile status update.
-    async fn post_reconcile_status(status: Result<ReconcileStatus<()>, ReconcileError>);
+    async fn post_reconcile_status(status: Result<ReconcileStatus<bool>, ReconcileError>);
 }

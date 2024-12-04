@@ -125,6 +125,15 @@ impl<T> ReconcileStatus<T> {
         self.requeue_after.is_some()
     }
 
+    pub fn replace_inner<U>(self, inner: U) -> ReconcileStatus<U> {
+        ReconcileStatus {
+            inner: Some(inner),
+            scopes: self.scopes,
+            requeue_after: self.requeue_after,
+            conditions: self.conditions,
+        }
+    }
+
     pub fn emptied<U>(&self) -> ReconcileStatus<U> {
         ReconcileStatus {
             inner: None,

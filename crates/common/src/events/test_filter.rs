@@ -20,7 +20,11 @@ lazy_static! {
 
 #[test]
 fn test_unfiltered() {
-    assert!(Connected.event().matches(&Unfiltered));
+    assert!(Connected {
+        version: "0.0.0".to_string()
+    }
+    .event()
+    .matches(&Unfiltered));
     assert!(HandshakeComplete.event().matches(&Unfiltered));
     assert!(Disconnected.event().matches(&Unfiltered));
     assert!(ReconcileComplete.event().matches(&Unfiltered));
@@ -38,9 +42,11 @@ fn test_unfiltered() {
 
 #[test]
 fn test_all_of() {
-    assert!(Connected
-        .event()
-        .matches(&AllOf(vec![EventIs(AgentConnected)])));
+    assert!(Connected {
+        version: "0.0.0".to_string()
+    }
+    .event()
+    .matches(&AllOf(vec![EventIs(AgentConnected)])));
 
     let e = Event {
         created_at: Utc::now(),
@@ -49,7 +55,9 @@ fn test_all_of() {
         env: Some(*B),
         transaction: None,
         cannon: None,
-        content: Agent(Connected),
+        content: Agent(Connected {
+            version: "0.0.0".to_string(),
+        }),
     };
 
     assert!(e.matches(&(AgentConnected & AgentIs(*A))));
@@ -65,9 +73,11 @@ fn test_all_of() {
 
 #[test]
 fn test_any_of() {
-    assert!(Connected
-        .event()
-        .matches(&AnyOf(vec![EventIs(AgentConnected)])));
+    assert!(Connected {
+        version: "0.0.0".to_string()
+    }
+    .event()
+    .matches(&AnyOf(vec![EventIs(AgentConnected)])));
 
     let e = Event {
         created_at: Utc::now(),
@@ -76,7 +86,9 @@ fn test_any_of() {
         env: Some(*B),
         transaction: None,
         cannon: None,
-        content: Agent(Connected),
+        content: Agent(Connected {
+            version: "0.0.0".to_string(),
+        }),
     };
 
     assert!(e.matches(&(AgentConnected | AgentIs(*A))));
@@ -96,9 +108,11 @@ fn test_any_of() {
 
 #[test]
 fn test_one_of() {
-    assert!(Connected
-        .event()
-        .matches(&OneOf(vec![EventIs(AgentConnected)])));
+    assert!(Connected {
+        version: "0.0.0".to_string()
+    }
+    .event()
+    .matches(&OneOf(vec![EventIs(AgentConnected)])));
 
     let e = Event {
         created_at: Utc::now(),
@@ -107,7 +121,9 @@ fn test_one_of() {
         env: Some(*B),
         transaction: None,
         cannon: None,
-        content: Agent(Connected),
+        content: Agent(Connected {
+            version: "0.0.0".to_string(),
+        }),
     };
 
     assert!(e.matches(&(AgentConnected ^ AgentIs(*B))));

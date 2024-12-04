@@ -216,29 +216,20 @@ impl ControlService for ControlRpcServer {
     async fn post_reconcile_status(
         self,
         _: context::Context,
-        status: Result<ReconcileStatus<()>, ReconcileError>,
+        status: Result<ReconcileStatus<bool>, ReconcileError>,
     ) {
         let Some(mut agent) = self.state.pool.get_mut(&self.agent) else {
             return;
         };
 
-        let changed = match (agent.status.reconcile.as_ref(), status.as_ref()) {
-            (Some((_, Ok(old))), Ok(new)) => old != new,
-            (Some((_, Err(old))), Err(err)) => old.to_string() != err.to_string(),
-            _ => true,
-        };
-
         agent.status.reconcile = Some((Instant::now(), status.clone()));
-
-        // Prevent redundant events
-        if !changed {
-            return;
-        }
 
         // Emit events for this reconcile
 
         let ev = AgentEvent::ReconcileComplete.with_agent(&agent);
-        let is_complete = status.as_ref().is_ok_and(|e| e.inner.is_some());
+        let is_complete = status
+            .as_ref()
+            .is_ok_and(|e| e.requeue_after.is_none() && e.inner.is_some());
 
         ev.replace_content(match status {
             Ok(res) => AgentEvent::Reconcile(res),

@@ -27,7 +27,12 @@ fn test_stream_filtering() {
     assert_eq!(sub_b.collect_many().len(), 0);
     assert_eq!(sub_connected.collect_many().len(), 0);
 
-    events.emit(Connected.with_agent_id(*A));
+    events.emit(
+        Connected {
+            version: "0.0.0".to_string(),
+        }
+        .with_agent_id(*A),
+    );
     events.emit(Disconnected.with_agent_id(*A));
     events.emit(BlockInfo(Default::default()).with_agent_id(*B));
 

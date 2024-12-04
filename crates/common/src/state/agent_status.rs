@@ -171,7 +171,7 @@ pub struct AgentStatus {
     /// A map of transfers in progress
     pub transfers: IndexMap<TransferId, TransferStatus>,
     /// Latest reconcile status of the agent
-    pub reconcile: Option<(Instant, Result<ReconcileStatus<()>, ReconcileError>)>,
+    pub reconcile: Option<(Instant, Result<ReconcileStatus<bool>, ReconcileError>)>,
 }
 
 impl DataFormat for LatestBlockInfo {

@@ -150,7 +150,11 @@ async fn handle_socket(
                     warn!("Connecting agent {id} is trying to identify with an invalid nonce");
                     break 'reconnect;
                 }
-                AgentEvent::Connected.with_agent(&agent).emit(&state);
+                AgentEvent::Connected {
+                    version: agent_version.to_string(),
+                }
+                .with_agent(&agent)
+                .emit(&state);
 
                 match agent.env() {
                     Some(env) if !state.envs.contains_key(&env) => {

@@ -610,11 +610,8 @@ async fn post_env_prepare(
         Err(e) => return ServerError::from(e).into_response(),
     };
 
-    // TODO: some live state to report to the calling CLI or something would be
-    // really nice
-
     match Environment::prepare(env_id, documents, state).await {
-        Ok(env_id) => (StatusCode::OK, Json(json!({ "id": env_id }))).into_response(),
+        Ok(node_map) => Json(json!(node_map)).into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }

@@ -116,7 +116,7 @@ impl Environment {
         env_id: EnvId,
         documents: Vec<ItemDocument>,
         state: Arc<GlobalState>,
-    ) -> Result<EnvId, EnvError> {
+    ) -> Result<HashMap<NodeKey, AgentId>, EnvError> {
         let prev_env = state.get_env(env_id);
 
         let mut storage_doc = None;
@@ -422,17 +422,16 @@ impl Environment {
                 ..Default::default()
             },
         )
-        .await?;
-
-        Ok(env_id)
+        .await
     }
 
     async fn update_all_agents(
         &self,
         state: &GlobalState,
         opts: ReconcileOptions,
-    ) -> Result<(), EnvError> {
+    ) -> Result<HashMap<NodeKey, AgentId>, EnvError> {
         let mut pending_changes = vec![];
+        let mut node_map = HashMap::new();
 
         for entry in self.node_states.iter() {
             let key = entry.key();
@@ -464,13 +463,14 @@ impl Environment {
                 AgentState::Inventory => {}
             }
 
-            let agent_state = AgentState::Node(self.id, Box::new(next_state));
+            node_map.insert(next_state.node_key.clone(), agent_id);
 
+            let agent_state = AgentState::Node(self.id, Box::new(next_state));
             pending_changes.push((agent_id, agent_state));
         }
 
         state.update_agent_states_opts(pending_changes, opts).await;
-        Ok(())
+        Ok(node_map)
     }
 
     pub async fn cleanup(id: EnvId, state: &GlobalState) -> Result<(), EnvError> {

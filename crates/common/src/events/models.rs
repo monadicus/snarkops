@@ -47,7 +47,7 @@ pub enum EventKind {
 #[serde(tag = "event_name", content = "data", rename_all = "snake_case")]
 pub enum AgentEvent {
     /// An agent connects to the control plane
-    Connected,
+    Connected { version: String },
     /// An agent completes a handshake with the control plane
     HandshakeComplete,
     /// An agent disconnects from the control plane
@@ -55,7 +55,7 @@ pub enum AgentEvent {
     /// An agent finishes a reconcile
     ReconcileComplete,
     /// An agent updates its reconcile status
-    Reconcile(ReconcileStatus<()>),
+    Reconcile(ReconcileStatus<bool>),
     /// An error occurs during reconcile
     ReconcileError(ReconcileError),
     /// An agent emits a node status
@@ -132,7 +132,7 @@ impl EventKind {
         use TransactionEvent::*;
 
         match self {
-            Agent(Connected) => AgentConnected,
+            Agent(Connected { .. }) => AgentConnected,
             Agent(HandshakeComplete) => AgentHandshakeComplete,
             Agent(Disconnected) => AgentDisconnected,
             Agent(ReconcileComplete) => AgentReconcileComplete,
@@ -223,6 +223,10 @@ impl Event {
             cannon: None,
             content,
         }
+    }
+
+    pub fn kind(&self) -> EventKindFilter {
+        self.content.filter()
     }
 
     pub fn replace_content(&self, content: impl Into<Event>) -> Self {
