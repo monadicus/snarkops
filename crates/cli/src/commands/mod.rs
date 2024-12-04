@@ -30,7 +30,8 @@ pub enum Commands {
     Events {
         /// The event filter to apply, such as `agent-connected` or
         /// `all-of(env-is(default),node-target-is(validator/any))`
-        filter: Option<EventFilter>,
+        #[clap(default_value = "unfiltered")]
+        filter: EventFilter,
     },
     #[cfg(feature = "mangen")]
     Man(snops_common::mangen::Mangen),
@@ -52,21 +53,15 @@ impl Commands {
                 return Ok(());
             }
             Commands::Agent(agent) => agent.run(url, client),
-            Commands::Env(env) => env.run(url, client),
+            Commands::Env(env) => env.run(url, client).await,
             Commands::SetLogLevel { level } => {
                 client.post(format!("{url}/api/v1/log/{level}")).send()?;
                 return Ok(());
             }
             Commands::Events { filter } => {
                 let mut client = EventsClient::open_with_filter(url, filter).await?;
-                loop {
-                    tokio::select! {
-                        _ = tokio::signal::ctrl_c() => break,
-                        res = client.next() => {
-                            let event = res?;
-                            println!("{}", serde_json::to_string_pretty(&event)?);
-                        }
-                    }
+                while let Some(event) = client.next().await? {
+                    println!("{}", serde_json::to_string_pretty(&event)?);
                 }
                 client.close().await?;
                 return Ok(());

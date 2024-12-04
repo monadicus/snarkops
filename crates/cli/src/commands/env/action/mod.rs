@@ -12,6 +12,8 @@ use snops_common::{
     state::{CannonId, DocHeightRequest, EnvId, InternedId},
 };
 
+use crate::commands::env::post_and_wait;
+
 //scli env canary action online client/*
 //scli env canary action offline client/*
 
@@ -58,12 +60,30 @@ impl From<NodesOption> for NodeTargets {
 pub enum Action {
     /// Turn the specified agents(and nodes) offline.
     #[clap(alias = "off")]
-    Offline(Nodes),
+    Offline {
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
+        /// When present, don't wait for reconciles to finish before returning
+        #[clap(long = "async")]
+        async_mode: bool,
+    },
     /// Turn the specified agents(and nodes) online.
     #[clap(alias = "on")]
-    Online(Nodes),
+    Online {
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
+        /// When present, don't wait for reconciles to finish before returning
+        #[clap(long = "async")]
+        async_mode: bool,
+    },
     /// Reboot the specified agents(and nodes).
-    Reboot(Nodes),
+    Reboot {
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
+        /// When present, don't wait for reconciles to finish before returning
+        #[clap(long = "async")]
+        async_mode: bool,
+    },
     /// Execute an aleo program function on the environment. i.e.
     /// credits.aleo/transfer_public
     Execute {
@@ -147,6 +167,8 @@ pub enum Action {
         /// Configure the private key for a node.
         #[clap(long, short)]
         private_key: Option<KeySource>,
+        #[clap(long = "async")]
+        async_mode: bool,
     },
 }
 
@@ -169,23 +191,38 @@ impl KeyEqValue {
 }
 
 impl Action {
-    pub fn execute(self, url: &str, env_id: EnvId, client: Client) -> Result<Response> {
+    pub async fn execute(self, url: &str, env_id: EnvId, client: Client) -> Result<Response> {
         use Action::*;
         Ok(match self {
-            Offline(Nodes { nodes }) => {
+            Offline { nodes, async_mode } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/offline");
-
-                client.post(ep).json(&WithTargets::from(nodes)).send()?
+                let req = client.post(ep).json(&WithTargets::from(nodes));
+                if async_mode {
+                    req.send()?
+                } else {
+                    post_and_wait(url, req, env_id).await?;
+                    std::process::exit(0);
+                }
             }
-            Online(Nodes { nodes }) => {
+            Online { nodes, async_mode } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/online");
-
-                client.post(ep).json(&WithTargets::from(nodes)).send()?
+                let req = client.post(ep).json(&WithTargets::from(nodes));
+                if async_mode {
+                    req.send()?
+                } else {
+                    post_and_wait(url, req, env_id).await?;
+                    std::process::exit(0);
+                }
             }
-            Reboot(Nodes { nodes }) => {
+            Reboot { nodes, async_mode } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/reboot");
-
-                client.post(ep).json(&WithTargets::from(nodes)).send()?
+                let req = client.post(ep).json(&WithTargets::from(nodes));
+                if async_mode {
+                    req.send()?
+                } else {
+                    post_and_wait(url, req, env_id).await?;
+                    std::process::exit(0);
+                }
             }
 
             Execute {
@@ -285,6 +322,7 @@ impl Action {
                 del_env,
                 binary,
                 private_key,
+                async_mode,
             } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/config");
 
@@ -321,7 +359,14 @@ impl Action {
                 }
 
                 // this api accepts a list of json objects
-                client.post(ep).json(&json!(vec![json])).send()?
+                let req = client.post(ep).json(&json!(vec![json]));
+
+                if async_mode {
+                    req.send()?
+                } else {
+                    post_and_wait(url, req, env_id).await?;
+                    std::process::exit(0);
+                }
             }
         })
     }

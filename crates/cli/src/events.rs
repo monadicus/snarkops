@@ -23,10 +23,14 @@ pub struct EventsClient {
 
 impl EventsClient {
     pub async fn open(url: &str) -> Result<Self> {
-        Self::open_with_filter(url, None).await
+        Self::new(url, None).await
     }
 
-    pub async fn open_with_filter(url: &str, filter: Option<EventFilter>) -> Result<Self> {
+    pub async fn open_with_filter(url: &str, filter: EventFilter) -> Result<Self> {
+        Self::new(url, Some(filter)).await
+    }
+
+    pub async fn new(url: &str, filter: Option<EventFilter>) -> Result<Self> {
         let (proto, hostname) = url.split_once("://").unwrap_or(("http", url));
         let proto = match proto {
             "wss" | "https" => "wss",
@@ -98,18 +102,19 @@ impl EventsClient {
     }
 
     /// Get the next event from the stream
-    pub async fn next(&mut self) -> Result<Event> {
+    pub async fn next(&mut self) -> Result<Option<Event>> {
         loop {
             select! {
+                _ = tokio::signal::ctrl_c() => return Ok(None),
                 _ = self.ping_interval.tick() => {
                     self.stream.send(tungstenite::Message::Ping(vec![b'p', b'i', b'n', b'g'])).await.context("Failed to send ping")?;
                 }
                 msg = self.stream.next() => {
                     match msg {
                         Some(Ok(tungstenite::Message::Text(text))) =>
-                        return serde_json::from_str(&text).with_context(|| format!("Failed to parse event: {text}")),
+                        return serde_json::from_str(&text).map(Some).with_context(|| format!("Failed to parse event: {text}")),
                         Some(Ok(tungstenite::Message::Binary(bin))) =>
-                        return serde_json::from_slice(&bin).with_context(|| format!("Failed to parse event: {}", String::from_utf8_lossy(&bin))),
+                        return serde_json::from_slice(&bin).map(Some).with_context(|| format!("Failed to parse event: {}", String::from_utf8_lossy(&bin))),
                         None | Some(Err(_)) => bail!("Websocket closed"),
                         Some(Ok(_)) => continue,
 

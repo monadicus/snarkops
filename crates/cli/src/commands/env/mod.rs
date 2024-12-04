@@ -1,13 +1,15 @@
-use std::path::PathBuf;
+use std::collections::HashMap;
 
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use clap_stdin::FileOrStdin;
-use reqwest::blocking::{Client, Response};
+use reqwest::blocking::{Client, RequestBuilder, Response};
+use snops_cli::events::EventsClient;
 use snops_common::{
     action_models::AleoValue,
+    events::{AgentEvent, Event, EventKind},
     key_source::KeySource,
-    state::{Authorization, CannonId, InternedId, NodeKey},
+    state::{AgentId, Authorization, CannonId, EnvId, InternedId, NodeKey, ReconcileStatus},
 };
 
 mod action;
@@ -101,7 +103,10 @@ enum EnvCommands {
     Prepare {
         /// The test spec file.
         #[clap(value_hint = ValueHint::AnyPath)]
-        spec: PathBuf,
+        spec: FileOrStdin<String>,
+        /// When present, don't wait for reconciles to finish before returning
+        #[clap(long = "async")]
+        async_mode: bool,
     },
 
     /// Lookup a mapping by program id and mapping name.
@@ -127,11 +132,11 @@ enum EnvCommands {
 }
 
 impl Env {
-    pub fn run(self, url: &str, client: Client) -> Result<Response> {
+    pub async fn run(self, url: &str, client: Client) -> Result<Response> {
         let id = self.id;
         use EnvCommands::*;
         Ok(match self.command {
-            Action(action) => action.execute(url, id, client)?,
+            Action(action) => action.execute(url, id, client).await?,
             Agent { key } => {
                 let ep = format!("{url}/api/v1/env/{id}/agents/{key}");
 
@@ -192,11 +197,15 @@ impl Env {
 
                 client.get(ep).send()?
             }
-            Prepare { spec } => {
+            Prepare { spec, async_mode } => {
                 let ep = format!("{url}/api/v1/env/{id}/prepare");
-                let file: String = std::fs::read_to_string(spec)?;
-
-                client.post(ep).body(file).send()?
+                let req = client.post(ep).body(spec.contents()?);
+                if async_mode {
+                    req.send()?
+                } else {
+                    post_and_wait(url, req, id).await?;
+                    std::process::exit(0);
+                }
             }
             Mapping {
                 program,
@@ -251,4 +260,66 @@ impl Env {
             }
         })
     }
+}
+
+pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Result<()> {
+    use snops_common::events::EventFilter::*;
+    use snops_common::events::EventKindFilter::*;
+
+    let mut events = EventsClient::open_with_filter(
+        url,
+        EnvIs(env_id)
+            & (AgentConnected
+                | AgentDisconnected
+                | AgentReconcile
+                | AgentReconcileComplete
+                | AgentReconcileError),
+    )
+    .await?;
+
+    let mut node_map: HashMap<NodeKey, AgentId> = req.send()?.json()?;
+    println!("{}", serde_json::to_string_pretty(&node_map)?);
+
+    while let Some(event) = events.next().await? {
+        if let Event {
+            node_key: Some(node),
+            content: EventKind::Agent(e),
+            ..
+        } = &event
+        {
+            match &e {
+                AgentEvent::Reconcile(ReconcileStatus {
+                    scopes, conditions, ..
+                }) => {
+                    println!(
+                        "{node}: {} {}",
+                        scopes.join(";"),
+                        conditions
+                            .iter()
+                            // unwrap safety - it was literally just serialized
+                            .map(|s| serde_json::to_string(s).unwrap())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    );
+                }
+                AgentEvent::ReconcileError(err) => {
+                    println!("{node}: error: {err}");
+                }
+                AgentEvent::ReconcileComplete => {
+                    println!("{node}: done");
+                }
+                _ => {}
+            }
+        }
+        if let (Some(node_key), true) = (
+            event.node_key.as_ref(),
+            event.matches(&AgentReconcileComplete.into()),
+        ) {
+            node_map.remove(node_key);
+            if node_map.is_empty() {
+                break;
+            }
+        }
+    }
+    events.close().await
 }
