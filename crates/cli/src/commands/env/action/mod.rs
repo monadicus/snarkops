@@ -11,7 +11,7 @@ use snops_common::{
     events::{Event, EventKind, TransactionEvent},
     key_source::KeySource,
     node_targets::{NodeTarget, NodeTargetError, NodeTargets},
-    state::{CannonId, DocHeightRequest, EnvId, InternedId},
+    state::{CannonId, EnvId, HeightRequest, InternedId},
 };
 
 use crate::commands::env::post_and_wait;
@@ -147,7 +147,7 @@ pub enum Action {
         online: Option<bool>,
         /// Configure the height of the target nodes.
         #[clap(long)]
-        height: Option<DocHeightRequest>,
+        height: Option<HeightRequest>,
         /// Configure the peers of the target nodes, or `none`.
         #[clap(long, short)]
         peers: Option<NodesOption>,

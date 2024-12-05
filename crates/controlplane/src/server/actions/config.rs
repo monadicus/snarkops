@@ -56,7 +56,6 @@ pub async fn config(
     for WithTargets { nodes, data } in configs {
         for agent in env.matching_agents(&nodes, &state.pool) {
             if let Some(h) = data.height {
-                let h = h.into();
                 set_node_field!(agent, height = (height.0 + 1, h));
             }
 

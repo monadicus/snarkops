@@ -259,18 +259,6 @@ impl DataFormat for StorageInfo {
     ) -> Result<usize, crate::format::DataWriteError> {
         let mut written = self.id.write_data(writer)?;
         written += self.retention_policy.write_data(writer)?;
-        // written += self
-        //     .checkpoints
-        //     .iter()
-        //     .map(
-        //         |CheckpointMeta {
-        //              height,
-        //              timestamp,
-        //              filename,
-        //          }| (*height, *timestamp, filename.to_owned()),
-        //     )
-        //     .collect::<Vec<_>>()
-        //     .write_data(writer)?;
         written += self.persist.write_data(writer)?;
         written += self.version.write_data(writer)?;
         written += self.native_genesis.write_data(writer)?;
