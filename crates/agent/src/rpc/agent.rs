@@ -57,6 +57,9 @@ impl AgentNodeService for AgentNodeRpcServer {
             return Ok(()); // ignore if client is not available
         };
 
+        // Update the last node status
+        self.state.set_node_status(Some(status.clone())).await;
+
         client
             .post_node_status(context::current(), status.into())
             .await

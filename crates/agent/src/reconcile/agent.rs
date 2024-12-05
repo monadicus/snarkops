@@ -179,7 +179,14 @@ impl AgentStateReconciler {
 
             // If this reconcile was triggered by a reconcile request, post the status
             if let Some(client) = self.state.get_ws_client().await {
-                let res = res.clone().map(|s| s.replace_inner(self.is_node_running()));
+                let node_is_started = self
+                    .state
+                    .get_node_status()
+                    .await
+                    .is_some_and(|s| s.is_started());
+                let res = res
+                    .clone()
+                    .map(|s| s.replace_inner(self.is_node_running() && node_is_started));
 
                 // TODO: throttle this broadcast
                 tokio::spawn(async move {
@@ -221,6 +228,8 @@ impl AgentStateReconciler {
                 // If the process has exited, clear the process context
                 if res.inner.is_some() {
                     self.context.process = None;
+                    self.state.set_node_status(None).await;
+                    self.context.shutdown_pending = false;
                 }
             });
         }
@@ -347,6 +356,7 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
                 // If the process has exited, clear the process context
                 if res.inner.is_some() {
                     self.context.process = None;
+                    self.state.set_node_status(None).await;
                     self.context.shutdown_pending = false;
                 }
             });
@@ -403,7 +413,17 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
 
             // Prevent other reconcilers from running while the node is running
             if self.state.is_node_online() {
-                return Ok(ReconcileStatus::default().add_scope("agent_state/running"));
+                let Some(node_status) = self.state.get_node_status().await else {
+                    return Ok(ReconcileStatus::empty().add_scope("agent_state/node/booting"));
+                };
+
+                let rec = if node_status.is_started() {
+                    ReconcileStatus::default()
+                } else {
+                    ReconcileStatus::empty()
+                };
+
+                return Ok(rec.add_scope(format!("agent_state/node/{}", node_status.label())));
             }
 
             // If the node is not online, the process is still running, but the node
@@ -413,7 +433,7 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
             return Ok(ReconcileStatus::empty()
                 .requeue_after(Duration::from_secs(1))
                 .add_condition(ReconcileCondition::PendingStartup)
-                .add_scope("agent_state/starting"));
+                .add_scope("agent_state/node/booting"));
         }
 
         let storage_path = self
@@ -496,10 +516,12 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
         .await?;
 
         let process = ProcessContext::new(command)?;
+        // Clear the last node running status (it was shut down)
+        self.state.set_node_status(None).await;
         self.context.process = Some(process);
         self.context.shutdown_pending = false;
         Ok(ReconcileStatus::empty()
-            .add_scope("agent_state/starting")
+            .add_scope("agent_state/node/booting")
             .requeue_after(Duration::from_secs(1)))
     }
 }

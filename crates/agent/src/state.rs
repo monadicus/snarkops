@@ -11,7 +11,10 @@ use reqwest::Url;
 use snops_common::{
     api::AgentEnvInfo,
     rpc::{agent::node::NodeServiceClient, control::ControlServiceClient, error::ReconcileError},
-    state::{AgentId, AgentPeer, AgentState, EnvId, ReconcileOptions, TransferId, TransferStatus},
+    state::{
+        snarkos_status::SnarkOSStatus, AgentId, AgentPeer, AgentState, EnvId, ReconcileOptions,
+        TransferId, TransferStatus,
+    },
     util::OpaqueDebug,
 };
 use tarpc::context;
@@ -52,6 +55,7 @@ pub struct GlobalState {
     pub transfers: Arc<DashMap<TransferId, TransferStatus>>,
 
     pub node_client: RwLock<Option<NodeServiceClient>>,
+    pub last_node_status: RwLock<Option<(Instant, SnarkOSStatus)>>,
     pub log_level_handler: ReloadHandler,
     /// A oneshot sender to shutdown the agent.
     pub shutdown: RwLock<Option<oneshot::Sender<()>>>,
@@ -221,5 +225,13 @@ impl GlobalState {
         if let Err(e) = self.db.set_resolved_addrs(Some(&lock)) {
             error!("failed to save resolved addrs to db: {e}");
         }
+    }
+
+    pub async fn set_node_status(&self, status: Option<SnarkOSStatus>) {
+        *self.last_node_status.write().await = status.map(|s| (Instant::now(), s));
+    }
+
+    pub async fn get_node_status(&self) -> Option<SnarkOSStatus> {
+        self.last_node_status.read().await.clone().map(|(_, s)| s)
     }
 }

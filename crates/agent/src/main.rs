@@ -86,6 +86,7 @@ async fn main() {
         endpoint,
         queue_reconcile_tx,
         loki: Mutex::new(db.loki_url()),
+        last_node_status: RwLock::new(None),
         env_info: RwLock::new(
             db.env_info()
                 .inspect_err(|e| {
