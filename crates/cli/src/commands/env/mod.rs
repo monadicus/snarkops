@@ -283,7 +283,17 @@ pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Res
     )
     .await?;
 
-    let mut node_map: HashMap<NodeKey, AgentId> = req.send()?.json()?;
+    let res = req.send()?;
+
+    if !res.status().is_success() {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&res.json::<serde_json::Value>()?)?
+        );
+        std::process::exit(1);
+    }
+
+    let mut node_map: HashMap<NodeKey, AgentId> = res.json()?;
     println!("{}", serde_json::to_string_pretty(&node_map)?);
 
     let filter = node_map
