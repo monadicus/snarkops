@@ -78,9 +78,9 @@ enum EnvCommands {
     #[clap(alias = "tx-details")]
     TransactionDetails { id: String },
 
-    /// Clean a specific environment.
-    #[clap(alias = "c")]
-    Clean,
+    /// Delete a specific environment.
+    #[clap(alias = "d")]
+    Delete,
 
     /// Get an env's latest block/state root info.
     Info,
@@ -99,10 +99,10 @@ enum EnvCommands {
     #[clap(alias = "top-res")]
     TopologyResolved,
 
-    /// Prepare a (test) environment.
+    /// Apply an environment spec.
     #[clap(alias = "p")]
-    Prepare {
-        /// The test spec file.
+    Apply {
+        /// The environment spec file.
         #[clap(value_hint = ValueHint::AnyPath)]
         spec: FileOrStdin<String>,
         /// When present, don't wait for reconciles to finish before returning
@@ -178,7 +178,7 @@ impl Env {
 
                 client.get(ep).send()?
             }
-            Clean => {
+            Delete => {
                 let ep = format!("{url}/api/v1/env/{id}");
 
                 client.delete(ep).send()?
@@ -203,8 +203,8 @@ impl Env {
 
                 client.get(ep).send()?
             }
-            Prepare { spec, async_mode } => {
-                let ep = format!("{url}/api/v1/env/{id}/prepare");
+            Apply { spec, async_mode } => {
+                let ep = format!("{url}/api/v1/env/{id}/apply");
                 let req = client.post(ep).body(spec.contents()?);
                 if async_mode {
                     req.send()?
@@ -286,7 +286,17 @@ pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Res
     let mut node_map: HashMap<NodeKey, AgentId> = req.send()?.json()?;
     println!("{}", serde_json::to_string_pretty(&node_map)?);
 
+    let filter = node_map
+        .values()
+        .copied()
+        .fold(!Unfiltered, |id, filter| (id | AgentIs(filter)));
+
     while let Some(event) = events.next().await? {
+        // Ensure the event is based on the response
+        if !event.matches(&filter) {
+            continue;
+        }
+
         if let Event {
             node_key: Some(node),
             content: EventKind::Agent(e),

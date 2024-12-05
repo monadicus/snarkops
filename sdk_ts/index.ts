@@ -141,8 +141,8 @@ class SnopsApi {
 		return await this.get(`env/${env_id}/agents/${node_ty}/${node_key}`);
 	}
 
-	async envPrepare(env_id: string, prepare: any): Promise<any> {
-		return this.post(`env/${env_id}/prepare`, prepare);
+	async envApply(env_id: string, prepare: any): Promise<any> {
+		return this.post(`env/${env_id}/apply`, prepare);
 	}
 
 	async envInfo(env_id: string): Promise<any> {
@@ -332,7 +332,7 @@ class Env {
 	}
 
 	async prepare(prepare: any) {
-		return await this.api.envPrepare(this.env_id, prepare);
+		return await this.api.envApply(this.env_id, prepare);
 	}
 
 	async info() {

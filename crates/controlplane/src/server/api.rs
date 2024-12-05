@@ -68,7 +68,7 @@ pub(super) fn routes() -> Router<AppState> {
         //     get(get_env_agent_key),
         // )
         // .route("/env/:env_id/metric/:prom_ql", get())
-        .route("/env/:env_id/prepare", post(post_env_prepare))
+        .route("/env/:env_id/apply", post(post_env_apply))
         .route("/env/:env_id/info", get(get_env_info))
         .route("/env/:env_id/height", get(get_latest_height))
         .route("/env/:env_id/block_info", get(get_env_block_info))
@@ -598,7 +598,7 @@ async fn get_env_agent_key(
     Json(AgentStatusResponse::from(agent.value())).into_response()
 }
 
-async fn post_env_prepare(
+async fn post_env_apply(
     // This env_id is allowed to be in the Path because it would be allocated
     // anyway
     Path(env_id): Path<EnvId>,
@@ -610,7 +610,7 @@ async fn post_env_prepare(
         Err(e) => return ServerError::from(e).into_response(),
     };
 
-    match Environment::prepare(env_id, documents, state).await {
+    match Environment::apply(env_id, documents, state).await {
         Ok(node_map) => Json(json!(node_map)).into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }

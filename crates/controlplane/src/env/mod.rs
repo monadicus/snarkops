@@ -108,11 +108,13 @@ impl Environment {
             .collect()
     }
 
-    /// Prepare a test. This will set the current test on the GlobalState.
+    /// Apply an environment spec. This will attempt to delegate the given node
+    /// configurations to available agents, or update existing agents with new
+    /// configurations.
     ///
     /// **This will error if the current env is not unset before calling to
     /// ensure tests are properly cleaned up.**
-    pub async fn prepare(
+    pub async fn apply(
         env_id: EnvId,
         documents: Vec<ItemDocument>,
         state: Arc<GlobalState>,
