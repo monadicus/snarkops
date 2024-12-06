@@ -3,7 +3,7 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 use anyhow::Result;
 use clap::Parser;
 use clap_stdin::FileOrStdin;
-use reqwest::blocking::{Client, RequestBuilder, Response};
+use reqwest::{Client, RequestBuilder, Response};
 use serde_json::json;
 use snops_cli::events::EventsClient;
 use snops_common::{
@@ -91,7 +91,7 @@ pub enum Action {
     Execute {
         /// Private key to use, can be `committee.0` to use committee member 0's
         /// key
-        #[clap(long, short)]
+        #[clap(long)]
         private_key: Option<KeySource>,
         /// Private key to use for the fee. Defaults to the same as
         /// --private-key
@@ -167,7 +167,7 @@ pub enum Action {
         #[clap(long, short)]
         binary: Option<InternedId>,
         /// Configure the private key for a node.
-        #[clap(long, short)]
+        #[clap(long)]
         private_key: Option<KeySource>,
         #[clap(long = "async")]
         async_mode: bool,
@@ -200,7 +200,7 @@ impl Action {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/offline");
                 let req = client.post(ep).json(&WithTargets::from(nodes));
                 if async_mode {
-                    req.send()?
+                    req.send().await?
                 } else {
                     post_and_wait(url, req, env_id).await?;
                     std::process::exit(0);
@@ -210,7 +210,7 @@ impl Action {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/online");
                 let req = client.post(ep).json(&WithTargets::from(nodes));
                 if async_mode {
-                    req.send()?
+                    req.send().await?
                 } else {
                     post_and_wait(url, req, env_id).await?;
                     std::process::exit(0);
@@ -220,7 +220,7 @@ impl Action {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/reboot");
                 let req = client.post(ep).json(&WithTargets::from(nodes));
                 if async_mode {
-                    req.send()?
+                    req.send().await?
                 } else {
                     post_and_wait(url, req, env_id).await?;
                     std::process::exit(0);
@@ -271,7 +271,7 @@ impl Action {
 
                 let req = client.post(ep).query(&[("async", "true")]).json(&json);
                 if async_mode {
-                    req.send()?
+                    req.send().await?
                 } else {
                     post_and_wait_tx(url, req).await?;
                     std::process::exit(0);
@@ -310,7 +310,7 @@ impl Action {
 
                 let req = client.post(ep).query(&[("async", "true")]).json(&json);
                 if async_mode {
-                    req.send()?
+                    req.send().await?
                 } else {
                     post_and_wait_tx(url, req).await?;
                     std::process::exit(0);
@@ -366,7 +366,7 @@ impl Action {
                 let req = client.post(ep).json(&json!(vec![json]));
 
                 if async_mode {
-                    req.send()?
+                    req.send().await?
                 } else {
                     post_and_wait(url, req, env_id).await?;
                     std::process::exit(0);
@@ -379,7 +379,7 @@ impl Action {
 pub async fn post_and_wait_tx(url: &str, req: RequestBuilder) -> Result<()> {
     use snops_common::events::EventFilter::*;
 
-    let tx_id: String = req.send()?.json()?;
+    let tx_id: String = req.send().await?.json().await?;
 
     let mut events = EventsClient::open_with_filter(url, TransactionIs(Arc::new(tx_id))).await?;
 

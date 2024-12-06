@@ -18,7 +18,7 @@ clap_complete.workspace = true
 clap-stdin.workspace = true
 futures-util.workspace = true
 http.workspace = true
-reqwest = { workspace = true, features = ["blocking", "json"] }
+reqwest = { workspace = true, features = ["json"] }
 rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true

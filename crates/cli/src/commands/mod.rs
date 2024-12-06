@@ -40,9 +40,8 @@ pub enum Commands {
 }
 
 impl Commands {
-    #[tokio::main]
     pub async fn run(self, url: &str) -> Result<()> {
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::Client::new();
 
         let response = match self {
             Commands::Autocomplete { shell } => {
@@ -52,10 +51,13 @@ impl Commands {
                 clap_complete::generate(shell, &mut cmd, cmd_name, &mut std::io::stdout());
                 return Ok(());
             }
-            Commands::Agent(agent) => agent.run(url, client),
+            Commands::Agent(agent) => agent.run(url, client).await,
             Commands::Env(env) => env.run(url, client).await,
             Commands::SetLogLevel { level } => {
-                client.post(format!("{url}/api/v1/log/{level}")).send()?;
+                client
+                    .post(format!("{url}/api/v1/log/{level}"))
+                    .send()
+                    .await?;
                 return Ok(());
             }
             Commands::Events { filter } => {
@@ -88,7 +90,7 @@ impl Commands {
 
         let value = match response.content_length() {
             Some(0) | None => None,
-            _ => response.json::<Value>().map(Some)?,
+            _ => response.json::<Value>().await.map(Some)?,
         };
 
         println!("{}", serde_json::to_string_pretty(&value)?);

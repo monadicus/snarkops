@@ -14,7 +14,7 @@ pub struct Cli {
 
 impl Cli {
     /// Runs the subcommand.
-    pub fn run(self) -> Result<()> {
-        self.subcommand.run(&self.url)
+    pub async fn run(self) -> Result<()> {
+        self.subcommand.run(&self.url).await
     }
 }

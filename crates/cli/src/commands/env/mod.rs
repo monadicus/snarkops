@@ -4,7 +4,7 @@ use action::post_and_wait_tx;
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use clap_stdin::FileOrStdin;
-use reqwest::blocking::{Client, RequestBuilder, Response};
+use reqwest::{Client, RequestBuilder, Response};
 use snops_cli::events::EventsClient;
 use snops_common::{
     action_models::AleoValue,
@@ -141,12 +141,12 @@ impl Env {
             Agent { key } => {
                 let ep = format!("{url}/api/v1/env/{id}/agents/{key}");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Agents => {
                 let ep = format!("{url}/api/v1/env/{id}/agents");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Auth {
                 async_mode,
@@ -162,7 +162,7 @@ impl Env {
                 }
 
                 if async_mode {
-                    req.send()?
+                    req.send().await?
                 } else {
                     post_and_wait_tx(url, req).await?;
                     std::process::exit(0);
@@ -171,43 +171,43 @@ impl Env {
             Balance { address: key } => {
                 let ep = format!("{url}/api/v1/env/{id}/balance/{key}");
 
-                client.get(ep).json(&key).send()?
+                client.get(ep).json(&key).send().await?
             }
             Block { height_or_hash } => {
                 let ep = format!("{url}/api/v1/env/{id}/block/{height_or_hash}");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Delete => {
                 let ep = format!("{url}/api/v1/env/{id}");
 
-                client.delete(ep).send()?
+                client.delete(ep).send().await?
             }
             Info => {
                 let ep = format!("{url}/api/v1/env/{id}/info");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             List => {
                 let ep = format!("{url}/api/v1/env/list");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Topology => {
                 let ep = format!("{url}/api/v1/env/{id}/topology");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             TopologyResolved => {
                 let ep = format!("{url}/api/v1/env/{id}/topology/resolved");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Apply { spec, async_mode } => {
                 let ep = format!("{url}/api/v1/env/{id}/apply");
                 let req = client.post(ep).body(spec.contents()?);
                 if async_mode {
-                    req.send()?
+                    req.send().await?
                 } else {
                     post_and_wait(url, req, id).await?;
                     std::process::exit(0);
@@ -231,38 +231,38 @@ impl Env {
                     }
                 };
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Mappings { program } => {
                 let ep = format!("{url}/api/v1/env/{id}/program/{program}/mappings");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Program { id: prog } => {
                 let ep = format!("{url}/api/v1/env/{id}/program/{prog}");
 
-                println!("{}", client.get(ep).send()?.text()?);
+                println!("{}", client.get(ep).send().await?.text().await?);
                 std::process::exit(0);
             }
             Storage => {
                 let ep = format!("{url}/api/v1/env/{id}/storage");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Transaction { id: hash } => {
                 let ep = format!("{url}/api/v1/env/{id}/transaction_block/{hash}");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             TransactionDetails { id: hash } => {
                 let ep = format!("{url}/api/v1/env/{id}/transaction/{hash}");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Height => {
                 let ep = format!("{url}/api/v1/env/{id}/height");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
         })
     }
@@ -283,17 +283,17 @@ pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Res
     )
     .await?;
 
-    let res = req.send()?;
+    let res = req.send().await?;
 
     if !res.status().is_success() {
         println!(
             "{}",
-            serde_json::to_string_pretty(&res.json::<serde_json::Value>()?)?
+            serde_json::to_string_pretty(&res.json::<serde_json::Value>().await?)?
         );
         std::process::exit(1);
     }
 
-    let mut node_map: HashMap<NodeKey, AgentId> = res.json()?;
+    let mut node_map: HashMap<NodeKey, AgentId> = res.json().await?;
     println!("{}", serde_json::to_string_pretty(&node_map)?);
 
     let filter = node_map
