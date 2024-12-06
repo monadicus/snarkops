@@ -4537,7 +4537,6 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "bimap",
- "bincode",
  "chrono",
  "clap",
  "dashmap 6.1.0",
@@ -4582,7 +4581,6 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
- "bytes",
  "chrono",
  "clap",
  "dashmap 6.1.0",
@@ -4591,7 +4589,6 @@ dependencies = [
  "http 1.1.0",
  "httpdate",
  "indexmap 2.6.0",
- "lazysort",
  "local-ip-address",
  "nix",
  "reqwest 0.12.8",
