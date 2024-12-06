@@ -7,7 +7,7 @@ The cannon document is an optional where you can specify:
 - where to send transactions (to a file, or a node in the topology)
 
 
-The cannon document is not required for a `environment` to run, but the document needs to be present at `prepare` time to work.
+The cannon document is not required for a `environment` to run, but the document needs to be present at `apply` time to work.
 
 This document is required if you want to use a [cannon timeline action](TIMELINES.md#cannon).
 

@@ -16,7 +16,7 @@ binaries:
   default:
     source: ./path/to/example_file
     # for path based sources, "auto" can be specified for sha256 and size
-    # to automatically compute them when the environment is prepared.
+    # to automatically compute them when the environment is applied
     #
     # This feature is also available for env via: `AOT_BIN_SIZE=auto` or `AOT_BIN_SHA256=auto`
     sha256: auto

@@ -94,7 +94,7 @@ The size of the binary in bytes.
 
 An optional number used if you want to wipe the old storage.
 
-The recommendation is to increment this number, `clean` the env, and then `prepare` it again.
+The recommendation is to increment this number, `delete` the env, and then `apply` it again.
 
 The default value is `0`.
 

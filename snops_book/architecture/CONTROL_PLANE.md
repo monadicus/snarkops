@@ -83,7 +83,7 @@ have connected to it.
 Agents have two States:
 
 - _Inventoried_: An agent is in inventory mode if it is not currently running a snarkOS node.
-- _Associated_: It becomes associated with an **environment** when one is prepared. As the control plane will delegate agents in inventory to the **environment**.
+- _Associated_: It becomes associated with an **environment** when one is applied. As the control plane will delegate agents in inventory to the **environment**.
 
 ### Metrics and Logging
 
