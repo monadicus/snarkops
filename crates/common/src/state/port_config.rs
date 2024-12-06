@@ -1,6 +1,6 @@
 use crate::format::{DataFormat, DataFormatReader};
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, clap::Parser)]
+#[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize, clap::Parser, Eq, PartialEq)]
 pub struct PortConfig {
     /// Specify the IP address and port for the node server
     #[clap(long = "node", default_value_t = 4130)]

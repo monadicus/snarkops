@@ -34,8 +34,11 @@ impl AgentNodeService for AgentNodeRpcServer {
             block_timestamp,
         }: SnarkOSBlockInfo,
     ) -> Result<(), ()> {
-        self.state
-            .client
+        let Some(client) = self.state.client.read().await.clone() else {
+            return Ok(()); // ignore if client is not available
+        };
+
+        client
             .post_block_status(
                 context::current(),
                 height,
@@ -50,8 +53,14 @@ impl AgentNodeService for AgentNodeRpcServer {
     }
 
     async fn post_status(self, _: context::Context, status: SnarkOSStatus) -> Result<(), ()> {
-        self.state
-            .client
+        let Some(client) = self.state.client.read().await.clone() else {
+            return Ok(()); // ignore if client is not available
+        };
+
+        // Update the last node status
+        self.state.set_node_status(Some(status.clone())).await;
+
+        client
             .post_node_status(context::current(), status.into())
             .await
             .inspect_err(|err| tracing::error!("failed to post node status: {err}"))

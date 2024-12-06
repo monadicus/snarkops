@@ -11,9 +11,12 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use snops_common::{
+    events::Event,
     lasso::Spur,
     rpc::control::agent::AgentServiceClient,
-    state::{AgentId, AgentModeOptions, AgentState, AgentStatus, EnvId, NodeState, PortConfig},
+    state::{
+        AgentId, AgentModeOptions, AgentState, AgentStatus, EnvId, NodeKey, NodeState, PortConfig,
+    },
     INTERN,
 };
 
@@ -177,6 +180,13 @@ impl Agent {
         }
     }
 
+    pub fn node_key(&self) -> Option<&NodeKey> {
+        match &self.state {
+            AgentState::Node(_, state) => Some(&state.node_key),
+            _ => None,
+        }
+    }
+
     /// The ID of this agent.
     pub fn id(&self) -> AgentId {
         self.id
@@ -235,8 +245,10 @@ impl Agent {
     }
 
     /// Set the ports of the agent. This does **not** trigger a reconcile
-    pub fn set_ports(&mut self, ports: PortConfig) {
+    pub fn set_ports(&mut self, ports: PortConfig) -> bool {
+        let changed = self.ports.as_ref() != Some(&ports);
         self.ports = Some(ports);
+        changed
     }
 
     // Gets the bft port of the agent. Assumes the agent is ready, returns 0 if not.
@@ -278,8 +290,11 @@ impl Agent {
 
     /// Set the external and internal addresses of the agent. This does **not**
     /// trigger a reconcile
-    pub fn set_addrs(&mut self, external: Option<IpAddr>, internal: Vec<IpAddr>) {
-        self.addrs = Some(AgentAddrs { external, internal });
+    pub fn set_addrs(&mut self, external: Option<IpAddr>, internal: Vec<IpAddr>) -> bool {
+        let addrs = AgentAddrs { external, internal };
+        let changed = self.addrs.as_ref() != Some(&addrs);
+        self.addrs = Some(addrs);
+        changed
     }
 
     pub fn map_to_reconcile<F>(&self, f: F) -> PendingAgentReconcile
@@ -288,7 +303,6 @@ impl Agent {
     {
         (
             self.id(),
-            self.client_owned(),
             match &self.state {
                 AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone()))),
                 s => s.clone(),
@@ -302,7 +316,6 @@ impl Agent {
     {
         Some((
             self.id(),
-            self.client_owned(),
             match &self.state {
                 AgentState::Node(id, state) => AgentState::Node(*id, Box::new(f(*state.clone())?)),
                 _ => return None,
@@ -318,7 +331,7 @@ pub enum AgentConnection {
 }
 
 /// This is the representation of a public addr or a list of internal addrs.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentAddrs {
     pub external: Option<IpAddr>,
     pub internal: Vec<IpAddr>,
@@ -334,5 +347,21 @@ impl AgentAddrs {
 
     pub fn is_some(&self) -> bool {
         self.external.is_some() || !self.internal.is_empty()
+    }
+}
+
+pub trait AgentEventHelpers {
+    fn with_agent(self, agent: &Agent) -> Event;
+}
+
+impl<T: Into<Event>> AgentEventHelpers for T {
+    fn with_agent(self, agent: &Agent) -> Event {
+        let mut event = self.into();
+        event.agent = Some(agent.id);
+        if let AgentState::Node(env_id, node) = &agent.state {
+            event.node_key = Some(node.node_key.clone());
+            event.env = Some(*env_id);
+        }
+        event
     }
 }

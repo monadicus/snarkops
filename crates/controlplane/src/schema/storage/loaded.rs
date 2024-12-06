@@ -4,9 +4,9 @@ use futures_util::StreamExt;
 use indexmap::IndexMap;
 use rand::seq::IteratorRandom;
 use sha2::{Digest, Sha256};
-use snops_checkpoint::CheckpointManager;
+use snops_checkpoint::RetentionPolicy;
 use snops_common::{
-    api::{CheckpointMeta, StorageInfo},
+    api::StorageInfo,
     binaries::{BinaryEntry, BinarySource},
     key_source::KeySource,
     state::{InternedId, KeyState, NetworkId, StorageId},
@@ -33,7 +33,7 @@ pub struct LoadedStorage {
     /// other accounts files lookup
     pub accounts: IndexMap<InternedId, AleoAddrMap>,
     /// storage of checkpoints
-    pub checkpoints: Option<CheckpointManager>,
+    pub retention_policy: Option<RetentionPolicy>,
     /// whether agents using this storage should persist it
     pub persist: bool,
     /// whether to use the network's native genesis block
@@ -146,23 +146,6 @@ impl LoadedStorage {
     }
 
     pub fn info(&self) -> StorageInfo {
-        let checkpoints = self
-            .checkpoints
-            .as_ref()
-            .map(|c| {
-                c.checkpoints()
-                    .filter_map(|(c, path)| {
-                        path.file_name()
-                            .and_then(|s| s.to_str())
-                            .map(|filename| CheckpointMeta {
-                                filename: filename.to_string(),
-                                height: c.block_height,
-                                timestamp: c.timestamp,
-                            })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
         let mut binaries: IndexMap<_, _> = self
             .binaries
             .iter()
@@ -182,8 +165,7 @@ impl LoadedStorage {
         StorageInfo {
             id: self.id,
             version: self.version,
-            retention_policy: self.checkpoints.as_ref().map(|c| c.policy().clone()),
-            checkpoints,
+            retention_policy: self.retention_policy.clone(),
             persist: self.persist,
             native_genesis: self.native_genesis,
             binaries,

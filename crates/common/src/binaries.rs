@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// A BinaryEntry is the location to a binary with an optional shasum
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct BinaryEntry {
     pub source: BinarySource,
     #[serde(default)]
@@ -41,6 +41,11 @@ impl BinaryEntry {
                 size: self.size,
             },
         }
+    }
+
+    /// Determines if the file is fetched from the control plane
+    pub fn is_api_file(&self) -> bool {
+        matches!(self.source, BinarySource::Path(_))
     }
 
     /// Check if the sha256 is a valid sha256 hash
@@ -92,7 +97,7 @@ impl Display for BinaryEntry {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum BinarySource {
     Url(url::Url),
     Path(PathBuf),
@@ -132,7 +137,7 @@ impl Serialize for BinarySource {
 }
 
 impl<'de> Deserialize<'de> for BinarySource {
-    fn deserialize<D>(deserializer: D) -> Result<BinarySource, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {

@@ -176,24 +176,6 @@ pub enum AgentPeer {
     External(SocketAddr),
 }
 
-impl AgentPeer {
-    /// Get the port from the peer
-    pub fn port(&self) -> u16 {
-        match self {
-            Self::Internal(_, port) => *port,
-            Self::External(addr) => addr.port(),
-        }
-    }
-
-    /// Return a new peer with the given port.
-    pub fn with_port(&self, port: u16) -> Self {
-        match self {
-            Self::Internal(ip, _) => Self::Internal(*ip, port),
-            Self::External(addr) => Self::External(SocketAddr::new(addr.ip(), port)),
-        }
-    }
-}
-
 impl DataFormat for KeyState {
     type Header = u8;
     const LATEST_HEADER: Self::Header = 1;

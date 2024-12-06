@@ -1,12 +1,15 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use chrono::{DateTime, TimeDelta, Utc};
+use lazysort::SortedBy;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tracing::{error, trace};
 
 #[cfg(feature = "write")]
 use crate::errors::{ManagerCullError, ManagerInsertError, ManagerPollError};
-use crate::{errors::ManagerLoadError, path_from_height, CheckpointHeader, RetentionPolicy};
+use crate::{
+    errors::ManagerLoadError, path_from_height, CheckpointHeader, RetentionPolicy, RetentionSpan,
+};
 
 #[derive(Debug, Clone)]
 pub struct CheckpointManager {
@@ -214,6 +217,28 @@ impl CheckpointManager {
     /// Iterate the checkpoints stored by this manager
     pub fn checkpoints(&self) -> impl Iterator<Item = &(CheckpointHeader, PathBuf)> {
         self.checkpoints.values()
+    }
+
+    /// Find the nearest checkpoint with a height less than or equal to the
+    /// given height
+    pub fn nearest_with_height(&self, height: u32) -> Option<&(CheckpointHeader, PathBuf)> {
+        self.checkpoints()
+            .sorted_by(|(a, _), (b, _)| b.block_height.cmp(&a.block_height))
+            .find(|(c, _)| (c.block_height <= height))
+    }
+
+    /// Find the nearest checkpoint with a timestamp less than or equal to the
+    /// given span
+    pub fn nearest_with_span(&self, span: RetentionSpan) -> Option<&(CheckpointHeader, PathBuf)> {
+        self.nearest_with_timestamp(span.as_timestamp()?)
+    }
+
+    /// Find the nearest checkpoint with a timestamp less than or equal to the
+    /// given timestamp
+    pub fn nearest_with_timestamp(&self, timestamp: i64) -> Option<&(CheckpointHeader, PathBuf)> {
+        self.checkpoints()
+            .sorted_by(|(a, _), (b, _)| b.timestamp.cmp(&a.timestamp))
+            .find(|(c, _)| (c.timestamp <= timestamp))
     }
 }
 

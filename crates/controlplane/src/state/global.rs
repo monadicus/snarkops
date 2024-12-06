@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fmt::Display, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use chrono::Utc;
 use dashmap::DashMap;
@@ -7,13 +7,14 @@ use prometheus_http_query::Client as PrometheusClient;
 use serde::de::DeserializeOwned;
 use snops_common::{
     constant::ENV_AGENT_KEY,
+    events::Event,
     node_targets::NodeTargets,
     state::{
         AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, NodeType, StorageId,
     },
     util::OpaqueDebug,
 };
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Semaphore;
 use tracing::info;
 
 use super::{
@@ -25,8 +26,9 @@ use crate::{
     db::Database,
     env::{cache::NetworkCache, error::EnvRequestError, Environment, PortType},
     error::StateError,
+    events::Events,
     schema::storage::{LoadedStorage, STORAGE_DIR},
-    server::{error::StartError, prometheus::HttpsdResponse},
+    server::error::StartError,
     ReloadHandler,
 };
 
@@ -44,8 +46,8 @@ pub struct GlobalState {
     pub storage: StorageMap,
     pub envs: EnvMap,
     pub env_network_cache: OpaqueDebug<DashMap<EnvId, NetworkCache>>,
+    pub events: Events,
 
-    pub prom_httpsd: Mutex<HttpsdResponse>,
     pub prometheus: OpaqueDebug<Option<PrometheusClient>>,
 
     pub log_level_handler: ReloadHandler,
@@ -95,7 +97,7 @@ impl GlobalState {
             pool,
             storage,
             envs: EnvMap::default(),
-            prom_httpsd: Default::default(),
+            events: Default::default(),
             prometheus: OpaqueDebug(prometheus),
             db: OpaqueDebug(db),
             env_network_cache: Default::default(),
@@ -161,13 +163,10 @@ impl GlobalState {
 
     /// Get a peer-to-addr mapping for a set of agents
     /// Locks pools for reading
-    pub async fn get_addr_map(
-        &self,
-        filter: Option<&HashSet<AgentId>>,
-    ) -> Result<AddrMap, StateError> {
-        self.pool
+    pub async fn get_addr_map(&self, filter: &[AgentId]) -> Result<AddrMap, StateError> {
+        filter
             .iter()
-            .filter(|agent| filter.is_none() || filter.is_some_and(|p| p.contains(&agent.id())))
+            .filter_map(|id| self.pool.get(id))
             .map(|agent| {
                 let addrs = agent
                     .addrs
@@ -357,5 +356,33 @@ impl GlobalState {
         }
 
         Err(EnvRequestError::NoResponsiveNodes)
+    }
+}
+
+pub trait GetGlobalState<'a> {
+    /// Returns the global state.
+    fn global_state(self) -> &'a GlobalState;
+}
+
+impl<'a> GetGlobalState<'a> for &'a GlobalState {
+    fn global_state(self) -> &'a GlobalState {
+        self
+    }
+}
+
+impl<'a> GetGlobalState<'a> for &'a Arc<GlobalState> {
+    fn global_state(self) -> &'a GlobalState {
+        self
+    }
+}
+
+pub trait EmitEvent {
+    fn emit<'a>(self, state: impl GetGlobalState<'a>);
+}
+
+impl EmitEvent for Event {
+    #[inline]
+    fn emit<'a>(self, state: impl GetGlobalState<'a>) {
+        state.global_state().events.emit(self);
     }
 }

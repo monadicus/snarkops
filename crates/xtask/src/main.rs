@@ -268,7 +268,11 @@ fn clipages(sh: &Shell) -> Result<()> {
 fn manpages(sh: &Shell) -> Result<()> {
     cmd!(sh, "cargo run -p snarkos-aot --features=docpages -- man").run()?;
     cmd!(sh, "cargo run -p snops --features=docpages -- man").run()?;
-    cmd!(sh, "cargo run -p snops-agent --features=docpages -- man").run()?;
+    cmd!(
+        sh,
+        "cargo run -p snops-agent --features=docpages -- --id foo man"
+    )
+    .run()?;
     cmd!(sh, "cargo run -p snops-cli --features=docpages -- man").run()?;
     Ok(())
 }

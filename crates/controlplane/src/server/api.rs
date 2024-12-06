@@ -19,10 +19,11 @@ use snops_common::{
 };
 use tarpc::context;
 
-use super::{actions, error::ServerError, models::AgentStatusResponse, AppState};
+use super::{actions, error::ServerError, event_ws, models::AgentStatusResponse};
 use crate::{
     cannon::{router::redirect_cannon_routes, source::QueryTarget},
     make_env_filter,
+    state::AppState,
 };
 use crate::{
     env::{EnvPeer, Environment},
@@ -41,6 +42,7 @@ macro_rules! unwrap_or_not_found {
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .route("/events", get(event_ws::event_ws_handler))
         .route("/log/:level", post(set_log_level))
         .route("/agents", get(get_agents))
         .route("/agents/:id", get(get_agent))
@@ -66,7 +68,7 @@ pub(super) fn routes() -> Router<AppState> {
         //     get(get_env_agent_key),
         // )
         // .route("/env/:env_id/metric/:prom_ql", get())
-        .route("/env/:env_id/prepare", post(post_env_prepare))
+        .route("/env/:env_id/apply", post(post_env_apply))
         .route("/env/:env_id/info", get(get_env_info))
         .route("/env/:env_id/height", get(get_latest_height))
         .route("/env/:env_id/block_info", get(get_env_block_info))
@@ -145,14 +147,6 @@ async fn set_log_level(Path(level): Path<String>, state: State<AppState>) -> Res
     };
 
     status_ok()
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum StorageType {
-    Genesis,
-    Ledger,
-    Binary,
 }
 
 async fn get_env_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
@@ -604,7 +598,7 @@ async fn get_env_agent_key(
     Json(AgentStatusResponse::from(agent.value())).into_response()
 }
 
-async fn post_env_prepare(
+async fn post_env_apply(
     // This env_id is allowed to be in the Path because it would be allocated
     // anyway
     Path(env_id): Path<EnvId>,
@@ -616,11 +610,8 @@ async fn post_env_prepare(
         Err(e) => return ServerError::from(e).into_response(),
     };
 
-    // TODO: some live state to report to the calling CLI or something would be
-    // really nice
-
-    match Environment::prepare(env_id, documents, state).await {
-        Ok(env_id) => (StatusCode::OK, Json(json!({ "id": env_id }))).into_response(),
+    match Environment::apply(env_id, documents, state).await {
+        Ok(node_map) => Json(json!(node_map)).into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
 }

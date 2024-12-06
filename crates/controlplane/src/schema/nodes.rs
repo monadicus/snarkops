@@ -8,7 +8,7 @@ use snops_common::{
     lasso::Spur,
     node_targets::NodeTargets,
     set::{MaskBit, MASK_PREFIX_LEN},
-    state::{AgentId, DocHeightRequest, InternedId, NetworkId, NodeState},
+    state::{AgentId, HeightRequest, InternedId, NetworkId, NodeState},
     INTERN,
 };
 
@@ -181,7 +181,7 @@ pub struct Node {
     /// * When zero, the ledger is empty and only the genesis block is
     ///   inherited.
     #[serde(default)]
-    pub height: DocHeightRequest,
+    pub height: HeightRequest,
 
     /// When specified, agents must have these labels
     #[serde(
@@ -217,7 +217,7 @@ impl Node {
         NodeState {
             node_key,
             private_key: Default::default(),
-            height: (0, self.height.into()),
+            height: (0, self.height),
             online: self.online,
             env: self.env.clone(),
             binary: self.binary,
@@ -252,7 +252,7 @@ impl Node {
 #[derive(Debug, Clone)]
 pub struct NodeFormatHeader {
     pub(crate) key_source: DataHeaderOf<KeySource>,
-    pub(crate) height_request: DataHeaderOf<DocHeightRequest>,
+    pub(crate) height_request: DataHeaderOf<HeightRequest>,
     pub(crate) node_targets: DataHeaderOf<NodeTargets>,
     pub has_binaries: bool,
 }
@@ -285,7 +285,7 @@ impl DataFormat for NodeFormatHeader {
         }
 
         let key_source = KeySource::read_header(reader)?;
-        let height_request = DocHeightRequest::read_header(reader)?;
+        let height_request = HeightRequest::read_header(reader)?;
         let node_targets = NodeTargets::read_header(reader)?;
         Ok(NodeFormatHeader {
             key_source,
@@ -300,7 +300,7 @@ impl DataFormat for Node {
     type Header = NodeFormatHeader;
     const LATEST_HEADER: Self::Header = NodeFormatHeader {
         key_source: KeySource::LATEST_HEADER,
-        height_request: DocHeightRequest::LATEST_HEADER,
+        height_request: HeightRequest::LATEST_HEADER,
         node_targets: NodeTargets::LATEST_HEADER,
         has_binaries: true,
     };

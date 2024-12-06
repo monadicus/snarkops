@@ -15,6 +15,7 @@ aleo-std = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
 chrono.workspace = true
 glob.workspace = true
+lazysort.workspace = true
 rayon.workspace = true
 serde = { workspace = true, optional = true }
 snarkvm = { workspace = true, optional = true }

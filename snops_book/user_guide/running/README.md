@@ -38,7 +38,7 @@ Additionally you can enable [metrics and logging](./METRICS_AND_LOGGING.md), to 
 	### Starting agents
 
 	<!-- TODO: agent containerization -->
-<!-- 
+<!--
 	For local development, it is handy to use the agent script in the
 	[scripts](./scripts/) directory:
 
@@ -55,7 +55,7 @@ Additionally you can enable [metrics and logging](./METRICS_AND_LOGGING.md), to 
 	An environment can be prepared with `snops-cli`:
 
 	```bash
-	snops-cli env prepare my-env-spec.yaml
+	snops-cli env apply my-env-spec.yaml
 	```
 
 	In a dev environment, you can use the following script:

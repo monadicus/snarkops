@@ -1,10 +1,15 @@
+use std::time::Instant;
+
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use tokio::task::AbortHandle;
 
-use super::snarkos_status::SnarkOSStatus;
+use super::{snarkos_status::SnarkOSStatus, ReconcileStatus};
+use crate::{format::DataFormat, rpc::error::ReconcileError};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "status")]
 pub enum NodeStatus {
     /// The last known status of the node is unknown
     #[default]
@@ -14,7 +19,7 @@ pub enum NodeStatus {
     /// The node waiting on other tasks to complete before starting
     PendingStart,
     /// The node is running
-    Running(SnarkOSStatus),
+    Running { running_status: SnarkOSStatus },
     /// The node has exited with a status code
     Exited(u8),
     /// The node was online and is in the process of shutting down
@@ -26,7 +31,9 @@ pub enum NodeStatus {
 
 impl From<SnarkOSStatus> for NodeStatus {
     fn from(status: SnarkOSStatus) -> Self {
-        NodeStatus::Running(status)
+        NodeStatus::Running {
+            running_status: status,
+        }
     }
 }
 
@@ -99,6 +106,7 @@ pub enum TransferStatusUpdate {
         total: u64,
         /// The time the transfer started.
         time: DateTime<Utc>,
+        // The transfer's abort handle, if any.
     },
     /// The transfer has made progress.
     Progress {
@@ -112,6 +120,9 @@ pub enum TransferStatusUpdate {
     },
     /// The transfer has been cleaned up.
     Cleanup,
+    // Client only - specifies a handle to abort the transfer task
+    #[serde(skip)]
+    Handle(AbortHandle),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -128,9 +139,24 @@ pub struct TransferStatus {
     pub total_bytes: u64,
     /// A transfer interruption reason, if any.
     pub interruption: Option<String>,
+    /// The transfer's abort handle, if any.
+    #[serde(skip)]
+    pub handle: Option<AbortHandle>,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+impl TransferStatus {
+    pub fn is_pending(&self) -> bool {
+        self.interruption.is_none() && self.downloaded_bytes < self.total_bytes
+    }
+    pub fn is_interrupted(&self) -> bool {
+        self.interruption.is_some()
+    }
+    pub fn is_complete(&self) -> bool {
+        self.downloaded_bytes >= self.total_bytes
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct AgentStatus {
     /// Version of the agent binary
     pub agent_version: Option<String>,
@@ -144,4 +170,47 @@ pub struct AgentStatus {
     pub connected_time: Option<DateTime<Utc>>,
     /// A map of transfers in progress
     pub transfers: IndexMap<TransferId, TransferStatus>,
+    /// Latest reconcile status of the agent
+    pub reconcile: Option<(Instant, Result<ReconcileStatus<bool>, ReconcileError>)>,
+}
+
+impl DataFormat for LatestBlockInfo {
+    type Header = u8;
+
+    const LATEST_HEADER: Self::Header = 1;
+
+    fn write_data<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, crate::format::DataWriteError> {
+        let mut written = self.height.write_data(writer)?;
+        written += self.state_root.write_data(writer)?;
+        written += self.block_hash.write_data(writer)?;
+        written += self.previous_hash.write_data(writer)?;
+        written += self.block_timestamp.write_data(writer)?;
+        written += self.update_time.write_data(writer)?;
+        Ok(written)
+    }
+
+    fn read_data<R: std::io::Read>(
+        reader: &mut R,
+        header: &Self::Header,
+    ) -> Result<Self, crate::format::DataReadError> {
+        if *header != Self::LATEST_HEADER {
+            return Err(crate::format::DataReadError::unsupported(
+                "LatestBlockInfo",
+                Self::LATEST_HEADER,
+                *header,
+            ));
+        }
+
+        Ok(LatestBlockInfo {
+            height: u32::read_data(reader, &())?,
+            state_root: String::read_data(reader, &())?,
+            block_hash: String::read_data(reader, &())?,
+            previous_hash: String::read_data(reader, &())?,
+            block_timestamp: i64::read_data(reader, &())?,
+            update_time: DateTime::read_data(reader, &())?,
+        })
+    }
 }

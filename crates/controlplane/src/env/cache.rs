@@ -177,6 +177,11 @@ impl NetworkCache {
         self.transaction_to_block_hash.contains_key(tx_id)
     }
 
+    /// Find a block hash given a transaction id
+    pub fn find_transaction(&self, tx_id: &str) -> Option<&ABlockHash> {
+        self.transaction_to_block_hash.get(tx_id)
+    }
+
     /// Check if the latest stored info is within the range of the provided
     /// height
     pub fn is_recent_block(&self, height: u32) -> bool {

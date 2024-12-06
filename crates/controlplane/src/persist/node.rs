@@ -90,7 +90,7 @@ mod tests {
     use snops_common::{
         format::DataFormat,
         node_targets::NodeTargets,
-        state::{DocHeightRequest, InternedId},
+        state::{HeightRequest, InternedId},
     };
 
     use crate::{
@@ -140,7 +140,7 @@ mod tests {
                 online: true,
                 replicas: None,
                 key: None,
-                height: DocHeightRequest::Top,
+                height: HeightRequest::Top,
                 labels: Default::default(),
                 agent: None,
                 validators: NodeTargets::None,
@@ -156,7 +156,7 @@ mod tests {
                 online: true,
                 replicas: None,
                 key: None,
-                height: DocHeightRequest::Top,
+                height: HeightRequest::Top,
                 labels: Default::default(),
                 agent: None,
                 validators: NodeTargets::None,

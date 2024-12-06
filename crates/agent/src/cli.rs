@@ -10,8 +10,10 @@ use std::{
 use clap::CommandFactory;
 use clap::Parser;
 use http::Uri;
-use snops_common::state::{AgentId, AgentModeOptions, PortConfig};
+use snops_common::state::{AgentId, AgentModeOptions, NetworkId, PortConfig, StorageId};
 use tracing::{info, warn};
+
+use crate::net;
 
 pub const ENV_ENDPOINT: &str = "SNOPS_ENDPOINT";
 pub const ENV_ENDPOINT_DEFAULT: &str = "127.0.0.1:1234";
@@ -119,6 +121,9 @@ impl Cli {
 
         let mut query = format!("/agent?mode={}", u8::from(self.modes));
 
+        // Add agent version
+        query.push_str(&format!("&version={}", env!("CARGO_PKG_VERSION")));
+
         // add &id=
         query.push_str(&format!("&id={}", self.id));
 
@@ -127,13 +132,13 @@ impl Cli {
             if fs::metadata(file).is_ok() {
                 query.push_str("&local_pk=true");
             } else {
-                warn!("private-key-file flag ignored as the file was not found: {file:?}")
+                warn!("Private-key-file flag ignored as the file was not found: {file:?}")
             }
         }
 
         // add &labels= if id is present
         if let Some(labels) = &self.labels {
-            info!("using labels: {:?}", labels);
+            info!("Using labels: {:?}", labels);
             query.push_str(&format!(
                 "&labels={}",
                 labels
@@ -166,5 +171,32 @@ impl Cli {
             ),
             ws_uri,
         )
+    }
+
+    pub fn addrs(&self) -> (Vec<IpAddr>, Option<IpAddr>) {
+        let internal_addrs = match (self.internal, self.external) {
+            // use specified internal address
+            (Some(internal), _) => vec![internal],
+            // use no internal address if the external address is loopback
+            (None, Some(external)) if external.is_loopback() => vec![],
+            // otherwise, get the local network interfaces available to this node
+            (None, _) => net::get_internal_addrs().expect("failed to get network interfaces"),
+        };
+
+        let external_addr = self.external;
+        if let Some(addr) = external_addr {
+            info!("Using external addr: {}", addr);
+        } else {
+            info!("Skipping external addr");
+        }
+
+        (internal_addrs, external_addr)
+    }
+
+    pub fn storage_path(&self, network: NetworkId, storage_id: StorageId) -> PathBuf {
+        let mut path = self.path.join("storage");
+        path.push(network.to_string());
+        path.push(storage_id.to_string());
+        path
     }
 }

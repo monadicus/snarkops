@@ -3,7 +3,8 @@ use http::StatusCode;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
 use snops_common::{
-    aot_cmds::AotCmdError, db::error::DatabaseError, impl_into_status_code, impl_into_type_str,
+    aot_cmds::AotCmdError, db::error::DatabaseError, events::TransactionAbortReason,
+    impl_into_status_code, impl_into_type_str,
 };
 use thiserror::Error;
 
@@ -12,13 +13,10 @@ use crate::{
     env::error::{EnvError, EnvRequestError, ExecutionError},
     error::DeserializeError,
     schema::error::{SchemaError, StorageError},
-    state::error::BatchReconcileError,
 };
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]
 pub enum ServerError {
-    #[error(transparent)]
-    BatchReconcile(#[from] BatchReconcileError),
     #[error("Content resource `{0}` not found")]
     ContentNotFound(String),
     #[error(transparent)]
@@ -50,7 +48,6 @@ pub enum ServerError {
 }
 
 impl_into_status_code!(ServerError, |value| match value {
-    BatchReconcile(e) => e.into(),
     ContentNotFound(_) => axum::http::StatusCode::NOT_FOUND,
     Cannon(e) => e.into(),
     Deserialize(e) => e.into(),
@@ -68,7 +65,6 @@ impl_into_status_code!(ServerError, |value| match value {
 });
 
 impl_into_type_str!(ServerError, |value| match value {
-    BatchReconcile(e) => format!("{}.{e}", value.as_ref()),
     Cannon(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Env(e) => format!("{}.{}", value.as_ref(), String::from(e)),
     Execute(e) => format!("{}.{}", value.as_ref(), String::from(e)),
@@ -121,7 +117,11 @@ pub enum ActionError {
         retries: i32,
     },
     #[error("execution aborted")]
-    ExecuteStatusAborted { tx_id: String, retries: i32 },
+    ExecuteStatusAborted {
+        tx_id: String,
+        retries: i32,
+        reason: TransactionAbortReason,
+    },
     #[error("execution failed")]
     ExecuteStatusFailed {
         message: String,

@@ -9,28 +9,26 @@ use http::StatusCode;
 use serde_json::json;
 use snops_common::{
     action_models::{AleoValue, ExecuteAction},
-    aot_cmds::{AotCmd, Authorization},
-    state::KeyState,
+    aot_cmds::AotCmd,
+    events::{Event, EventKind},
+    state::{Authorization, KeyState},
 };
-use tokio::{select, sync::mpsc};
+use tokio::select;
 
 use super::Env;
 use crate::{
-    cannon::{
-        error::AuthorizeError,
-        router::AuthQuery,
-        status::{TransactionStatusEvent, TransactionStatusSender},
-    },
+    cannon::{error::AuthorizeError, router::AuthQuery},
     env::{error::ExecutionError, Environment},
+    events::EventSubscriber,
     server::error::{ActionError, ServerError},
     state::GlobalState,
 };
 
 pub async fn execute_status(
-    tx_id: String,
-    mut rx: mpsc::Receiver<TransactionStatusEvent>,
+    tx_id: Arc<String>,
+    mut rx: EventSubscriber,
 ) -> Result<Json<serde_json::Value>, ActionError> {
-    use TransactionStatusEvent::*;
+    use snops_common::events::TransactionEvent::*;
 
     let mut timeout = Box::pin(tokio::time::sleep(std::time::Duration::from_secs(30)));
     let mut agent_id = None;
@@ -39,23 +37,35 @@ pub async fn execute_status(
     loop {
         select! {
             _ = &mut timeout => {
-                return Err(ActionError::ExecuteStatusTimeout { tx_id, agent_id, retries });
+                return Err(ActionError::ExecuteStatusTimeout { tx_id: tx_id.to_string(), agent_id, retries });
             },
-            Some(msg) = rx.recv() => {
-                match msg {
-                    ExecuteAborted => {
-                        return Err(ActionError::ExecuteStatusAborted { tx_id, retries});
+            Ok(ev) = rx.next() => {
+                let Event{ content: EventKind::Transaction(ev), agent, .. } = ev.as_ref() else {
+                    continue;
+                };
+
+                match ev {
+                    ExecuteAborted(reason) => {
+                        return Err(ActionError::ExecuteStatusAborted {
+                            tx_id: tx_id.to_string(),
+                            retries,
+                            reason: reason.clone(),
+                        });
                     },
-                    ExecuteFailed(msg) => {
-                        return Err(ActionError::ExecuteStatusFailed { message: msg, tx_id, retries });
+                    ExecuteFailed(message) => {
+                        return Err(ActionError::ExecuteStatusFailed {
+                            message: message.to_string(),
+                            tx_id: tx_id.to_string(),
+                            retries,
+                        });
                     },
-                    Executing(id) => {
-                        agent_id = Some(id.to_string());
+                    Executing => {
+                        agent_id = agent.map(|id| id.to_string());
                     },
                     ExecuteAwaitingCompute => {
                         retries += 1;
                     },
-                    ExecuteComplete(transaction) => {
+                    ExecuteComplete { transaction } => {
                         return Ok(Json(json!({
                             "agent_id": agent_id,
                             "retries": retries,
@@ -76,33 +86,23 @@ pub async fn execute(
     Json(action): Json<ExecuteAction>,
 ) -> Response {
     let query_addr = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
+    let cannon_id = action.cannon;
 
     if query.is_async() {
-        return match execute_inner(
-            &state,
-            action,
-            &env,
-            TransactionStatusSender::empty(),
-            query_addr,
-        )
-        .await
-        {
+        return match execute_inner(&state, action, &env, query_addr).await {
             Ok(tx_id) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
             Err(e) => ServerError::from(e).into_response(),
         };
     }
 
-    let (tx, rx) = mpsc::channel(10);
-    match execute_inner(
-        &state,
-        action,
-        &env,
-        TransactionStatusSender::new(tx),
-        query_addr,
-    )
-    .await
-    {
-        Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
+    match execute_inner(&state, action, &env, query_addr).await {
+        Ok(tx_id) => {
+            use snops_common::events::EventFilter::*;
+            let subscriber = state
+                .events
+                .subscribe_on(TransactionIs(tx_id.clone()) & EnvIs(env.id) & CannonIs(cannon_id));
+            execute_status(tx_id, subscriber).await.into_response()
+        }
         Err(e) => ServerError::from(e).into_response(),
     }
 }
@@ -111,9 +111,8 @@ pub async fn execute_inner(
     state: &GlobalState,
     action: ExecuteAction,
     env: &Environment,
-    events: TransactionStatusSender,
     query: Option<String>,
-) -> Result<String, ExecutionError> {
+) -> Result<Arc<String>, ExecutionError> {
     let ExecuteAction {
         cannon: cannon_id,
         private_key,
@@ -177,6 +176,8 @@ pub async fn execute_inner(
             query.as_ref(),
             priority_fee,
             fee_record.as_ref(),
+            // use cost_v1 when we are not using the native genesis
+            !env.storage.native_genesis,
         )
         .await?;
 
@@ -185,7 +186,7 @@ pub async fn execute_inner(
         serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
 
     // proxy it to a listen cannon
-    let tx_id = cannon.proxy_auth(authorization, events).await?;
+    let tx_id = cannon.proxy_auth(authorization).await?;
 
     Ok(tx_id)
 }

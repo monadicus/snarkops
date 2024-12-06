@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 
 use futures_util::future::join_all;
-use snops_common::state::{AgentId, AgentState, NodeKey};
+use snops_common::state::{AgentId, AgentState, NodeKey, ReconcileOptions};
 use tracing::{error, info};
 
-use super::{error::BatchReconcileError, AgentClient, GlobalState};
+use super::GlobalState;
 
 /// The tuple to pass into `reconcile_agents`.
-pub type PendingAgentReconcile = (AgentId, Option<AgentClient>, AgentState);
+pub type PendingAgentReconcile = (AgentId, AgentState);
 
 /// Get a node map (key => agent ID) from an agent reconciliation iterator.
 pub fn pending_reconcile_node_map<'a>(
     pending: impl Iterator<Item = &'a PendingAgentReconcile>,
 ) -> HashMap<NodeKey, AgentId> {
     pending
-        .map(|(id, _, state)| match state {
+        .map(|(id, state)| match state {
             AgentState::Node(_, node) => (node.node_key.clone(), *id),
             _ => unreachable!(),
         })
@@ -22,24 +22,22 @@ pub fn pending_reconcile_node_map<'a>(
 }
 
 impl GlobalState {
+    pub async fn update_agent_states(&self, iter: impl IntoIterator<Item = PendingAgentReconcile>) {
+        self.update_agent_states_opts(iter, Default::default())
+            .await;
+    }
+
     /// Reconcile a bunch of agents at once.
-    pub async fn reconcile_agents(
+    pub async fn update_agent_states_opts(
         &self,
         iter: impl IntoIterator<Item = PendingAgentReconcile>,
-    ) -> Result<(), BatchReconcileError> {
-        let mut handles = vec![];
+        opts: ReconcileOptions,
+    ) {
         let mut agent_ids = vec![];
 
-        for (id, client, target) in iter {
-            agent_ids.push(id);
-
-            // if the client is present, queue a reconcile
-            if let Some(client) = client {
-                handles.push(tokio::spawn(async move { client.reconcile(target).await }));
-
-                // otherwise just change the agent state so it'll inventory on
-                // reconnect
-            } else if let Some(mut agent) = self.pool.get_mut(&id) {
+        for (id, target) in iter {
+            if let Some(mut agent) = self.pool.get_mut(&id) {
+                agent_ids.push(id);
                 agent.set_state(target);
                 if let Err(e) = self.db.agents.save(&id, &agent) {
                     error!("failed to save agent {id} to the database: {e}");
@@ -47,54 +45,56 @@ impl GlobalState {
             }
         }
 
-        if handles.is_empty() {
-            return Ok(());
-        }
+        self.queue_many_reconciles(agent_ids, opts).await;
+    }
 
-        let num_reconciliations = handles.len();
+    pub async fn queue_many_reconciles(
+        &self,
+        iter: impl IntoIterator<Item = AgentId>,
+        opts: ReconcileOptions,
+    ) -> (usize, usize) {
+        let mut handles = vec![];
+        let mut agent_ids = vec![];
 
-        info!("beginning reconciliation...");
-        let reconciliations = join_all(handles).await;
-        info!("reconciliation complete, updating agent states...");
-
-        let mut success = 0;
-        for (agent_id, result) in agent_ids.into_iter().zip(reconciliations) {
-            let Some(mut agent) = self.pool.get_mut(&agent_id) else {
+        for id in iter {
+            let agent = self.pool.get(&id);
+            let Some(agent) = agent else {
+                continue;
+            };
+            let Some(client) = agent.client_owned() else {
                 continue;
             };
 
-            match result {
-                Ok(Ok(Ok(agent_state))) => {
-                    agent.set_state(agent_state);
-                    if let Err(e) = self.db.agents.save(&agent_id, &agent) {
-                        error!("failed to save agent {agent_id} to the database: {e}");
-                    }
+            agent_ids.push(id);
+            let target = agent.state.clone();
 
+            handles.push(tokio::spawn(async move {
+                client.set_agent_state(target, opts).await
+            }));
+        }
+
+        if handles.is_empty() {
+            return (0, 0);
+        }
+
+        let num_reqs = handles.len();
+
+        info!("Requesting reconcile from {num_reqs} agents...");
+        let reconciliations = join_all(handles).await;
+
+        let mut success = 0;
+        for (agent_id, result) in agent_ids.into_iter().zip(reconciliations) {
+            match result {
+                Ok(Ok(())) => {
                     success += 1;
                 }
-                Ok(Ok(Err(e))) => error!(
-                    "agent {} experienced a reconcilation error: {e}",
-                    agent.id(),
-                ),
-
-                Ok(Err(e)) => error!("agent {} experienced a rpc error: {e}", agent.id(),),
-                Err(e) => error!("agent {} experienced a join error: {e}", agent.id(),),
+                Ok(Err(e)) => error!("agent {agent_id} experienced a rpc error: {e}"),
+                Err(e) => error!("join error during agent {agent_id} reconcile request: {e}"),
             }
         }
 
-        info!(
-            "reconciliation result: {success}/{} nodes reconciled",
-            num_reconciliations
-        );
+        info!("Requested {success}/{num_reqs} agents");
 
-        self.prom_httpsd.lock().await.set_dirty();
-
-        if success == num_reconciliations {
-            Ok(())
-        } else {
-            Err(BatchReconcileError {
-                failures: num_reconciliations - success,
-            })
-        }
+        (success, num_reqs)
     }
 }

@@ -1,19 +1,17 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use snops_common::{
-    aot_cmds::Authorization,
     db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
     format::PackedUint,
-    state::{AgentId, CannonId, EnvId, NetworkId, StorageId},
+    state::{AgentId, Authorization, CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
 };
 
 use crate::{
-    cannon::status::TransactionSendState,
     persist::{PersistEnv, PersistStorage},
     state::Agent,
 };
 
-pub type TxEntry = (EnvId, CannonId, String);
+pub type TxEntry = (EnvId, CannonId, Arc<String>);
 
 pub struct Database {
     #[allow(unused)]
@@ -40,7 +38,6 @@ pub struct Database {
     pub(crate) tx_index: DbTree<TxEntry, PackedUint>,
     /// Number of attempts for the transaction's current state
     pub(crate) tx_attempts: DbTree<TxEntry, PackedUint>,
-    // TODO: tx_attempts for tracking retries (of broadcast and execution)
 }
 
 impl DatabaseTrait for Database {

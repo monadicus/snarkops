@@ -108,7 +108,7 @@ impl<'de> Deserialize<'de> for NodeTargets {
 
 lazy_static! {
     static ref NODE_TARGET_REGEX: Regex =
-        Regex::new(r"^(?P<ty>\*|client|validator|prover)\/(?P<id>[A-Za-z0-9\-*]+)(?:@(?P<ns>[A-Za-z0-9\-*]+))?$")
+        Regex::new(r"^(?P<ty>\*|any|client|validator|prover)\/(?P<id>[A-Za-z0-9\-*]+)(?:@(?P<ns>[A-Za-z0-9\-*]+))?$")
             .unwrap();
 }
 
@@ -135,13 +135,13 @@ impl fmt::Display for NodeTargets {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NodeTargets::None => write!(f, ""),
-            NodeTargets::One(target) => write!(f, "{}", target),
+            NodeTargets::One(target) => write!(f, "{target}"),
             NodeTargets::Many(targets) => {
                 let mut iter = targets.iter();
                 if let Some(target) = iter.next() {
-                    write!(f, "{}", target)?;
+                    write!(f, "{target}")?;
                     for target in iter {
-                        write!(f, ", {}", target)?;
+                        write!(f, ", {target}")?;
                     }
                 }
                 Ok(())
@@ -184,6 +184,7 @@ impl FromStr for NodeTarget {
         // match the type
         let ty = match &captures["ty"] {
             "*" => NodeTargetType::All,
+            "any" => NodeTargetType::All,
             "client" => NodeTargetType::One(NodeType::Client),
             "validator" => NodeTargetType::One(NodeType::Validator),
             "prover" => NodeTargetType::One(NodeType::Prover),
@@ -194,6 +195,7 @@ impl FromStr for NodeTarget {
         let id = match &captures["id"] {
             // full wildcard
             "*" => NodeTargetId::All,
+            "any" => NodeTargetId::All,
 
             // partial wildcard
             id if id.contains('*') => NodeTargetId::WildcardPattern(WildMatch::new(id)),
@@ -206,6 +208,7 @@ impl FromStr for NodeTarget {
         let ns = match captures.name("ns") {
             // full wildcard
             Some(id) if id.as_str() == "*" => NodeTargetNamespace::All,
+            Some(id) if id.as_str() == "any" => NodeTargetNamespace::All,
 
             // local; either explicitly stated, or empty
             Some(id) if id.as_str() == "local" => NodeTargetNamespace::Local,
@@ -225,16 +228,16 @@ impl fmt::Display for NodeTarget {
             f,
             "{}/{}{}",
             match self.ty {
-                NodeTargetType::All => "*".to_owned(),
+                NodeTargetType::All => "any".to_owned(),
                 NodeTargetType::One(ty) => ty.to_string(),
             },
             match &self.id {
-                NodeTargetId::All => "*".to_owned(),
+                NodeTargetId::All => "any".to_owned(),
                 NodeTargetId::WildcardPattern(pattern) => pattern.to_string(),
                 NodeTargetId::Literal(id) => id.to_owned(),
             },
             match &self.ns {
-                NodeTargetNamespace::All => "@*".to_owned(),
+                NodeTargetNamespace::All => "@any".to_owned(),
                 NodeTargetNamespace::Local => "".to_owned(),
                 NodeTargetNamespace::Literal(ns) => format!("@{}", ns),
             }

@@ -1,16 +1,20 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use anyhow::Result;
 use clap::Parser;
 use clap_stdin::FileOrStdin;
-use reqwest::blocking::{Client, Response};
+use reqwest::{Client, RequestBuilder, Response};
 use serde_json::json;
+use snops_cli::events::EventsClient;
 use snops_common::{
     action_models::{AleoValue, WithTargets},
+    events::{Event, EventKind, TransactionEvent},
     key_source::KeySource,
     node_targets::{NodeTarget, NodeTargetError, NodeTargets},
-    state::{CannonId, DocHeightRequest, EnvId, InternedId},
+    state::{CannonId, EnvId, HeightRequest, InternedId},
 };
+
+use crate::commands::env::post_and_wait;
 
 //scli env canary action online client/*
 //scli env canary action offline client/*
@@ -58,18 +62,39 @@ impl From<NodesOption> for NodeTargets {
 pub enum Action {
     /// Turn the specified agents(and nodes) offline.
     #[clap(alias = "off")]
-    Offline(Nodes),
+    Offline {
+        /// The nodes to take offline. (eg. `validator/any`)
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
+        /// When present, don't wait for reconciles to finish before returning
+        #[clap(long = "async")]
+        async_mode: bool,
+    },
     /// Turn the specified agents(and nodes) online.
     #[clap(alias = "on")]
-    Online(Nodes),
+    Online {
+        /// The nodes to turn online (eg. `validator/any`)
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
+        /// When present, don't wait for reconciles to finish before returning
+        #[clap(long = "async")]
+        async_mode: bool,
+    },
     /// Reboot the specified agents(and nodes).
-    Reboot(Nodes),
+    Reboot {
+        /// The nodes to reboot (eg. `validator/any`)
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
+        /// When present, don't wait for reconciles to finish before returning
+        #[clap(long = "async")]
+        async_mode: bool,
+    },
     /// Execute an aleo program function on the environment. i.e.
     /// credits.aleo/transfer_public
     Execute {
         /// Private key to use, can be `committee.0` to use committee member 0's
         /// key
-        #[clap(long, short)]
+        #[clap(long)]
         private_key: Option<KeySource>,
         /// Private key to use for the fee. Defaults to the same as
         /// --private-key
@@ -125,7 +150,7 @@ pub enum Action {
         online: Option<bool>,
         /// Configure the height of the target nodes.
         #[clap(long)]
-        height: Option<DocHeightRequest>,
+        height: Option<HeightRequest>,
         /// Configure the peers of the target nodes, or `none`.
         #[clap(long, short)]
         peers: Option<NodesOption>,
@@ -138,15 +163,17 @@ pub enum Action {
         // Remove environment variables from a node: `--del-env FOO,BAR`
         #[clap(long, short, value_delimiter = ',', allow_hyphen_values = true)]
         del_env: Option<Vec<String>>,
-        /// The nodes to configure.
-        #[clap(num_args = 1, value_delimiter = ' ')]
-        nodes: Vec<NodeTarget>,
         /// Configure the binary for a node.
         #[clap(long, short)]
         binary: Option<InternedId>,
         /// Configure the private key for a node.
-        #[clap(long, short)]
+        #[clap(long)]
         private_key: Option<KeySource>,
+        #[clap(long = "async")]
+        async_mode: bool,
+        /// The nodes to configure. (eg. `validator/any`)
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
     },
 }
 
@@ -169,23 +196,38 @@ impl KeyEqValue {
 }
 
 impl Action {
-    pub fn execute(self, url: &str, env_id: EnvId, client: Client) -> Result<Response> {
+    pub async fn execute(self, url: &str, env_id: EnvId, client: Client) -> Result<Response> {
         use Action::*;
         Ok(match self {
-            Offline(Nodes { nodes }) => {
+            Offline { nodes, async_mode } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/offline");
-
-                client.post(ep).json(&WithTargets::from(nodes)).send()?
+                let req = client.post(ep).json(&WithTargets::from(nodes));
+                if async_mode {
+                    req.send().await?
+                } else {
+                    post_and_wait(url, req, env_id).await?;
+                    std::process::exit(0);
+                }
             }
-            Online(Nodes { nodes }) => {
+            Online { nodes, async_mode } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/online");
-
-                client.post(ep).json(&WithTargets::from(nodes)).send()?
+                let req = client.post(ep).json(&WithTargets::from(nodes));
+                if async_mode {
+                    req.send().await?
+                } else {
+                    post_and_wait(url, req, env_id).await?;
+                    std::process::exit(0);
+                }
             }
-            Reboot(Nodes { nodes }) => {
+            Reboot { nodes, async_mode } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/reboot");
-
-                client.post(ep).json(&WithTargets::from(nodes)).send()?
+                let req = client.post(ep).json(&WithTargets::from(nodes));
+                if async_mode {
+                    req.send().await?
+                } else {
+                    post_and_wait(url, req, env_id).await?;
+                    std::process::exit(0);
+                }
             }
 
             Execute {
@@ -230,12 +272,13 @@ impl Action {
                     json["program"] = program.into();
                 }
 
-                let mut builder = client.post(ep);
+                let req = client.post(ep).query(&[("async", "true")]).json(&json);
                 if async_mode {
-                    let query = [("async", "true")];
-                    builder = builder.query(&query);
+                    req.send().await?
+                } else {
+                    post_and_wait_tx(url, req).await?;
+                    std::process::exit(0);
                 }
-                builder.json(&json).send()?
             }
             Deploy {
                 private_key,
@@ -268,12 +311,13 @@ impl Action {
                     json["fee_record"] = fee_record.into();
                 }
 
-                let mut builder = client.post(ep);
+                let req = client.post(ep).query(&[("async", "true")]).json(&json);
                 if async_mode {
-                    let query = [("async", "true")];
-                    builder = builder.query(&query);
+                    req.send().await?
+                } else {
+                    post_and_wait_tx(url, req).await?;
+                    std::process::exit(0);
                 }
-                builder.json(&json).send()?
             }
             Config {
                 online,
@@ -285,6 +329,7 @@ impl Action {
                 del_env,
                 binary,
                 private_key,
+                async_mode,
             } => {
                 let ep = format!("{url}/api/v1/env/{env_id}/action/config");
 
@@ -321,8 +366,102 @@ impl Action {
                 }
 
                 // this api accepts a list of json objects
-                client.post(ep).json(&json!(vec![json])).send()?
+                let req = client.post(ep).json(&json!(vec![json]));
+
+                if async_mode {
+                    req.send().await?
+                } else {
+                    post_and_wait(url, req, env_id).await?;
+                    std::process::exit(0);
+                }
             }
         })
     }
+}
+
+pub async fn post_and_wait_tx(url: &str, req: RequestBuilder) -> Result<()> {
+    use snops_common::events::EventFilter::*;
+
+    let tx_id: String = req.send().await?.json().await?;
+
+    let mut events = EventsClient::open_with_filter(url, TransactionIs(Arc::new(tx_id))).await?;
+
+    let mut tx = None;
+    let mut block_hash = None;
+    let mut broadcast_height = None;
+    let mut broadcast_time = None;
+
+    while let Some(event) = events.next().await? {
+        let Event {
+            content: EventKind::Transaction(e),
+            agent,
+            ..
+        } = event
+        else {
+            continue;
+        };
+
+        match e {
+            TransactionEvent::AuthorizationReceived { .. } => {
+                // ignore output of this event
+            }
+            TransactionEvent::Executing => {
+                eprintln!(
+                    "executing on {}",
+                    agent
+                        .map(|a| a.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                );
+            }
+            TransactionEvent::ExecuteAwaitingCompute => {
+                eprintln!("waiting for compute...",);
+            }
+            TransactionEvent::ExecuteExceeded { attempts } => {
+                eprintln!("execution failed after {attempts} attempts");
+                break;
+            }
+            TransactionEvent::ExecuteFailed(reason) => {
+                eprintln!("execution failed: {reason}");
+            }
+            TransactionEvent::ExecuteAborted(reason) => {
+                eprintln!(
+                    "execution aborted: {}",
+                    serde_json::to_string_pretty(&reason)?
+                );
+            }
+            TransactionEvent::ExecuteComplete { transaction } => {
+                eprintln!("execution complete");
+                tx = Some(transaction);
+            }
+            TransactionEvent::BroadcastExceeded { attempts } => {
+                eprintln!("broadcast failed after {attempts} attempts");
+                break;
+            }
+            TransactionEvent::Broadcasted { height, timestamp } => {
+                eprintln!(
+                    "broadcasted at height {} at {timestamp}",
+                    height
+                        .map(|h| h.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                );
+                broadcast_height = height;
+                broadcast_time = Some(timestamp);
+            }
+            TransactionEvent::Confirmed { hash } => {
+                eprintln!("confirmed with hash {hash}");
+                block_hash = Some(hash);
+                break;
+            }
+        }
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "transaction": tx,
+            "broadcast_height": broadcast_height,
+            "broadcast_time": broadcast_time,
+            "block_hash": block_hash,
+        }))?
+    );
+    events.close().await
 }

@@ -208,17 +208,17 @@ and attacks, and guarantee metrics.</p>
 run snarkOS, or what transactions to execute.</p>
 </li>
 <li>
-<p>In another terminal, build the cli: <code>cargo install --path ./crates/snops-cli</code></p>
+<p>In another terminal, install the cli: <code>cargo install --path ./crates/snops-cli</code>, or build with <code>cargo xtask build cli</code> and use from <code>target/release-big/snops-cli</code>.</p>
 <p>The cli is used to interact with the controlplane and manage environments.
 It provides JSON based output. We recommend pairing our cli with <a href="https://jqlang.github.io/jq/"><code>jq</code></a> when leveraging other scripts and tools</p>
 </li>
 <li>
-<p>Build the agent: <code>cargo build --profile release-big -p snops-agent</code></p>
+<p>Build the agent: <code>cargo xtask build agent</code></p>
 <p>The agent is a lightweight service that starts up <code>snarkos-aot</code> which
 automatically configures snarkos nodes, or executes transactions.</p>
 </li>
 <li>
-<p>Build <code>snarkos-aot</code> (for running nodes): <code>cargo build --profile release-big -p snarkos-aot</code></p>
+<p>Build <code>snarkos-aot</code> (for running nodes): <code>cargo xtask build aot</code></p>
 <p><code>snarkos-aot</code> is an alternative snarkOS CLI providing more developer-oriented
 features as well as tooling for distributed transaction generation and execution.</p>
 </li>
@@ -233,14 +233,14 @@ features as well as tooling for distributed transaction generation and execution
 agent configuration should connect to a locally operated controlplane.</p>
 </li>
 </ol>
-<h3 id="local-isonets"><a class="header" href="#local-isonets">Local Isonets</a></h3>
-<p>This example requires 4 agents and the control plane to be running.</p>
+<h3 id="local-isolated-networks-isonets"><a class="header" href="#local-isolated-networks-isonets">Local Isolated Networks (Isonets)</a></h3>
+<p>This example requires 4 agents and the control plane to be running. It allows you to run a devnet with a custom genesis block.</p>
 <ol>
-<li>Start the environment: <code>snops-cli env prepare specs/test-4-validators.yaml</code></li>
+<li>Start the environment: <code>snops-cli env apply specs/test-4-validators.yaml</code></li>
 <li>Check the current network height: <code>snops-cli env height</code></li>
 <li>Look at the latest block: <code>snops-cli env block</code></li>
 <li>Look at the genesis block: <code>snops-cli env block 0</code></li>
-<li>Stop the environment: <code>snops-cli env clean</code></li>
+<li>Stop the environment: <code>snops-cli env delete</code></li>
 </ol>
 <h3 id="isonet-transfers"><a class="header" href="#isonet-transfers">Isonet Transfers</a></h3>
 <p>Using the setup for a <a href="#local-isonets">Local Isonet</a>, executing Aleo programs has never
@@ -328,7 +328,7 @@ finalize store:
 <h2 id="snarkos-aot-quickstart"><a class="header" href="#snarkos-aot-quickstart">SnarkOS-aot Quickstart</a></h2>
 <p><code>snarkos-aot</code> provides various CLI tools to help with developing and executing
 Aleo programs as well as interact with snarkOS ledgers.</p>
-<p>Build <code>snarkos-aot</code> with: <code>cargo install --profile release-big -p snarkos-aot</code>.
+<p>Build <code>snarkos-aot</code> with: <code>cargo xtask build aot</code>.
 The compiled binary can be found in <code>target/release-big/snarkos-aot</code>.</p>
 <p>Use the <code>NETWORK</code> environment variable to specify <code>mainnet</code> (default),
 <code>testnet</code>, or <code>canary</code>.</p>

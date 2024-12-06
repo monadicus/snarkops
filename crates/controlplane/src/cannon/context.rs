@@ -5,8 +5,8 @@ use dashmap::DashMap;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use lazysort::SortedBy;
 use snops_common::{
-    aot_cmds::Authorization,
-    state::{CannonId, EnvId, NetworkId},
+    events::{Event, TransactionAbortReason, TransactionEvent},
+    state::{AgentId, Authorization, CannonId, EnvId, NetworkId, TransactionSendState},
 };
 use tracing::{error, trace, warn};
 
@@ -15,13 +15,12 @@ use super::{
     file::TransactionSink,
     sink::TxSink,
     source::TxSource,
-    status::{TransactionSendState, TransactionStatusEvent, TransactionStatusSender},
     tracker::TransactionTracker,
     CannonReceivers,
 };
 use crate::{
     cannon::source::ComputeTarget,
-    state::{GlobalState, REST_CLIENT},
+    state::{EmitEvent, GetGlobalState, GlobalState, REST_CLIENT},
 };
 
 /// Information a transaction cannon needs for execution via spawned task
@@ -35,7 +34,7 @@ pub struct ExecutionContext {
     pub(crate) source: TxSource,
     pub(crate) sink: TxSink,
     pub(crate) fired_txs: Arc<AtomicUsize>,
-    pub(crate) transactions: Arc<DashMap<String, TransactionTracker>>,
+    pub(crate) transactions: Arc<DashMap<Arc<String>, TransactionTracker>>,
 }
 
 impl ExecutionContext {
@@ -93,29 +92,29 @@ impl ExecutionContext {
                 // ------------------------
 
                 // receive authorizations and forward the executions to the compute target
-                Some((tx_id, events)) = rx.authorizations.recv() => {
+                Some(tx_id) = rx.authorizations.recv() => {
                     // ensure the transaction tracker exists
                     let Some(tracker) = self.transactions.get(&tx_id) else {
                         error!("cannon {env_id}.{cannon_id} missing transaction tracker for {tx_id}");
-                        events.send(TransactionStatusEvent::ExecuteAborted);
+                        TransactionEvent::ExecuteAborted(TransactionAbortReason::MissingTracker).with_cannon_ctx(&self, tx_id).emit(&self);
                         continue;
                     };
                     // ensure the transaction is in the correct state
                     if tracker.status != TransactionSendState::Authorized {
                         error!("cannon {env_id}.{cannon_id} unexpected status for {tx_id}: {:?}", tracker.status);
                         // TODO: remove this auth and log it somewhere
-                        events.send(TransactionStatusEvent::ExecuteAborted);
+                        TransactionEvent::ExecuteAborted(TransactionAbortReason::UnexpectedStatus{ transaction_status: tracker.status}).with_cannon_ctx(&self, tx_id).emit(&self);
                         continue;
                     }
                     // ensure the transaction has an authorization (more than likely unreachable)
                     let Some(auth) = &tracker.authorization else {
                         error!("cannon {env_id}.{cannon_id} missing authorization for {tx_id}");
                         // TODO: remove the auth anyway
-                        events.send(TransactionStatusEvent::ExecuteAborted);
+                        TransactionEvent::ExecuteAborted(TransactionAbortReason::MissingAuthorization).with_cannon_ctx(&self, tx_id).emit(&self);
                         continue;
                     };
 
-                    auth_execs.push(self.execute_auth(tx_id, Arc::clone(auth), &query_path, events));
+                    auth_execs.push(self.execute_auth(tx_id, Arc::clone(auth), &query_path));
                 }
                 // receive transaction ids and forward them to the sink target
                 Some(tx) = rx.transactions.recv() => {
@@ -147,7 +146,7 @@ impl ExecutionContext {
     }
 
     // write the transaction status to the store and update the transaction tracker
-    pub fn write_tx_status(&self, tx_id: &str, status: TransactionSendState) {
+    pub fn write_tx_status(&self, tx_id: &Arc<String>, status: TransactionSendState) {
         let key = (self.env_id, self.id, tx_id.to_owned());
         if let Some(mut tx) = self.transactions.get_mut(tx_id) {
             if let Err(e) = TransactionTracker::write_status(&self.state, &key, status) {
@@ -160,10 +159,10 @@ impl ExecutionContext {
         }
     }
 
-    pub fn remove_tx_tracker(&self, tx_id: String) {
+    pub fn remove_tx_tracker(&self, tx_id: Arc<String>) {
         let _ = self.transactions.remove(&tx_id);
         if let Err(e) =
-            TransactionTracker::delete(&self.state, &(self.env_id, self.id, tx_id.to_owned()))
+            TransactionTracker::delete(&self.state, &(self.env_id, self.id, tx_id.clone()))
         {
             error!(
                 "cannon {}.{} failed to delete transaction {tx_id}: {e:?}",
@@ -175,28 +174,35 @@ impl ExecutionContext {
     /// Execute an authorization on the source's compute target
     async fn execute_auth(
         &self,
-        tx_id: String,
+        tx_id: Arc<String>,
         auth: Arc<Authorization>,
         query_path: &str,
-        events: TransactionStatusSender,
-    ) -> Result<(), (String, CannonError)> {
-        events.send(TransactionStatusEvent::ExecuteQueued);
+    ) -> Result<(), (Arc<String>, CannonError)> {
+        TransactionEvent::AuthorizationReceived {
+            authorization: Arc::clone(&auth),
+        }
+        .with_cannon_ctx(self, tx_id.clone())
+        .emit(self);
         match self
             .source
             .compute
-            .execute(self, query_path, &tx_id, &auth, &events)
+            .execute(self, query_path, &tx_id, &auth)
             .await
         {
             // Can't execute the auth if no agents are available.
             // The transaction task will handle re-appending the auth.
             Err(CannonError::Source(SourceError::NoAvailableAgents(_))) => {
-                events.send(TransactionStatusEvent::ExecuteAwaitingCompute);
+                TransactionEvent::ExecuteAwaitingCompute
+                    .with_cannon_ctx(self, tx_id.clone())
+                    .emit(self);
                 Ok(())
             }
             Err(e) => {
                 // reset the transaction status to authorized so it can be re-executed
                 self.write_tx_status(&tx_id, TransactionSendState::Authorized);
-                events.send(TransactionStatusEvent::ExecuteFailed(e.to_string()));
+                TransactionEvent::ExecuteFailed(e.to_string())
+                    .with_cannon_ctx(self, tx_id.clone())
+                    .emit(self);
                 Err((tx_id, e))
             }
             res => res.map_err(|e| (tx_id, e)),
@@ -207,8 +213,8 @@ impl ExecutionContext {
     async fn fire_tx(
         &self,
         sink_pipe: Option<Arc<TransactionSink>>,
-        tx_id: String,
-    ) -> Result<String, CannonError> {
+        tx_id: Arc<String>,
+    ) -> Result<Arc<String>, CannonError> {
         let latest_height = self
             .state
             .get_env_block_info(self.env_id)
@@ -216,7 +222,7 @@ impl ExecutionContext {
 
         // ensure transaction is being tracked
         let Some(tracker) = self.transactions.get(&tx_id).map(|v| v.value().clone()) else {
-            return Err(CannonError::TransactionLost(self.id, tx_id));
+            return Err(CannonError::TransactionLost(self.id, tx_id.to_string()));
         };
         // ensure transaction is ready to be broadcasted
         if !matches!(
@@ -225,7 +231,7 @@ impl ExecutionContext {
         ) {
             return Err(CannonError::InvalidTransactionState(
                 self.id,
-                tx_id,
+                tx_id.to_string(),
                 format!(
                     "expected unsent or broadcasted, got {}",
                     tracker.status.label()
@@ -235,7 +241,7 @@ impl ExecutionContext {
 
         // ensure transaction blob exists
         let Some(tx_blob) = tracker.transaction else {
-            return Err(CannonError::TransactionLost(self.id, tx_id));
+            return Err(CannonError::TransactionLost(self.id, tx_id.to_string()));
         };
 
         let tx_str = match serde_json::to_string(&tx_blob) {
@@ -270,11 +276,19 @@ impl ExecutionContext {
             let network = self.network;
 
             // update the transaction status and increment the broadcast attempts
-            let update_status = || {
+            let update_status = |agent: Option<AgentId>| {
                 self.write_tx_status(
                     &tx_id,
                     TransactionSendState::Broadcasted(latest_height, Utc::now()),
                 );
+                let mut ev = TransactionEvent::Broadcasted {
+                    height: latest_height,
+                    timestamp: Utc::now(),
+                }
+                .with_cannon_ctx(self, Arc::clone(&tx_id));
+                ev.agent = agent;
+                ev.emit(self);
+
                 if let Err(e) = TransactionTracker::inc_attempts(
                     &self.state,
                     &(env_id, cannon_id, tx_id.to_owned()),
@@ -298,7 +312,7 @@ impl ExecutionContext {
                         continue;
                     }
 
-                    update_status();
+                    update_status(agent);
                     return Ok(tx_id);
                 }
 
@@ -342,7 +356,7 @@ impl ExecutionContext {
                         }
                     }
 
-                    update_status();
+                    update_status(None);
                     return Ok(tx_id);
                 }
             }
@@ -358,5 +372,25 @@ impl ExecutionContext {
             self.remove_tx_tracker(tx_id.clone());
         }
         Ok(tx_id)
+    }
+}
+
+impl<'a> GetGlobalState<'a> for &'a ExecutionContext {
+    fn global_state(self) -> &'a GlobalState {
+        &self.state
+    }
+}
+
+pub trait CtxEventHelper {
+    fn with_cannon_ctx(self, ctx: &ExecutionContext, transaction: Arc<String>) -> Event;
+}
+
+impl<T: Into<Event>> CtxEventHelper for T {
+    fn with_cannon_ctx(self, ctx: &ExecutionContext, transaction: Arc<String>) -> Event {
+        let mut event = self.into();
+        event.cannon = Some(ctx.id);
+        event.env = Some(ctx.env_id);
+        event.transaction = Some(transaction);
+        event
     }
 }

@@ -20,8 +20,6 @@ pub enum StateError {
     Agent(#[from] snops_common::prelude::error::AgentError),
     #[error("source agent has no addr id: `{0}`")]
     NoAddress(AgentId),
-    #[error(transparent)]
-    Reconcile(#[from] snops_common::prelude::error::ReconcileError),
     #[error("{0}")]
     Rpc(#[from] tarpc::client::RpcError),
     #[error("source agent not found id: `{0}`")]
@@ -32,7 +30,6 @@ impl_into_status_code!(StateError);
 
 impl_into_type_str!(StateError, |value| match value {
     Agent(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
-    Reconcile(e) => format!("{}.{}", value.as_ref(), e.as_ref()),
     _ => value.as_ref().to_string(),
 });
 

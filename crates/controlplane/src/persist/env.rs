@@ -2,15 +2,14 @@ use std::sync::Arc;
 
 use bimap::BiMap;
 use dashmap::DashMap;
+use snops_common::state::TransactionSendState;
 use snops_common::state::{CannonId, EnvId, NetworkId, NodeKey, StorageId};
 use tokio::sync::Semaphore;
 
 use super::prelude::*;
 use super::PersistNode;
 use crate::{
-    cannon::{
-        sink::TxSink, source::TxSource, status::TransactionSendState, tracker::TransactionTracker,
-    },
+    cannon::{sink::TxSink, source::TxSource, tracker::TransactionTracker},
     env::{
         error::{EnvError, PrepareError},
         prepare_cannons, EnvNodeState, EnvPeer, Environment,
@@ -34,7 +33,6 @@ pub struct PersistEnv {
     /// List of nodes and their states or external node info
     pub nodes: Vec<(NodeKey, PersistNode)>,
     /// Loaded cannon configs in this env
-    /// TODO: persist cannon
     pub cannons: Vec<(CannonId, TxSource, TxSink)>,
 }
 
@@ -197,7 +195,7 @@ impl DataFormat for PersistEnv {
     type Header = PersistEnvFormatHeader;
     const LATEST_HEADER: Self::Header = PersistEnvFormatHeader {
         version: 1,
-        nodes: PersistNode::LATEST_HEADER, // TODO: use PersistNode::LATEST_HEADER
+        nodes: PersistNode::LATEST_HEADER,
         tx_source: TxSource::LATEST_HEADER,
         tx_sink: TxSink::LATEST_HEADER,
         network: NetworkId::LATEST_HEADER,

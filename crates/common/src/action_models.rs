@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     key_source::KeySource,
     node_targets::{NodeTarget, NodeTargets},
-    state::{CannonId, DocHeightRequest, InternedId},
+    state::{CannonId, HeightRequest, InternedId},
 };
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -116,7 +116,7 @@ pub struct Reconfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub online: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub height: Option<DocHeightRequest>,
+    pub height: Option<HeightRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peers: Option<NodeTargets>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

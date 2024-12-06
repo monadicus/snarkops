@@ -4,6 +4,7 @@ use regex::Regex;
 mod agent_mode;
 mod agent_state;
 mod agent_status;
+mod authorization;
 mod height_request;
 mod id;
 mod network;
@@ -11,12 +12,15 @@ mod node_key;
 mod node_state;
 mod node_type;
 mod port_config;
+mod reconcile;
 pub mod snarkos_status;
 pub mod strings;
+mod transaction_status;
 
 pub use agent_mode::*;
 pub use agent_state::*;
 pub use agent_status::*;
+pub use authorization::*;
 pub use height_request::*;
 pub use id::*;
 pub use network::*;
@@ -24,6 +28,8 @@ pub use node_key::*;
 pub use node_state::*;
 pub use node_type::*;
 pub use port_config::*;
+pub use reconcile::*;
+pub use transaction_status::*;
 
 lazy_static! {
     static ref NODE_KEY_REGEX: Regex = Regex::new(

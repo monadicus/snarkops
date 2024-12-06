@@ -1,14 +1,11 @@
 pub mod agent;
 
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-};
+use std::{collections::HashMap, net::IpAddr};
 
-use super::error::ResolveError;
+use super::error::{ReconcileError, ResolveError};
 use crate::{
-    api::EnvInfo,
-    state::{AgentId, EnvId, NodeStatus, TransferStatus, TransferStatusUpdate},
+    api::AgentEnvInfo,
+    state::{AgentId, EnvId, NodeStatus, ReconcileStatus, TransferStatus, TransferStatusUpdate},
 };
 
 pub const PING_HEADER: &[u8] = b"snops-agent";
@@ -16,12 +13,10 @@ pub const PING_HEADER: &[u8] = b"snops-agent";
 #[tarpc::service]
 pub trait ControlService {
     /// Resolve the addresses of the given agents.
-    async fn resolve_addrs(
-        peers: HashSet<AgentId>,
-    ) -> Result<HashMap<AgentId, IpAddr>, ResolveError>;
+    async fn resolve_addrs(peers: Vec<AgentId>) -> Result<HashMap<AgentId, IpAddr>, ResolveError>;
 
     /// Get the environment info for the given environment.
-    async fn get_env_info(env_id: EnvId) -> Option<EnvInfo>;
+    async fn get_env_info(env_id: EnvId) -> Option<AgentEnvInfo>;
 
     /// Emit an agent transfer status update.
     async fn post_transfer_status(id: u32, status: TransferStatusUpdate);
@@ -40,4 +35,7 @@ pub trait ControlService {
 
     /// Emit an agent node status update.
     async fn post_node_status(update: NodeStatus);
+
+    /// Emit an agent reconcile status update.
+    async fn post_reconcile_status(status: Result<ReconcileStatus<bool>, ReconcileError>);
 }

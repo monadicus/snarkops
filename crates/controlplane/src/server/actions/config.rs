@@ -27,7 +27,7 @@ pub async fn config(
             #[allow(unused_variables)]
             match pending.entry($agent.id()) {
                 Entry::Occupied(mut ent) => {
-                    match ent.get_mut().2 {
+                    match ent.get_mut().1 {
                         AgentState::Inventory => (),
                         AgentState::Node(_, ref mut n) => {
                             $({
@@ -40,7 +40,6 @@ pub async fn config(
                 Entry::Vacant(ent) => {
                     ent.insert((
                         $agent.id(),
-                        $agent.client_owned(),
                         $agent.state().clone().map_node(|mut n| {
                             $({
                                 let $key = &mut n.$key;
@@ -57,7 +56,6 @@ pub async fn config(
     for WithTargets { nodes, data } in configs {
         for agent in env.matching_agents(&nodes, &state.pool) {
             if let Some(h) = data.height {
-                let h = h.into();
                 set_node_field!(agent, height = (height.0 + 1, h));
             }
 
@@ -119,13 +117,6 @@ pub async fn config(
     let pending = pending.into_values().collect::<Vec<_>>();
     let node_map = pending_reconcile_node_map(pending.iter());
 
-    let res = state
-        .reconcile_agents(pending)
-        .await
-        .map_err(ServerError::from);
-
-    match res {
-        Ok(_) => Json(node_map).into_response(),
-        e => e.into_response(),
-    }
+    state.update_agent_states(pending).await;
+    Json(node_map).into_response()
 }

@@ -158,6 +158,7 @@ pub fn genesis_quorum<R: Rng + CryptoRng, N: Network>(
     let (ratifications, transactions, aborted_transaction_ids, ratified_finalize_operations) = vm
         .speculate(
         state,
+        0,
         None,
         ratifications,
         &solutions,

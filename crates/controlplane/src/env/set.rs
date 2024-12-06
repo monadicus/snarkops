@@ -207,15 +207,6 @@ pub fn pair_with_nodes(
         )]);
     }
 
-    // another optimization that could be made is to sort nodes based on the number
-    // of agents with the specific labels. this would be useful for when some
-    // agents have unique labels as well as other common labels and
-    // there are nodes asking for agents with either.
-
-    // TODO: potential performance improvement by splitting this agent map up
-    // available modes eg. client map, prover map, validator map, then pick by
-    // the key.ty
-
     // handle the nodes that want specific agents first
     let agent_map = agents.iter().map(|a| (a.id, a)).collect::<HashMap<_, _>>();
 

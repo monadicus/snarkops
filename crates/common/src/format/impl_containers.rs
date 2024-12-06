@@ -1,4 +1,7 @@
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    sync::Arc,
+};
 
 use super::{DataFormat, DataFormatReader, DataFormatWriter, DataReadError, DataWriteError};
 
@@ -34,6 +37,19 @@ impl<T: DataFormat> DataFormat for Box<T> {
 
     fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         Ok(Box::new(reader.read_data(header)?))
+    }
+}
+
+impl<T: DataFormat> DataFormat for Arc<T> {
+    type Header = T::Header;
+    const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        self.as_ref().write_data(writer)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
+        Ok(Arc::new(reader.read_data(header)?))
     }
 }
 

@@ -81,6 +81,8 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 # Can't update this cause snarkos/vm
 rocksdb = { version = "0.21", default-features = false }
+rustls = { version = "0.23.15", features = ["ring"] }
+semver = { version = "1.0", features = ["serde"] }
 serde = { version = "1", default-features = false, features = [
 	"alloc",
 	"derive",
@@ -129,9 +131,9 @@ snops-common = { path = "./crates/common" }
 # snarkos-node-metrics = { version = "3.0" }
 # snarkvm = { version = "1.0", features = ["rocks"] }
 
-snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "c6de459" }
-snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "c6de459" }
-snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "c6de459" }
-snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "4eb83d7", default-features = false, features = [
+snarkos-account = { git = "https://github.com/AleoNet/snarkOS", rev = "ba41197" }
+snarkos-node = { git = "https://github.com/AleoNet/snarkOS", rev = "ba41197" }
+snarkos-node-metrics = { git = "https://github.com/AleoNet/snarkOS", rev = "ba41197" }
+snarkvm = { git = "https://github.com/AleoNet/snarkVM", rev = "1de86e7", default-features = false, features = [
 	"rocks",
 ] }

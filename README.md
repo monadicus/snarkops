@@ -37,7 +37,7 @@ To learn more about `snops` we recommend checking out the mdbook [here](https://
     The controlplane is the webserver that communicates to agents how to
     run snarkOS, or what transactions to execute.
 
-1. In another terminal, build the cli: `cargo install --path ./crates/snops-cli`
+1. In another terminal, install the cli: `cargo install --path ./crates/snops-cli`, or build with `cargo xtask build cli` and use from `target/release-big/snops-cli`.
 
     The cli is used to interact with the controlplane and manage environments.
     It provides JSON based output. We recommend pairing our cli with [`jq`](https://jqlang.github.io/jq/) when leveraging other scripts and tools
@@ -64,15 +64,15 @@ To learn more about `snops` we recommend checking out the mdbook [here](https://
     Each of these can be dynamically configured as snarkos nodes. The default
     agent configuration should connect to a locally operated controlplane.
 
-### Local Isonets
+### Local Isolated Networks (Isonets)
 
-This example requires 4 agents and the control plane to be running.
+This example requires 4 agents and the control plane to be running. It allows you to run a devnet with a custom genesis block.
 
-1. Start the environment: `snops-cli env prepare specs/test-4-validators.yaml`
+1. Start the environment: `snops-cli env apply specs/test-4-validators.yaml`
 1. Check the current network height: `snops-cli env height`
 1. Look at the latest block: `snops-cli env block`
 1. Look at the genesis block: `snops-cli env block 0`
-1. Stop the environment: `snops-cli env clean`
+1. Stop the environment: `snops-cli env delete`
 
 ### Isonet Transfers
 
@@ -156,7 +156,7 @@ Deploying and executing Aleo programs on your isonets is easiest with snops. You
 `snarkos-aot` provides various CLI tools to help with developing and executing
 Aleo programs as well as interact with snarkOS ledgers.
 
-Build `snarkos-aot` with: `cargo install --profile release-big -p snarkos-aot`.
+Build `snarkos-aot` with: `cargo xtask build aot`.
 The compiled binary can be found in `target/release-big/snarkos-aot`.
 
 Use the `NETWORK` environment variable to specify `mainnet` (default),

@@ -3,19 +3,20 @@ use std::sync::Arc;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use snops_common::{
-    aot_cmds::Authorization, lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN,
-};
+use snops_common::events::{EventHelpers, TransactionEvent};
+use snops_common::state::{Authorization, TransactionSendState};
+use snops_common::{lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN};
 use tracing::error;
 
+use super::context::CtxEventHelper;
 use super::{
     error::{CannonError, SourceError},
     net::get_available_port,
-    status::{TransactionSendState, TransactionStatusEvent, TransactionStatusSender},
     tracker::TransactionTracker,
     ExecutionContext,
 };
 use crate::env::set::find_compute_agent;
+use crate::state::EmitEvent;
 
 /// Represents an instance of a local query service.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -29,7 +30,7 @@ pub struct LocalService {
     /// if the node is out of sync, it will corrupt the ledger...
     ///
     /// requires cannon to have an associated env_id
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sync_from: Option<NodeTargets>,
 }
 
@@ -153,9 +154,8 @@ impl ComputeTarget {
         &self,
         ctx: &ExecutionContext,
         query_path: &str,
-        tx_id: &str,
+        tx_id: &Arc<String>,
         auth: &Authorization,
-        events: &TransactionStatusSender,
     ) -> Result<(), CannonError> {
         match self {
             ComputeTarget::Agent { labels } => {
@@ -165,7 +165,10 @@ impl ComputeTarget {
                         .ok_or(SourceError::NoAvailableAgents("authorization"))?;
 
                 // emit status updates & increment attempts
-                events.send(TransactionStatusEvent::Executing(agent_id));
+                TransactionEvent::Executing
+                    .with_cannon_ctx(ctx, Arc::clone(tx_id))
+                    .with_agent_id(agent_id)
+                    .emit(ctx);
                 ctx.write_tx_status(tx_id, TransactionSendState::Executing(Utc::now()));
                 if let Err(e) = TransactionTracker::inc_attempts(
                     &ctx.state,
@@ -191,9 +194,12 @@ impl ComputeTarget {
                 let transaction = match serde_json::from_str::<Arc<Value>>(&transaction_json) {
                     Ok(transaction) => transaction,
                     Err(e) => {
-                        events.send(TransactionStatusEvent::ExecuteFailed(format!(
-                            "failed to parse transaction JSON: {transaction_json}",
-                        )));
+                        TransactionEvent::ExecuteFailed(format!(
+                            "failed to parse transaction JSON: {e}\n{transaction_json}"
+                        ))
+                        .with_cannon_ctx(ctx, Arc::clone(tx_id))
+                        .with_agent_id(agent_id)
+                        .emit(ctx);
                         return Err(CannonError::Source(SourceError::Json(
                             "parse compute tx",
                             e,
@@ -235,7 +241,12 @@ impl ComputeTarget {
                     tx.status = TransactionSendState::Unsent;
                     tx.transaction = Some(Arc::clone(&transaction));
                 }
-                events.send(TransactionStatusEvent::ExecuteComplete(transaction));
+                TransactionEvent::ExecuteComplete {
+                    transaction: Arc::clone(&transaction),
+                }
+                .with_cannon_ctx(ctx, Arc::clone(tx_id))
+                .with_agent_id(agent_id)
+                .emit(ctx);
 
                 Ok(())
             }
@@ -266,39 +277,3 @@ impl ComputeTarget {
         }
     }
 }
-
-// I use this to generate example yaml...
-/* #[cfg(test)]
-mod test {
-    use super::*;
-    use crate::{
-        cannon::source::{ComputeTarget, CreditsTxMode, LocalService, TxMode},
-        schema::nodes::KeySource,
-    };
-    use std::str::FromStr;
-
-    #[test]
-    fn what_does_it_look_like() {
-        println!(
-            "{}",
-            serde_yaml::to_string(&TxSource::Playback {
-                file_name: "test".to_string(),
-            })
-            .unwrap()
-        );
-        println!(
-            "{}",
-            serde_yaml::to_string(&TxSource::RealTime {
-                query: QueryTarget::Local(LocalService { sync_from: None }),
-                compute: ComputeTarget::Agent { labels: None },
-                tx_modes: [TxMode::Credits(CreditsTxMode::TransferPublic)]
-                    .into_iter()
-                    .collect(),
-                private_keys: vec![KeySource::from_str("committee.$").unwrap()],
-                addresses: vec![KeySource::from_str("committee.$").unwrap()],
-            })
-            .unwrap()
-        );
-    }
-}
- */

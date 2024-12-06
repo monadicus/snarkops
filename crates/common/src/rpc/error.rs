@@ -1,6 +1,10 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use strum_macros::AsRefStr;
 use thiserror::Error;
+
+use crate::state::{EnvId, HeightRequest};
 
 #[macro_export]
 macro_rules! impl_into_type_str {
@@ -111,7 +115,7 @@ pub enum SnarkosRequestError {
     TimedOut,
 }
 
-#[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize, AsRefStr)]
 pub enum ResolveError {
     #[error("source agent not found")]
     SourceAgentNotFound,
@@ -119,30 +123,47 @@ pub enum ResolveError {
     AgentHasNoAddresses,
 }
 
-#[derive(Debug, Error, Serialize, Deserialize, AsRefStr)]
+#[derive(Debug, Clone, Error, Serialize, Deserialize, AsRefStr)]
+#[serde(tag = "error", content = "message")]
 pub enum ReconcileError {
-    #[error("aborted by a more recent reconcilation request")]
-    Aborted,
-    #[error("failed setup storage: {0}")]
-    StorageSetupError(String),
-    #[error("failed to download {0} from the control plane")]
-    StorageAcquireError(String),
-    #[error("failed to get the binary from the control plane: {0}")]
-    BinaryAcquireError(String),
-    #[error("failed to find a checkpoint for the requested height/span")]
-    CheckpointAcquireError,
-    #[error("failed to apply checkpoint: {0}")]
-    CheckpointApplyError(String),
-    #[error("failed to resolve addresses of stated peers")]
-    ResolveAddrError(ResolveError),
-    #[error("a rention policy is required to rewind the ledger")]
-    MissingRetentionPolicy,
-    #[error("failed to load checkpoints for storage")]
-    CheckpointLoadError,
-    #[error("agent did not provide a local private key")]
-    NoLocalPrivateKey,
-    #[error("generic database error")]
-    Database,
+    #[error("node is not connected to the controlplane")]
+    Offline,
+    #[error("env {0} not found")]
+    MissingEnv(EnvId),
     #[error("unknown error")]
     Unknown,
+    #[error("rpc error: {0}")]
+    RpcError(String),
+    #[error(transparent)]
+    AddressResolve(#[from] ResolveError),
+    #[error("missing local private key")]
+    MissingLocalPrivateKey,
+    #[error("failed to create directory {0}: {1}")]
+    CreateDirectory(PathBuf, String),
+    #[error("failed to delete file {0}: {1}")]
+    DeleteFileError(PathBuf, String),
+    #[error("failed to get metadata for {0}: {1}")]
+    FileStatError(PathBuf, String),
+    #[error("failed to read file {0}: {1}")]
+    FileReadError(PathBuf, String),
+    #[error("failed to make {method} request {url}: {error}")]
+    HttpError {
+        method: String,
+        url: String,
+        error: String,
+    },
+    #[error("failed to spawn process: {0}")]
+    SpawnError(String),
+    #[error("failed to set file permissions {0}: {1}")]
+    FilePermissionError(PathBuf, String),
+    #[error("failed to parse {0} as a url: {1}")]
+    UrlParseError(String, String),
+    #[error("error loading checkpoints: {0}")]
+    CheckpointLoadError(String),
+    #[error("missing retention policy for request: {0}")]
+    MissingRetentionPolicy(HeightRequest),
+    #[error("no available checkpoints for request: {0}")]
+    NoAvailableCheckpoints(HeightRequest),
+    #[error("failed to apply checkpoint: {0}")]
+    CheckpointApplyError(String),
 }

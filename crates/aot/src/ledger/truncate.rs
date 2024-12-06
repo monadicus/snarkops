@@ -32,8 +32,6 @@ pub struct Replay {
     /// When checkpoint is enabled, checkpoints.
     #[arg(short, long, default_value_t = false)]
     checkpoint: bool,
-    // TODO: duration based truncation (blocks within a duration before now)
-    // TODO: timestamp based truncation (blocks after a certain date)
 }
 
 /// A command to truncate the ledger to a specific height.

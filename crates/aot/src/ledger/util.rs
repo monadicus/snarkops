@@ -10,7 +10,7 @@ use snarkvm::{
         types::{Address, Field, U64},
     },
     ledger::{query::Query, store::ConsensusStorage, Block, Execution, Fee, Ledger, Transaction},
-    prelude::{execution_cost, Network},
+    prelude::{execution_cost_v2, Network},
     synthesizer::VM,
 };
 
@@ -90,7 +90,7 @@ pub fn public_transaction<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = 
     )?;
 
     // compute fee for the execution
-    let (min_fee, _) = execution_cost(&vm.process().read(), &execution)?;
+    let (min_fee, _) = execution_cost_v2(&vm.process().read(), &execution)?;
 
     // proof for the fee, authorizing the execution
     let fee = prove_fee::<_, _, A>(vm, &private_key_fee, min_fee, execution.to_execution_id()?)?;
@@ -170,7 +170,7 @@ pub fn _make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Al
             )?;
 
             // compute fee for the execution
-            let (min_fee, _) = execution_cost(&vm.process().read(), &execution)?;
+            let (min_fee, _) = execution_cost_v2(&vm.process().read(), &execution)?;
 
             // proof for the fee, authorizing the execution
             let fee =

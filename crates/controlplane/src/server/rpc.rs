@@ -1,12 +1,11 @@
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-};
+use std::{collections::HashMap, net::IpAddr, time::Instant};
 
 use chrono::Utc;
+use snops_common::events::AgentEvent;
 use snops_common::{
-    api::EnvInfo,
+    api::AgentEnvInfo,
     define_rpc_mux,
+    prelude::{error::ReconcileError, ReconcileStatus},
     rpc::{
         control::{
             agent::{AgentServiceRequest, AgentServiceResponse},
@@ -22,10 +21,10 @@ use snops_common::{
 use tarpc::context;
 use tracing::warn;
 
-use super::AppState;
+use crate::state::{AgentEventHelpers, EmitEvent};
 use crate::{
     error::StateError,
-    state::{AddrMap, AgentAddrs},
+    state::{AddrMap, AgentAddrs, AppState, GetGlobalState, GlobalState},
 };
 
 define_rpc_mux!(parent;
@@ -43,20 +42,20 @@ impl ControlService for ControlRpcServer {
     async fn resolve_addrs(
         self,
         _: context::Context,
-        mut peers: HashSet<AgentId>,
+        mut peers: Vec<AgentId>,
     ) -> Result<HashMap<AgentId, IpAddr>, ResolveError> {
-        peers.insert(self.agent);
+        peers.push(self.agent);
 
         let addr_map = self
             .state
-            .get_addr_map(Some(&peers))
+            .get_addr_map(&peers)
             .await
             .map_err(|_| ResolveError::AgentHasNoAddresses)?;
         resolve_addrs(&addr_map, self.agent, &peers).map_err(|_| ResolveError::SourceAgentNotFound)
     }
 
-    async fn get_env_info(self, _: context::Context, env_id: EnvId) -> Option<EnvInfo> {
-        Some(self.state.get_env(env_id)?.info(&self.state))
+    async fn get_env_info(self, _: context::Context, env_id: EnvId) -> Option<AgentEnvInfo> {
+        Some(self.state.get_env(env_id)?.agent_info())
     }
 
     async fn post_transfer_status(
@@ -81,6 +80,7 @@ impl ControlService for ControlRpcServer {
                         downloaded_bytes: 0,
                         total_bytes: total,
                         interruption: None,
+                        handle: None,
                     },
                 );
             }
@@ -144,6 +144,10 @@ impl ControlService for ControlRpcServer {
             update_time: Utc::now(),
         };
 
+        AgentEvent::BlockInfo(info.clone())
+            .with_agent(&agent)
+            .emit(&self);
+
         agent.status.block_info = Some(info.clone());
         let agent_id = agent.id();
         let client = agent.client_owned().clone();
@@ -198,7 +202,60 @@ impl ControlService for ControlRpcServer {
             return;
         };
 
-        agent.status.node_status = status;
+        // Prevent redundant events
+        if agent.status.node_status == status {
+            return;
+        }
+
+        agent.status.node_status = status.clone();
+        AgentEvent::NodeStatus(status)
+            .with_agent(&agent)
+            .emit(&self);
+    }
+
+    async fn post_reconcile_status(
+        self,
+        _: context::Context,
+        status: Result<ReconcileStatus<bool>, ReconcileError>,
+    ) {
+        let Some(mut agent) = self.state.pool.get_mut(&self.agent) else {
+            return;
+        };
+
+        agent.status.reconcile = Some((Instant::now(), status.clone()));
+
+        // Emit events for this reconcile
+
+        let ev = AgentEvent::ReconcileComplete.with_agent(&agent);
+        let is_complete = status
+            .as_ref()
+            .is_ok_and(|e| e.requeue_after.is_none() && e.inner.is_some());
+
+        ev.replace_content(match status {
+            Ok(res) => AgentEvent::Reconcile(res),
+            Err(err) => AgentEvent::ReconcileError(err),
+        })
+        .emit(&self);
+
+        if is_complete {
+            ev.emit(&self);
+        }
+    }
+}
+
+pub fn resolve_one_addr(src_addrs: &AgentAddrs, target_addrs: &AgentAddrs) -> Option<IpAddr> {
+    match (
+        src_addrs.external,
+        target_addrs.external,
+        target_addrs.internal.first(),
+    ) {
+        // if peers have the same external address, use the first internal address
+        (Some(src_ext), Some(peer_ext), Some(peer_int)) if src_ext == peer_ext => Some(*peer_int),
+        // if both peers have only internal addresses, use the internal address
+        (None, None, Some(peer_int)) => Some(*peer_int),
+        // otherwise use the external address
+        (_, Some(peer_ext), _) => Some(peer_ext),
+        _ => None,
     }
 }
 
@@ -207,15 +264,11 @@ impl ControlService for ControlRpcServer {
 fn resolve_addrs(
     addr_map: &AddrMap,
     src: AgentId,
-    peers: &HashSet<AgentId>,
+    peers: &[AgentId],
 ) -> Result<HashMap<AgentId, IpAddr>, StateError> {
     let src_addrs = addr_map
         .get(&src)
         .ok_or_else(|| StateError::SourceAgentNotFound(src))?;
-
-    let all_internal = addr_map
-        .values()
-        .all(|AgentAddrs { external, .. }| external.is_none());
 
     Ok(peers
         .iter()
@@ -225,24 +278,13 @@ fn resolve_addrs(
                 return None;
             }
 
-            // if the agent has no addresses, skip it
-            let addrs = addr_map.get(id)?;
-
-            // if there are no external addresses in the entire addr map,
-            // use the first internal address
-            if all_internal {
-                return addrs.internal.first().copied().map(|addr| (*id, addr));
-            }
-
-            match (src_addrs.external, addrs.external, addrs.internal.first()) {
-                // if peers have the same external address, use the first internal address
-                (Some(src_ext), Some(peer_ext), Some(peer_int)) if src_ext == peer_ext => {
-                    Some((*id, *peer_int))
-                }
-                // otherwise use the external address
-                (_, Some(peer_ext), _) => Some((*id, peer_ext)),
-                _ => None,
-            }
+            Some((*id, resolve_one_addr(src_addrs, addr_map.get(id)?)?))
         })
         .collect())
+}
+
+impl<'a> GetGlobalState<'a> for &'a ControlRpcServer {
+    fn global_state(self) -> &'a GlobalState {
+        &self.state
+    }
 }

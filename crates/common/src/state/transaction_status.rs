@@ -1,55 +1,11 @@
-use std::sync::Arc;
-
 use chrono::{DateTime, Utc};
-use snops_common::{format::DataFormat, state::AgentId};
-use tokio::sync::mpsc::Sender;
+use serde::{Deserialize, Serialize};
 
-pub struct TransactionStatusSender(Option<Sender<TransactionStatusEvent>>);
-
-impl TransactionStatusSender {
-    pub fn new(sender: Sender<TransactionStatusEvent>) -> Self {
-        Self(Some(sender))
-    }
-
-    pub fn empty() -> Self {
-        Self(None)
-    }
-
-    pub fn send(&self, status: TransactionStatusEvent) {
-        if let Some(sender) = &self.0 {
-            let _ = sender.try_send(status);
-        }
-    }
-}
-
-/// An event that represents the latest status of a transaction.
-pub enum TransactionStatusEvent {
-    /// Authorization has been aborted
-    ExecuteAborted,
-    /// Authorization has been queued for execution.
-    ExecuteQueued,
-    /// No agents are available for the execution
-    ExecuteAwaitingCompute,
-    /// An agent was found and the authorization is being executed
-    Executing(AgentId),
-    /// Execute RPC failed
-    ExecuteFailed(String),
-    /// Agent has completed the execution
-    ExecuteComplete(Arc<serde_json::Value>),
-    // TODO: Implement the following statuses
-    // /// API has received the transaction broadcast
-    // BroadcastReceived,
-    // /// Control plane has forwarded the transaction to a peer
-    // BroadcastForwarded,
-    // /// An error occurred while broadcasting the transaction
-    // BroadcastFailed,
-    // /// Transaction was found in the network, return the block hash
-    // TransactionConfirmed(String),
-}
+use crate::format::DataFormat;
 
 /// Status of a transaction as presented internally for tracking and
 /// preventing data loss.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TransactionSendState {
     /// Authorization has been received. This step is skipped if a
     /// transaction is created/broadcasted directly.
@@ -91,7 +47,7 @@ impl DataFormat for TransactionSendState {
     fn write_data<W: std::io::Write>(
         &self,
         writer: &mut W,
-    ) -> Result<usize, snops_common::format::DataWriteError> {
+    ) -> Result<usize, crate::format::DataWriteError> {
         Ok(match self {
             TransactionSendState::Authorized => 0u8.write_data(writer)?,
             TransactionSendState::Executing(timestamp) => {
@@ -109,9 +65,9 @@ impl DataFormat for TransactionSendState {
     fn read_data<R: std::io::Read>(
         reader: &mut R,
         header: &Self::Header,
-    ) -> Result<Self, snops_common::format::DataReadError> {
+    ) -> Result<Self, crate::format::DataReadError> {
         if *header != Self::LATEST_HEADER {
-            return Err(snops_common::format::DataReadError::unsupported(
+            return Err(crate::format::DataReadError::unsupported(
                 "CannonTransactionStatus",
                 Self::LATEST_HEADER,
                 *header,
@@ -128,7 +84,7 @@ impl DataFormat for TransactionSendState {
                 DateTime::<Utc>::read_data(reader, &())?,
             ),
             _ => {
-                return Err(snops_common::format::DataReadError::Custom(
+                return Err(crate::format::DataReadError::Custom(
                     "Invalid CannonTransactionStatus tag".to_string(),
                 ))
             }
@@ -139,9 +95,9 @@ impl DataFormat for TransactionSendState {
 #[cfg(test)]
 mod test {
     use chrono::DateTime;
-    use snops_common::format::DataFormat;
 
-    use crate::cannon::status::TransactionSendState;
+    use super::TransactionSendState;
+    use crate::format::DataFormat;
 
     macro_rules! case {
         ($name:ident, $ty:ty, $a:expr, $b:expr) => {

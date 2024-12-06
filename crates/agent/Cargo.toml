@@ -1,6 +1,6 @@
 [package]
 name = "snops-agent"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 description = "A snarkops agent for communicating with snarkos nodes and the control plane"
@@ -14,7 +14,6 @@ mangen = ["snops-common/mangen"]
 [dependencies]
 anyhow.workspace = true
 axum = { workspace = true, features = ["http2", "json", "tokio", "ws"] }
-bincode.workspace = true
 chrono.workspace = true
 clap.workspace = true
 dashmap.workspace = true
@@ -22,9 +21,11 @@ futures.workspace = true
 futures-util.workspace = true
 http.workspace = true
 httpdate.workspace = true
+indexmap.workspace = true
 local-ip-address.workspace = true
 nix = { workspace = true, features = ["signal"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
+rustls.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 simple_moving_average.workspace = true
@@ -43,4 +44,3 @@ tracing-appender.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
-rustls = { version = "0.23.15", features = ["ring"] }

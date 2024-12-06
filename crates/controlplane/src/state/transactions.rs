@@ -2,15 +2,15 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::{TimeDelta, Utc};
 use futures_util::future;
-use snops_common::state::{CannonId, EnvId};
+use snops_common::{
+    events::{EventHelpers, TransactionEvent},
+    state::{CannonId, EnvId, TransactionSendState},
+};
 use tokio::time::timeout;
 use tracing::{info, trace};
 
-use super::GlobalState;
-use crate::cannon::{
-    status::{TransactionSendState, TransactionStatusSender},
-    tracker::TransactionTracker,
-};
+use super::{EmitEvent, GlobalState};
+use crate::cannon::tracker::TransactionTracker;
 
 /// This task re-sends all transactions that have not been confirmed,
 /// re-computes all transactions that have not been computed, and removes
@@ -33,7 +33,7 @@ pub async fn tracking_task(state: Arc<GlobalState>) {
                 for tx_id in pending.to_execute {
                     if let Err(e) = cannon
                         .auth_sender
-                        .send((tx_id.clone(), TransactionStatusSender::empty()))
+                        .send(tx_id.clone())
                     {
                         tracing::error!(
                             "cannon {env_id}.{cannon_id} failed to send auth {tx_id} to cannon: {e:?}"
@@ -57,30 +57,33 @@ pub async fn tracking_task(state: Arc<GlobalState>) {
                     let state = state.clone();
                     let cannon_target = cannon.sink.target.as_ref();
                     async move {
-                        if let Some(cache) = state.env_network_cache.get(&env_id) {
-                            if cache.has_transaction(&tx_id) {
-                                trace!("cannon {env_id}.{cannon_id} confirmed transaction {tx_id} (cache hit)");
-                                return Some(tx_id);
-                            }
+                        let (tx_id, hash) = if let Some(hash) = state.env_network_cache.get(&env_id).and_then(|cache| cache.find_transaction(&tx_id).cloned()) {
+                            trace!("cannon {env_id}.{cannon_id} confirmed transaction {tx_id} (cache hit)");
+                            (tx_id, hash.to_string())
                         }
 
                         // check if the transaction not is in the cache, then check the peers
-                        if let Some(target) = cannon_target {
+                        else if let Some(target) = cannon_target {
                             match timeout(Duration::from_secs(1),
                             state.snarkos_get::<Option<String>>(env_id, format!("/find/blockHash/{tx_id}"), target)).await {
-                                Ok(Ok(Some(_hash))) => {
+                                Ok(Ok(Some(hash))) => {
                                     trace!("cannon {env_id}.{cannon_id} confirmed transaction {tx_id} (get request)");
-                                    return Some(tx_id)
+                                    (tx_id, hash)
                                 }
-                                Ok(Ok(None)) => {
-                                    // the transaction is not in the cache
-                                }
-                                _ => {}
+                                // the transaction is not in the cache
+                                _ => return None,
                             }
+                        } else {
+                            return None;
+                        };
 
-                        }
+                        // Emit a confirmed event
+                        TransactionEvent::Confirmed { hash }
+                            .with_cannon(cannon_id)
+                            .with_env_id(env_id)
+                            .with_transaction(Arc::clone(&tx_id)).emit(&state);
 
-                        None
+                        Some(tx_id)
                 }})).await;
 
                 // remove all the transactions that are confirmed or expired
@@ -100,10 +103,10 @@ pub async fn tracking_task(state: Arc<GlobalState>) {
 }
 
 struct PendingTransactions {
-    to_execute: Vec<String>,
-    to_broadcast: Vec<String>,
-    to_remove: Vec<String>,
-    to_confirm: Vec<(String, Option<u32>)>,
+    to_execute: Vec<Arc<String>>,
+    to_broadcast: Vec<Arc<String>>,
+    to_remove: Vec<Arc<String>>,
+    to_confirm: Vec<(Arc<String>, Option<u32>)>,
 }
 
 /// Get a list of transactions that need to be executed, broadcasted, removed,
@@ -125,8 +128,13 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
 
             for tx in cannon.transactions.iter() {
                 let tx_id = tx.key().to_owned();
-                let key = (env_id, cannon_id, tx_id.to_owned());
+                let key = (env_id, cannon_id, Arc::clone(&tx_id));
                 let attempts = TransactionTracker::get_attempts(state, &key);
+
+                let ev = TransactionEvent::Executing
+                    .with_cannon(cannon_id)
+                    .with_env_id(env_id)
+                    .with_transaction(Arc::clone(&tx_id));
 
                 match tx.status {
                     // any authorized transaction that is not started should be queued
@@ -134,6 +142,8 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                         if cannon.sink.authorize_attempts.is_some_and(|a| attempts > a) {
                             info!("cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)");
                             to_remove.push(tx_id);
+                            ev.replace_content(TransactionEvent::ExecuteExceeded { attempts })
+                                .emit(state);
                         } else {
                             to_execute.push((tx_id, tx.index));
                         }
@@ -145,6 +155,8 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                     {
                         if cannon.sink.authorize_attempts.is_some_and(|a| attempts > a) {
                             info!("cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)");
+                            ev.replace_content(TransactionEvent::ExecuteExceeded { attempts })
+                                .emit(state);
                             to_remove.push(tx_id);
                         } else {
                             to_execute.push((tx_id, tx.index));
@@ -154,6 +166,8 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                     TransactionSendState::Unsent => {
                         if cannon.sink.broadcast_attempts.is_some_and(|a| attempts > a) {
                             info!("cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)");
+                            ev.replace_content(TransactionEvent::BroadcastExceeded { attempts })
+                                .emit(state);
                             to_remove.push(tx_id);
                         } else {
                             to_broadcast.push((tx_id, tx.index));
@@ -190,6 +204,10 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                         {
                             if cannon.sink.broadcast_attempts.is_some_and(|a| attempts > a) {
                                 info!("cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)");
+                                ev.replace_content(TransactionEvent::BroadcastExceeded {
+                                    attempts,
+                                })
+                                .emit(state);
                                 to_remove.push(tx_id);
                             } else {
                                 to_broadcast.push((tx_id, tx.index));

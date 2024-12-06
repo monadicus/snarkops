@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use clap::{error::ErrorKind, ArgGroup, CommandFactory, Parser, ValueHint};
-use reqwest::blocking::{Client, Response};
+use reqwest::{Client, Response};
 use serde_json::json;
 use snops_common::state::AgentId;
 
@@ -73,11 +73,13 @@ enum AgentCommands {
     /// Get the specific agent's status.
     Status,
 
+    /// Set the log level of the agent.
     SetLogLevel {
         /// The log level to set.
         level: String,
     },
 
+    /// Set the log level of the node running on an agent.
     SetSnarkosLogLevel {
         /// The log verbosity to set.
         verbosity: u8,
@@ -85,7 +87,7 @@ enum AgentCommands {
 }
 
 impl Agent {
-    pub fn run(self, url: &str, client: Client) -> Result<Response> {
+    pub async fn run(self, url: &str, client: Client) -> Result<Response> {
         use AgentCommands::*;
         Ok(match self.command {
             Find {
@@ -116,12 +118,13 @@ impl Agent {
                         "include_offline": include_offline,
                         "local_pk": local_pk,
                     }))
-                    .send()?
+                    .send()
+                    .await?
             }
             List => {
                 let ep = format!("{url}/api/v1/agents");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             _ if self.id == AgentId::from_str(DUMMY_ID).unwrap() => {
                 let mut cmd = Cli::command();
@@ -134,32 +137,32 @@ impl Agent {
             Info => {
                 let ep = format!("{url}/api/v1/agents/{}", self.id);
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Kill => {
                 let ep = format!("{url}/api/v1/agents/{}/kill", self.id);
 
-                client.post(ep).send()?
+                client.post(ep).send().await?
             }
             Status => {
                 let ep = format!("{url}/api/v1/agents/{}/status", self.id);
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Tps => {
                 let ep = format!("{url}/api/v1/agents/{}/tps", self.id);
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             SetLogLevel { level } => {
                 let ep = format!("{url}/api/v1/agents/{}/log/{level}", self.id);
 
-                client.post(ep).send()?
+                client.post(ep).send().await?
             }
 
             SetSnarkosLogLevel { verbosity } => {
                 let ep = format!("{url}/api/v1/agents/{}/aot/log/{verbosity}", self.id);
-                client.post(ep).send()?
+                client.post(ep).send().await?
             }
         })
     }

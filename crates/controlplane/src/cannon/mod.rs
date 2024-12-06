@@ -5,7 +5,6 @@ mod net;
 pub mod router;
 pub mod sink;
 pub mod source;
-pub mod status;
 pub mod tracker;
 
 use std::{
@@ -19,11 +18,10 @@ use std::{
 use context::ExecutionContext;
 use dashmap::DashMap;
 use snops_common::{
-    aot_cmds::{AotCmd, Authorization},
+    aot_cmds::AotCmd,
     format::PackedUint,
-    state::{CannonId, EnvId, NetworkId, StorageId},
+    state::{Authorization, CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
 };
-use status::{TransactionSendState, TransactionStatusSender};
 use tokio::{
     sync::{
         mpsc::{UnboundedReceiver, UnboundedSender},
@@ -101,19 +99,19 @@ pub struct CannonInstance {
     child: Option<tokio::process::Child>,
 
     /// channel to send transaction ids to the the task
-    pub(crate) tx_sender: UnboundedSender<String>,
+    pub(crate) tx_sender: UnboundedSender<Arc<String>>,
     /// channel to send authorizations (by transaction id) to the the task
-    pub(crate) auth_sender: UnboundedSender<(String, TransactionStatusSender)>,
+    pub(crate) auth_sender: UnboundedSender<Arc<String>>,
     /// transaction ids that are currently being processed
-    pub(crate) transactions: Arc<DashMap<String, TransactionTracker>>,
+    pub(crate) transactions: Arc<DashMap<Arc<String>, TransactionTracker>>,
 
     pub(crate) received_txs: Arc<AtomicU64>,
     pub(crate) fired_txs: Arc<AtomicUsize>,
 }
 
 pub struct CannonReceivers {
-    transactions: UnboundedReceiver<String>,
-    authorizations: UnboundedReceiver<(String, TransactionStatusSender)>,
+    transactions: UnboundedReceiver<Arc<String>>,
+    authorizations: UnboundedReceiver<Arc<String>>,
 }
 
 pub type CannonInstanceMeta = (EnvId, NetworkId, StorageId, PathBuf);
@@ -127,11 +125,10 @@ impl CannonInstance {
         txs: &AtomicU64,
     ) -> u64 {
         let index = txs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if let Err(e) = state
-            .db
-            .tx_index
-            .save(&(env_id, cannon_id, String::new()), &PackedUint(index))
-        {
+        if let Err(e) = state.db.tx_index.save(
+            &(env_id, cannon_id, Arc::new(String::new())),
+            &PackedUint(index),
+        ) {
             error!("cannon {env_id}.{cannon_id} failed to save received tx count: {e}");
         }
         index
@@ -142,22 +139,23 @@ impl CannonInstance {
         state: &GlobalState,
         env_id: EnvId,
         cannon_id: CannonId,
-    ) -> (DashMap<String, TransactionTracker>, AtomicU64) {
+    ) -> (DashMap<Arc<String>, TransactionTracker>, AtomicU64) {
         let transactions = DashMap::new();
 
         // Restore the received transaction count (empty string key for tx_index)
-        let received_txs = match state
-            .db
-            .tx_index
-            .restore(&(env_id, cannon_id, String::new()))
-        {
-            Ok(Some(index)) => AtomicU64::new(index.0),
-            Ok(None) => AtomicU64::new(0),
-            Err(e) => {
-                error!("cannon {env_id}.{cannon_id} failed to parse received tx count: {e}");
-                AtomicU64::new(0)
-            }
-        };
+        let received_txs =
+            match state
+                .db
+                .tx_index
+                .restore(&(env_id, cannon_id, Arc::new(String::new())))
+            {
+                Ok(Some(index)) => AtomicU64::new(index.0),
+                Ok(None) => AtomicU64::new(0),
+                Err(e) => {
+                    error!("cannon {env_id}.{cannon_id} failed to parse received tx count: {e}");
+                    AtomicU64::new(0)
+                }
+            };
 
         let statuses = match state.db.tx_status.read_with_prefix(&(env_id, cannon_id)) {
             Ok(statuses) => statuses,
@@ -369,10 +367,10 @@ impl CannonInstance {
     /// to the desired sink
     pub fn proxy_broadcast(
         &self,
-        tx_id: String,
+        tx_id: Arc<String>,
         body: serde_json::Value,
     ) -> Result<(), CannonError> {
-        let key = (self.env_id, self.id, tx_id.to_owned());
+        let key = (self.env_id, self.id, Arc::clone(&tx_id));
 
         // if the transaction is in the cache, it has already been broadcasted
         if let Some(cache) = self.global_state.env_network_cache.get(&self.env_id) {
@@ -383,7 +381,10 @@ impl CannonInstance {
                         self.env_id, self.id
                     );
                 }
-                return Err(CannonError::TransactionAlreadyExists(self.id, tx_id));
+                return Err(CannonError::TransactionAlreadyExists(
+                    self.id,
+                    tx_id.to_string(),
+                ));
             }
         }
 
@@ -391,7 +392,10 @@ impl CannonInstance {
         let tracker = if let Some(mut tx) = self.transactions.get(&tx_id).as_deref().cloned() {
             // if we receive a transaction that is not executing, it is a duplicate
             if !matches!(tx.status, TransactionSendState::Executing(_)) {
-                return Err(CannonError::TransactionAlreadyExists(self.id, tx_id));
+                return Err(CannonError::TransactionAlreadyExists(
+                    self.id,
+                    tx_id.to_string(),
+                ));
             }
 
             // clear attempts (as this was a successful execute)
@@ -438,11 +442,7 @@ impl CannonInstance {
     }
 
     /// Called by axum to forward /cannon/<id>/auth to a listen source
-    pub async fn proxy_auth(
-        &self,
-        body: Authorization,
-        events: TransactionStatusSender,
-    ) -> Result<String, CannonError> {
+    pub async fn proxy_auth(&self, body: Authorization) -> Result<Arc<String>, CannonError> {
         let Some(storage) = self
             .global_state
             .get_env(self.env_id)
@@ -484,16 +484,19 @@ impl CannonInstance {
             transaction: None,
             status: TransactionSendState::Authorized,
         };
+
+        let tx_id = Arc::new(tx_id);
+
         // write the transaction to the store to prevent data loss
         tracker.write(
             &self.global_state,
-            &(self.env_id, self.id, tx_id.to_owned()),
+            &(self.env_id, self.id, Arc::clone(&tx_id)),
         )?;
-        self.transactions.insert(tx_id.to_owned(), tracker);
+        self.transactions.insert(Arc::clone(&tx_id), tracker);
 
         trace!("cannon {}.{} received auth {tx_id}", self.env_id, self.id);
         self.auth_sender
-            .send((tx_id.to_owned(), events))
+            .send(Arc::clone(&tx_id))
             .map_err(|e| CannonError::SendAuthError(self.id, e))?;
 
         Ok(tx_id)

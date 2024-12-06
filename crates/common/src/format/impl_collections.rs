@@ -10,6 +10,62 @@ use super::{
     DataWriteError,
 };
 
+/// BytesFormat is a simple wrapper around a Vec<u8> that implements DataFormat
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct BytesFormat(pub Vec<u8>);
+impl From<Vec<u8>> for BytesFormat {
+    fn from(data: Vec<u8>) -> Self {
+        Self(data)
+    }
+}
+impl From<BytesFormat> for Vec<u8> {
+    fn from(data: BytesFormat) -> Self {
+        data.0
+    }
+}
+
+impl DataFormat for BytesFormat {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(PackedUint::from(self.0.len()).write_data(writer)? + writer.write(&self.0)?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        let mut data = vec![0; usize::from(PackedUint::read_data(reader, &())?)];
+        reader.read_exact(&mut data)?;
+        Ok(Self(data))
+    }
+}
+
+/// EncodedFormat is a simple wrapper around a DataFormat to encode header data
+/// with the data
+#[derive(Debug, Clone)]
+pub struct EncodedFormat<F: DataFormat>(pub F);
+
+impl<F: DataFormat + PartialEq> PartialEq for EncodedFormat<F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<F: DataFormat + Eq> Eq for EncodedFormat<F> {}
+
+impl<F: DataFormat> DataFormat for EncodedFormat<F> {
+    type Header = ();
+    const LATEST_HEADER: Self::Header = ();
+
+    fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
+        Ok(self.write_header(writer)? + self.write_data(writer)?)
+    }
+
+    fn read_data<R: Read>(reader: &mut R, _header: &Self::Header) -> Result<Self, DataReadError> {
+        let header = F::read_header(reader)?;
+        Ok(Self(F::read_data(reader, &header)?))
+    }
+}
+
 impl<T: DataFormat + Default + Copy, const N: usize> DataFormat for [T; N] {
     type Header = T::Header;
     const LATEST_HEADER: Self::Header = T::LATEST_HEADER;
@@ -131,7 +187,7 @@ impl_map!(IndexMap);
 #[cfg(test)]
 #[rustfmt::skip]
 mod test {
-    use crate::format::DataFormat;
+    use crate::format::{BytesFormat, DataFormat};
 
     macro_rules! case {
         ($name:ident, $ty:ty, $a:expr, $b:expr) => {
@@ -181,5 +237,13 @@ mod test {
         2, 0,
         3, 0,
         4, 0
+    ]);
+
+    // binary data test
+    case!(test_binary_data, BytesFormat, BytesFormat(vec![1, 2, 3]), [
+        1, 3,
+        1,
+        2,
+        3
     ]);
 }

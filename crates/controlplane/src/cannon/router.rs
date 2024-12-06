@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use axum::{
     extract::{Path, Query, State},
@@ -11,11 +11,10 @@ use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
     key_source::KeySource,
-    state::{id_or_none, KeyState, NetworkId},
+    state::{id_or_none, Authorization, KeyState, NetworkId},
 };
-use tokio::sync::mpsc;
 
-use super::{source::QueryTarget, status::TransactionStatusSender, Authorization};
+use super::source::QueryTarget;
 use crate::{
     server::{actions::execute::execute_status, error::ServerError},
     state::AppState,
@@ -324,7 +323,7 @@ async fn transaction(
         return ServerError::BadRequest("body missing transaction ID".to_owned()).into_response();
     };
 
-    match cannon.proxy_broadcast(tx_id, body.take()) {
+    match cannon.proxy_broadcast(Arc::new(tx_id), body.take()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => ServerError::from(e).into_response(),
     }
@@ -362,22 +361,20 @@ async fn authorization(
     };
 
     if query.is_async() {
-        return match cannon
-            .proxy_auth(body, TransactionStatusSender::empty())
-            .await
-        {
+        return match cannon.proxy_auth(body).await {
             Ok(tx_id) => (StatusCode::ACCEPTED, Json(tx_id)).into_response(),
             Err(e) => ServerError::from(e).into_response(),
         };
     }
 
-    let (tx, rx) = mpsc::channel(10);
-
-    match cannon
-        .proxy_auth(body, TransactionStatusSender::new(tx))
-        .await
-    {
-        Ok(tx_id) => execute_status(tx_id, rx).await.into_response(),
+    match cannon.proxy_auth(body).await {
+        Ok(tx_id) => {
+            use snops_common::events::EventFilter::*;
+            let subscriber = state
+                .events
+                .subscribe_on(TransactionIs(tx_id.clone()) & EnvIs(env_id) & CannonIs(cannon_id));
+            execute_status(tx_id, subscriber).await.into_response()
+        }
         Err(e) => ServerError::from(e).into_response(),
     }
 }

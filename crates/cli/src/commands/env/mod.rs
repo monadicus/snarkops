@@ -1,14 +1,16 @@
-use std::path::PathBuf;
+use std::collections::HashMap;
 
+use action::post_and_wait_tx;
 use anyhow::Result;
 use clap::{Parser, ValueHint};
 use clap_stdin::FileOrStdin;
-use reqwest::blocking::{Client, Response};
+use reqwest::{Client, RequestBuilder, Response};
+use snops_cli::events::EventsClient;
 use snops_common::{
     action_models::AleoValue,
-    aot_cmds::Authorization,
+    events::{AgentEvent, Event, EventKind},
     key_source::KeySource,
-    state::{CannonId, InternedId, NodeKey},
+    state::{AgentId, Authorization, CannonId, EnvId, InternedId, NodeKey, ReconcileStatus},
 };
 
 mod action;
@@ -26,6 +28,7 @@ pub struct Env {
 /// Env commands.
 #[derive(Debug, Parser)]
 enum EnvCommands {
+    /// Run an action on an environment.
     #[clap(subcommand)]
     Action(action::Action),
     /// Get an env's specific agent by.
@@ -76,9 +79,9 @@ enum EnvCommands {
     #[clap(alias = "tx-details")]
     TransactionDetails { id: String },
 
-    /// Clean a specific environment.
-    #[clap(alias = "c")]
-    Clean,
+    /// Delete a specific environment.
+    #[clap(alias = "d")]
+    Delete,
 
     /// Get an env's latest block/state root info.
     Info,
@@ -97,12 +100,15 @@ enum EnvCommands {
     #[clap(alias = "top-res")]
     TopologyResolved,
 
-    /// Prepare a (test) environment.
+    /// Apply an environment spec.
     #[clap(alias = "p")]
-    Prepare {
-        /// The test spec file.
+    Apply {
+        /// The environment spec file.
         #[clap(value_hint = ValueHint::AnyPath)]
-        spec: PathBuf,
+        spec: FileOrStdin<String>,
+        /// When present, don't wait for reconciles to finish before returning
+        #[clap(long = "async")]
+        async_mode: bool,
     },
 
     /// Lookup a mapping by program id and mapping name.
@@ -128,20 +134,20 @@ enum EnvCommands {
 }
 
 impl Env {
-    pub fn run(self, url: &str, client: Client) -> Result<Response> {
+    pub async fn run(self, url: &str, client: Client) -> Result<Response> {
         let id = self.id;
         use EnvCommands::*;
         Ok(match self.command {
-            Action(action) => action.execute(url, id, client)?,
+            Action(action) => action.execute(url, id, client).await?,
             Agent { key } => {
                 let ep = format!("{url}/api/v1/env/{id}/agents/{key}");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Agents => {
                 let ep = format!("{url}/api/v1/env/{id}/agents");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Auth {
                 async_mode,
@@ -156,48 +162,57 @@ impl Env {
                     req = req.query(&[("async", "true")]);
                 }
 
-                req.send()?
+                if async_mode {
+                    req.send().await?
+                } else {
+                    post_and_wait_tx(url, req).await?;
+                    std::process::exit(0);
+                }
             }
             Balance { address: key } => {
                 let ep = format!("{url}/api/v1/env/{id}/balance/{key}");
 
-                client.get(ep).json(&key).send()?
+                client.get(ep).json(&key).send().await?
             }
             Block { height_or_hash } => {
                 let ep = format!("{url}/api/v1/env/{id}/block/{height_or_hash}");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
-            Clean => {
+            Delete => {
                 let ep = format!("{url}/api/v1/env/{id}");
 
-                client.delete(ep).send()?
+                client.delete(ep).send().await?
             }
             Info => {
                 let ep = format!("{url}/api/v1/env/{id}/info");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             List => {
                 let ep = format!("{url}/api/v1/env/list");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Topology => {
                 let ep = format!("{url}/api/v1/env/{id}/topology");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             TopologyResolved => {
                 let ep = format!("{url}/api/v1/env/{id}/topology/resolved");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
-            Prepare { spec } => {
-                let ep = format!("{url}/api/v1/env/{id}/prepare");
-                let file: String = std::fs::read_to_string(spec)?;
-
-                client.post(ep).body(file).send()?
+            Apply { spec, async_mode } => {
+                let ep = format!("{url}/api/v1/env/{id}/apply");
+                let req = client.post(ep).body(spec.contents()?);
+                if async_mode {
+                    req.send().await?
+                } else {
+                    post_and_wait(url, req, id).await?;
+                    std::process::exit(0);
+                }
             }
             Mapping {
                 program,
@@ -217,39 +232,121 @@ impl Env {
                     }
                 };
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Mappings { program } => {
                 let ep = format!("{url}/api/v1/env/{id}/program/{program}/mappings");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Program { id: prog } => {
                 let ep = format!("{url}/api/v1/env/{id}/program/{prog}");
 
-                println!("{}", client.get(ep).send()?.text()?);
+                println!("{}", client.get(ep).send().await?.text().await?);
                 std::process::exit(0);
             }
             Storage => {
                 let ep = format!("{url}/api/v1/env/{id}/storage");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Transaction { id: hash } => {
                 let ep = format!("{url}/api/v1/env/{id}/transaction_block/{hash}");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             TransactionDetails { id: hash } => {
                 let ep = format!("{url}/api/v1/env/{id}/transaction/{hash}");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
             Height => {
                 let ep = format!("{url}/api/v1/env/{id}/height");
 
-                client.get(ep).send()?
+                client.get(ep).send().await?
             }
         })
     }
+}
+
+pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Result<()> {
+    use snops_common::events::EventFilter::*;
+    use snops_common::events::EventKindFilter::*;
+
+    let mut events = EventsClient::open_with_filter(
+        url,
+        EnvIs(env_id)
+            & (AgentConnected
+                | AgentDisconnected
+                | AgentReconcile
+                | AgentReconcileComplete
+                | AgentReconcileError),
+    )
+    .await?;
+
+    let res = req.send().await?;
+
+    if !res.status().is_success() {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&res.json::<serde_json::Value>().await?)?
+        );
+        std::process::exit(1);
+    }
+
+    let mut node_map: HashMap<NodeKey, AgentId> = res.json().await?;
+    println!("{}", serde_json::to_string_pretty(&node_map)?);
+
+    let filter = node_map
+        .values()
+        .copied()
+        .fold(!Unfiltered, |id, filter| (id | AgentIs(filter)));
+
+    while let Some(event) = events.next().await? {
+        // Ensure the event is based on the response
+        if !event.matches(&filter) {
+            continue;
+        }
+
+        if let Event {
+            node_key: Some(node),
+            content: EventKind::Agent(e),
+            ..
+        } = &event
+        {
+            match &e {
+                AgentEvent::Reconcile(ReconcileStatus {
+                    scopes, conditions, ..
+                }) => {
+                    println!(
+                        "{node}: {} {}",
+                        scopes.join(";"),
+                        conditions
+                            .iter()
+                            // unwrap safety - it was literally just serialized
+                            .map(|s| serde_json::to_string(s).unwrap())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    );
+                }
+                AgentEvent::ReconcileError(err) => {
+                    println!("{node}: error: {err}");
+                }
+                AgentEvent::ReconcileComplete => {
+                    println!("{node}: done");
+                }
+                _ => {}
+            }
+        }
+        if let (Some(node_key), true) = (
+            event.node_key.as_ref(),
+            event.matches(&AgentReconcileComplete.into()),
+        ) {
+            node_map.remove(node_key);
+            if node_map.is_empty() {
+                break;
+            }
+        }
+    }
+    events.close().await
 }

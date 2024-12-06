@@ -20,6 +20,22 @@ pub enum SnarkOSStatus {
     Halted(Option<String>),
 }
 
+impl SnarkOSStatus {
+    pub fn is_started(&self) -> bool {
+        matches!(self, SnarkOSStatus::Started)
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            SnarkOSStatus::Starting => "starting",
+            SnarkOSStatus::LedgerLoading => "loading",
+            SnarkOSStatus::LedgerFailure(_) => "failure",
+            SnarkOSStatus::Started => "started",
+            SnarkOSStatus::Halted(_) => "halted",
+        }
+    }
+}
+
 /// Messages from snarkos to the agent, containing information about the status
 /// of the node
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

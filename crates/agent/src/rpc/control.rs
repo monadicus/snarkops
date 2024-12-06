@@ -1,15 +1,9 @@
 //! Control plane-to-agent RPC.
 
-use std::{
-    collections::HashSet, net::IpAddr, ops::Deref, path::PathBuf, process::Stdio, sync::Arc,
-};
+use std::net::IpAddr;
 
 use snops_common::{
     aot_cmds::AotCmd,
-    binaries::{BinaryEntry, BinarySource},
-    constant::{
-        LEDGER_BASE_DIR, LEDGER_PERSIST_DIR, SNARKOS_FILE, SNARKOS_GENESIS_FILE, SNARKOS_LOG_FILE,
-    },
     define_rpc_mux,
     prelude::snarkos_status::SnarkOSLiteBlock,
     rpc::{
@@ -18,21 +12,17 @@ use snops_common::{
                 AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, AgentStatus,
                 Handshake,
             },
-            ControlServiceRequest, ControlServiceResponse,
+            ControlServiceClient, ControlServiceRequest, ControlServiceResponse,
         },
-        error::{AgentError, ReconcileError, SnarkosRequestError},
+        error::{AgentError, SnarkosRequestError},
     },
-    state::{AgentId, AgentPeer, AgentState, EnvId, InternedId, KeyState, NetworkId, PortConfig},
+    state::{AgentId, AgentState, EnvId, InternedId, NetworkId, PortConfig, ReconcileOptions},
 };
-use tarpc::context;
-use tokio::process::Command;
-use tracing::{debug, error, info, trace, warn};
+use tarpc::context::Context;
+use tracing::{error, info, trace};
 
 use crate::{
-    api, make_env_filter,
-    metrics::MetricComputer,
-    reconcile::{self, ensure_correct_binary},
-    state::AppState,
+    api, log::make_env_filter, metrics::MetricComputer, reconcile::default_binary, state::AppState,
 };
 
 define_rpc_mux!(child;
@@ -42,44 +32,46 @@ define_rpc_mux!(child;
 
 #[derive(Clone)]
 pub struct AgentRpcServer {
+    pub client: ControlServiceClient,
     pub state: AppState,
     pub version: &'static str,
 }
 
 impl AgentService for AgentRpcServer {
-    async fn kill(self, _: context::Context) {
-        self.state.node_graceful_shutdown().await;
-        std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            std::process::exit(0)
-        });
+    async fn kill(self, _: Context) {
+        info!("Kill RPC invoked...");
+        self.state.shutdown().await;
     }
 
-    async fn handshake(
-        self,
-        context: context::Context,
-        handshake: Handshake,
-    ) -> Result<(), ReconcileError> {
+    async fn handshake(self, context: Context, handshake: Handshake) {
         if let Some(token) = handshake.jwt {
             // cache the JWT in the state JWT mutex
-            self.state
-                .db
-                .set_jwt(Some(token))
-                .map_err(|_| ReconcileError::Database)?;
+            if let Err(e) = self.state.db.set_jwt(Some(token)) {
+                error!("failed to save JWT to db: {e}");
+            }
         }
 
         // store loki server URL
-        if let Some(loki) = handshake.loki.and_then(|l| l.parse::<url::Url>().ok()) {
-            self.state
-                .loki
-                .lock()
-                .expect("failed to acquire loki URL lock")
-                .replace(loki);
+        let loki_url = handshake.loki.and_then(|l| l.parse::<url::Url>().ok());
+
+        if let Err(e) = self
+            .state
+            .db
+            .set_loki_url(loki_url.as_ref().map(|u| u.to_string()))
+        {
+            error!("failed to save loki URL to db: {e}");
+        }
+        match self.state.loki.lock() {
+            Ok(mut guard) => {
+                *guard = loki_url;
+            }
+            Err(e) => {
+                error!("failed to acquire loki URL lock: {e}");
+            }
         }
 
         // emit the transfer statuses
         if let Err(err) = self
-            .state
             .client
             .post_transfer_statuses(
                 context,
@@ -94,330 +86,51 @@ impl AgentService for AgentRpcServer {
             error!("failed to send transfer statuses: {err}");
         }
 
-        // reconcile if state has changed
-        let needs_reconcile = *self.state.agent_state.read().await != handshake.state;
-        if needs_reconcile {
-            Self::reconcile(self, context, handshake.state).await?;
-        }
+        info!("Received control-plane handshake");
 
-        Ok(())
+        // Re-fetch peer addresses to ensure no addresses changed while offline
+        self.state.re_fetch_peer_addrs().await;
+
+        // Queue a reconcile immediately as we have received new state.
+        // The reconciler will decide if anything has actually changed
+        self.state
+            .update_agent_state(handshake.state, handshake.reconcile_opts)
+            .await;
     }
 
-    async fn reconcile(
-        self,
-        _: context::Context,
-        target: AgentState,
-    ) -> Result<(), ReconcileError> {
-        info!("beginning reconcilation...");
-
-        // acquire the handle lock
-        let mut handle_container = self.state.reconcilation_handle.lock().await;
-
-        // abort if we are already reconciling
-        if let Some(handle) = handle_container.take() {
-            info!("aborting previous reconcilation task...");
-            handle.abort();
-        }
-
-        // perform the reconcilation
-        let state = Arc::clone(&self.state);
-        let handle = tokio::spawn(async move {
-            // previous state cleanup
-            let old_state = {
-                let agent_state_lock = state.agent_state.read().await;
-                match agent_state_lock.deref() {
-                    // kill existing child if running
-                    AgentState::Node(_, node) if node.online => {
-                        info!("cleaning up snarkos process...");
-                        state.node_graceful_shutdown().await;
-                    }
-
-                    _ => (),
-                }
-
-                agent_state_lock.deref().clone()
-            };
-
-            // download new storage if storage_id changed
-            'storage: {
-                let (is_same_env, is_same_index) = match (&old_state, &target) {
-                    (AgentState::Node(old_env, old_node), AgentState::Node(new_env, new_node)) => {
-                        (old_env == new_env, old_node.height.0 == new_node.height.0)
-                    }
-                    _ => (false, false),
-                };
-
-                // skip if we don't need storage
-                let AgentState::Node(env_id, node) = &target else {
-                    break 'storage;
-                };
-
-                // get the storage info for this environment if we don't have it cached
-                let info = state
-                    .get_env_info(*env_id)
-                    .await
-                    .map_err(|_| ReconcileError::StorageAcquireError("storage info".to_owned()))?;
-
-                // ensure the binary is correct every reconcile (or restart)
-                ensure_correct_binary(node.binary, &state, &info).await?;
-
-                if is_same_env && is_same_index {
-                    debug!("skipping storage download");
-                    break 'storage;
-                }
-
-                // TODO: download storage to a cache directory (~/config/.snops) to prevent
-                // multiple agents from having to redownload
-                // can be configurable to also work from a network drive
-
-                // download and decompress the storage
-                let height = &node.height.1;
-
-                trace!("checking storage files...");
-
-                // only download storage if it's a new environment
-                // if a node starts at height: 0, the node will never
-                // download the ledger
-                if !is_same_env {
-                    reconcile::check_files(&state, &info, height).await?;
-                }
-                reconcile::load_ledger(&state, &info, height, !is_same_env).await?;
-                // TODO: checkpoint/absolute height request handling
-            }
-
-            // reconcile towards new state
-            match target.clone() {
-                // inventory state is waiting for a node to be started
-                AgentState::Inventory => {
-                    // wipe the env info cache. don't want to have stale storage info
-                    state.env_info.write().await.take();
-                }
-
-                // start snarkOS node when node
-                AgentState::Node(env_id, node) => {
-                    let mut child_lock = state.child.write().await;
-                    let mut command = Command::new(state.cli.path.join(SNARKOS_FILE));
-
-                    // get the storage info for this environment if we don't have it cached
-                    let info = state.get_env_info(env_id).await.map_err(|_| {
-                        ReconcileError::StorageAcquireError("storage info".to_owned())
-                    })?;
-
-                    let storage_id = &info.storage.id;
-                    let storage_path = state
-                        .cli
-                        .path
-                        .join("storage")
-                        .join(info.network.to_string())
-                        .join(storage_id.to_string());
-                    let ledger_path = if info.storage.persist {
-                        storage_path.join(LEDGER_PERSIST_DIR)
-                    } else {
-                        state.cli.path.join(LEDGER_BASE_DIR)
-                    };
-
-                    // add loki URL if one is set
-                    if let Some(loki) = &*state.loki.lock().unwrap() {
-                        command
-                            .env(
-                                "SNOPS_LOKI_LABELS",
-                                format!("env_id={},node_key={}", env_id, node.node_key),
-                            )
-                            .arg("--loki")
-                            .arg(loki.as_str());
-                    }
-
-                    if state.cli.quiet {
-                        command.stdout(Stdio::null());
-                    } else {
-                        command.stdout(std::io::stdout());
-                    }
-
-                    command
-                        .stderr(std::io::stderr())
-                        .envs(&node.env)
-                        .env("NETWORK", info.network.to_string())
-                        .env("HOME", &ledger_path)
-                        .arg("--log")
-                        .arg(state.cli.path.join(SNARKOS_LOG_FILE))
-                        .arg("run")
-                        .arg("--agent-rpc-port")
-                        .arg(state.agent_rpc_port.to_string())
-                        .arg("--type")
-                        .arg(node.node_key.ty.to_string())
-                        .arg("--ledger")
-                        .arg(ledger_path);
-
-                    if !info.storage.native_genesis {
-                        command
-                            .arg("--genesis")
-                            .arg(storage_path.join(SNARKOS_GENESIS_FILE));
-                    }
-
-                    // storage configuration
-                    command
-                        // port configuration
-                        .arg("--bind")
-                        .arg(state.cli.bind_addr.to_string())
-                        .arg("--bft")
-                        .arg(state.cli.ports.bft.to_string())
-                        .arg("--rest")
-                        .arg(state.cli.ports.rest.to_string())
-                        .arg("--metrics")
-                        .arg(state.cli.ports.metrics.to_string())
-                        .arg("--node")
-                        .arg(state.cli.ports.node.to_string());
-
-                    match node.private_key {
-                        KeyState::None => {}
-                        KeyState::Local => {
-                            command.arg("--private-key-file").arg(
-                                state
-                                    .cli
-                                    .private_key_file
-                                    .as_ref()
-                                    .ok_or(ReconcileError::NoLocalPrivateKey)?,
-                            );
-                        }
-                        KeyState::Literal(pk) => {
-                            command.arg("--private-key").arg(pk);
-                        }
-                    }
-
-                    // conditionally add retention policy
-                    if let Some(policy) = &info.storage.retention_policy {
-                        command.arg("--retention-policy").arg(policy.to_string());
-                    }
-
-                    // Find agents that do not have cached addresses
-                    let unresolved_addrs: HashSet<AgentId> = {
-                        let resolved_addrs = state.resolved_addrs.read().await;
-                        node.peers
-                            .iter()
-                            .chain(node.validators.iter())
-                            .filter_map(|p| {
-                                if let AgentPeer::Internal(id, _) = p {
-                                    (!resolved_addrs.contains_key(id)).then_some(*id)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect()
-                    };
-
-                    // Fetch all unresolved addresses and update the cache
-                    if !unresolved_addrs.is_empty() {
-                        tracing::debug!(
-                            "need to resolve addrs: {}",
-                            unresolved_addrs
-                                .iter()
-                                .map(|id| id.to_string())
-                                .collect::<Vec<_>>()
-                                .join(",")
-                        );
-                        let new_addrs = state
-                            .client
-                            .resolve_addrs(context::current(), unresolved_addrs)
-                            .await
-                            .map_err(|err| {
-                                error!("rpc error while resolving addresses: {err}");
-                                ReconcileError::Unknown
-                            })?
-                            .map_err(ReconcileError::ResolveAddrError)?;
-                        tracing::debug!(
-                            "resolved new addrs: {}",
-                            new_addrs
-                                .iter()
-                                .map(|(id, addr)| format!("{}: {}", id, addr))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        );
-                        state.resolved_addrs.write().await.extend(new_addrs);
-                    }
-
-                    if !node.peers.is_empty() {
-                        command
-                            .arg("--peers")
-                            .arg(state.agentpeers_to_cli(&node.peers).await.join(","));
-                    }
-
-                    if !node.validators.is_empty() {
-                        command
-                            .arg("--validators")
-                            .arg(state.agentpeers_to_cli(&node.validators).await.join(","));
-                    }
-
-                    if node.online {
-                        tracing::trace!("spawning node process...");
-                        tracing::debug!("node command: {command:?}");
-                        let child = command.spawn().expect("failed to start child");
-
-                        *child_lock = Some(child);
-
-                        // todo: check to ensure the node actually comes online
-                        // by hitting the REST latest block
-                    } else {
-                        tracing::debug!("skipping node spawn");
-                    }
-                }
-            }
-
-            // After completing the reconcilation, update the agent state
-            let mut agent_state = state.agent_state.write().await;
-            *agent_state = target;
-
-            Ok(())
-        });
-
-        // update the mutex with our new handle and drop the lock
-        *handle_container = Some(handle.abort_handle());
-        drop(handle_container);
-
-        // await reconcilation completion
-        let res = match handle.await {
-            Err(e) if e.is_cancelled() => {
-                warn!("reconcilation was aborted by a newer reconcilation request");
-
-                // early return (don't clean up the handle lock)
-                return Err(ReconcileError::Aborted);
-            }
-
-            Ok(inner) => inner,
-            Err(e) => {
-                warn!("reconcilation task panicked: {e}");
-                Err(ReconcileError::Unknown)
-            }
-        };
-
-        // clean up the abort handle
-        // we can't be here if we were cancelled (see early return above)
-        self.state.reconcilation_handle.lock().await.take();
-
-        res
+    async fn set_agent_state(self, _: Context, target: AgentState, opts: ReconcileOptions) {
+        info!("Received new agent state, queuing reconcile...");
+        self.state.update_agent_state(target, opts).await;
     }
 
-    async fn get_addrs(self, _: context::Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
+    async fn clear_peer_addr(self, _: Context, agent_id: AgentId) {
+        self.state
+            .resolved_addrs
+            .write()
+            .await
+            .swap_remove(&agent_id);
+    }
+
+    async fn get_addrs(self, _: Context) -> (PortConfig, Option<IpAddr>, Vec<IpAddr>) {
         (
-            self.state.cli.ports.clone(),
+            self.state.cli.ports,
             self.state.external_addr,
             self.state.internal_addrs.clone(),
         )
     }
 
-    async fn snarkos_get(
-        self,
-        _: context::Context,
-        route: String,
-    ) -> Result<String, SnarkosRequestError> {
-        let env_id =
-            if let AgentState::Node(env_id, state) = self.state.agent_state.read().await.deref() {
-                if !state.online {
-                    return Err(SnarkosRequestError::OfflineNode);
-                }
-                *env_id
-            } else {
-                return Err(SnarkosRequestError::InvalidState);
-            };
+    async fn snarkos_get(self, _: Context, route: String) -> Result<String, SnarkosRequestError> {
+        self.state
+            .get_node_client()
+            .await
+            .ok_or(SnarkosRequestError::OfflineNode)?;
+
+        let env_id = self
+            .state
+            .get_agent_state()
+            .await
+            .env()
+            .ok_or(SnarkosRequestError::InvalidState)?;
 
         let network = self
             .state
@@ -447,13 +160,18 @@ impl AgentService for AgentRpcServer {
             .map_err(|err| SnarkosRequestError::JsonSerializeError(err.to_string()))
     }
 
-    async fn broadcast_tx(self, _: context::Context, tx: String) -> Result<(), AgentError> {
-        let env_id =
-            if let AgentState::Node(env_id, _) = self.state.agent_state.read().await.deref() {
-                *env_id
-            } else {
-                return Err(AgentError::InvalidState);
-            };
+    async fn broadcast_tx(self, _: Context, tx: String) -> Result<(), AgentError> {
+        self.state
+            .get_node_client()
+            .await
+            .ok_or(AgentError::NodeClientNotReady)?;
+
+        let env_id = self
+            .state
+            .get_agent_state()
+            .await
+            .env()
+            .ok_or(AgentError::InvalidState)?;
 
         let network = self
             .state
@@ -491,7 +209,7 @@ impl AgentService for AgentRpcServer {
         }
     }
 
-    async fn get_metric(self, _: context::Context, metric: AgentMetric) -> f64 {
+    async fn get_metric(self, _: Context, metric: AgentMetric) -> f64 {
         let metrics = self.state.metrics.read().await;
 
         match metric {
@@ -501,17 +219,18 @@ impl AgentService for AgentRpcServer {
 
     async fn execute_authorization(
         self,
-        _: context::Context,
+        _: Context,
         env_id: EnvId,
         network: NetworkId,
         query: String,
         auth: String,
     ) -> Result<String, AgentError> {
-        info!("executing authorization...");
+        info!("Executing authorization for {env_id}...");
 
         // TODO: maybe in the env config store a branch label for the binary so it won't
         // be put in storage and won't overwrite itself
 
+        // TODO: compute agents wiping out env info when alternating environments
         let info = self
             .state
             .get_env_info(env_id)
@@ -524,14 +243,7 @@ impl AgentService for AgentRpcServer {
             .path
             .join(format!("snarkos-aot-{env_id}-compute"));
 
-        let default_entry = BinaryEntry {
-            source: BinarySource::Path(PathBuf::from(format!(
-                "/content/storage/{}/{}/binaries/default",
-                info.network, info.storage.id,
-            ))),
-            sha256: None,
-            size: None,
-        };
+        let default_entry = default_binary(&info);
 
         // download the snarkOS binary
         api::check_binary(
@@ -546,10 +258,10 @@ impl AgentService for AgentRpcServer {
             &self.state.endpoint,
             &aot_bin,
             self.state.transfer_tx(),
-        ) // TODO: http(s)?
+        )
         .await
         .map_err(|e| {
-            error!("failed obtain runner binary: {e}");
+            error!("failed obtain compute binary: {e}");
             AgentError::ProcessFailed
         })?;
 
@@ -561,9 +273,17 @@ impl AgentService for AgentRpcServer {
             )
             .await
         {
-            Ok(exec) => {
+            Ok(mut exec) => {
                 let elapsed = start.elapsed().as_millis();
-                info!("authorization executed in {elapsed}ms");
+
+                // Truncate the output to the first {
+                // because Aleo decided to print parameters.aleo.org download
+                // status to stdout...
+                if let Some(index) = exec.find("{") {
+                    exec = exec.split_off(index);
+                }
+
+                info!("Authorization executed in {elapsed}ms");
                 trace!("authorization output: {exec}");
                 Ok(exec)
             }
@@ -574,7 +294,7 @@ impl AgentService for AgentRpcServer {
         }
     }
 
-    async fn set_log_level(self, _: context::Context, level: String) -> Result<(), AgentError> {
+    async fn set_log_level(self, _: Context, level: String) -> Result<(), AgentError> {
         tracing::debug!("setting log level to {level}");
         let level: tracing_subscriber::filter::LevelFilter = level
             .parse()
@@ -587,15 +307,12 @@ impl AgentService for AgentRpcServer {
         Ok(())
     }
 
-    async fn set_aot_log_level(
-        self,
-        ctx: context::Context,
-        verbosity: u8,
-    ) -> Result<(), AgentError> {
+    async fn set_aot_log_level(self, ctx: Context, verbosity: u8) -> Result<(), AgentError> {
         tracing::debug!("agent setting aot log verbosity to {verbosity:?}");
-        let lock = self.state.node_client.lock().await;
-        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
-        node_client
+        self.state
+            .get_node_client()
+            .await
+            .ok_or(AgentError::NodeClientNotSet)?
             .set_log_level(ctx, verbosity)
             .await
             .map_err(|_| AgentError::FailedToChangeLogLevel)?
@@ -603,12 +320,13 @@ impl AgentService for AgentRpcServer {
 
     async fn get_snarkos_block_lite(
         self,
-        ctx: context::Context,
+        ctx: Context,
         block_hash: String,
     ) -> Result<Option<SnarkOSLiteBlock>, AgentError> {
-        let lock = self.state.node_client.lock().await;
-        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
-        node_client
+        self.state
+            .get_node_client()
+            .await
+            .ok_or(AgentError::NodeClientNotSet)?
             .get_block_lite(ctx, block_hash)
             .await
             .map_err(|_| AgentError::FailedToMakeRequest)?
@@ -616,23 +334,27 @@ impl AgentService for AgentRpcServer {
 
     async fn find_transaction(
         self,
-        context: context::Context,
+        context: Context,
         tx_id: String,
     ) -> Result<Option<String>, AgentError> {
-        let lock = self.state.node_client.lock().await;
-        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
-        node_client
+        self.state
+            .get_node_client()
+            .await
+            .ok_or(AgentError::NodeClientNotSet)?
             .find_transaction(context, tx_id)
             .await
             .map_err(|_| AgentError::FailedToMakeRequest)?
     }
 
-    async fn get_status(self, ctx: context::Context) -> Result<AgentStatus, AgentError> {
-        let lock = self.state.node_client.lock().await;
-        let node_client = lock.as_ref().ok_or(AgentError::NodeClientNotSet)?;
+    async fn get_status(self, ctx: Context) -> Result<AgentStatus, AgentError> {
+        let aot_online = if let Some(c) = self.state.get_node_client().await {
+            c.status(ctx).await.is_ok()
+        } else {
+            false
+        };
 
         Ok(AgentStatus {
-            aot_online: node_client.status(ctx).await.is_ok(),
+            aot_online,
             version: self.version.to_string(),
         })
     }
