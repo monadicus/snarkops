@@ -28,6 +28,7 @@ pub struct Env {
 /// Env commands.
 #[derive(Debug, Parser)]
 enum EnvCommands {
+    /// Run an action on an environment.
     #[clap(subcommand)]
     Action(action::Action),
     /// Get an env's specific agent by.

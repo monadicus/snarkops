@@ -12,6 +12,7 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli agent kill`↴](#snops-cli-agent-kill)
 * [`snops-cli agent list`↴](#snops-cli-agent-list)
 * [`snops-cli agent tps`↴](#snops-cli-agent-tps)
+* [`snops-cli agent status`↴](#snops-cli-agent-status)
 * [`snops-cli agent set-log-level`↴](#snops-cli-agent-set-log-level)
 * [`snops-cli agent set-snarkos-log-level`↴](#snops-cli-agent-set-snarkos-log-level)
 * [`snops-cli env`↴](#snops-cli-env)
@@ -30,17 +31,18 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli env height`↴](#snops-cli-env-height)
 * [`snops-cli env transaction`↴](#snops-cli-env-transaction)
 * [`snops-cli env transaction-details`↴](#snops-cli-env-transaction-details)
-* [`snops-cli env clean`↴](#snops-cli-env-clean)
+* [`snops-cli env delete`↴](#snops-cli-env-delete)
 * [`snops-cli env info`↴](#snops-cli-env-info)
 * [`snops-cli env list`↴](#snops-cli-env-list)
 * [`snops-cli env topology`↴](#snops-cli-env-topology)
 * [`snops-cli env topology-resolved`↴](#snops-cli-env-topology-resolved)
-* [`snops-cli env prepare`↴](#snops-cli-env-prepare)
+* [`snops-cli env apply`↴](#snops-cli-env-apply)
 * [`snops-cli env mapping`↴](#snops-cli-env-mapping)
 * [`snops-cli env mappings`↴](#snops-cli-env-mappings)
 * [`snops-cli env program`↴](#snops-cli-env-program)
 * [`snops-cli env storage`↴](#snops-cli-env-storage)
 * [`snops-cli set-log-level`↴](#snops-cli-set-log-level)
+* [`snops-cli events`↴](#snops-cli-events)
 * [`snops-cli man`↴](#snops-cli-man)
 * [`snops-cli md`↴](#snops-cli-md)
 
@@ -53,7 +55,8 @@ This document contains the help content for the `snops-cli` command-line program
 * `autocomplete` — Generate shell completions
 * `agent` — For interacting with snop agents
 * `env` — For interacting with snop environments
-* `set-log-level` —
+* `set-log-level` — 
+* `events` — Listen to events from the control plane, optionally filtered
 * `man` — For generating cli manpages. Only with the mangen feature enabled
 * `md` — For generating cli markdown. Only with the clipages feature enabled
 
@@ -93,8 +96,9 @@ For interacting with snop agents
 * `kill` — Kill the specific agent
 * `list` — List all agents. Ignores the agent id
 * `tps` — Get the specific agent's TPS
-* `set-log-level` —
-* `set-snarkos-log-level` —
+* `status` — Get the specific agent's status
+* `set-log-level` — Set the log level of the agent
+* `set-snarkos-log-level` — Set the log level of the node running on an agent
 
 ###### **Arguments:**
 
@@ -156,7 +160,17 @@ Get the specific agent's TPS
 
 
 
+## `snops-cli agent status`
+
+Get the specific agent's status
+
+**Usage:** `snops-cli agent status`
+
+
+
 ## `snops-cli agent set-log-level`
+
+Set the log level of the agent
 
 **Usage:** `snops-cli agent set-log-level <LEVEL>`
 
@@ -167,6 +181,8 @@ Get the specific agent's TPS
 
 
 ## `snops-cli agent set-snarkos-log-level`
+
+Set the log level of the node running on an agent
 
 **Usage:** `snops-cli agent set-snarkos-log-level <VERBOSITY>`
 
@@ -184,21 +200,21 @@ For interacting with snop environments
 
 ###### **Subcommands:**
 
-* `action` — Actions you can apply on a specific environment
+* `action` — Run an action on an environment
 * `agent` — Get an env's specific agent by
 * `agents` — List an env's agents
-* `auth` —
+* `auth` — 
 * `balance` — Lookup an account's balance
 * `block` — Lookup a block or get the latest block
 * `height` — Get the latest height from all agents in the env
 * `transaction` — Lookup a transaction's block by a transaction id
 * `transaction-details` — Lookup a transaction's details by a transaction id
-* `clean` — Clean a specific environment
+* `delete` — Delete a specific environment
 * `info` — Get an env's latest block/state root info
 * `list` — List all environments. Ignores the env id
 * `topology` — Show the current topology of a specific environment
 * `topology-resolved` — Show the resolved topology of a specific environment. Shows only internal agents
-* `prepare` — Prepare a (test) environment
+* `apply` — Apply an environment spec
 * `mapping` — Lookup a mapping by program id and mapping name
 * `mappings` — Lookup a program's mappings only
 * `program` — Lookup a program by its id
@@ -214,7 +230,7 @@ For interacting with snop environments
 
 ## `snops-cli env action`
 
-Actions you can apply on a specific environment
+Run an action on an environment
 
 **Usage:** `snops-cli env action <COMMAND>`
 
@@ -233,11 +249,15 @@ Actions you can apply on a specific environment
 
 Turn the specified agents(and nodes) offline
 
-**Usage:** `snops-cli env action offline [NODES]...`
+**Usage:** `snops-cli env action offline [OPTIONS] [NODES]...`
 
 ###### **Arguments:**
 
-* `<NODES>`
+* `<NODES>` — The nodes to take offline. (eg. `validator/any`)
+
+###### **Options:**
+
+* `--async` — When present, don't wait for reconciles to finish before returning
 
 
 
@@ -245,11 +265,15 @@ Turn the specified agents(and nodes) offline
 
 Turn the specified agents(and nodes) online
 
-**Usage:** `snops-cli env action online [NODES]...`
+**Usage:** `snops-cli env action online [OPTIONS] [NODES]...`
 
 ###### **Arguments:**
 
-* `<NODES>`
+* `<NODES>` — The nodes to turn online (eg. `validator/any`)
+
+###### **Options:**
+
+* `--async` — When present, don't wait for reconciles to finish before returning
 
 
 
@@ -257,11 +281,15 @@ Turn the specified agents(and nodes) online
 
 Reboot the specified agents(and nodes)
 
-**Usage:** `snops-cli env action reboot [NODES]...`
+**Usage:** `snops-cli env action reboot [OPTIONS] [NODES]...`
 
 ###### **Arguments:**
 
-* `<NODES>`
+* `<NODES>` — The nodes to reboot (eg. `validator/any`)
+
+###### **Options:**
+
+* `--async` — When present, don't wait for reconciles to finish before returning
 
 
 
@@ -278,7 +306,7 @@ Execute an aleo program function on the environment. i.e. credits.aleo/transfer_
 
 ###### **Options:**
 
-* `-p`, `--private-key <PRIVATE_KEY>` — Private key to use, can be `committee.0` to use committee member 0's key
+* `--private-key <PRIVATE_KEY>` — Private key to use, can be `committee.0` to use committee member 0's key
 * `--fee-private-key <FEE_PRIVATE_KEY>` — Private key to use for the fee. Defaults to the same as --private-key
 * `-c`, `--cannon <CANNON>` — Desired cannon to fire the transaction
 * `--priority-fee <PRIORITY_FEE>` — The optional priority fee to use
@@ -316,7 +344,7 @@ Configure the state of the target nodes
 
 ###### **Arguments:**
 
-* `<NODES>` — The nodes to configure
+* `<NODES>` — The nodes to configure. (eg. `validator/any`)
 
 ###### **Options:**
 
@@ -327,6 +355,11 @@ Configure the state of the target nodes
 * `--height <HEIGHT>` — Configure the height of the target nodes
 * `-p`, `--peers <PEERS>` — Configure the peers of the target nodes, or `none`
 * `-v`, `--validators <VALIDATORS>` — Configure the validators of the target nodes, or `none`
+* `-e`, `--env <ENV>` — Set environment variables for a node: `--env FOO=bar`
+* `-d`, `--del-env <DEL_ENV>`
+* `-b`, `--binary <BINARY>` — Configure the binary for a node
+* `--private-key <PRIVATE_KEY>` — Configure the private key for a node
+* `--async`
 
 
 
@@ -425,11 +458,11 @@ Lookup a transaction's details by a transaction id
 
 
 
-## `snops-cli env clean`
+## `snops-cli env delete`
 
-Clean a specific environment
+Delete a specific environment
 
-**Usage:** `snops-cli env clean`
+**Usage:** `snops-cli env delete`
 
 
 
@@ -465,15 +498,19 @@ Show the resolved topology of a specific environment. Shows only internal agents
 
 
 
-## `snops-cli env prepare`
+## `snops-cli env apply`
 
-Prepare a (test) environment
+Apply an environment spec
 
-**Usage:** `snops-cli env prepare <SPEC>`
+**Usage:** `snops-cli env apply [OPTIONS] <SPEC>`
 
 ###### **Arguments:**
 
-* `<SPEC>` — The test spec file
+* `<SPEC>` — The environment spec file
+
+###### **Options:**
+
+* `--async` — When present, don't wait for reconciles to finish before returning
 
 
 
@@ -530,6 +567,20 @@ Get an env's storage info
 ###### **Arguments:**
 
 * `<LEVEL>`
+
+
+
+## `snops-cli events`
+
+Listen to events from the control plane, optionally filtered
+
+**Usage:** `snops-cli events [FILTER]`
+
+###### **Arguments:**
+
+* `<FILTER>` — The event filter to apply, such as `agent-connected` or `all-of(env-is(default),node-target-is(validator/any))`
+
+  Default value: `unfiltered`
 
 
 

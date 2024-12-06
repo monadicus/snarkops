@@ -24,7 +24,6 @@ This document contains the help content for the `snarkos-aot` command-line progr
 * [`snarkos-aot ledger checkpoint apply`↴](#snarkos-aot-ledger-checkpoint-apply)
 * [`snarkos-aot ledger checkpoint view`↴](#snarkos-aot-ledger-checkpoint-view)
 * [`snarkos-aot ledger checkpoint clean`↴](#snarkos-aot-ledger-checkpoint-clean)
-* [`snarkos-aot run`↴](#snarkos-aot-run)
 * [`snarkos-aot auth`↴](#snarkos-aot-auth)
 * [`snarkos-aot auth execute`↴](#snarkos-aot-auth-execute)
 * [`snarkos-aot auth program`↴](#snarkos-aot-auth-program)
@@ -39,6 +38,7 @@ This document contains the help content for the `snarkos-aot` command-line progr
 * [`snarkos-aot program cost`↴](#snarkos-aot-program-cost)
 * [`snarkos-aot man`↴](#snarkos-aot-man)
 * [`snarkos-aot md`↴](#snarkos-aot-md)
+* [`snarkos-aot run`↴](#snarkos-aot-run)
 
 ## `snarkos-aot`
 
@@ -51,11 +51,11 @@ The different AOT commands
 * `genesis` — This command helps generate a custom genesis block given an initial private key, seed, and committee size
 * `accounts` — Given a seed and a count, generate a number of accounts
 * `ledger` — Commands for interacting with the ledger
-* `run` — A wrapper around the snarkos node run commands that provide additional logging and configurability
 * `auth` — A command to help generate various different types of authorizations and execute them
 * `program` — A command to help gather information about a program, including its cost and imports
 * `man` — For generating cli manpages. Only with the mangen feature enabled
 * `md` — For generating cli markdown. Only with the clipages feature enabled
+* `run` — A wrapper around the snarkos node run commands that provide additional logging and configurability
 
 ###### **Options:**
 
@@ -374,46 +374,6 @@ Cleanup old checkpoints
 
 
 
-## `snarkos-aot run`
-
-A wrapper around the snarkos node run commands that provide additional logging and configurability
-
-**Usage:** `snarkos-aot run [OPTIONS] --ledger <LEDGER> --type <type> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
-
-###### **Options:**
-
-* `-g`, `--genesis <GENESIS>` — A path to the genesis block to initialize the ledger from
-* `-l`, `--ledger <LEDGER>` — The ledger from which to view a block
-
-  Default value: `./ledger`
-* `-t`, `--type <type>` — The type of node to run: validator, prover, or client
-* `--private-key <PRIVATE_KEY>` — Specify the account private key of the node
-* `--private-key-file <PRIVATE_KEY_FILE>` — Specify the account private key of the node
-* `--bind <BIND_ADDR>` — Specify the IP(v4 or v6) address to bind to
-
-  Default value: `0.0.0.0`
-* `--node <NODE>` — Specify the IP address and port for the node server
-
-  Default value: `4130`
-* `--bft <BFT>` — Specify the IP address and port for the BFT
-
-  Default value: `5000`
-* `--rest <REST>` — Specify the IP address and port for the REST server
-
-  Default value: `3030`
-* `--metrics <METRICS>` — Specify the port for the metrics server
-
-  Default value: `9000`
-* `--peers <PEERS>` — Specify the IP address and port of the peer(s) to connect to
-* `--validators <VALIDATORS>` — Specify the IP address and port of the validator(s) to connect to
-* `--rest-rps <REST_RPS>` — Specify the requests per second (RPS) rate limit per IP for the REST server
-
-  Default value: `1000`
-* `--retention-policy <RETENTION_POLICY>` — The retention policy for the checkpoint manager. i.e. how often to create checkpoints
-* `--agent-rpc-port <AGENT_RPC_PORT>` — When present, connects to an agent RPC server on the given port
-
-
-
 ## `snarkos-aot auth`
 
 A command to help generate various different types of authorizations and execute them
@@ -489,6 +449,9 @@ Authorize a program execution
 * `--record <RECORD>` — The record for a private fee
 * `-q`, `--query <QUERY>` — Query to load the program with
 * `--seed <SEED>` — The seed to use for the authorization generation
+* `--cost-v1` — Enable cost v1 for the transaction cost estimation (v2 by default)
+
+  Default value: `false`
 
 
 
@@ -512,6 +475,9 @@ Authorize the fee for a program execution
 * `-i`, `--id <ID>` — The ID of the deployment or program execution
 * `-c`, `--cost <COST>` — Estimated cost of the deployment or program execution
 * `--seed <SEED>` — The seed to use for the authorization generation
+* `--cost-v1` — Enable cost v1 for the transaction cost estimation (v2 by default)
+
+  Default value: `false`
 
 
 
@@ -554,11 +520,14 @@ Estimate the cost of a program execution or deployment
 
 ###### **Options:**
 
-* `--query <QUERY>` — The query to use for the program
+* `-q`, `--query <QUERY>` — The query to use for the program
 * `-a`, `--auth <AUTH>` — Authorization for an execution of some kind
 * `-f`, `--fee-auth <FEE_AUTH>` — The optional fee authorization for said execution
 * `-o`, `--owner <OWNER>` — The owner of the program if deploying
 * `-d`, `--deployment <DEPLOYMENT>` — The deployment of the program if deploying
+* `--cost-v1` — Enable cost v1 for the transaction cost estimation (v2 by default)
+
+  Default value: `false`
 
 
 
@@ -585,6 +554,9 @@ Deploy a program to the network
 * `--record <RECORD>` — The record for a private fee
 * `-q`, `--query <QUERY>` — The query to use for the program
 * `--seed <SEED>` — The seed to use for the authorization generation
+* `--cost-v1` — Enable cost v1 for the transaction cost estimation (v2 by default)
+
+  Default value: `false`
 
 
 
@@ -666,6 +638,9 @@ Compute the cost to execute a function in a given program
 ###### **Options:**
 
 * `-q`, `--query <QUERY>` — Query to load the program with
+* `--cost-v1` — Enable cost v1 for the transaction cost estimation (v2 by default)
+
+  Default value: `false`
 
 
 
@@ -694,6 +669,46 @@ For generating cli markdown. Only with the clipages feature enabled
 * `<DIRECTORY>` — Directory to write markdown to
 
   Default value: `snops_book/user_guide/clis`
+
+
+
+## `snarkos-aot run`
+
+A wrapper around the snarkos node run commands that provide additional logging and configurability
+
+**Usage:** `snarkos-aot run [OPTIONS] --ledger <LEDGER> --type <type> <--private-key <PRIVATE_KEY>|--private-key-file <PRIVATE_KEY_FILE>>`
+
+###### **Options:**
+
+* `-g`, `--genesis <GENESIS>` — A path to the genesis block to initialize the ledger from
+* `-l`, `--ledger <LEDGER>` — The ledger from which to view a block
+
+  Default value: `./ledger`
+* `-t`, `--type <type>` — The type of node to run: validator, prover, or client
+* `--private-key <PRIVATE_KEY>` — Specify the account private key of the node
+* `--private-key-file <PRIVATE_KEY_FILE>` — Specify the account private key of the node
+* `--bind <BIND_ADDR>` — Specify the IP(v4 or v6) address to bind to
+
+  Default value: `0.0.0.0`
+* `--node <NODE>` — Specify the IP address and port for the node server
+
+  Default value: `4130`
+* `--bft <BFT>` — Specify the IP address and port for the BFT
+
+  Default value: `5000`
+* `--rest <REST>` — Specify the IP address and port for the REST server
+
+  Default value: `3030`
+* `--metrics <METRICS>` — Specify the port for the metrics server
+
+  Default value: `9000`
+* `--peers <PEERS>` — Specify the IP address and port of the peer(s) to connect to
+* `--validators <VALIDATORS>` — Specify the IP address and port of the validator(s) to connect to
+* `--rest-rps <REST_RPS>` — Specify the requests per second (RPS) rate limit per IP for the REST server
+
+  Default value: `1000`
+* `--retention-policy <RETENTION_POLICY>` — The retention policy for the checkpoint manager. i.e. how often to create checkpoints
+* `--agent-rpc-port <AGENT_RPC_PORT>` — When present, connects to an agent RPC server on the given port
 
 
 

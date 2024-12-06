@@ -73,11 +73,13 @@ enum AgentCommands {
     /// Get the specific agent's status.
     Status,
 
+    /// Set the log level of the agent.
     SetLogLevel {
         /// The log level to set.
         level: String,
     },
 
+    /// Set the log level of the node running on an agent.
     SetSnarkosLogLevel {
         /// The log verbosity to set.
         verbosity: u8,

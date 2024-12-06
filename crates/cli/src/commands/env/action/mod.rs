@@ -63,6 +63,7 @@ pub enum Action {
     /// Turn the specified agents(and nodes) offline.
     #[clap(alias = "off")]
     Offline {
+        /// The nodes to take offline. (eg. `validator/any`)
         #[clap(num_args = 1, value_delimiter = ' ')]
         nodes: Vec<NodeTarget>,
         /// When present, don't wait for reconciles to finish before returning
@@ -72,6 +73,7 @@ pub enum Action {
     /// Turn the specified agents(and nodes) online.
     #[clap(alias = "on")]
     Online {
+        /// The nodes to turn online (eg. `validator/any`)
         #[clap(num_args = 1, value_delimiter = ' ')]
         nodes: Vec<NodeTarget>,
         /// When present, don't wait for reconciles to finish before returning
@@ -80,6 +82,7 @@ pub enum Action {
     },
     /// Reboot the specified agents(and nodes).
     Reboot {
+        /// The nodes to reboot (eg. `validator/any`)
         #[clap(num_args = 1, value_delimiter = ' ')]
         nodes: Vec<NodeTarget>,
         /// When present, don't wait for reconciles to finish before returning
@@ -160,9 +163,6 @@ pub enum Action {
         // Remove environment variables from a node: `--del-env FOO,BAR`
         #[clap(long, short, value_delimiter = ',', allow_hyphen_values = true)]
         del_env: Option<Vec<String>>,
-        /// The nodes to configure.
-        #[clap(num_args = 1, value_delimiter = ' ')]
-        nodes: Vec<NodeTarget>,
         /// Configure the binary for a node.
         #[clap(long, short)]
         binary: Option<InternedId>,
@@ -171,6 +171,9 @@ pub enum Action {
         private_key: Option<KeySource>,
         #[clap(long = "async")]
         async_mode: bool,
+        /// The nodes to configure. (eg. `validator/any`)
+        #[clap(num_args = 1, value_delimiter = ' ')]
+        nodes: Vec<NodeTarget>,
     },
 }
 
