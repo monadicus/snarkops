@@ -10,7 +10,6 @@ pub mod cannon;
 pub mod error;
 pub mod nodes;
 pub mod persist;
-pub mod serialize;
 pub mod storage;
 
 // TODO: Considerations:

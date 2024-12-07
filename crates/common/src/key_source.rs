@@ -45,7 +45,7 @@ impl<'de> Deserialize<'de> for KeySource {
     {
         struct KeySourceVisitor;
 
-        impl<'de> Visitor<'de> for KeySourceVisitor {
+        impl Visitor<'_> for KeySourceVisitor {
             type Value = KeySource;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
