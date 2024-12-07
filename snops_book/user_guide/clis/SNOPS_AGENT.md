@@ -20,6 +20,8 @@ This document contains the help content for the `snops-agent` command-line progr
 ###### **Options:**
 
 * `--endpoint <ENDPOINT>` — Control plane endpoint address (IP, or wss://host, http://host)
+
+  Default value: `127.0.0.1:1234`
 * `--id <ID>` — Agent ID, used to identify the agent in the network
 * `--private-key-file <PRIVATE_KEY_FILE>` — Locally provided private key file, used for envs where private keys are locally provided
 * `--labels <LABELS>` — Labels to attach to the agent, used for filtering and grouping
@@ -28,7 +30,7 @@ This document contains the help content for the `snops-agent` command-line progr
   Default value: `./snops-data`
 * `--external <EXTERNAL>` — Enable the agent to fetch its external address. Necessary to determine which agents are on shared networks, and for external-to-external connections
 * `--internal <INTERNAL>` — Manually specify internal addresses
-* `--bind <BIND_ADDR>`
+* `--bind <BIND_ADDR>` — Bind address for the agent to listen on
 
   Default value: `0.0.0.0`
 * `--node <NODE>` — Specify the IP address and port for the node server
