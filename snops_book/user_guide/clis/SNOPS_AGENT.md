@@ -52,6 +52,9 @@ This document contains the help content for the `snops-agent` command-line progr
 * `-q`, `--quiet` — Run the agent in quiet mode, suppressing most node output
 
   Default value: `false`
+* `--ephemeral` — When present, delete the agent from the controlplane on disconnect
+
+  Default value: `false`
 
 
 

@@ -59,9 +59,13 @@ pub struct Cli {
     #[clap(flatten)]
     pub modes: AgentModeOptions,
 
-    #[clap(short, long, default_value_t = false, env = "SNOPS_AGENT_QUIET")]
     /// Run the agent in quiet mode, suppressing most node output
+    #[clap(short, long, default_value_t = false, env = "SNOPS_AGENT_QUIET")]
     pub quiet: bool,
+
+    /// When present, delete the agent from the controlplane on disconnect
+    #[clap(long, default_value_t = false, env = "SNOPS_AGENT_EPHEMERAL")]
+    pub ephemeral: bool,
 
     #[cfg(any(feature = "clipages", feature = "mangen"))]
     #[clap(subcommand)]
@@ -121,6 +125,10 @@ impl Cli {
 
         // add &id=
         qs.append_pair("id", self.id.as_ref());
+
+        if self.ephemeral {
+            qs.append_pair("ephemeral", "true");
+        }
 
         // add local pk flag
         if let Some(file) = self.private_key_file.as_ref() {
