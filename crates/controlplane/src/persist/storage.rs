@@ -3,20 +3,21 @@ use snops_checkpoint::RetentionPolicy;
 use snops_common::{
     binaries::BinaryEntry,
     key_source::ACCOUNTS_KEY_ID,
+    schema::storage::STORAGE_DIR,
     state::{InternedId, NetworkId, StorageId},
 };
 use tracing::warn;
 
 use super::prelude::*;
 use crate::{
-    cli::Cli,
-    schema::{
+    apply::{
         error::StorageError,
-        storage::{
+        storage_helpers::{
             pick_account_addr, pick_additional_addr, pick_commitee_addr, read_to_addrs,
-            LoadedStorage, STORAGE_DIR,
         },
+        LoadedStorage,
     },
+    cli::Cli,
 };
 
 /// Metadata for storage that can be used to restore a loaded storage

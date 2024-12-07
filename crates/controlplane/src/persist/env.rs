@@ -2,14 +2,16 @@ use std::sync::Arc;
 
 use bimap::BiMap;
 use dashmap::DashMap;
-use snops_common::state::TransactionSendState;
-use snops_common::state::{CannonId, EnvId, NetworkId, NodeKey, StorageId};
+use snops_common::{
+    schema::cannon::{sink::TxSink, source::TxSource},
+    state::{CannonId, EnvId, NetworkId, NodeKey, StorageId, TransactionSendState},
+};
 use tokio::sync::Semaphore;
 
 use super::prelude::*;
 use super::PersistNode;
 use crate::{
-    cannon::{sink::TxSink, source::TxSource, tracker::TransactionTracker},
+    cannon::tracker::TransactionTracker,
     env::{
         error::{EnvError, PrepareError},
         prepare_cannons, EnvNodeState, EnvPeer, Environment,
@@ -249,15 +251,15 @@ mod tests {
 
     use snops_common::{
         format::{read_dataformat, write_dataformat, DataFormat},
+        schema::{
+            cannon::{sink::TxSink, source::TxSource},
+            persist::{TxSinkFormatHeader, TxSourceFormatHeader},
+        },
         state::{InternedId, NetworkId},
     };
 
-    use crate::{
-        cannon::{sink::TxSink, source::TxSource},
-        persist::{
-            PersistEnv, PersistEnvFormatHeader, PersistNode, PersistNodeFormatHeader,
-            TxSinkFormatHeader, TxSourceFormatHeader,
-        },
+    use crate::persist::{
+        PersistEnv, PersistEnvFormatHeader, PersistNode, PersistNodeFormatHeader,
     };
 
     macro_rules! case {

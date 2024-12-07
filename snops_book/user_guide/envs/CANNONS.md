@@ -153,7 +153,7 @@ A few different examples of topology docs.
 
 ```yaml
 ---
-version: cannon.snarkos.testing.monadic.us/v1
+kind: snops/cannon/v1
 
 name: realtime-txs-record-to-file
 
@@ -169,7 +169,7 @@ sink:
 ### Playback Fire Right Away
 ```yaml
 ---
-version: cannon.snarkos.testing.monadic.us/v1
+kind: snops/cannon/v1
 
 name: txs-from-file-to-target-node
 

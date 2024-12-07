@@ -3,14 +3,17 @@ use std::{io, net::SocketAddr, sync::Arc};
 use clap::Parser;
 use cli::Cli;
 use prometheus_http_query::Client as PrometheusClient;
-use schema::storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY};
-use snops_common::db::Database;
+use snops_common::{
+    db::Database,
+    schema::storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY},
+};
 use state::GlobalState;
 use tokio::select;
 use tracing::{error, info, level_filters::LevelFilter, trace};
 use tracing_subscriber::{prelude::*, reload, EnvFilter};
 
 pub mod agent_version;
+pub mod apply;
 pub mod cannon;
 pub mod cli;
 pub mod db;
@@ -19,7 +22,6 @@ pub mod error;
 pub mod events;
 pub mod logging;
 pub mod persist;
-pub mod schema;
 pub mod server;
 pub mod state;
 

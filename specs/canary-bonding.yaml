@@ -1,5 +1,5 @@
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: canary-bonding
 name: canary-bonding
@@ -23,7 +23,7 @@ generate:
       count: 10
 
 ---
-version: nodes.snarkos.testing.monadic.us/v1
+kind: snops/nodes/v1
 name: bonding-demo
 
 network: canary

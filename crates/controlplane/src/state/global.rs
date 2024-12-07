@@ -9,6 +9,7 @@ use snops_common::{
     constant::ENV_AGENT_KEY,
     events::Event,
     node_targets::NodeTargets,
+    schema::storage::STORAGE_DIR,
     state::{
         AgentId, AgentPeer, AgentState, EnvId, LatestBlockInfo, NetworkId, NodeType, StorageId,
     },
@@ -22,12 +23,12 @@ use super::{
     AddrMap, AgentClient, AgentPool, EnvMap, StorageMap,
 };
 use crate::{
+    apply::LoadedStorage,
     cli::Cli,
     db::Database,
     env::{cache::NetworkCache, error::EnvRequestError, Environment, PortType},
     error::StateError,
     events::Events,
-    schema::storage::{LoadedStorage, STORAGE_DIR},
     server::error::StartError,
     ReloadHandler,
 };

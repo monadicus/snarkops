@@ -33,7 +33,7 @@ jwt.workspace = true
 lazysort.workspace = true
 lazy_static.workspace = true
 prometheus-http-query = "0.8"
-promql-parser = "0.4"
+# promql-parser = "0.4"
 rand.workspace = true
 rand_chacha.workspace = true
 rayon.workspace = true
@@ -45,7 +45,7 @@ serde_yaml.workspace = true
 sha2.workspace = true
 sled.workspace = true
 snops-checkpoint.workspace = true
-snops-common = { workspace = true, features = ["aot_cmds"] }
+snops-common = { workspace = true, features = ["aot_cmds", "schema"] }
 strum_macros.workspace = true
 tarpc.workspace = true
 thiserror.workspace = true

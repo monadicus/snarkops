@@ -1,5 +1,5 @@
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: base
 name: base-ledger
@@ -7,7 +7,7 @@ name: base-ledger
 generate: {}
 
 ---
-version: cannon.snarkos.testing.monadic.us/v1
+kind: snops/cannon/v1
 
 name: committee-tx-public
 

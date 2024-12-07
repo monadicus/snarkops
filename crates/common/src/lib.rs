@@ -13,6 +13,8 @@ pub mod events;
 pub mod format;
 pub mod key_source;
 pub mod node_targets;
+#[cfg(feature = "schema")]
+pub mod schema;
 pub mod util;
 
 #[cfg(feature = "clipages")]

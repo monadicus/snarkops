@@ -3,7 +3,9 @@ use std::net::{IpAddr, SocketAddr};
 use fixedbitset::FixedBitSet;
 use indexmap::{IndexMap, IndexSet};
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
-use snops_common::{
+
+use super::NodeKey;
+use crate::{
     key_source::KeySource,
     lasso::Spur,
     node_targets::NodeTargets,
@@ -12,12 +14,9 @@ use snops_common::{
     INTERN,
 };
 
-use super::NodeKey;
-use crate::persist::prelude::*;
-
 /// A document describing the node infrastructure for a test.
-#[derive(Deserialize, Debug, Clone)]
-pub struct Document {
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct NodesDocument {
     pub name: String,
     pub description: Option<String>,
     /// The network to use for all nodes.
@@ -42,37 +41,6 @@ pub struct ExternalNode {
     pub bft: Option<SocketAddr>,
     pub node: Option<SocketAddr>,
     pub rest: Option<SocketAddr>,
-}
-
-impl DataFormat for ExternalNode {
-    type Header = u8;
-    const LATEST_HEADER: Self::Header = 1;
-
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, DataWriteError> {
-        let mut written = 0;
-        written += writer.write_data(&self.bft)?;
-        written += writer.write_data(&self.node)?;
-        written += writer.write_data(&self.rest)?;
-        Ok(written)
-    }
-
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, DataReadError> {
-        match header {
-            1 => {
-                let bft = reader.read_data(&())?;
-                let node = reader.read_data(&())?;
-                let rest = reader.read_data(&())?;
-                Ok(ExternalNode { bft, node, rest })
-            }
-            _ => Err(DataReadError::Custom("unsupported version".to_owned())),
-        }
-    }
 }
 
 /// Impl serde Deserialize ExternalNode but allow for { bft: addr, node: addr,
@@ -165,9 +133,10 @@ where
 }
 
 // TODO: could use some more clarification on some of these fields
-/// A node in the testing infrastructure.
+/// A node in the environment
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Node {
+    /// When true, the node will be started
     #[serde(default = "please_be_online")]
     pub online: bool,
     /// When specified, creates a group of nodes, all with the same
@@ -246,170 +215,5 @@ impl Node {
             }
         }
         mask
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct NodeFormatHeader {
-    pub(crate) key_source: DataHeaderOf<KeySource>,
-    pub(crate) height_request: DataHeaderOf<HeightRequest>,
-    pub(crate) node_targets: DataHeaderOf<NodeTargets>,
-    pub has_binaries: bool,
-}
-
-impl DataFormat for NodeFormatHeader {
-    type Header = u8;
-    const LATEST_HEADER: Self::Header = 2;
-
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, DataWriteError> {
-        let mut written = 0;
-        written += self.key_source.write_data(writer)?;
-        written += self.height_request.write_data(writer)?;
-        written += self.node_targets.write_data(writer)?;
-        Ok(written)
-    }
-
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, DataReadError> {
-        if *header == 0 || *header > Self::LATEST_HEADER {
-            return Err(DataReadError::unsupported(
-                "NodeFormatHeader",
-                format!("1 or {}", Self::LATEST_HEADER),
-                *header,
-            ));
-        }
-
-        let key_source = KeySource::read_header(reader)?;
-        let height_request = HeightRequest::read_header(reader)?;
-        let node_targets = NodeTargets::read_header(reader)?;
-        Ok(NodeFormatHeader {
-            key_source,
-            height_request,
-            node_targets,
-            has_binaries: *header > 1,
-        })
-    }
-}
-
-impl DataFormat for Node {
-    type Header = NodeFormatHeader;
-    const LATEST_HEADER: Self::Header = NodeFormatHeader {
-        key_source: KeySource::LATEST_HEADER,
-        height_request: HeightRequest::LATEST_HEADER,
-        node_targets: NodeTargets::LATEST_HEADER,
-        has_binaries: true,
-    };
-
-    fn write_data<W: std::io::prelude::Write>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, DataWriteError> {
-        let mut written = 0;
-        written += self.online.write_data(writer)?;
-        written += self.replicas.write_data(writer)?;
-        written += self.key.write_data(writer)?;
-        written += self.height.write_data(writer)?;
-        written += self.labels.write_data(writer)?;
-        written += self.agent.write_data(writer)?;
-        written += self.validators.write_data(writer)?;
-        written += self.peers.write_data(writer)?;
-        written += self.env.write_data(writer)?;
-        written += self.binary.write_data(writer)?;
-        Ok(written)
-    }
-
-    fn read_data<R: std::io::prelude::Read>(
-        reader: &mut R,
-        header: &Self::Header,
-    ) -> Result<Self, DataReadError> {
-        let online = reader.read_data(&())?;
-        let replicas = reader.read_data(&())?;
-        let key = reader.read_data(&header.key_source)?;
-        let height = reader.read_data(&header.height_request)?;
-        let labels = Vec::<Spur>::read_data(reader, &())?;
-        let agent = reader.read_data(&())?;
-        let validators = reader.read_data(&header.node_targets)?;
-        let peers = reader.read_data(&header.node_targets)?;
-        let env = Vec::<(String, String)>::read_data(reader, &((), ()))?;
-        let binary = if header.has_binaries {
-            reader.read_data(&())?
-        } else {
-            None
-        };
-
-        Ok(Node {
-            online,
-            replicas,
-            key,
-            height,
-            labels: labels.into_iter().collect(),
-            agent,
-            validators,
-            peers,
-            env: env.into_iter().collect(),
-            binary,
-        })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use snops_common::key_source::ACCOUNTS_KEY_ID;
-
-    use super::*;
-
-    #[test]
-    fn test_key_source_deserialization() {
-        assert_eq!(
-            serde_yaml::from_str::<KeySource>("committee.0").unwrap(),
-            KeySource::Committee(Some(0))
-        );
-        assert_eq!(
-            serde_yaml::from_str::<KeySource>("committee.100").unwrap(),
-            KeySource::Committee(Some(100))
-        );
-        assert_eq!(
-            serde_yaml::from_str::<KeySource>("committee.$").unwrap(),
-            KeySource::Committee(None)
-        );
-
-        assert_eq!(
-            serde_yaml::from_str::<KeySource>("accounts.0").unwrap(),
-            KeySource::Named(*ACCOUNTS_KEY_ID, Some(0))
-        );
-        assert_eq!(
-            serde_yaml::from_str::<KeySource>("accounts.$").unwrap(),
-            KeySource::Named(*ACCOUNTS_KEY_ID, None)
-        );
-
-        assert_eq!(
-            serde_yaml::from_str::<KeySource>(
-                "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH"
-            )
-            .unwrap(),
-            KeySource::PrivateKeyLiteral(
-                "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH".to_string()
-            )
-        );
-
-        assert_eq!(
-            serde_yaml::from_str::<KeySource>(
-                "aleo1ekc03f2vwemtpksckhrcl7mv4t7sm6ykldwldvvlysqt2my9zygqfhndya"
-            )
-            .unwrap(),
-            KeySource::PublicKeyLiteral(
-                "aleo1ekc03f2vwemtpksckhrcl7mv4t7sm6ykldwldvvlysqt2my9zygqfhndya".to_string()
-            )
-        );
-
-        assert!(serde_yaml::from_str::<KeySource>("committee.-100").is_err(),);
-        assert!(serde_yaml::from_str::<KeySource>("accounts.-100").is_err(),);
-        assert!(serde_yaml::from_str::<KeySource>("accounts._").is_err(),);
-        assert!(serde_yaml::from_str::<KeySource>("accounts.*").is_err(),);
     }
 }

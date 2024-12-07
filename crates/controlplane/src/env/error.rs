@@ -11,8 +11,8 @@ use thiserror::Error;
 use tokio::task::JoinError;
 
 use crate::{
+    apply::error::{SchemaError, StorageError},
     cannon::error::{AuthorizeError, CannonError},
-    schema::error::{SchemaError, StorageError},
 };
 
 #[derive(Debug, Error, AsRefStr)]

@@ -4,15 +4,14 @@ use serde::{ser::SerializeStruct, Serialize, Serializer};
 use serde_json::json;
 use snops_common::{
     aot_cmds::AotCmdError, db::error::DatabaseError, events::TransactionAbortReason,
-    impl_into_status_code, impl_into_type_str,
+    impl_into_status_code, impl_into_type_str, schema::error::DeserializeError,
 };
 use thiserror::Error;
 
 use crate::{
+    apply::error::{SchemaError, StorageError},
     cannon::error::CannonError,
     env::error::{EnvError, EnvRequestError, ExecutionError},
-    error::DeserializeError,
-    schema::error::{SchemaError, StorageError},
 };
 
 #[derive(Debug, Error, strum_macros::AsRefStr)]

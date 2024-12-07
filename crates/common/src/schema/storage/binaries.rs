@@ -6,12 +6,13 @@ use std::{
 
 use lazy_static::lazy_static;
 use lazysort::SortedBy;
-use serde::Deserialize;
-use snops_common::{
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use crate::{
     binaries::{BinaryEntry, BinarySource},
     util::sha256_file,
 };
-use thiserror::Error;
 
 const PROFILES: [&str; 4] = ["release-small", "release", "release-big", "debug"];
 
@@ -147,17 +148,17 @@ pub enum BinResolveError {
     SetPermissions(PathBuf, #[source] std::io::Error),
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default)]
 #[serde(untagged)]
 pub enum AutoIsDefault<T> {
     #[default]
     None,
-    #[serde(with = "snops_common::state::strings::auto")]
+    #[serde(with = "crate::state::strings::auto")]
     Auto,
     Value(T),
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BinaryEntryInternal {
     pub source: BinarySource,
     #[serde(default)]
@@ -167,7 +168,7 @@ pub struct BinaryEntryInternal {
 }
 
 /// A BinaryEntryDoc can be a shorthand or a full entry
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum BinaryEntryDoc {
     Shorthand(BinarySource),

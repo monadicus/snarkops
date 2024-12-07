@@ -8,10 +8,18 @@ use bimap::BiMap;
 use dashmap::DashMap;
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap, IndexSet};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use snops_common::{
     api::{AgentEnvInfo, EnvInfo},
     node_targets::NodeTargets,
+    schema::{
+        cannon::{
+            sink::TxSink,
+            source::{ComputeTarget, QueryTarget, TxSource},
+        },
+        nodes::{ExternalNode, Node},
+        ItemDocument,
+    },
     state::{
         AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState,
         ReconcileOptions, TxPipeId,
@@ -22,20 +30,10 @@ use tracing::{error, info, trace, warn};
 
 use self::error::*;
 use crate::{
-    cannon::{
-        file::TransactionSink,
-        sink::TxSink,
-        source::{ComputeTarget, QueryTarget, TxSource},
-        CannonInstance, CannonInstanceMeta,
-    },
+    apply::LoadedStorage,
+    cannon::{file::TransactionSink, CannonInstance, CannonInstanceMeta},
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, AgentMapping, BusyMode},
-    error::DeserializeError,
     persist::PersistEnv,
-    schema::{
-        nodes::{ExternalNode, Node},
-        storage::LoadedStorage,
-        ItemDocument,
-    },
     state::{Agent, GlobalState},
 };
 
@@ -92,22 +90,6 @@ pub enum PortType {
 }
 
 impl Environment {
-    /// Deserialize (YAML) many documents into a `Vec` of documents.
-    pub fn deserialize(str: &str) -> Result<Vec<ItemDocument>, DeserializeError> {
-        serde_yaml::Deserializer::from_str(str)
-            .enumerate()
-            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
-            .collect()
-    }
-
-    /// Deserialize (YAML) many documents into a `Vec` of documents.
-    pub fn deserialize_bytes(str: &[u8]) -> Result<Vec<ItemDocument>, DeserializeError> {
-        serde_yaml::Deserializer::from_slice(str)
-            .enumerate()
-            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
-            .collect()
-    }
-
     /// Apply an environment spec. This will attempt to delegate the given node
     /// configurations to available agents, or update existing agents with new
     /// configurations.
@@ -347,10 +329,12 @@ impl Environment {
 
         // prepare the storage after all the other documents
         // as it depends on the network id
-        let storage = storage_doc
-            .ok_or(PrepareError::MissingStorage)?
-            .prepare(&state, network)
-            .await?;
+        let storage = LoadedStorage::from_doc(
+            *storage_doc.ok_or(PrepareError::MissingStorage)?,
+            &state,
+            network,
+        )
+        .await?;
 
         let storage_id = storage.id;
 

@@ -220,7 +220,7 @@ A few different examples of storage docs.
 ### Default Generation
 
 ```yaml
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: base
 
@@ -230,7 +230,7 @@ generate: {}
 ### A Custom Generation
 
 ```yaml
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: genesis-params-0
 
@@ -268,7 +268,7 @@ regen: 1
 
 ```yaml
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: canary-clients
 name: canary-clients
@@ -286,7 +286,7 @@ To see how to use these in the topology click [here](TOPOLOGY.md#using-a-custom-
 
 ```yaml
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: example-binary
 

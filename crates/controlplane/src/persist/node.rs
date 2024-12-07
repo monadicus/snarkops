@@ -1,7 +1,12 @@
-use snops_common::state::AgentId;
+use snops_common::{
+    schema::{
+        nodes::{ExternalNode, Node},
+        persist::NodeFormatHeader,
+    },
+    state::AgentId,
+};
 
 use super::prelude::*;
-use crate::schema::nodes::{ExternalNode, Node, NodeFormatHeader};
 
 #[derive(Debug, Clone)]
 pub struct PersistNodeFormatHeader {
@@ -90,13 +95,14 @@ mod tests {
     use snops_common::{
         format::DataFormat,
         node_targets::NodeTargets,
+        schema::{
+            nodes::{ExternalNode, Node},
+            persist::NodeFormatHeader,
+        },
         state::{HeightRequest, InternedId},
     };
 
-    use crate::{
-        persist::{PersistNode, PersistNodeFormatHeader},
-        schema::nodes::{ExternalNode, Node, NodeFormatHeader},
-    };
+    use crate::persist::{PersistNode, PersistNodeFormatHeader};
 
     macro_rules! case {
         ($name:ident, $ty:ty, $a:expr, $b:expr) => {

@@ -31,7 +31,6 @@ spec:
             - name: SNOPS_AGENT_MODE_CLIENT
               value: "true"
           ports:
-            # expose 5000, 4130, 3030, and 9000 ports between the agents
             - containerPort: 5000
             - containerPort: 4130
             - containerPort: 3030
