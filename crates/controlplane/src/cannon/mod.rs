@@ -3,7 +3,6 @@ pub mod error;
 pub mod file;
 mod net;
 pub mod router;
-pub mod sink;
 pub mod source;
 pub mod tracker;
 
@@ -20,8 +19,13 @@ use dashmap::DashMap;
 use snops_common::{
     aot_cmds::AotCmd,
     format::PackedUint,
+    schema::cannon::{
+        sink::TxSink,
+        source::{QueryTarget, TxSource},
+    },
     state::{Authorization, CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
 };
+use source::{GetQueryPort, GetStateRoot};
 use tokio::{
     sync::{
         mpsc::{UnboundedReceiver, UnboundedSender},
@@ -32,12 +36,8 @@ use tokio::{
 use tracing::{error, trace, warn};
 use tracker::TransactionTracker;
 
-use self::{
-    error::{CannonError, CannonInstanceError},
-    sink::TxSink,
-    source::TxSource,
-};
-use crate::{cannon::source::QueryTarget, state::GlobalState};
+use self::error::{CannonError, CannonInstanceError};
+use crate::state::GlobalState;
 
 /*
 

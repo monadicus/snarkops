@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use snops_common::state::TxPipeId;
+
+use crate::{node_targets::NodeTargets, state::TxPipeId};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -12,7 +13,7 @@ pub struct TxSink {
     ///
     /// Requires cannon to have an associated env_id
     #[serde(default)]
-    pub target: Option<snops_common::node_targets::NodeTargets>,
+    pub target: Option<NodeTargets>,
     /// Number of attempts to broadcast a transaction to the target
     /// should the transaction not make it into the next block. This
     /// is helpful for mitigating ghost transactions.

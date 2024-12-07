@@ -1,5 +1,5 @@
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: my-local-mainnet
 name: my-local-mainnet
@@ -14,7 +14,7 @@ persist: true
 regen: 1
 
 ---
-version: nodes.snarkos.testing.monadic.us/v1
+kind: snops/nodes/v1
 name: my-local-mainnet
 
 nodes:

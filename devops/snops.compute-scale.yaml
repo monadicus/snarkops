@@ -1,0 +1,53 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snops-compute
+  labels:
+    app: snops-compute
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: snops-compute
+  template:
+    metadata:
+      labels:
+        app: snops-compute
+    spec:
+      containers:
+        - name: snops-compute
+          image: snops-agent
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SNOPS_ENDPOINT
+              value: http://snops-service:1234
+            - name: SNOPS_AGENT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SNOPS_AGENT_COMPUTE
+              value: "true"
+            - name: SNOPS_AGENT_EPHEMERAL
+              value: "true"
+          resources:
+            limits:
+              cpu: 1000m
+              memory: "2Gi"
+            requests:
+              cpu: 1000m
+# TODO: figure out autoscaling
+# May need to apply the metrics-server: https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+# ---
+# apiVersion: autoscaling/v1
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: snops-compute
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: snops-compute
+#   minReplicas: 1
+#   maxReplicas: 10
+#   targetCPUUtilizationPercentage: 50

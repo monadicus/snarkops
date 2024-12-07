@@ -3,16 +3,16 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 use chrono::{TimeDelta, Utc};
 use futures_util::future;
 use serde_json::Value;
-use snops_common::state::{EnvId, LatestBlockInfo, NetworkId, NodeKey};
+use snops_common::{
+    schema::nodes::ExternalNode,
+    state::{EnvId, LatestBlockInfo, NetworkId, NodeKey},
+};
 use tokio::{sync::mpsc, time::timeout};
 
 use super::{snarkos_request, AgentClient, GlobalState};
-use crate::{
-    env::{
-        cache::{ABlockHash, ATransactionId, MAX_BLOCK_RANGE},
-        EnvNodeState, EnvPeer,
-    },
-    schema::nodes::ExternalNode,
+use crate::env::{
+    cache::{ABlockHash, ATransactionId, MAX_BLOCK_RANGE},
+    EnvNodeState, EnvPeer,
 };
 
 type ExtPeerPair = (NodeKey, SocketAddr);

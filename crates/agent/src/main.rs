@@ -44,7 +44,12 @@ async fn main() {
 
     let (_guard, reload_handler) = init_logging();
 
-    let args = Cli::parse();
+    let mut args = Cli::parse();
+    if args.modes.all_when_none() {
+        info!(
+            "No node modes specified, defaulting to all modes (client, validator, prover, compute)"
+        );
+    }
 
     let (internal_addrs, external_addr) = args.addrs();
 

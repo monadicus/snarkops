@@ -1,5 +1,5 @@
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: testnet-clients
 name: testnet-clients
@@ -10,7 +10,7 @@ generate:
     clients: 4
 
 ---
-version: nodes.snarkos.testing.monadic.us/v1
+kind: snops/nodes/v1
 name: 4-clients
 
 network: testnet
