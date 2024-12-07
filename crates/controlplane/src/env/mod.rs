@@ -166,50 +166,25 @@ impl Environment {
                     // set of resolved keys that will be present (new and old)
                     let mut agent_keys = HashSet::new();
 
-                    // flatten replicas
-                    for (doc_node_key, mut doc_node) in nodes.nodes {
-                        let num_replicas = doc_node.replicas.unwrap_or(1);
-                        // nobody needs more than 10k replicas anyway
-                        for i in 0..num_replicas.min(10000) {
-                            let node_key = match num_replicas {
-                                0 => Err(PrepareError::NodeHas0Replicas)?,
-                                1 => doc_node_key.to_owned(),
-                                _ => {
-                                    let mut node_key = doc_node_key.to_owned();
-                                    if !node_key.id.is_empty() {
-                                        node_key.id.push('-');
-                                    }
-                                    node_key.id.push_str(&i.to_string());
-                                    node_key
-                                }
-                            };
-                            agent_keys.insert(node_key.clone());
+                    for (node_key, node) in nodes.expand_internal_replicas() {
+                        // Track this node as a potential agent
+                        agent_keys.insert(node_key.clone());
 
-                            // nodes in flattened_nodes have replicas unset
-                            doc_node.replicas.take();
-
-                            // replace the key with a new one
-                            let mut node = doc_node.to_owned();
-                            if let Some(key) = node.key.as_mut() {
-                                *key = key.with_index(i);
-                            }
-
-                            // Skip delegating nodes that are already present in the node map
-                            // Agents are able to determine what updates need to be applied
-                            // based on their resolved node states.
-                            if node_peers.contains_left(&node_key) {
-                                info!("{env_id}: updating node {node_key}");
-                                updated_states.insert(node_key, EnvNodeState::Internal(node));
-                                continue;
-                            }
-
-                            match incoming_states.entry(node_key) {
-                                Entry::Occupied(ent) => {
-                                    Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
-                                }
-                                Entry::Vacant(ent) => ent.insert(EnvNodeState::Internal(node)),
-                            };
+                        // Skip delegating nodes that are already present in the node map
+                        // Agents are able to determine what updates need to be applied
+                        // based on their resolved node states.
+                        if node_peers.contains_left(&node_key) {
+                            info!("{env_id}: updating node {node_key}");
+                            updated_states.insert(node_key, EnvNodeState::Internal(node));
+                            continue;
                         }
+
+                        match incoming_states.entry(node_key) {
+                            Entry::Occupied(ent) => {
+                                Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
+                            }
+                            Entry::Vacant(ent) => ent.insert(EnvNodeState::Internal(node)),
+                        };
                     }
 
                     // list of nodes that will be removed after applying this document

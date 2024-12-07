@@ -4506,6 +4506,7 @@ dependencies = [
  "clap_complete",
  "futures-util",
  "http 1.1.0",
+ "indexmap 2.6.0",
  "reqwest 0.12.8",
  "rustls 0.23.15",
  "serde",

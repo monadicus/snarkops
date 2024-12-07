@@ -48,6 +48,22 @@ pub fn deserialize_docs_bytes(str: &[u8]) -> Result<Vec<ItemDocument>, Deseriali
         .collect()
 }
 
+impl ItemDocument {
+    pub fn node(&self) -> Option<&NodesDocument> {
+        match self {
+            ItemDocument::Nodes(n) => Some(n.as_ref()),
+            _ => None,
+        }
+    }
+
+    pub fn node_owned(self) -> Option<NodesDocument> {
+        match self {
+            ItemDocument::Nodes(n) => Some(*n),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::deserialize_docs_bytes;

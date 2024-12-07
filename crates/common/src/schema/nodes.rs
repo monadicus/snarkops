@@ -1,4 +1,7 @@
-use std::net::{IpAddr, SocketAddr};
+use std::{
+    net::{IpAddr, SocketAddr},
+    num::NonZeroUsize,
+};
 
 use fixedbitset::FixedBitSet;
 use indexmap::{IndexMap, IndexSet};
@@ -31,6 +34,43 @@ pub struct NodesDocument {
 
     #[serde(default)]
     pub nodes: IndexMap<NodeKey, Node>,
+}
+
+impl NodesDocument {
+    pub fn expand_internal_replicas(&self) -> impl Iterator<Item = (NodeKey, Node)> + '_ {
+        self.nodes.iter().flat_map(|(doc_node_key, doc_node)| {
+            let num_replicas = doc_node.replicas.map(|r| r.get()).unwrap_or(1);
+
+            // Iterate over the replicas
+            (0..num_replicas.min(10000)).map(move |i| {
+                let node_key = match num_replicas {
+                    // If there is only one replica, use the doc_node_key
+                    1 => doc_node_key.to_owned(),
+                    // If there are multiple replicas, append the index to the
+                    // doc_node_key
+                    _ => {
+                        let mut node_key = doc_node_key.to_owned();
+                        if !node_key.id.is_empty() {
+                            node_key.id.push('-');
+                        }
+                        node_key.id.push_str(&i.to_string());
+                        node_key
+                    }
+                };
+
+                // Replace the key with a new one
+                let mut node = doc_node.to_owned();
+                node.replicas = None;
+
+                // Update the node's private key
+                if let Some(key) = node.key.as_mut() {
+                    *key = key.with_index(i);
+                }
+
+                (node_key, node)
+            })
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -141,7 +181,7 @@ pub struct Node {
     pub online: bool,
     /// When specified, creates a group of nodes, all with the same
     /// configuration.
-    pub replicas: Option<usize>,
+    pub replicas: Option<NonZeroUsize>,
     /// The private key to start the node with.
     pub key: Option<KeySource>,
     /// Height of ledger to inherit.

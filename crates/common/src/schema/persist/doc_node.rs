@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use lasso::Spur;
 
 use crate::schema::nodes::{ExternalNode, Node};
@@ -103,7 +105,7 @@ impl DataFormat for Node {
     ) -> Result<usize, DataWriteError> {
         let mut written = 0;
         written += self.online.write_data(writer)?;
-        written += self.replicas.write_data(writer)?;
+        written += self.replicas.map(NonZeroUsize::get).write_data(writer)?;
         written += self.key.write_data(writer)?;
         written += self.height.write_data(writer)?;
         written += self.labels.write_data(writer)?;
@@ -120,7 +122,7 @@ impl DataFormat for Node {
         header: &Self::Header,
     ) -> Result<Self, DataReadError> {
         let online = reader.read_data(&())?;
-        let replicas = reader.read_data(&())?;
+        let replicas: Option<usize> = reader.read_data(&())?;
         let key = reader.read_data(&header.key_source)?;
         let height = reader.read_data(&header.height_request)?;
         let labels = Vec::<Spur>::read_data(reader, &())?;
@@ -136,7 +138,7 @@ impl DataFormat for Node {
 
         Ok(Node {
             online,
-            replicas,
+            replicas: replicas.and_then(NonZeroUsize::new),
             key,
             height,
             labels: labels.into_iter().collect(),

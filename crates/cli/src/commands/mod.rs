@@ -10,6 +10,7 @@ pub(crate) static DUMMY_ID: &str = "dummy_value___";
 
 mod agent;
 mod env;
+mod spec;
 
 #[derive(Debug, Parser)]
 pub enum Commands {
@@ -23,6 +24,8 @@ pub enum Commands {
     Agent(agent::Agent),
     #[clap(alias = "e")]
     Env(env::Env),
+    #[clap(alias = "s")]
+    Spec(spec::Spec),
     SetLogLevel {
         level: String,
     },
@@ -68,6 +71,7 @@ impl Commands {
                 client.close().await?;
                 return Ok(());
             }
+            Commands::Spec(spec) => return spec.command.run(url, client).await,
             #[cfg(feature = "mangen")]
             Commands::Man(mangen) => {
                 mangen.run(
