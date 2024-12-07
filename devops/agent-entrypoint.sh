@@ -28,6 +28,8 @@ function download_agent() {
 
 echo "Using endpoint: $SNOPS_ENDPOINT"
 
+sleep 1
+
 while true; do
   download_agent
   $AGENT_BIN

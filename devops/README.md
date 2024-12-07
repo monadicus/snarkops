@@ -38,6 +38,12 @@
     kubectl --context kind-kind exec -it deployments/snops-controlplane -- scli env apply - <specs/testnet-4-validators.yaml
     ```
 
+6. Execute a transaction
+
+    ```bash
+    kubectl --context kind-kind exec -it deployments/snops-controlplane -- scli env action execute transfer_public example.aleo 1u64
+    ```
+
 ### Teardown
 
 1. Delete snarkops environment

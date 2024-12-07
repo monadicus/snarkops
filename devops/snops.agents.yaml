@@ -26,9 +26,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: SNOPS_AGENT_MODE_VALIDATOR
+            - name: SNOPS_AGENT_VALIDATOR
               value: "true"
-            - name: SNOPS_AGENT_MODE_CLIENT
+            - name: SNOPS_AGENT_CLIENT
               value: "true"
           ports:
             - containerPort: 5000
