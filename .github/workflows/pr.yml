@@ -5,8 +5,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # https://releases.rs/docs/1.82.0/ release date
-  NIGHTLY_TOOLCHAIN: nightly-2024-10-17
+  # https://releases.rs/docs/1.83.0/ release date
+  NIGHTLY_TOOLCHAIN: nightly-2024-11-28
 
 # Cancel in progress workflows on pull_requests.
 # https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-a-fallback-value
