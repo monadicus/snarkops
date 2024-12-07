@@ -12,9 +12,13 @@ use snops_common::{
 pub struct AgentFlags {
     #[serde(deserialize_with = "deser_mode", serialize_with = "ser_mode")]
     pub mode: AgentModeOptions,
-    #[serde(deserialize_with = "deser_labels", serialize_with = "ser_labels")]
+    #[serde(
+        default,
+        deserialize_with = "deser_labels",
+        serialize_with = "ser_labels"
+    )]
     pub labels: IndexSet<Spur>,
-    #[serde(deserialize_with = "deser_pk", default, serialize_with = "ser_pk")]
+    #[serde(default, deserialize_with = "deser_pk", serialize_with = "ser_pk")]
     pub local_pk: bool,
 }
 

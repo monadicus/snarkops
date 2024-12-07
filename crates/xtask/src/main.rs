@@ -38,6 +38,8 @@ enum Command {
     Build(Build),
     /// For watching the project and auto-rebuilding
     Dev { target: BuildTarget },
+    /// For building the containers
+    Containers,
 }
 
 #[derive(Parser)]
@@ -224,6 +226,17 @@ impl Command {
             Command::InstallUpx => install_upx(sh),
             Command::Build(build) => build.run(sh),
             Command::Dev { target } => dev(sh, target),
+            Command::Containers => {
+                cmd!(sh, "docker build -t snops . -f ./devops/snops.Dockerfile")
+                    .run()
+                    .context("Building snops container")?;
+                cmd!(
+                    sh,
+                    "docker build -t snops-agent . -f ./devops/agent.Dockerfile"
+                )
+                .run()
+                .context("Building snops-agent container")
+            }
         }
     }
 }

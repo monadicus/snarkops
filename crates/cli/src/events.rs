@@ -53,7 +53,7 @@ impl EventsClient {
             Err(tungstenite::Error::Io(e)) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
                 bail!("Failed to connect to websocket: Connection refused")
             }
-            Err(e) => bail!("Failed to connect to websocket: {}", e),
+            Err(e) => bail!("Failed to connect to websocket: {e:?}"),
         };
 
         Ok(Self {

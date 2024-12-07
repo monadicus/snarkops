@@ -1,0 +1,41 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snops-agents
+  labels:
+    app: snops-agent
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: snops-agent
+  template:
+    metadata:
+      labels:
+        app: snops-agent
+    spec:
+      containers:
+        - name: snops-agent
+          image: snops-agent
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SNOPS_ENDPOINT
+              value: http://snops-service:1234
+            - name: SNOPS_AGENT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SNOPS_AGENT_MODE_VALIDATOR
+              value: "true"
+            - name: SNOPS_AGENT_MODE_CLIENT
+              value: "true"
+          ports:
+            # expose 5000, 4130, 3030, and 9000 ports between the agents
+            - containerPort: 5000
+            - containerPort: 4130
+            - containerPort: 3030
+          resources:
+            limits:
+              cpu: "1"
+              memory: "2Gi"
