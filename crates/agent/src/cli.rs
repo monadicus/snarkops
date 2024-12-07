@@ -112,18 +112,20 @@ impl Cli {
         // get the endpoint
         let endpoint = &self.endpoint;
 
-        let mut query = format!("/agent?mode={}", u8::from(self.modes));
+        let mut qs = url::form_urlencoded::Serializer::new(String::new());
+
+        qs.append_pair("mode", &u8::from(self.modes).to_string());
 
         // Add agent version
-        query.push_str(&format!("&version={}", env!("CARGO_PKG_VERSION")));
+        qs.append_pair("version", env!("CARGO_PKG_VERSION"));
 
         // add &id=
-        query.push_str(&format!("&id={}", self.id));
+        qs.append_pair("id", self.id.as_ref());
 
         // add local pk flag
         if let Some(file) = self.private_key_file.as_ref() {
             if fs::metadata(file).is_ok() {
-                query.push_str("&local_pk=true");
+                qs.append_pair("local_pk", "true");
             } else {
                 warn!("Private-key-file flag ignored as the file was not found: {file:?}")
             }
@@ -132,15 +134,15 @@ impl Cli {
         // add &labels= if id is present
         if let Some(labels) = &self.labels {
             info!("Using labels: {:?}", labels);
-            query.push_str(&format!(
-                "&labels={}",
-                labels
+            qs.append_pair(
+                "labels",
+                &labels
                     .iter()
                     .filter(|s| !s.is_empty())
                     .map(|s| s.trim())
                     .collect::<Vec<_>>()
-                    .join(",")
-            ));
+                    .join(","),
+            );
         }
 
         let (is_tls, host) = endpoint
@@ -153,7 +155,7 @@ impl Cli {
         let ws_uri = Uri::builder()
             .scheme(if is_tls { "wss" } else { "ws" })
             .authority(addr.to_owned())
-            .path_and_query(query)
+            .path_and_query(format!("/agent?{}", qs.finish()))
             .build()
             .unwrap();
 

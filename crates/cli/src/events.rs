@@ -38,10 +38,13 @@ impl EventsClient {
         };
 
         let req = Uri::from_str(&match filter {
-            Some(filter) => format!(
-                "{proto}://{hostname}/api/v1/events?filter={}",
-                urlencoding::encode(&filter.to_string())
-            ),
+            Some(filter) => {
+                let qs = url::form_urlencoded::Serializer::new(String::new())
+                    .append_pair("filter", &filter.to_string())
+                    .finish();
+
+                format!("{proto}://{hostname}/api/v1/events?{qs}")
+            }
             None => format!("{proto}://{hostname}/api/v1/events"),
         })
         .context("Invalid URI")?

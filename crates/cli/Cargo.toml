@@ -25,4 +25,4 @@ serde_json.workspace = true
 snops-common = { workspace = true, features = ["aot_cmds", "schema"] }
 tokio = { workspace = true, features = ["macros", "signal", "rt-multi-thread"] }
 tokio-tungstenite.workspace = true
-urlencoding = "2.1.3"
+url = { workspace = true, features = ["serde"] }

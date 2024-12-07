@@ -4513,7 +4513,7 @@ dependencies = [
  "snops-common",
  "tokio",
  "tokio-tungstenite",
- "urlencoding",
+ "url",
 ]
 
 [[package]]
