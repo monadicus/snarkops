@@ -30,7 +30,7 @@
 4. Install snops and agents into the Kubernetes cluster
 
     ```bash
-    cat devops/snops.*.yaml | kubectl --context kind-kind apply -f -
+    kubectl --context kind-kind apply -k devops/k8s
     ```
 
 5. Deploy snarkops environment
@@ -49,7 +49,7 @@
 1. Delete snarkops environment
 
     ```bash
-    kubectl --context kind-kind exec -it deployments/snops-controlplane -- scli env delete
+    kubectl --context kind-kind delete -k devops/k8s
     ```
 
 1. Uninstall snops from the Kubernetes cluster

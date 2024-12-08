@@ -41,16 +41,3 @@ spec:
             limits:
               cpu: "1"
               memory: "2Gi"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: snops-service
-spec:
-  selector:
-    app: snops-controlplane
-  ports:
-    - name: http
-      protocol: TCP
-      port: 1234
-      targetPort: 1234
