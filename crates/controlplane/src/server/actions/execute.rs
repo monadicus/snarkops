@@ -166,7 +166,7 @@ pub async fn execute_inner(
     // authorize the transaction
     let compute_bin = env.storage.resolve_compute_binary(state).await?;
     let aot = AotCmd::new(compute_bin, env.network);
-    let auth_str = aot
+    let mut auth_str = aot
         .authorize_program(
             &resolved_pk,
             resolved_fee_pk.as_ref(),
@@ -181,9 +181,20 @@ pub async fn execute_inner(
         )
         .await?;
 
+    // Truncate the output to the first {
+    // because Aleo decided to print execute
+    // status to stdout...
+    if let Some(index) = auth_str.find("{") {
+        auth_str = auth_str.split_off(index);
+    }
+
     // parse the json and bundle it up
-    let authorization: Authorization =
-        serde_json::from_str(&auth_str).map_err(AuthorizeError::Json)?;
+    let authorization: Authorization = serde_json::from_str(&auth_str)
+        .inspect_err(|e| {
+            tracing::error!("failed to parse authorization json: {e}");
+            tracing::error!("authorization json: {auth_str}");
+        })
+        .map_err(AuthorizeError::Json)?;
 
     // proxy it to a listen cannon
     let tx_id = cannon.proxy_auth(authorization).await?;
