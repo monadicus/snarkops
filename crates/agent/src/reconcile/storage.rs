@@ -205,7 +205,7 @@ pub struct LedgerReconciler<'a> {
     pub modify_handle: &'a mut Option<(AbortHandle, Arc<Mutex<Option<LedgerModifyResult>>>)>,
 }
 
-impl<'a> LedgerReconciler<'a> {
+impl LedgerReconciler<'_> {
     pub fn untar_paths(&self) -> (PathBuf, &'static str) {
         if self.env_info.storage.persist {
             (

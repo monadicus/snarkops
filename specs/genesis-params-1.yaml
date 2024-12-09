@@ -1,5 +1,5 @@
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: genesis-params-1
 name: example generated genesis block

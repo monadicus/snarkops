@@ -38,7 +38,7 @@ pub const BECH32M_CHARSET: &str = "0123456789acdefghjklmnpqrstuvwxyz";
 #[derive(Clone, Copy)]
 struct VanityCheck<'a>(&'a [bech32::u5]);
 
-impl<'a> bech32::WriteBase32 for VanityCheck<'a> {
+impl bech32::WriteBase32 for VanityCheck<'_> {
     type Err = bool;
 
     fn write_u5(&mut self, data: bech32::u5) -> std::result::Result<(), Self::Err> {

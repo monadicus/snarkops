@@ -1,7 +1,10 @@
-use snops_common::node_targets::NodeTargets;
+use std::io::{Read, Write};
 
-use super::prelude::*;
-use crate::cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource};
+use crate::{
+    format::{DataFormat, DataFormatReader, DataHeaderOf, DataReadError, DataWriteError},
+    node_targets::NodeTargets,
+    schema::cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource},
+};
 
 #[derive(Debug, Clone)]
 pub struct TxSourceFormatHeader {
@@ -112,11 +115,14 @@ impl DataFormat for TxSource {
 #[cfg(test)]
 mod tests {
 
-    use snops_common::{node_targets::NodeTargets, INTERN};
-
     use crate::{
-        cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource},
-        persist::{prelude::*, TxSourceFormatHeader},
+        format::{read_dataformat, write_dataformat, DataFormat},
+        node_targets::NodeTargets,
+        schema::{
+            cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource},
+            persist::TxSourceFormatHeader,
+        },
+        INTERN,
     };
 
     macro_rules! case {

@@ -15,16 +15,13 @@ use snops_common::{
     lasso::Spur,
     node_targets::NodeTargets,
     rpc::control::agent::AgentMetric,
+    schema::cannon::source::QueryTarget,
     state::{id_or_none, AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey},
 };
 use tarpc::context;
 
 use super::{actions, error::ServerError, event_ws, models::AgentStatusResponse};
-use crate::{
-    cannon::{router::redirect_cannon_routes, source::QueryTarget},
-    make_env_filter,
-    state::AppState,
-};
+use crate::{cannon::router::redirect_cannon_routes, make_env_filter, state::AppState};
 use crate::{
     env::{EnvPeer, Environment},
     state::AgentFlags,
@@ -464,7 +461,7 @@ async fn get_mappings(
 struct FindAgents {
     mode: AgentModeOptions,
     env: Option<EnvId>,
-    #[serde(default, deserialize_with = "crate::schema::nodes::deser_label")]
+    #[serde(default, deserialize_with = "snops_common::schema::nodes::deser_label")]
     labels: IndexSet<Spur>,
     all: bool,
     include_offline: bool,
@@ -605,7 +602,7 @@ async fn post_env_apply(
     State(state): State<AppState>,
     body: String,
 ) -> Response {
-    let documents = match Environment::deserialize(&body) {
+    let documents = match snops_common::schema::deserialize_docs(&body) {
         Ok(documents) => documents,
         Err(e) => return ServerError::from(e).into_response(),
     };

@@ -1,16 +1,18 @@
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: base
 name: base-ledger
 regen: 4
+
+# retention-policy: 1h:U
 
 generate:
   genesis:
     seed: 1
 
 ---
-version: nodes.snarkos.testing.monadic.us/v1
+kind: snops/nodes/v1
 name: 4-validators
 
 network: testnet

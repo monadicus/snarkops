@@ -8,10 +8,18 @@ use bimap::BiMap;
 use dashmap::DashMap;
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap, IndexSet};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use snops_common::{
     api::{AgentEnvInfo, EnvInfo},
     node_targets::NodeTargets,
+    schema::{
+        cannon::{
+            sink::TxSink,
+            source::{ComputeTarget, QueryTarget, TxSource},
+        },
+        nodes::{ExternalNode, Node},
+        ItemDocument,
+    },
     state::{
         AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState,
         ReconcileOptions, TxPipeId,
@@ -22,20 +30,10 @@ use tracing::{error, info, trace, warn};
 
 use self::error::*;
 use crate::{
-    cannon::{
-        file::TransactionSink,
-        sink::TxSink,
-        source::{ComputeTarget, QueryTarget, TxSource},
-        CannonInstance, CannonInstanceMeta,
-    },
+    apply::LoadedStorage,
+    cannon::{file::TransactionSink, CannonInstance, CannonInstanceMeta},
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, AgentMapping, BusyMode},
-    error::DeserializeError,
     persist::PersistEnv,
-    schema::{
-        nodes::{ExternalNode, Node},
-        storage::LoadedStorage,
-        ItemDocument,
-    },
     state::{Agent, GlobalState},
 };
 
@@ -92,22 +90,6 @@ pub enum PortType {
 }
 
 impl Environment {
-    /// Deserialize (YAML) many documents into a `Vec` of documents.
-    pub fn deserialize(str: &str) -> Result<Vec<ItemDocument>, DeserializeError> {
-        serde_yaml::Deserializer::from_str(str)
-            .enumerate()
-            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
-            .collect()
-    }
-
-    /// Deserialize (YAML) many documents into a `Vec` of documents.
-    pub fn deserialize_bytes(str: &[u8]) -> Result<Vec<ItemDocument>, DeserializeError> {
-        serde_yaml::Deserializer::from_slice(str)
-            .enumerate()
-            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
-            .collect()
-    }
-
     /// Apply an environment spec. This will attempt to delegate the given node
     /// configurations to available agents, or update existing agents with new
     /// configurations.
@@ -184,50 +166,25 @@ impl Environment {
                     // set of resolved keys that will be present (new and old)
                     let mut agent_keys = HashSet::new();
 
-                    // flatten replicas
-                    for (doc_node_key, mut doc_node) in nodes.nodes {
-                        let num_replicas = doc_node.replicas.unwrap_or(1);
-                        // nobody needs more than 10k replicas anyway
-                        for i in 0..num_replicas.min(10000) {
-                            let node_key = match num_replicas {
-                                0 => Err(PrepareError::NodeHas0Replicas)?,
-                                1 => doc_node_key.to_owned(),
-                                _ => {
-                                    let mut node_key = doc_node_key.to_owned();
-                                    if !node_key.id.is_empty() {
-                                        node_key.id.push('-');
-                                    }
-                                    node_key.id.push_str(&i.to_string());
-                                    node_key
-                                }
-                            };
-                            agent_keys.insert(node_key.clone());
+                    for (node_key, node) in nodes.expand_internal_replicas() {
+                        // Track this node as a potential agent
+                        agent_keys.insert(node_key.clone());
 
-                            // nodes in flattened_nodes have replicas unset
-                            doc_node.replicas.take();
-
-                            // replace the key with a new one
-                            let mut node = doc_node.to_owned();
-                            if let Some(key) = node.key.as_mut() {
-                                *key = key.with_index(i);
-                            }
-
-                            // Skip delegating nodes that are already present in the node map
-                            // Agents are able to determine what updates need to be applied
-                            // based on their resolved node states.
-                            if node_peers.contains_left(&node_key) {
-                                info!("{env_id}: updating node {node_key}");
-                                updated_states.insert(node_key, EnvNodeState::Internal(node));
-                                continue;
-                            }
-
-                            match incoming_states.entry(node_key) {
-                                Entry::Occupied(ent) => {
-                                    Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
-                                }
-                                Entry::Vacant(ent) => ent.insert(EnvNodeState::Internal(node)),
-                            };
+                        // Skip delegating nodes that are already present in the node map
+                        // Agents are able to determine what updates need to be applied
+                        // based on their resolved node states.
+                        if node_peers.contains_left(&node_key) {
+                            info!("{env_id}: updating node {node_key}");
+                            updated_states.insert(node_key, EnvNodeState::Internal(node));
+                            continue;
                         }
+
+                        match incoming_states.entry(node_key) {
+                            Entry::Occupied(ent) => {
+                                Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
+                            }
+                            Entry::Vacant(ent) => ent.insert(EnvNodeState::Internal(node)),
+                        };
                     }
 
                     // list of nodes that will be removed after applying this document
@@ -347,10 +304,12 @@ impl Environment {
 
         // prepare the storage after all the other documents
         // as it depends on the network id
-        let storage = storage_doc
-            .ok_or(PrepareError::MissingStorage)?
-            .prepare(&state, network)
-            .await?;
+        let storage = LoadedStorage::from_doc(
+            *storage_doc.ok_or(PrepareError::MissingStorage)?,
+            &state,
+            network,
+        )
+        .await?;
 
         let storage_id = storage.id;
 

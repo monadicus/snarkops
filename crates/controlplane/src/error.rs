@@ -4,16 +4,6 @@ use snops_common::{impl_into_status_code, impl_into_type_str};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
-#[error("`{i}`: `{e}`")]
-pub struct DeserializeError {
-    pub i: usize,
-    #[source]
-    pub e: serde_yaml::Error,
-}
-
-impl_into_status_code!(DeserializeError);
-
 #[derive(Debug, Error, AsRefStr)]
 pub enum StateError {
     #[error(transparent)]

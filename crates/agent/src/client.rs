@@ -59,12 +59,19 @@ pub async fn ws_connection(ws_req: Request, state: Arc<GlobalState>) {
                     return
                 }
                 // Shutdown the agent if the control plane requires an upgrade
-                tungstenite::Error::Http(e) if e.status() == StatusCode::UPGRADE_REQUIRED => {
+                tungstenite::Error::Http(res) if res.status() == StatusCode::UPGRADE_REQUIRED => {
                     error!("The control plane requires an agent upgrade. Shutting down...");
                     state.shutdown().await;
                     return;
                 }
-                _ => error!("failed to connect to websocket: {e}"),
+                tungstenite::Error::Http(res) => {
+                    error!(
+                        "failed to connect to websocket: {}\n{}",
+                        res.status(),
+                        String::from_utf8_lossy(res.body().as_ref().unwrap_or(&vec![]))
+                    );
+                }
+                _ => error!("failed to connect to websocket: {e:?}"),
             }
             return;
         }

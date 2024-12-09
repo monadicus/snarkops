@@ -13,7 +13,17 @@ use strum_macros::AsRefStr;
 use thiserror::Error;
 use url::Url;
 
-use super::storage::BinarySourceError;
+#[derive(Debug, Error)]
+#[error("`{i}`: `{e}`")]
+pub struct DeserializeError {
+    pub i: usize,
+    #[source]
+    pub e: serde_yaml::Error,
+}
+
+impl_into_status_code!(DeserializeError);
+
+use snops_common::schema::storage::BinarySourceError;
 
 #[derive(Debug, Error, AsRefStr)]
 pub enum StorageError {

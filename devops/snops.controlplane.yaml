@@ -1,0 +1,56 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snops-controlplane
+  labels:
+    app: snops-controlplane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: snops-controlplane
+  template:
+    metadata:
+      name: snops-controlplane
+      labels:
+        app: snops-controlplane
+    spec:
+      volumes:
+        - name: controlplane-data
+          emptyDir: {}
+      containers:
+        - name: snops-controlplane
+          image: snops
+          imagePullPolicy: Never #IfNotPresent
+          env:
+            - name: SNOPS_DATA_DIR
+              value: /usr/share/snops
+            - name: SNOPS_PORT
+              value: "1234"
+            - name: AOT_BIN
+              value: /etc/snops/snarkos-aot
+            - name: AGENT_BIN
+              value: /etc/snops/snops-agent
+          ports:
+            - containerPort: 1234
+          volumeMounts:
+            - name: controlplane-data
+              mountPath: /usr/share/snops
+          resources:
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: snops-service
+spec:
+  selector:
+    app: snops-controlplane
+  ports:
+    - name: http
+      protocol: TCP
+      port: 1234
+      targetPort: 1234

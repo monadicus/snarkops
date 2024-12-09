@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use snops_common::events::{EventHelpers, TransactionEvent};
+use snops_common::schema::cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource};
+use snops_common::state::NetworkId;
 use snops_common::state::{Authorization, TransactionSendState};
-use snops_common::{lasso::Spur, node_targets::NodeTargets, state::NetworkId, INTERN};
 use tracing::error;
 
 use super::context::CtxEventHelper;
@@ -18,31 +18,19 @@ use super::{
 use crate::env::set::find_compute_agent;
 use crate::state::EmitEvent;
 
-/// Represents an instance of a local query service.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LocalService {
-    // TODO debate this
-    /// An optional node to sync blocks from...
-    /// necessary for private tx mode in realtime mode as this will have to
-    /// sync from a node that has a valid ledger
-    ///
-    /// When present, the cannon will update the ledger service from this node
-    /// if the node is out of sync, it will corrupt the ledger...
-    ///
-    /// requires cannon to have an associated env_id
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sync_from: Option<NodeTargets>,
-}
-
-impl LocalService {
-    // TODO: cache this when sync_from is false
-    /// Fetch the state root from the local query service
-    /// (non-cached)
-    pub async fn get_state_root(
+pub trait GetStateRoot {
+    fn get_state_root(
         &self,
         network: NetworkId,
         port: u16,
-    ) -> Result<String, CannonError> {
+    ) -> impl std::future::Future<Output = Result<String, CannonError>>;
+}
+
+impl GetStateRoot for LocalService {
+    // TODO: cache this when sync_from is false
+    /// Fetch the state root from the local query service
+    /// (non-cached)
+    async fn get_state_root(&self, network: NetworkId, port: u16) -> Result<String, CannonError> {
         let url = format!("http://127.0.0.1:{port}/{network}/latest/stateRoot");
         let response = reqwest::get(&url)
             .await
@@ -54,92 +42,13 @@ impl LocalService {
     }
 }
 
-/// Used to determine the redirection for the following paths:
-/// /cannon/<id>/<network>/latest/stateRoot
-/// /cannon/<id>/<network>/transaction/broadcast
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", untagged)]
-pub enum QueryTarget {
-    /// Target a specific node (probably over rpc instead of reqwest lol...)
-    ///
-    /// Requires cannon to have an associated env_id
-    Node(NodeTargets),
-    /// Use the local ledger query service
-    Local(LocalService),
+pub trait GetQueryPort {
+    fn get_query_port(&self) -> Result<Option<u16>, CannonError>;
 }
 
-impl Default for QueryTarget {
-    fn default() -> Self {
-        QueryTarget::Local(LocalService { sync_from: None })
-    }
-}
-
-fn deser_labels<'de, D>(deser: D) -> Result<Option<Vec<Spur>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(Option::<Vec<String>>::deserialize(deser)?.map(|s| {
-        s.into_iter()
-            .map(|s| INTERN.get_or_intern(s))
-            .collect::<Vec<Spur>>()
-    }))
-}
-
-fn ser_labels<S>(labels: &Option<Vec<Spur>>, ser: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    match labels {
-        Some(labels) => {
-            let labels = labels
-                .iter()
-                .map(|s| INTERN.resolve(s))
-                .collect::<Vec<&str>>();
-            serde::Serialize::serialize(&labels, ser)
-        }
-        None => serde::Serialize::serialize(&None::<String>, ser),
-    }
-}
-
-/// Which service is providing the compute power for executing transactions
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", untagged)]
-pub enum ComputeTarget {
-    /// Use the agent pool to generate executions
-    Agent {
-        #[serde(
-            default,
-            deserialize_with = "deser_labels",
-            serialize_with = "ser_labels",
-            skip_serializing_if = "Option::is_none"
-        )]
-        labels: Option<Vec<Spur>>,
-    },
-    /// Use demox' API to generate executions
-    #[serde(rename_all = "kebab-case")]
-    Demox { demox_api: String },
-}
-
-impl Default for ComputeTarget {
-    fn default() -> Self {
-        ComputeTarget::Agent { labels: None }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct TxSource {
-    /// Receive authorizations from a persistent path
-    /// /api/v1/env/:env_id/cannons/:id/auth
-    #[serde(default)]
-    pub query: QueryTarget,
-    #[serde(default)]
-    pub compute: ComputeTarget,
-}
-
-impl TxSource {
+impl GetQueryPort for TxSource {
     /// Get an available port for the query service if applicable
-    pub fn get_query_port(&self) -> Result<Option<u16>, CannonError> {
+    fn get_query_port(&self) -> Result<Option<u16>, CannonError> {
         if !matches!(self.query, QueryTarget::Local(_)) {
             return Ok(None);
         }
@@ -149,9 +58,20 @@ impl TxSource {
     }
 }
 
-impl ComputeTarget {
-    pub async fn execute(
+pub trait ExecuteAuth {
+    /// Execute the authorization and emit it to the transaction tracker
+    fn execute(
         &self,
+        ctx: &ExecutionContext,
+        query_path: &str,
+        tx_id: &Arc<String>,
+        auth: &Authorization,
+    ) -> impl std::future::Future<Output = Result<(), CannonError>>;
+}
+
+impl ExecuteAuth for ComputeTarget {
+    async fn execute(
+        self: &ComputeTarget,
         ctx: &ExecutionContext,
         query_path: &str,
         tx_id: &Arc<String>,

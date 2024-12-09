@@ -41,6 +41,12 @@ This document contains the help content for the `snops-cli` command-line program
 * [`snops-cli env mappings`↴](#snops-cli-env-mappings)
 * [`snops-cli env program`↴](#snops-cli-env-program)
 * [`snops-cli env storage`↴](#snops-cli-env-storage)
+* [`snops-cli spec`↴](#snops-cli-spec)
+* [`snops-cli spec node-keys`↴](#snops-cli-spec-node-keys)
+* [`snops-cli spec nodes`↴](#snops-cli-spec-nodes)
+* [`snops-cli spec num-agents`↴](#snops-cli-spec-num-agents)
+* [`snops-cli spec network`↴](#snops-cli-spec-network)
+* [`snops-cli spec check`↴](#snops-cli-spec-check)
 * [`snops-cli set-log-level`↴](#snops-cli-set-log-level)
 * [`snops-cli events`↴](#snops-cli-events)
 * [`snops-cli man`↴](#snops-cli-man)
@@ -55,6 +61,7 @@ This document contains the help content for the `snops-cli` command-line program
 * `autocomplete` — Generate shell completions
 * `agent` — For interacting with snop agents
 * `env` — For interacting with snop environments
+* `spec` — 
 * `set-log-level` — 
 * `events` — Listen to events from the control plane, optionally filtered
 * `man` — For generating cli manpages. Only with the mangen feature enabled
@@ -557,6 +564,84 @@ Lookup a program by its id
 Get an env's storage info
 
 **Usage:** `snops-cli env storage`
+
+
+
+## `snops-cli spec`
+
+**Usage:** `snops-cli spec <COMMAND>`
+
+###### **Subcommands:**
+
+* `node-keys` — Extract all node keys from a spec file
+* `nodes` — Extract all nodes from a spec file
+* `num-agents` — Count how many agents would be needed to run the spec
+* `network` — Get the network id a spec
+* `check` — Check the spec for errors
+
+
+
+## `snops-cli spec node-keys`
+
+Extract all node keys from a spec file
+
+**Usage:** `snops-cli spec node-keys [OPTIONS] <SPEC>`
+
+###### **Arguments:**
+
+* `<SPEC>` — The environment spec file
+
+###### **Options:**
+
+* `--external` — When present, include external keys
+
+
+
+## `snops-cli spec nodes`
+
+Extract all nodes from a spec file
+
+**Usage:** `snops-cli spec nodes <SPEC>`
+
+###### **Arguments:**
+
+* `<SPEC>` — The environment spec file
+
+
+
+## `snops-cli spec num-agents`
+
+Count how many agents would be needed to run the spec
+
+**Usage:** `snops-cli spec num-agents <SPEC>`
+
+###### **Arguments:**
+
+* `<SPEC>` — The environment spec file
+
+
+
+## `snops-cli spec network`
+
+Get the network id a spec
+
+**Usage:** `snops-cli spec network <SPEC>`
+
+###### **Arguments:**
+
+* `<SPEC>` — The environment spec file
+
+
+
+## `snops-cli spec check`
+
+Check the spec for errors
+
+**Usage:** `snops-cli spec check <SPEC>`
+
+###### **Arguments:**
+
+* `<SPEC>` — The environment spec file
 
 
 

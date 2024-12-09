@@ -5,7 +5,7 @@ use clap::{Parser, ValueHint};
 #[clap(name = "snops-cli", author = "MONADIC.US")]
 pub struct Cli {
     /// The url the control plane is on.
-    #[clap(short, long, default_value = "http://localhost:1234", value_hint = ValueHint::Url)]
+    #[clap(short, long, env = "SNOPS_ENDPOINT", default_value = "http://localhost:1234", value_hint = ValueHint::Url)]
     url: String,
     /// The subcommand to run.
     #[clap(subcommand)]
