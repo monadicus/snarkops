@@ -383,6 +383,7 @@ pub async fn post_and_wait_tx(url: &str, req: RequestBuilder) -> Result<()> {
     use snops_common::events::EventFilter::*;
 
     let tx_id: String = req.send().await?.json().await?;
+    eprintln!("transaction id: {tx_id}");
 
     let mut events = EventsClient::open_with_filter(url, TransactionIs(Arc::new(tx_id))).await?;
 
