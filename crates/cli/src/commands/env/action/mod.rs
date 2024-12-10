@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 use clap_stdin::FileOrStdin;
 use reqwest::{Client, RequestBuilder, Response};
-use serde_json::json;
+use serde_json::{json, Value};
 use snops_cli::events::EventsClient;
 use snops_common::{
     action_models::{AleoValue, WithTargets},
@@ -381,8 +381,22 @@ impl Action {
 
 pub async fn post_and_wait_tx(url: &str, req: RequestBuilder) -> Result<()> {
     use snops_common::events::EventFilter::*;
+    let res = req.send().await?;
 
-    let tx_id: String = req.send().await?.json().await?;
+    if !res.status().is_success() {
+        eprintln!("error {}", res.status());
+        let value = match res.content_length() {
+            Some(0) | None => None,
+            _ => {
+                let text = res.text().await?;
+                Some(serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text)))
+            }
+        };
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        return Ok(());
+    }
+
+    let tx_id: String = res.json().await?;
     eprintln!("transaction id: {tx_id}");
 
     let mut events = EventsClient::open_with_filter(url, TransactionIs(Arc::new(tx_id))).await?;
