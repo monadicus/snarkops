@@ -41,6 +41,10 @@ fn credits_aleo() -> String {
     "credits.aleo".to_owned()
 }
 
+fn default_str() -> String {
+    "default".to_owned()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ExecuteAction {
@@ -57,7 +61,7 @@ pub struct ExecuteAction {
     /// The function to call
     pub function: String,
     /// The cannon id of who to execute the transaction
-    #[serde(default)]
+    #[serde(default = "default_str")]
     pub cannon: String,
     /// The inputs to the function
     pub inputs: Vec<AleoValue>,
@@ -82,7 +86,7 @@ pub struct DeployAction {
     /// The program to deploy
     pub program: String,
     /// The cannon id of who to execute the transaction
-    #[serde(default)]
+    #[serde(default = "default_str")]
     pub cannon: String,
     /// The optional priority fee
     #[serde(default)]
