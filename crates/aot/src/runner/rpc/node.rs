@@ -62,7 +62,9 @@ impl<N: Network> NodeService for NodeRpcServer<N> {
 
         block_db
             .find_block_hash(&tx_id)
-            .map_err(|_| AgentError::FailedToMakeRequest)
+            .map_err(|e| {
+                AgentError::FailedToMakeRequest(format!("block hash for tx {tx_id}: {e:?}"))
+            })
             .map(|hash| hash.map(|hash| hash.to_string()))
     }
 
@@ -80,9 +82,9 @@ impl<N: Network> NodeService for NodeRpcServer<N> {
             .parse()
             .map_err(|_| AgentError::InvalidBlockHash)?;
 
-        let Some(height) = block_db
-            .get_block_height(&hash)
-            .map_err(|_| AgentError::FailedToMakeRequest)?
+        let Some(height) = block_db.get_block_height(&hash).map_err(|e| {
+            AgentError::FailedToMakeRequest(format!("block height for hash {hash}: {e:?}"))
+        })?
         else {
             return Ok(None);
         };
@@ -91,9 +93,9 @@ impl<N: Network> NodeService for NodeRpcServer<N> {
             return Ok(None);
         };
 
-        let Some(transactions) = block_db
-            .get_block_transactions(&hash)
-            .map_err(|_| AgentError::FailedToMakeRequest)?
+        let Some(transactions) = block_db.get_block_transactions(&hash).map_err(|e| {
+            AgentError::FailedToMakeRequest(format!("transactions for height {height}: {e:?}"))
+        })?
         else {
             return Ok(None);
         };

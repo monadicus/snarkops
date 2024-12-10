@@ -70,8 +70,8 @@ pub enum AgentError {
     InvalidState,
     #[error("failed to parse json")]
     FailedToParseJson,
-    #[error("failed to make a request")]
-    FailedToMakeRequest,
+    #[error("failed to make a request: {0}")]
+    FailedToMakeRequest(String),
     #[error("failed to get env info: {0}")]
     FailedToGetEnvInfo(String),
     #[error("failed to spawn a process")]
