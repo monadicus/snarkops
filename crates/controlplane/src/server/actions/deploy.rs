@@ -9,7 +9,7 @@ use http::StatusCode;
 use snops_common::{
     action_models::DeployAction,
     aot_cmds::AotCmd,
-    state::{Authorization, KeyState},
+    state::{id_or_none, Authorization, KeyState},
 };
 
 use super::{execute::execute_status, Env};
@@ -18,6 +18,7 @@ use crate::{
     env::{error::ExecutionError, Environment},
     server::error::ServerError,
     state::GlobalState,
+    unwrap_or_bad_request,
 };
 
 pub async fn deploy(
@@ -26,8 +27,8 @@ pub async fn deploy(
     Query(query): Query<AuthQuery>,
     Json(action): Json<DeployAction>,
 ) -> Response {
-    let query_addr = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
-    let cannon_id = action.cannon;
+    let cannon_id = unwrap_or_bad_request!("invalid cannon id", id_or_none(&action.cannon));
+    let query_addr = env.cannons.get(&cannon_id).map(|c| c.get_local_query());
 
     if query.is_async() {
         return match deploy_inner(&state, action, &env, query_addr).await {
@@ -63,8 +64,12 @@ pub async fn deploy_inner(
         fee_record,
     } = action;
 
-    let Some(cannon) = env.cannons.get(&cannon_id) else {
+    let Some(cannon_id) = id_or_none(&cannon_id) else {
         return Err(ExecutionError::UnknownCannon(cannon_id));
+    };
+
+    let Some(cannon) = env.cannons.get(&cannon_id) else {
+        return Err(ExecutionError::UnknownCannon(cannon_id.to_string()));
     };
 
     let KeyState::Literal(resolved_pk) = env.storage.sample_keysource_pk(&private_key) else {

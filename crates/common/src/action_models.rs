@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     key_source::KeySource,
     node_targets::{NodeTarget, NodeTargets},
-    state::{CannonId, HeightRequest, InternedId},
+    state::HeightRequest,
 };
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -58,7 +58,7 @@ pub struct ExecuteAction {
     pub function: String,
     /// The cannon id of who to execute the transaction
     #[serde(default)]
-    pub cannon: CannonId,
+    pub cannon: String,
     /// The inputs to the function
     pub inputs: Vec<AleoValue>,
     /// The optional priority fee
@@ -83,7 +83,7 @@ pub struct DeployAction {
     pub program: String,
     /// The cannon id of who to execute the transaction
     #[serde(default)]
-    pub cannon: CannonId,
+    pub cannon: String,
     /// The optional priority fee
     #[serde(default)]
     pub priority_fee: Option<u64>,
@@ -122,7 +122,7 @@ pub struct Reconfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validators: Option<NodeTargets>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub binary: Option<InternedId>,
+    pub binary: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub private_key: Option<KeySource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

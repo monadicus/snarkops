@@ -6,7 +6,7 @@ use axum::{
 };
 use snops_common::{
     action_models::{Reconfig, WithTargets},
-    state::{AgentId, AgentState, InternedId},
+    state::{id_or_none, AgentId, AgentState, InternedId},
 };
 
 use super::Env;
@@ -14,6 +14,7 @@ use crate::{
     env::PortType,
     server::error::ServerError,
     state::{pending_reconcile_node_map, PendingAgentReconcile},
+    unwrap_or_bad_request,
 };
 
 pub async fn config(
@@ -54,6 +55,12 @@ pub async fn config(
     }
 
     for WithTargets { nodes, data } in configs {
+        let binary = if let Some(b) = data.binary.as_ref() {
+            Some(unwrap_or_bad_request!("invalid binary id", id_or_none(b)))
+        } else {
+            None
+        };
+
         for agent in env.matching_agents(&nodes, &state.pool) {
             if let Some(h) = data.height {
                 set_node_field!(agent, height = (height.0 + 1, h));
@@ -77,7 +84,7 @@ pub async fn config(
                 set_node_field!(agent, validators = v.clone());
             }
 
-            if let Some(b) = &data.binary {
+            if let Some(b) = &binary {
                 set_node_field!(agent, binary = (*b != InternedId::default()).then_some(*b));
             }
 

@@ -288,12 +288,14 @@ pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Res
     let res = req.send().await?;
 
     if !res.status().is_success() {
-        eprintln!("error: {}", res.status());
         let value = match res.content_length() {
-            Some(0) | None => None,
+            Some(0) | None => {
+                eprintln!("error: {}", res.status());
+                return Ok(());
+            }
             _ => {
                 let text = res.text().await?;
-                Some(serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text)))
+                serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text))
             }
         };
         println!("{}", serde_json::to_string_pretty(&value)?);

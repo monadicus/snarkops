@@ -11,7 +11,7 @@ use snops_common::{
     action_models::{AleoValue, ExecuteAction},
     aot_cmds::AotCmd,
     events::{Event, EventKind},
-    state::{Authorization, KeyState},
+    state::{id_or_none, Authorization, KeyState},
 };
 use tokio::select;
 
@@ -85,8 +85,10 @@ pub async fn execute(
     Query(query): Query<AuthQuery>,
     Json(action): Json<ExecuteAction>,
 ) -> Response {
-    let query_addr = env.cannons.get(&action.cannon).map(|c| c.get_local_query());
-    let cannon_id = action.cannon;
+    let Some(cannon_id) = id_or_none(&action.cannon) else {
+        return ServerError::from(ExecutionError::UnknownCannon(action.cannon)).into_response();
+    };
+    let query_addr = env.cannons.get(&cannon_id).map(|c| c.get_local_query());
 
     if query.is_async() {
         return match execute_inner(&state, action, &env, query_addr).await {
@@ -123,9 +125,12 @@ pub async fn execute_inner(
         priority_fee,
         fee_record,
     } = action;
+    let Some(cannon_id) = id_or_none(&cannon_id) else {
+        return Err(ExecutionError::UnknownCannon(cannon_id));
+    };
 
     let Some(cannon) = env.cannons.get(&cannon_id) else {
-        return Err(ExecutionError::UnknownCannon(cannon_id));
+        return Err(ExecutionError::UnknownCannon(cannon_id.to_string()));
     };
 
     let KeyState::Literal(resolved_pk) = env.storage.sample_keysource_pk(&private_key) else {
