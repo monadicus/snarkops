@@ -84,13 +84,19 @@ impl Commands {
             }
         }?;
 
-        if !response.status().is_success() {
-            eprintln!("error {}", response.status());
-        }
-
         let value = match response.content_length() {
-            Some(0) | None => None,
-            _ => response.json::<Value>().await.map(Some)?,
+            Some(0) | None => {
+                if !response.status().is_success() {
+                    eprintln!("error {}", response.status());
+                } else {
+                    eprintln!("{}", response.status());
+                }
+                return Ok(());
+            }
+            _ => {
+                let text = response.text().await?;
+                serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text))
+            }
         };
 
         println!("{}", serde_json::to_string_pretty(&value)?);

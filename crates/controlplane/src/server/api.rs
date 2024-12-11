@@ -32,10 +32,20 @@ use crate::{
 
 #[macro_export]
 macro_rules! unwrap_or_not_found {
-    ($e:expr) => {
+    ($s:expr, $e:expr) => {
         match $e {
             Some(v) => v,
-            None => return ::axum::http::StatusCode::NOT_FOUND.into_response(),
+            None => return ServerError::NotFound($s.to_owned()).into_response(),
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! unwrap_or_bad_request {
+    ($s:expr, $e:expr) => {
+        match $e {
+            Some(v) => v,
+            None => return ServerError::BadRequest($s.to_owned()).into_response(),
         }
     };
 }
@@ -94,15 +104,15 @@ async fn set_agent_log_level(
     state: State<AppState>,
     Path((id, level)): Path<(String, String)>,
 ) -> Response {
-    let id = unwrap_or_not_found!(id_or_none(&id));
-    let agent = unwrap_or_not_found!(state.pool.get(&id));
+    let id = unwrap_or_not_found!("unknown agent id", id_or_none(&id));
+    let agent = unwrap_or_not_found!("agent not found", state.pool.get(&id));
 
     tracing::debug!("attempting to set agent log level to {level} for agent {id}");
-    let Some(rpc) = agent.rpc() else {
+    let Some(rpc) = agent.client_owned() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
 
-    let Err(e) = rpc.set_log_level(tarpc::context::current(), level).await else {
+    let Err(e) = rpc.0.set_log_level(tarpc::context::current(), level).await else {
         return status_ok();
     };
 
@@ -113,8 +123,8 @@ async fn set_aot_log_level(
     state: State<AppState>,
     Path((id, verbosity)): Path<(String, u8)>,
 ) -> Response {
-    let id = unwrap_or_not_found!(id_or_none(&id));
-    let agent = unwrap_or_not_found!(state.pool.get(&id));
+    let id = unwrap_or_not_found!("unknown agent id", id_or_none(&id));
+    let agent = unwrap_or_not_found!("agent not found", state.pool.get(&id));
 
     tracing::debug!("attempting to set aot log verbosity to {verbosity}  for agent {id}");
     let Some(rpc) = agent.rpc() else {
@@ -150,17 +160,20 @@ async fn set_log_level(Path(level): Path<String>, state: State<AppState>) -> Res
 }
 
 async fn get_env_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
 
     Json(env.info(&state)).into_response()
 }
 
 async fn get_latest_height(Path(env_id): Path<String>, state: State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
 
-    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+    let cannon = unwrap_or_not_found!(
+        "default cannon not found",
+        env.get_cannon(CannonId::default())
+    );
 
     match &cannon.source.query {
         QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
@@ -177,8 +190,9 @@ async fn get_latest_height(Path(env_id): Path<String>, state: State<AppState>) -
 }
 
 async fn get_env_block_info(Path(env_id): Path<String>, state: State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let block_info = unwrap_or_not_found!(state.get_env_block_info(env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let block_info =
+        unwrap_or_not_found!("environment not found", state.get_env_block_info(env_id));
 
     Json(block_info).into_response()
 }
@@ -187,15 +201,15 @@ async fn get_env_balance(
     Path((env_id, keysource)): Path<(String, KeySource)>,
     state: State<AppState>,
 ) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
 
     let KeyState::Literal(key) = env.storage.sample_keysource_addr(&keysource) else {
         return ServerError::NotFound(format!("keysource pubkey {keysource}")).into_response();
     };
 
     let Some(cannon) = env.get_cannon(CannonId::default()) else {
-        return ServerError::NotFound("cannon not found".to_owned()).into_response();
+        return ServerError::NotFound("default cannon not found".to_owned()).into_response();
     };
 
     match &cannon.source.query {
@@ -233,9 +247,12 @@ async fn get_block(
     Path((env_id, height_or_hash)): Path<(String, String)>,
     state: State<AppState>,
 ) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(
+        "default cannon not found",
+        env.get_cannon(CannonId::default())
+    );
 
     match &cannon.source.query {
         QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
@@ -259,9 +276,12 @@ async fn get_tx_blockhash(
     Path((env_id, transaction)): Path<(String, String)>,
     state: State<AppState>,
 ) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(
+        "default cannon not found",
+        env.get_cannon(CannonId::default())
+    );
 
     match &cannon.source.query {
         QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
@@ -285,9 +305,12 @@ async fn get_tx(
     Path((env_id, transaction)): Path<(String, String)>,
     state: State<AppState>,
 ) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(
+        "default cannon not found",
+        env.get_cannon(CannonId::default())
+    );
 
     match &cannon.source.query {
         QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
@@ -322,15 +345,15 @@ fn status_ok() -> Response {
 }
 
 async fn get_agent(state: State<AppState>, Path(id): Path<String>) -> Response {
-    let id = unwrap_or_not_found!(id_or_none(&id));
-    let agent = unwrap_or_not_found!(state.pool.get(&id));
+    let id = unwrap_or_not_found!("unknown agent id", id_or_none(&id));
+    let agent = unwrap_or_not_found!("agent not found", state.pool.get(&id));
 
     Json(AgentStatusResponse::from(agent.value())).into_response()
 }
 
 async fn get_agent_status(state: State<AppState>, Path(id): Path<String>) -> Response {
-    let id = unwrap_or_not_found!(id_or_none(&id));
-    let agent = unwrap_or_not_found!(state.pool.get(&id));
+    let id = unwrap_or_not_found!("unknown agent id", id_or_none(&id));
+    let agent = unwrap_or_not_found!("agent not found", state.pool.get(&id));
 
     let Some(rpc) = agent.rpc() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
@@ -343,8 +366,11 @@ async fn get_agent_status(state: State<AppState>, Path(id): Path<String>) -> Res
 }
 
 async fn kill_agent(state: State<AppState>, Path(id): Path<String>) -> Response {
-    let id = unwrap_or_not_found!(id_or_none(&id));
-    let client = unwrap_or_not_found!(state.pool.get(&id).and_then(|a| a.client_owned()));
+    let id = unwrap_or_not_found!("unknown agent id", id_or_none(&id));
+    let client = unwrap_or_not_found!(
+        "agent not found",
+        state.pool.get(&id).and_then(|a| a.client_owned())
+    );
 
     if let Err(e) = client.0.kill(context::current()).await {
         tracing::error!("failed to kill agent {id}: {e}");
@@ -359,14 +385,15 @@ async fn kill_agent(state: State<AppState>, Path(id): Path<String>) -> Response 
 }
 
 async fn get_agent_tps(state: State<AppState>, Path(id): Path<String>) -> Response {
-    let id = unwrap_or_not_found!(id_or_none(&id));
-    let agent = unwrap_or_not_found!(state.pool.get(&id));
+    let id = unwrap_or_not_found!("unknown agent id", id_or_none(&id));
+    let agent = unwrap_or_not_found!("agent not found", state.pool.get(&id));
 
-    let Some(rpc) = agent.rpc() else {
+    let Some(rpc) = agent.client_owned() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
 
     match rpc
+        .0
         .get_metric(tarpc::context::current(), AgentMetric::Tps)
         .await
     {
@@ -379,7 +406,7 @@ async fn get_program(
     Path((env_id, program)): Path<(String, String)>,
     state: State<AppState>,
 ) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
     match state
         .snarkos_get::<String>(env_id, format!("/program/{program}"), &NodeTargets::ALL)
         .await
@@ -400,9 +427,12 @@ async fn get_mapping_value(
     Query(query): Query<MappingValueQuery>,
     state: State<AppState>,
 ) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(
+        "default cannon not found",
+        env.get_cannon(CannonId::default())
+    );
 
     let url = match (query.key, query.keysource) {
         (Some(key), None) => {
@@ -416,11 +446,8 @@ async fn get_mapping_value(
             format!("/program/{program}/mapping/{mapping}/{key}",)
         }
         _ => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "either key or key_source must be provided"})),
-            )
-                .into_response();
+            return ServerError::BadRequest("either key or key_source must be provided".to_owned())
+                .into_response()
         }
     };
 
@@ -442,9 +469,12 @@ async fn get_mappings(
     Path((env_id, program)): Path<(String, String)>,
     state: State<AppState>,
 ) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-    let cannon = unwrap_or_not_found!(env.get_cannon(CannonId::default()));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
+    let cannon = unwrap_or_not_found!(
+        "default cannon not found",
+        env.get_cannon(CannonId::default())
+    );
 
     match &cannon.source.query {
         QueryTarget::Local(_qs) => StatusCode::NOT_IMPLEMENTED.into_response(),
@@ -517,15 +547,16 @@ async fn get_env_list(State(state): State<AppState>) -> Response {
 }
 
 async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
 
     let mut internal = HashMap::new();
     let mut external = HashMap::new();
 
     for (nk, peer) in env.node_peers.iter() {
-        // safe to unwrap because we know the agent exists
-        let node_state = env.node_states.get(nk).unwrap().clone();
+        let Some(node_state) = env.node_states.get(nk) else {
+            continue;
+        };
         match peer {
             EnvPeer::Internal(id) => {
                 internal.insert(*id, node_state);
@@ -546,15 +577,16 @@ async fn get_env_topology_resolved(
     Path(env_id): Path<String>,
     State(state): State<AppState>,
 ) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
 
     let mut resolved = HashMap::new();
 
     for (_, peer) in env.node_peers.iter() {
-        // safe to unwrap because we know the agent exists
         if let EnvPeer::Internal(id) = peer {
-            let agent = state.pool.get(id).unwrap();
+            let Some(agent) = state.pool.get(id) else {
+                continue;
+            };
             match agent.state().clone() {
                 AgentState::Inventory => continue,
                 AgentState::Node(_, state) => {
@@ -569,8 +601,8 @@ async fn get_env_topology_resolved(
 
 /// Get a map of node keys to agent ids
 async fn get_env_agents(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
 
     Json(
         env.node_peers
@@ -589,11 +621,15 @@ async fn get_env_agent_key(
     Path((env_id, node_type, node_key)): Path<(String, String, String)>,
     State(state): State<AppState>,
 ) -> Response {
-    let node_key = unwrap_or_not_found!(NodeKey::from_str(&format!("{node_type}/{node_key}")).ok());
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
-    let env = unwrap_or_not_found!(state.get_env(env_id));
-    let agent_id = unwrap_or_not_found!(env.get_agent_by_key(&node_key));
-    let agent = unwrap_or_not_found!(state.pool.get(&agent_id));
+    let node_key = unwrap_or_bad_request!(
+        "invalid node key",
+        NodeKey::from_str(&format!("{node_type}/{node_key}")).ok()
+    );
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
+    let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
+    let agent_id =
+        unwrap_or_not_found!("node found in environment", env.get_agent_by_key(&node_key));
+    let agent = unwrap_or_not_found!("agent not found", state.pool.get(&agent_id));
 
     Json(AgentStatusResponse::from(agent.value())).into_response()
 }
@@ -617,7 +653,7 @@ async fn post_env_apply(
 }
 
 async fn delete_env(Path(env_id): Path<String>, State(state): State<AppState>) -> Response {
-    let env_id = unwrap_or_not_found!(id_or_none(&env_id));
+    let env_id = unwrap_or_not_found!("unknown environment id", id_or_none(&env_id));
 
     match Environment::cleanup(env_id, &state).await {
         Ok(_) => status_ok(),
