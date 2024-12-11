@@ -18,7 +18,7 @@ use crate::{
     env::{error::ExecutionError, Environment},
     server::error::ServerError,
     state::GlobalState,
-    unwrap_or_bad_request,
+    unwrap_or_not_found,
 };
 
 pub async fn deploy(
@@ -27,7 +27,7 @@ pub async fn deploy(
     Query(query): Query<AuthQuery>,
     Json(action): Json<DeployAction>,
 ) -> Response {
-    let cannon_id = unwrap_or_bad_request!("invalid cannon id", id_or_none(&action.cannon));
+    let cannon_id = unwrap_or_not_found!("unknown cannon id", id_or_none(&action.cannon));
     let query_addr = env.cannons.get(&cannon_id).map(|c| c.get_local_query());
 
     if query.is_async() {

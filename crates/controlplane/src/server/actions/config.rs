@@ -14,7 +14,7 @@ use crate::{
     env::PortType,
     server::error::ServerError,
     state::{pending_reconcile_node_map, PendingAgentReconcile},
-    unwrap_or_bad_request,
+    unwrap_or_not_found,
 };
 
 pub async fn config(
@@ -56,7 +56,7 @@ pub async fn config(
 
     for WithTargets { nodes, data } in configs {
         let binary = if let Some(b) = data.binary.as_ref() {
-            Some(unwrap_or_bad_request!("invalid binary id", id_or_none(b)))
+            Some(unwrap_or_not_found!("unknown binary id", id_or_none(b)))
         } else {
             None
         };

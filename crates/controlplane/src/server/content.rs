@@ -79,8 +79,8 @@ async fn serve_binary(
     State(state): State<AppState>,
     req: Request,
 ) -> Response {
-    let storage_id = unwrap_or_bad_request!("invalid storage id", id_or_none(&storage_id));
-    let binary_id = unwrap_or_bad_request!("invalid binary id", id_or_none(&binary_id));
+    let storage_id = unwrap_or_not_found!("unknown storage id", id_or_none(&storage_id));
+    let binary_id = unwrap_or_not_found!("unknown binary id", id_or_none(&binary_id));
 
     let storage = unwrap_or_not_found!(
         "storage not found",
