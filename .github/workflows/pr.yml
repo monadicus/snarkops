@@ -5,8 +5,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # https://releases.rs/docs/1.82.0/ release date
-  NIGHTLY_TOOLCHAIN: nightly-2024-10-17
+  # https://releases.rs/docs/1.83.0/ release date
+  NIGHTLY_TOOLCHAIN: nightly-2024-11-28
 
 # Cancel in progress workflows on pull_requests.
 # https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-a-fallback-value
@@ -135,38 +135,38 @@ jobs:
 
       - name: 🧪 Test All
         if: steps.changes.outputs.top_toml == 'true'
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run --all --verbose --fail-fast --all-features --exclude snops-agent --exclude xtask
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run --all --verbose --fail-fast --all-features --exclude snops-agent --exclude xtask --no-tests=warn
 
       - name: 🧪 Test Aot
         if: steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snarkos-aot --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snarkos-aot --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Checkpoint
         # env:
         #   RUSTFLAGS: -Zcodegen-backend=cranelift
         if: steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-checkpoint --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-checkpoint --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Common
         # env:
         #   RUSTFLAGS: -Zcodegen-backend=cranelift
         if: steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-common --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-common --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Control Plane
         # env:
         #   RUSTFLAGS: -Zcodegen-backend=cranelift
         if: (steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Agent
         # env:
         #   RUSTFLAGS: ""
         if: (steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true')
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-agent --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-agent --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Scli
         # env:
         # RUSTFLAGS: -Zcodegen-backend=cranelift
         if: (steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-cli --verbose --fail-fast --all-features
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-cli --verbose --fail-fast --all-features --no-tests=warn

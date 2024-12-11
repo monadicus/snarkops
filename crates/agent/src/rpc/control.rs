@@ -177,7 +177,7 @@ impl AgentService for AgentRpcServer {
             .state
             .get_env_info(env_id)
             .await
-            .map_err(|_| AgentError::FailedToMakeRequest)?
+            .map_err(|e| AgentError::FailedToGetEnvInfo(e.to_string()))?
             .network;
 
         let url = format!(
@@ -186,26 +186,31 @@ impl AgentService for AgentRpcServer {
             self.state.cli.ports.rest
         );
         let response = reqwest::Client::new()
-            .post(url)
+            .post(&url)
             .header("Content-Type", "application/json")
             .body(tx)
             .send()
             .await
-            .map_err(|_| AgentError::FailedToMakeRequest)?;
+            .map_err(|e| AgentError::FailedToMakeRequest(format!("{url}: {e:?}")))?;
         let status = response.status();
         if status.is_success() {
-            Ok(())
+            return Ok(());
             // transaction already exists so this is technically a success
-        } else if status.is_server_error()
-            && response
-                .text()
-                .await
-                .ok()
+        }
+
+        let text = response.text().await.ok();
+
+        if status.is_server_error()
+            && text
+                .as_ref()
                 .is_some_and(|text| text.contains("exists in the ledger"))
         {
-            return Ok(());
+            Ok(())
         } else {
-            Err(AgentError::FailedToMakeRequest)
+            Err(AgentError::FailedToMakeRequest(format!(
+                "{url}: {status:?} {}",
+                text.unwrap_or_else(|| "no error message".to_string())
+            )))
         }
     }
 
@@ -329,7 +334,7 @@ impl AgentService for AgentRpcServer {
             .ok_or(AgentError::NodeClientNotSet)?
             .get_block_lite(ctx, block_hash)
             .await
-            .map_err(|_| AgentError::FailedToMakeRequest)?
+            .map_err(|e| AgentError::FailedToMakeRequest(format!("block info: {e:?}")))?
     }
 
     async fn find_transaction(
@@ -343,7 +348,7 @@ impl AgentService for AgentRpcServer {
             .ok_or(AgentError::NodeClientNotSet)?
             .find_transaction(context, tx_id)
             .await
-            .map_err(|_| AgentError::FailedToMakeRequest)?
+            .map_err(|e| AgentError::FailedToMakeRequest(format!("find tx: {e:?}")))?
     }
 
     async fn get_status(self, ctx: Context) -> Result<AgentStatus, AgentError> {
