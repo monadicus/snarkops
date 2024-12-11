@@ -4,7 +4,7 @@ use snops_common::{
     aot_cmds::AotCmdError,
     impl_into_status_code, impl_into_type_str,
     rpc::error::SnarkosRequestError,
-    state::{AgentId, CannonId, EnvId, NodeKey, TimelineId},
+    state::{AgentId, EnvId, NodeKey, TimelineId},
 };
 use strum_macros::AsRefStr;
 use thiserror::Error;
@@ -57,7 +57,7 @@ pub enum ExecutionError {
     #[error("an agent is offline, so the test cannot complete")]
     AgentOffline,
     #[error("env `{0}` not found")]
-    EnvNotFound(EnvId),
+    EnvNotFound(String),
     #[error(transparent)]
     Cannon(#[from] CannonError),
     #[error(transparent)]
@@ -67,7 +67,7 @@ pub enum ExecutionError {
     #[error("env timeline is already being executed")]
     TimelineAlreadyStarted,
     #[error("unknown cannon: `{0}`")]
-    UnknownCannon(CannonId),
+    UnknownCannon(String),
     #[error(transparent)]
     AuthorizeError(#[from] AuthorizeError),
     #[error(transparent)]

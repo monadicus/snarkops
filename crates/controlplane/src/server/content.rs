@@ -11,7 +11,7 @@ use http::{StatusCode, Uri};
 use snops_common::{
     binaries::{BinaryEntry, BinarySource},
     schema::storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY},
-    state::{InternedId, NetworkId, StorageId},
+    state::{id_or_none, InternedId, NetworkId},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
@@ -20,7 +20,7 @@ use crate::{
     apply::error::StorageError,
     server::error::ServerError,
     state::{AppState, GlobalState},
-    unwrap_or_not_found,
+    unwrap_or_bad_request, unwrap_or_not_found,
 };
 
 async fn not_found(uri: Uri, res: Response) -> Response {
@@ -73,11 +73,18 @@ pub(super) async fn init_routes(state: &GlobalState) -> Router<AppState> {
 
 /// Serve a binary from the storage or a redirect to the binary
 async fn serve_binary(
-    Path((network, storage_id, binary_id)): Path<(NetworkId, StorageId, InternedId)>,
+    Path((network, storage_id, binary_id)): Path<(NetworkId, String, String)>,
     State(state): State<AppState>,
     req: Request,
 ) -> Response {
-    let storage = unwrap_or_not_found!(state.storage.get(&(network, storage_id))).clone();
+    let storage_id = unwrap_or_not_found!("unknown storage id", id_or_none(&storage_id));
+    let binary_id = unwrap_or_not_found!("unknown binary id", id_or_none(&binary_id));
+
+    let storage = unwrap_or_not_found!(
+        "storage not found",
+        state.storage.get(&(network, storage_id))
+    )
+    .clone();
 
     match storage.resolve_binary_entry(binary_id) {
         Ok((id, entry)) => respond_from_entry(id, entry, req).await,
@@ -97,11 +104,17 @@ async fn respond_from_entry(id: InternedId, entry: &BinaryEntry, req: Request) -
 }
 
 async fn serve_file(
-    Path((network, storage_id, file)): Path<(NetworkId, StorageId, String)>,
+    Path((network, storage_id, file)): Path<(NetworkId, String, String)>,
     State(state): State<AppState>,
     req: Request,
 ) -> Response {
-    let storage = unwrap_or_not_found!(state.storage.get(&(network, storage_id))).clone();
+    let storage_id = unwrap_or_bad_request!("invalid storage id", id_or_none(&storage_id));
+
+    let storage = unwrap_or_not_found!(
+        "storage not found",
+        state.storage.get(&(network, storage_id))
+    )
+    .clone();
 
     match file.as_str() {
         // ensure genesis is only served if native genesis is disabled

@@ -5,6 +5,7 @@ use anyhow::Result;
 use clap::{Parser, ValueHint};
 use clap_stdin::FileOrStdin;
 use reqwest::{Client, RequestBuilder, Response};
+use serde_json::Value;
 use snops_cli::events::EventsClient;
 use snops_common::{
     action_models::AleoValue,
@@ -287,11 +288,18 @@ pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Res
     let res = req.send().await?;
 
     if !res.status().is_success() {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&res.json::<serde_json::Value>().await?)?
-        );
-        std::process::exit(1);
+        let value = match res.content_length() {
+            Some(0) | None => {
+                eprintln!("error: {}", res.status());
+                return Ok(());
+            }
+            _ => {
+                let text = res.text().await?;
+                serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text))
+            }
+        };
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        return Ok(());
     }
 
     let mut node_map: HashMap<NodeKey, AgentId> = res.json().await?;

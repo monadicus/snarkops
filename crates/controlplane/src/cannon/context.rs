@@ -308,7 +308,7 @@ impl ExecutionContext {
                     };
 
                     if let Err(e) = client.broadcast_tx(tx_str.clone()).await {
-                        warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e}");
+                        warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e:?}");
                         continue;
                     }
 
@@ -332,7 +332,7 @@ impl ExecutionContext {
 
                     match res {
                         Err(e) => {
-                            warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e}");
+                            warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e:?}");
                             continue;
                         }
                         Ok(req) => {
@@ -350,7 +350,7 @@ impl ExecutionContext {
                                     return Ok(tx_id);
                                 }
 
-                                warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {}", status);
+                                warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {status}");
                                 continue;
                             }
                         }
