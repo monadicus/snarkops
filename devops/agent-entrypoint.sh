@@ -32,7 +32,7 @@ sleep 1
 
 while true; do
   download_agent
-  $AGENT_BIN
+  $AGENT_BIN --labels "k8s,$AGENT_LABELS"
   echo "Agent exited, restarting in 5 seconds..."
   sleep 5
 done

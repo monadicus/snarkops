@@ -49,6 +49,8 @@ macro_rules! unwrap_or_bad_request {
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .route("/readyz", get(|| async { Json(json!({ "status": "ok" })) }))
+        .route("/livez", get(|| async { Json(json!({ "status": "ok" })) }))
         .route("/events", get(event_ws::event_ws_handler))
         .route("/log/:level", post(set_log_level))
         .route("/agents", get(get_agents))

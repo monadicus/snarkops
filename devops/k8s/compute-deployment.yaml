@@ -30,6 +30,20 @@ spec:
               value: "true"
             - name: SNOPS_AGENT_EPHEMERAL
               value: "true"
+            - name: AGENT_LABELS
+              value: "compute"
+            - name: SNOPS_AGENT_HEALTH_PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
           resources:
             limits:
               cpu: 1000m

@@ -53,6 +53,10 @@ pub struct Cli {
     #[clap(long = "bind", env = "SNOPS_AGENT_HOST", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
 
+    /// Port for the agent to listen on for readiness and liveness checks
+    #[clap(long, env = "SNOPS_AGENT_HEALTH_PORT")]
+    pub service_port: Option<u16>,
+
     #[clap(flatten)]
     pub ports: PortConfig,
 

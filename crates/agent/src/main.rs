@@ -7,6 +7,7 @@ mod net;
 mod reconcile;
 mod rpc;
 mod server;
+mod service;
 mod state;
 mod transfers;
 
@@ -72,6 +73,17 @@ async fn main() {
     let agent_rpc_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
         .await
         .expect("failed to bind status server");
+
+    // Setup the status server socket
+    let agent_service_listener = if let Some(service_port) = args.service_port {
+        Some(
+            tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, service_port))
+                .await
+                .expect("failed to bind status server"),
+        )
+    } else {
+        None
+    };
     let agent_rpc_port = agent_rpc_listener
         .local_addr()
         .expect("failed to get status server port")
@@ -136,6 +148,18 @@ async fn main() {
             std::process::exit(1);
         }
     });
+
+    // Start the status server if enabled
+    if let Some(listener) = agent_service_listener {
+        let service_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            info!("Starting service API server on port {agent_rpc_port}");
+            if let Err(e) = service::start(listener, service_state).await {
+                error!("service API server crashed: {e:?}");
+                std::process::exit(1);
+            }
+        });
+    }
 
     // Get the interrupt signals to break the stream connection
     let mut interrupt = Signals::term_or_interrupt();

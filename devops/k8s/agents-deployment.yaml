@@ -30,10 +30,23 @@ spec:
               value: "true"
             - name: SNOPS_AGENT_CLIENT
               value: "true"
+            - name: AGENT_LABELS
+              value: "local"
+            - name: SNOPS_AGENT_HEALTH_PORT
+              value: "8080"
           ports:
             - containerPort: 5000
             - containerPort: 4130
             - containerPort: 3030
+            - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
           resources:
             limits:
               cpu: "1"
