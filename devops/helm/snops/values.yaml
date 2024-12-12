@@ -1,0 +1,76 @@
+service: &service
+  type: ClusterIP # or NodePort (LoadBalancer is not supported yet)
+  name: snops-service
+  port: 1234
+
+image: &image
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: &imagePullSecrets []
+podAnnotations: &podAnnotations {}
+podLabels: &podLabels {}
+
+controlplane:
+  image: *image
+  service: *service
+
+  resources: {}
+  # limits:
+  #   cpu: 200m
+  #   memory: 500Mi
+  # requests:
+  #   cpu: 200m
+  #   memory: 500Mi
+
+  imagePullSecrets: *imagePullSecrets
+  podAnnotations: *podAnnotations
+  podLabels: *podLabels
+
+  volumes:
+    - name: controlplane-data
+      emptyDir: {}
+
+  volumeMounts:
+    - name: controlplane-data
+      mountPath: /usr/share/snops
+
+agents:
+  image: *image
+  service: *service
+  replicas: 4
+
+  resources: {}
+  # limits:
+  #   cpu: 500m
+  #   memory: 2Gi
+  # requests:
+  #   cpu: 500m
+  #   memory: 2Gi
+
+  imagePullSecrets: *imagePullSecrets
+  podAnnotations: *podAnnotations
+  podLabels: *podLabels
+
+compute:
+  image: *image
+  service: *service
+  replicas: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+
+  resources: {}
+  # limits:
+  #   cpu: 1000m
+  #   memory: 2Gi
+  # requests:
+  #   cpu: 1000m
+  #   memory: 2Gi
+
+  imagePullSecrets: *imagePullSecrets
+  podAnnotations: *podAnnotations
+  podLabels: *podLabels

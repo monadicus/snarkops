@@ -145,16 +145,13 @@ impl Cli {
 
         // add &labels= if id is present
         if let Some(labels) = &self.labels {
-            info!("Using labels: {:?}", labels);
-            qs.append_pair(
-                "labels",
-                &labels
-                    .iter()
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.trim())
-                    .collect::<Vec<_>>()
-                    .join(","),
-            );
+            let label_vec = labels
+                .iter()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.trim())
+                .collect::<Vec<_>>();
+            info!("Using labels: {label_vec:?}");
+            qs.append_pair("labels", &label_vec.join(","));
         }
 
         let (is_tls, host) = endpoint

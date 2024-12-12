@@ -227,12 +227,15 @@ impl Command {
             Command::Build(build) => build.run(sh),
             Command::Dev { target } => dev(sh, target),
             Command::Containers => {
-                cmd!(sh, "docker build -t snops . -f ./devops/snops.Dockerfile")
-                    .run()
-                    .context("Building snops container")?;
                 cmd!(
                     sh,
-                    "docker build -t snops-agent . -f ./devops/agent.Dockerfile"
+                    "docker build -t snops:latest . -f ./devops/snops.Dockerfile"
+                )
+                .run()
+                .context("Building snops container")?;
+                cmd!(
+                    sh,
+                    "docker build -t snops-agent:latest . -f ./devops/agent.Dockerfile"
                 )
                 .run()
                 .context("Building snops-agent container")
