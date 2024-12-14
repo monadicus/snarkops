@@ -266,7 +266,7 @@ impl GlobalState {
                     AgentPeer::Internal(id, _) => id,
                     AgentPeer::External(addr) => {
                         // lookup the external peer info from the cache
-                        return Some(if let Some(info) = ext_infos.and_then(|c| c.get(key)) {
+                        return Some(if let Some(info) = ext_infos.and_then(|c| c.get(&key)) {
                             (info.score(&now), Some(info.clone()), None, None)
                         } else {
                             (0u32, None, None, Some(addr))

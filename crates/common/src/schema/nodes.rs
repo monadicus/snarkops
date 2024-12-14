@@ -33,11 +33,11 @@ pub struct NodesDocument {
     pub external: IndexMap<NodeKey, ExternalNode>,
 
     #[serde(default)]
-    pub nodes: IndexMap<NodeKey, Node>,
+    pub nodes: IndexMap<NodeKey, NodeDoc>,
 }
 
 impl NodesDocument {
-    pub fn expand_internal_replicas(&self) -> impl Iterator<Item = (NodeKey, Node)> + '_ {
+    pub fn expand_internal_replicas(&self) -> impl Iterator<Item = (NodeKey, NodeDoc)> + '_ {
         self.nodes.iter().flat_map(|(doc_node_key, doc_node)| {
             let num_replicas = doc_node.replicas.map(|r| r.get()).unwrap_or(1);
 
@@ -172,10 +172,9 @@ where
     labels.serialize(serializer)
 }
 
-// TODO: could use some more clarification on some of these fields
-/// A node in the environment
+/// A node in the environment spec
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
-pub struct Node {
+pub struct NodeDoc {
     /// When true, the node will be started
     #[serde(default = "please_be_online")]
     pub online: bool,
@@ -221,7 +220,7 @@ pub struct Node {
     pub binary: Option<InternedId>,
 }
 
-impl Node {
+impl NodeDoc {
     pub fn into_state(&self, node_key: NodeKey) -> NodeState {
         NodeState {
             node_key,

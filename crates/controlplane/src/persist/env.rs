@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use bimap::BiMap;
-use dashmap::DashMap;
 use snops_common::{
     schema::cannon::{sink::TxSink, source::TxSource},
     state::{CannonId, EnvId, NetworkId, NodeKey, StorageId, TransactionSendState},
@@ -9,12 +7,11 @@ use snops_common::{
 use tokio::sync::Semaphore;
 
 use super::prelude::*;
-use super::PersistNode;
 use crate::{
     cannon::tracker::TransactionTracker,
     env::{
         error::{EnvError, PrepareError},
-        prepare_cannons, EnvNodeState, EnvPeer, Environment,
+        prepare_cannons, EnvNode, Environment,
     },
     state::GlobalState,
 };
@@ -22,7 +19,7 @@ use crate::{
 #[derive(Clone)]
 pub struct PersistEnvFormatHeader {
     version: u8,
-    nodes: DataHeaderOf<PersistNode>,
+    nodes: DataHeaderOf<EnvNode>,
     tx_source: DataHeaderOf<TxSource>,
     tx_sink: DataHeaderOf<TxSink>,
     network: DataHeaderOf<NetworkId>,
@@ -33,7 +30,7 @@ pub struct PersistEnv {
     pub storage_id: StorageId,
     pub network: NetworkId,
     /// List of nodes and their states or external node info
-    pub nodes: Vec<(NodeKey, PersistNode)>,
+    pub nodes: Vec<(NodeKey, EnvNode)>,
     /// Loaded cannon configs in this env
     pub cannons: Vec<(CannonId, TxSource, TxSink)>,
 }
@@ -41,29 +38,9 @@ pub struct PersistEnv {
 impl From<&Environment> for PersistEnv {
     fn from(value: &Environment) -> Self {
         let nodes = value
-            .node_states
+            .nodes
             .iter()
-            .filter_map(|entry| {
-                let key = entry.key();
-                let agent_index = value.node_peers.get_by_left(key).and_then(|v| {
-                    if let EnvPeer::Internal(a) = v {
-                        Some(a)
-                    } else {
-                        None
-                    }
-                });
-                match entry.value() {
-                    EnvNodeState::Internal(n) => agent_index.map(|agent| {
-                        (
-                            key.clone(),
-                            PersistNode::Internal(*agent, Box::new(n.clone())),
-                        )
-                    }),
-                    EnvNodeState::External(n) => {
-                        Some((key.clone(), PersistNode::External(n.clone())))
-                    }
-                }
-            })
+            .map(|ent| (ent.key().clone(), ent.value().clone()))
             .collect();
 
         PersistEnv {
@@ -91,20 +68,7 @@ impl PersistEnv {
             .get(&(self.network, self.storage_id))
             .ok_or(PrepareError::MissingStorage)?;
 
-        let mut node_map = BiMap::default();
-        let initial_nodes = DashMap::default();
-        for (key, v) in self.nodes {
-            match v {
-                PersistNode::Internal(agent, n) => {
-                    node_map.insert(key.clone(), EnvPeer::Internal(agent));
-                    initial_nodes.insert(key, EnvNodeState::Internal(*n));
-                }
-                PersistNode::External(n) => {
-                    node_map.insert(key.clone(), EnvPeer::External(key.clone()));
-                    initial_nodes.insert(key, EnvNodeState::External(n));
-                }
-            }
-        }
+        let nodes = self.nodes.into_iter().collect();
 
         let compute_aot_bin = storage.resolve_compute_binary(&state).await?;
 
@@ -142,8 +106,7 @@ impl PersistEnv {
             id: self.id,
             network: self.network,
             storage: storage.clone(),
-            node_peers: node_map,
-            node_states: initial_nodes,
+            nodes,
             sinks,
             cannons,
         })
@@ -197,7 +160,7 @@ impl DataFormat for PersistEnv {
     type Header = PersistEnvFormatHeader;
     const LATEST_HEADER: Self::Header = PersistEnvFormatHeader {
         version: 1,
-        nodes: PersistNode::LATEST_HEADER,
+        nodes: EnvNode::LATEST_HEADER,
         tx_source: TxSource::LATEST_HEADER,
         tx_sink: TxSink::LATEST_HEADER,
         network: NetworkId::LATEST_HEADER,
@@ -258,8 +221,9 @@ mod tests {
         state::{InternedId, NetworkId},
     };
 
-    use crate::persist::{
-        PersistEnv, PersistEnvFormatHeader, PersistNode, PersistNodeFormatHeader,
+    use crate::{
+        env::EnvNode,
+        persist::{EnvNodeStateFormatHeader, PersistEnv, PersistEnvFormatHeader},
     };
 
     macro_rules! case {
@@ -289,8 +253,8 @@ mod tests {
         [
             PersistEnvFormatHeader::LATEST_HEADER.to_byte_vec()?,
             PersistEnv::LATEST_HEADER.version.to_byte_vec()?,
-            PersistNodeFormatHeader::LATEST_HEADER.to_byte_vec()?,
-            PersistNode::LATEST_HEADER.to_byte_vec()?,
+            EnvNodeStateFormatHeader::LATEST_HEADER.to_byte_vec()?,
+            EnvNode::LATEST_HEADER.to_byte_vec()?,
             TxSourceFormatHeader::LATEST_HEADER.to_byte_vec()?,
             TxSource::LATEST_HEADER.to_byte_vec()?,
             TxSinkFormatHeader::LATEST_HEADER.to_byte_vec()?,
@@ -315,7 +279,7 @@ mod tests {
             PersistEnv::LATEST_HEADER.to_byte_vec()?,
             InternedId::from_str("foo")?.to_byte_vec()?,
             InternedId::from_str("bar")?.to_byte_vec()?,
-            Vec::<(String, PersistNode)>::new().to_byte_vec()?,
+            Vec::<(String, EnvNode)>::new().to_byte_vec()?,
             Vec::<(InternedId, TxSource, TxSink)>::new().to_byte_vec()?,
             NetworkId::default().to_byte_vec()?,
         ]

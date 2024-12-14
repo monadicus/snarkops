@@ -12,7 +12,7 @@ use snops_common::{
     state::{AgentId, NodeKey},
 };
 
-use super::{DelegationError, EnvNodeState};
+use super::{DelegationError, EnvNode};
 use crate::state::{Agent, AgentClient, Busy, GlobalState};
 
 pub struct AgentMapping {
@@ -113,15 +113,12 @@ pub fn get_agent_mappings(
 }
 
 /// Get a list of unique labels given a node config
-pub fn labels_from_nodes(nodes: &IndexMap<NodeKey, EnvNodeState>) -> Vec<Spur> {
+pub fn labels_from_nodes(nodes: &IndexMap<NodeKey, EnvNode>) -> Vec<Spur> {
     let mut labels = HashSet::new();
 
     for node in nodes.values() {
-        match node {
-            EnvNodeState::Internal(n) => {
-                labels.extend(&n.labels);
-            }
-            EnvNodeState::External(_) => {}
+        if let EnvNode::Internal { node: n, .. } = node {
+            labels.extend(&n.labels);
         }
     }
 
@@ -167,7 +164,7 @@ pub fn find_compute_agent(
 /// with an agent in parallel
 pub fn pair_with_nodes(
     agents: Vec<AgentMapping>,
-    nodes: &IndexMap<NodeKey, EnvNodeState>,
+    nodes: &IndexMap<NodeKey, EnvNode>,
     labels: &[Spur],
 ) -> Result<impl Iterator<Item = (NodeKey, AgentId, Arc<Busy>)>, Vec<DelegationError>> {
     // errors that occurred while pairing nodes with agents
@@ -181,11 +178,11 @@ pub fn pair_with_nodes(
         // filter out external nodes
         // split into nodes that want specific agents and nodes that want specific labels
         .filter_map(|(key, env_node)| match env_node {
-            EnvNodeState::Internal(n) => match n.agent {
+            EnvNode::Internal { node: n, .. } => match n.agent {
                 Some(agent) => Some((Some((key, agent)), None)),
                 None => Some((None, Some((key, n.mask(key, labels))))),
             },
-            EnvNodeState::External(_) => None,
+            EnvNode::External(_) => None,
         })
         // unzip and filter out the Nones
         .fold((vec![], vec![]), |(mut vec_a, mut vec_b), (a, b)| {

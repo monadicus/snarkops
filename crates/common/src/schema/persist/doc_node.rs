@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 
 use lasso::Spur;
 
-use crate::schema::nodes::{ExternalNode, Node};
+use crate::schema::nodes::{ExternalNode, NodeDoc};
 use crate::{
     format::{
         DataFormat, DataFormatReader, DataFormatWriter, DataHeaderOf, DataReadError, DataWriteError,
@@ -90,7 +90,7 @@ impl DataFormat for NodeFormatHeader {
     }
 }
 
-impl DataFormat for Node {
+impl DataFormat for NodeDoc {
     type Header = NodeFormatHeader;
     const LATEST_HEADER: Self::Header = NodeFormatHeader {
         key_source: KeySource::LATEST_HEADER,
@@ -136,7 +136,7 @@ impl DataFormat for Node {
             None
         };
 
-        Ok(Node {
+        Ok(NodeDoc {
             online,
             replicas: replicas.and_then(NonZeroUsize::new),
             key,
