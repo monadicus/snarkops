@@ -53,6 +53,12 @@ agents:
   podAnnotations: *podAnnotations
   podLabels: *podLabels
 
+  # TODO: support secrets storage
+  # TODO: support custom environment variables
+
+  # Agents can also receive volumes, nodeSelector, and affinity.
+  # This is helpful if you want to run agents on specific nodes.
+
 compute:
   image: *image
   service: *service
@@ -74,3 +80,8 @@ compute:
   imagePullSecrets: *imagePullSecrets
   podAnnotations: *podAnnotations
   podLabels: *podLabels
+
+  # Compute agents can also take volumes & volumeMounts (just like agents)
+  # as well as nodeSelector and affinity.
+  # This is so they can be configured to exist on specific nodes with GPU support,
+  # or other specific requirements.
