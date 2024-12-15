@@ -23,7 +23,7 @@ use snarkvm::{
 use snops_checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::state::{snarkos_status::SnarkOSStatus, NodeType};
 
-use crate::{cli::ReloadHandler, Account, Address, DbLedger, Key, Network};
+use crate::{cli::ReloadHandler, key::OptionalKey, Account, Address, DbLedger, Network};
 
 mod metrics;
 mod rpc;
@@ -45,7 +45,7 @@ pub struct Runner<N: Network> {
     pub node_type: NodeType,
 
     #[clap(flatten)]
-    pub key: Key<N>,
+    pub key: OptionalKey<N>,
 
     /// Specify the IP(v4 or v6) address to bind to.
     #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
