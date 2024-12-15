@@ -311,12 +311,8 @@ impl Environment {
 
         // prepare the storage after all the other documents
         // as it depends on the network id
-        let storage = LoadedStorage::from_doc(
-            *storage_doc.ok_or(PrepareError::MissingStorage)?,
-            &state,
-            network,
-        )
-        .await?;
+        let storage =
+            LoadedStorage::from_doc(*storage_doc.unwrap_or_default(), &state, network).await?;
 
         let storage_id = storage.id;
 

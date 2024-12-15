@@ -180,8 +180,10 @@ pub struct NodeDoc {
     pub online: bool,
     /// When specified, creates a group of nodes, all with the same
     /// configuration.
+    #[serde(default)]
     pub replicas: Option<NonZeroUsize>,
     /// The private key to start the node with.
+    #[serde(default)]
     pub key: Option<KeySource>,
     /// Height of ledger to inherit.
     ///

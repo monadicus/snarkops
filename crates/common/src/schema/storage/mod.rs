@@ -14,14 +14,16 @@ pub use binaries::*;
 pub const STORAGE_DIR: &str = "storage";
 
 /// A storage document. Explains how storage for a test should be set up.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct StorageDocument {
     pub id: StorageId,
     /// Regen version
     #[serde(default)]
     pub regen: u16,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub description: Option<String>,
     /// Tell nodes not to re-download the storage data.
     #[serde(default)]
