@@ -10,16 +10,14 @@ use axum::{
 use http::{StatusCode, Uri};
 use snops_common::{
     binaries::{BinaryEntry, BinarySource},
+    schema::storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY},
     state::{id_or_none, InternedId, NetworkId},
 };
 use tower::Service;
 use tower_http::services::ServeFile;
 
 use crate::{
-    schema::{
-        error::StorageError,
-        storage::{DEFAULT_AGENT_BINARY, DEFAULT_AOT_BINARY},
-    },
+    apply::error::StorageError,
     server::error::ServerError,
     state::{AppState, GlobalState},
     unwrap_or_bad_request, unwrap_or_not_found,

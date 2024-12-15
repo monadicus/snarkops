@@ -1,6 +1,6 @@
 use std::{
     net::{IpAddr, SocketAddr},
-    sync::{Arc, Weak},
+    sync::Arc,
     time::Instant,
 };
 
@@ -19,13 +19,10 @@ use snops_common::{
     },
     INTERN,
 };
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use super::{AgentClient, AgentFlags, PendingAgentReconcile};
 use crate::server::jwt::{Claims, JWT_SECRET};
-
-#[derive(Debug)]
-/// Apparently `const* ()` is not send, so this is a workaround
-pub struct Busy;
 
 /// An active agent, known by the control plane.
 #[derive(Debug)]
@@ -40,9 +37,9 @@ pub struct Agent {
     pub(crate) flags: AgentFlags,
 
     /// Count of how many executions this agent is currently working on
-    pub(crate) compute_claim: Arc<Busy>,
+    pub(crate) compute_claim: Arc<Semaphore>,
     /// Count of how many environments this agent is pending for
-    pub(crate) env_claim: Arc<Busy>,
+    pub(crate) env_claim: Arc<Semaphore>,
 
     /// The external address of the agent, along with its local addresses.
     pub(crate) ports: Option<PortConfig>,
@@ -54,8 +51,8 @@ impl Agent {
         Self {
             id,
             flags,
-            compute_claim: Arc::new(Busy),
-            env_claim: Arc::new(Busy),
+            compute_claim: Arc::new(Semaphore::new(1)),
+            env_claim: Arc::new(Semaphore::new(1)),
             claims: Claims {
                 id,
                 nonce: ChaChaRng::from_entropy().gen(),
@@ -78,8 +75,8 @@ impl Agent {
         Self {
             id: claims.id,
             flags,
-            compute_claim: Arc::new(Busy),
-            env_claim: Arc::new(Busy),
+            compute_claim: Arc::new(Semaphore::new(1)),
+            env_claim: Arc::new(Semaphore::new(1)),
             claims,
             connection: AgentConnection::Offline {
                 since: Instant::now(),
@@ -153,24 +150,24 @@ impl Agent {
     }
 
     /// Mark an agent as busy. This is used to prevent multiple authorizations
-    pub fn make_busy(&self) -> Arc<Busy> {
-        Arc::clone(&self.compute_claim)
+    pub fn make_busy(&self) -> Option<OwnedSemaphorePermit> {
+        self.compute_claim.clone().try_acquire_owned().ok()
     }
 
     /// Mark an agent as busy. This is used to prevent multiple authorizations
-    pub fn get_compute_claim(&self) -> Weak<Busy> {
-        Arc::downgrade(&self.compute_claim)
+    pub fn get_compute_claim(&self) -> Arc<Semaphore> {
+        Arc::clone(&self.compute_claim)
     }
 
     /// Check if an agent is owned by an environment
     pub fn is_env_claimed(&self) -> bool {
-        Arc::strong_count(&self.env_claim) > 1
+        self.env_claim.available_permits() == 0
     }
 
     /// Get a weak reference to the env claim, which can be used to later lock
     /// this agent for an environment.
-    pub fn get_env_claim(&self) -> Weak<Busy> {
-        Arc::downgrade(&self.env_claim)
+    pub fn get_env_claim(&self) -> Arc<Semaphore> {
+        Arc::clone(&self.env_claim)
     }
 
     pub fn env(&self) -> Option<EnvId> {

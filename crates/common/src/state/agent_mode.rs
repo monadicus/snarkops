@@ -5,20 +5,35 @@ use std::fmt::Display;
 )]
 pub struct AgentModeOptions {
     /// Enable running a validator node
-    #[arg(long)]
+    #[arg(long, env = "SNOPS_AGENT_VALIDATOR")]
     pub validator: bool,
 
     /// Enable running a prover node
-    #[arg(long)]
+    #[arg(long, env = "SNOPS_AGENT_PROVER")]
     pub prover: bool,
 
     /// Enable running a client node
-    #[arg(long)]
+    #[arg(long, env = "SNOPS_AGENT_CLIENT")]
     pub client: bool,
 
     /// Enable functioning as a compute target when inventoried
-    #[arg(long)]
+    #[arg(long, env = "SNOPS_AGENT_COMPUTE")]
     pub compute: bool,
+}
+
+impl AgentModeOptions {
+    /// Enable all modes when none are specified
+    pub fn all_when_none(&mut self) -> bool {
+        if self.validator || self.prover || self.client || self.compute {
+            return false;
+        }
+
+        self.validator = true;
+        self.prover = true;
+        self.client = true;
+        self.compute = true;
+        true
+    }
 }
 
 impl From<AgentModeOptions> for u8 {

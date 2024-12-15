@@ -1,0 +1,7 @@
+apiVersion: v2
+name: snops-agents
+description: A Helm chart for deploying snarkops agents
+type: application
+version: 0.0.0
+
+appVersion: "latest"

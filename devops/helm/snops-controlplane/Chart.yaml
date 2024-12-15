@@ -1,0 +1,7 @@
+apiVersion: v2
+name: snops-controlplane
+description: A Helm chart for deploying the snarkops control plane
+type: application
+version: 0.0.0
+
+appVersion: "latest"

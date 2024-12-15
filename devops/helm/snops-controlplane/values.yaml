@@ -1,0 +1,41 @@
+# Default values for helm.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+imagePullSecrets: []
+
+podAnnotations: {}
+podLabels: {}
+
+service:
+  # referenced by agents
+  name: snops-service
+  type: ClusterIP # or NodePort
+  port: 1234
+
+image:
+  repository: snops
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+resources: {}
+# limits:
+#   cpu: 200m
+#   memory: 500Mi
+# requests:
+#   cpu: 200m
+#   memory: 500Mi
+
+volumes: []
+nodeSelector: {}
+affinity: {}
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+nameOverride: ""
+fullnameOverride: ""

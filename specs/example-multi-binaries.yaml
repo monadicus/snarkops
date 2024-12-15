@@ -1,6 +1,6 @@
 # Example test spec demonstrating multi-binary support
 ---
-version: storage.snarkos.testing.monadic.us/v1
+kind: snops/storage/v1
 
 id: example-binary
 name: example-binary
@@ -38,7 +38,7 @@ binaries:
   example_http_short: https://example.com/example_file
 
 ---
-version: nodes.snarkos.testing.monadic.us/v1
+kind: snops/nodes/v1
 name: example-storage
 
 nodes:

@@ -12,11 +12,11 @@ use url::Url;
 
 #[derive(Debug, Parser)]
 pub struct Cli {
-    #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    #[clap(long = "bind", env="SNOPS_IP", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
 
     /// Control plane server port
-    #[arg(long, default_value_t = 1234)]
+    #[arg(long, env = "SNOPS_PORT", default_value_t = 1234)]
     pub port: u16,
 
     // TODO: store services in a file config or something?
@@ -29,19 +29,19 @@ pub struct Cli {
     #[arg(long, env = "LOKI_URL")]
     pub loki: Option<Url>,
 
-    #[arg(long, default_value_t = PrometheusLocation::Docker)]
+    #[arg(long, env="PROMETHEUS_LOCATION", default_value_t = PrometheusLocation::Docker)]
     pub prometheus_location: PrometheusLocation,
 
     /// Path to the directory containing the stored data
-    #[arg(long, default_value = "snops-control-data")]
+    #[arg(long, env = "SNOPS_DATA_DIR", default_value = "snops-control-data")]
     pub path: PathBuf,
 
-    #[arg(long)]
     /// Hostname to advertise to the control plane, used when resolving the
     /// control plane's address for external cannons can be an external IP
     /// or FQDN, will have the port appended
     ///
     /// must contain http:// or https://
+    #[arg(long, env = "SNOPS_HOSTNAME")]
     pub hostname: Option<String>,
 
     #[cfg(any(feature = "clipages", feature = "mangen"))]

@@ -3,19 +3,19 @@ use crate::format::{DataFormat, DataFormatReader};
 #[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize, clap::Parser, Eq, PartialEq)]
 pub struct PortConfig {
     /// Specify the IP address and port for the node server
-    #[clap(long = "node", default_value_t = 4130)]
+    #[clap(long = "node", env = "SNARKOS_PORT_NODE", default_value_t = 4130)]
     pub node: u16,
 
     /// Specify the IP address and port for the BFT
-    #[clap(long = "bft", default_value_t = 5000)]
+    #[clap(long = "bft", env = "SNARKOS_PORT_BFT", default_value_t = 5000)]
     pub bft: u16,
 
     /// Specify the IP address and port for the REST server
-    #[clap(long = "rest", default_value_t = 3030)]
+    #[clap(long = "rest", env = "SNARKOS_PORT_REST", default_value_t = 3030)]
     pub rest: u16,
 
     /// Specify the port for the metrics
-    #[clap(long = "metrics", default_value_t = 9000)]
+    #[clap(long = "metrics", env = "SNARKOS_PORT_METRICS", default_value_t = 9000)]
     pub metrics: u16,
 }
 

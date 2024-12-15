@@ -224,3 +224,59 @@ impl KeySource {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::key_source::KeySource;
+    use crate::key_source::ACCOUNTS_KEY_ID;
+
+    #[test]
+    fn test_key_source_deserialization() {
+        assert_eq!(
+            serde_yaml::from_str::<KeySource>("committee.0").unwrap(),
+            KeySource::Committee(Some(0))
+        );
+        assert_eq!(
+            serde_yaml::from_str::<KeySource>("committee.100").unwrap(),
+            KeySource::Committee(Some(100))
+        );
+        assert_eq!(
+            serde_yaml::from_str::<KeySource>("committee.$").unwrap(),
+            KeySource::Committee(None)
+        );
+
+        assert_eq!(
+            serde_yaml::from_str::<KeySource>("accounts.0").unwrap(),
+            KeySource::Named(*ACCOUNTS_KEY_ID, Some(0))
+        );
+        assert_eq!(
+            serde_yaml::from_str::<KeySource>("accounts.$").unwrap(),
+            KeySource::Named(*ACCOUNTS_KEY_ID, None)
+        );
+
+        assert_eq!(
+            serde_yaml::from_str::<KeySource>(
+                "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH"
+            )
+            .unwrap(),
+            KeySource::PrivateKeyLiteral(
+                "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH".to_string()
+            )
+        );
+
+        assert_eq!(
+            serde_yaml::from_str::<KeySource>(
+                "aleo1ekc03f2vwemtpksckhrcl7mv4t7sm6ykldwldvvlysqt2my9zygqfhndya"
+            )
+            .unwrap(),
+            KeySource::PublicKeyLiteral(
+                "aleo1ekc03f2vwemtpksckhrcl7mv4t7sm6ykldwldvvlysqt2my9zygqfhndya".to_string()
+            )
+        );
+
+        assert!(serde_yaml::from_str::<KeySource>("committee.-100").is_err(),);
+        assert!(serde_yaml::from_str::<KeySource>("accounts.-100").is_err(),);
+        assert!(serde_yaml::from_str::<KeySource>("accounts._").is_err(),);
+        assert!(serde_yaml::from_str::<KeySource>("accounts.*").is_err(),);
+    }
+}

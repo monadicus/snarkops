@@ -15,20 +15,16 @@ use snops_common::{
     lasso::Spur,
     node_targets::NodeTargets,
     rpc::control::agent::AgentMetric,
+    schema::cannon::source::QueryTarget,
     state::{id_or_none, AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey},
 };
 use tarpc::context;
 
 use super::{actions, error::ServerError, event_ws, models::AgentStatusResponse};
 use crate::{
-    cannon::{router::redirect_cannon_routes, source::QueryTarget},
-    make_env_filter,
-    state::AppState,
+    cannon::router::redirect_cannon_routes, env::EnvNode, make_env_filter, state::AppState,
 };
-use crate::{
-    env::{EnvPeer, Environment},
-    state::AgentFlags,
-};
+use crate::{env::Environment, state::AgentFlags};
 
 #[macro_export]
 macro_rules! unwrap_or_not_found {
@@ -52,6 +48,8 @@ macro_rules! unwrap_or_bad_request {
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .route("/readyz", get(|| async { Json(json!({ "status": "ok" })) }))
+        .route("/livez", get(|| async { Json(json!({ "status": "ok" })) }))
         .route("/events", get(event_ws::event_ws_handler))
         .route("/log/:level", post(set_log_level))
         .route("/agents", get(get_agents))
@@ -494,7 +492,7 @@ async fn get_mappings(
 struct FindAgents {
     mode: AgentModeOptions,
     env: Option<EnvId>,
-    #[serde(default, deserialize_with = "crate::schema::nodes::deser_label")]
+    #[serde(default, deserialize_with = "snops_common::schema::nodes::deser_label")]
     labels: IndexSet<Spur>,
     all: bool,
     include_offline: bool,
@@ -553,19 +551,18 @@ async fn get_env_topology(Path(env_id): Path<String>, State(state): State<AppSta
     let mut internal = HashMap::new();
     let mut external = HashMap::new();
 
-    for (nk, peer) in env.node_peers.iter() {
-        let Some(node_state) = env.node_states.get(nk) else {
-            continue;
-        };
-        match peer {
-            EnvPeer::Internal(id) => {
-                internal.insert(*id, node_state);
-            }
-            EnvPeer::External(ip) => {
-                external.insert(
-                    nk.to_string(),
-                    json!({"ip": ip.to_string(), "ports": node_state}),
+    for ent in env.nodes.iter() {
+        let nk = ent.key();
+        match ent.value() {
+            EnvNode::Internal { agent: id, node } => {
+                internal.insert(
+                    id.map(|id| id.to_string())
+                        .unwrap_or_else(|| format!("{nk} pending agent")),
+                    node.clone(),
                 );
+            }
+            EnvNode::External(ip) => {
+                external.insert(nk.to_string(), json!(ip));
             }
         }
     }
@@ -582,16 +579,22 @@ async fn get_env_topology_resolved(
 
     let mut resolved = HashMap::new();
 
-    for (_, peer) in env.node_peers.iter() {
-        if let EnvPeer::Internal(id) = peer {
-            let Some(agent) = state.pool.get(id) else {
-                continue;
-            };
-            match agent.state().clone() {
-                AgentState::Inventory => continue,
-                AgentState::Node(_, state) => {
-                    resolved.insert(*id, state);
-                }
+    for ent in env.nodes.iter() {
+        let EnvNode::Internal {
+            agent: Some(id), ..
+        } = ent.value()
+        else {
+            continue;
+        };
+
+        let Some(agent) = state.pool.get(id) else {
+            continue;
+        };
+
+        match agent.state() {
+            AgentState::Inventory => continue,
+            AgentState::Node(_, state) => {
+                resolved.insert(*id, state.clone());
             }
         }
     }
@@ -605,10 +608,10 @@ async fn get_env_agents(Path(env_id): Path<String>, State(state): State<AppState
     let env = unwrap_or_not_found!("environment not found", state.get_env(env_id));
 
     Json(
-        env.node_peers
+        env.nodes
             .iter()
-            .filter_map(|(k, v)| match v {
-                EnvPeer::Internal(id) => Some((k, *id)),
+            .filter_map(|ent| match ent.value() {
+                EnvNode::Internal { agent, .. } => Some((ent.key().clone(), *agent)),
                 _ => None,
             })
             .collect::<HashMap<_, _>>(),
@@ -641,7 +644,7 @@ async fn post_env_apply(
     State(state): State<AppState>,
     body: String,
 ) -> Response {
-    let documents = match Environment::deserialize(&body) {
+    let documents = match snops_common::schema::deserialize_docs(&body) {
         Ok(documents) => documents,
         Err(e) => return ServerError::from(e).into_response(),
     };

@@ -3,16 +3,16 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 use chrono::{TimeDelta, Utc};
 use futures_util::future;
 use serde_json::Value;
-use snops_common::state::{EnvId, LatestBlockInfo, NetworkId, NodeKey};
+use snops_common::{
+    schema::nodes::ExternalNode,
+    state::{EnvId, LatestBlockInfo, NetworkId, NodeKey},
+};
 use tokio::{sync::mpsc, time::timeout};
 
 use super::{snarkos_request, AgentClient, GlobalState};
-use crate::{
-    env::{
-        cache::{ABlockHash, ATransactionId, MAX_BLOCK_RANGE},
-        EnvNodeState, EnvPeer,
-    },
-    schema::nodes::ExternalNode,
+use crate::env::{
+    cache::{ABlockHash, ATransactionId, MAX_BLOCK_RANGE},
+    EnvNode,
 };
 
 type ExtPeerPair = (NodeKey, SocketAddr);
@@ -233,11 +233,15 @@ pub fn online_agents_above_height(
         return Vec::new();
     };
 
-    env.node_peers
+    env.nodes
         .iter()
-        .filter_map(|(_, peer)| {
+        .filter_map(|node| {
             // ensure peer is internal
-            let EnvPeer::Internal(agent_id) = peer else {
+            let EnvNode::Internal {
+                agent: Some(agent_id),
+                ..
+            } = node.value()
+            else {
                 return None;
             };
             let agent = state.pool.get(agent_id)?;
@@ -374,7 +378,7 @@ fn get_all_external_peers(state: &GlobalState) -> Vec<((EnvId, NetworkId), Vec<E
                 // environment meta required for requests and cache updates
                 (*e.key(), e.network),
                 // iterate the environment's nodes
-                e.node_states
+                e.nodes
                     .iter()
                     .filter_map(|n| {
                         // skip unresponsive peers
@@ -384,7 +388,7 @@ fn get_all_external_peers(state: &GlobalState) -> Vec<((EnvId, NetworkId), Vec<E
 
                         match n.value() {
                             // filter by external with rest addresses
-                            EnvNodeState::External(ExternalNode {
+                            EnvNode::External(ExternalNode {
                                 rest: Some(addr), ..
                             }) => Some((n.key().clone(), *addr)),
                             _ => None,

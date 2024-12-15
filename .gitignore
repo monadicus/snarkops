@@ -17,3 +17,8 @@ book
 # report files
 report.html
 report.json
+
+# Helm chart files
+*.tgz
+*.tar.gz
+Chart.lock

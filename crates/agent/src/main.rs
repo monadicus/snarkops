@@ -7,6 +7,7 @@ mod net;
 mod reconcile;
 mod rpc;
 mod server;
+mod service;
 mod state;
 mod transfers;
 
@@ -44,7 +45,12 @@ async fn main() {
 
     let (_guard, reload_handler) = init_logging();
 
-    let args = Cli::parse();
+    let mut args = Cli::parse();
+    if args.modes.all_when_none() {
+        info!(
+            "No node modes specified, defaulting to all modes (client, validator, prover, compute)"
+        );
+    }
 
     let (internal_addrs, external_addr) = args.addrs();
 
@@ -67,6 +73,17 @@ async fn main() {
     let agent_rpc_listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
         .await
         .expect("failed to bind status server");
+
+    // Setup the status server socket
+    let agent_service_listener = if let Some(service_port) = args.service_port {
+        Some(
+            tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, service_port))
+                .await
+                .expect("failed to bind status server"),
+        )
+    } else {
+        None
+    };
     let agent_rpc_port = agent_rpc_listener
         .local_addr()
         .expect("failed to get status server port")
@@ -132,6 +149,18 @@ async fn main() {
         }
     });
 
+    // Start the status server if enabled
+    if let Some(listener) = agent_service_listener {
+        let service_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            info!("Starting service API server on port {agent_rpc_port}");
+            if let Err(e) = service::start(listener, service_state).await {
+                error!("service API server crashed: {e:?}");
+                std::process::exit(1);
+            }
+        });
+    }
+
     // Get the interrupt signals to break the stream connection
     let mut interrupt = Signals::term_or_interrupt();
 
@@ -142,7 +171,7 @@ async fn main() {
             client::ws_connection(req, Arc::clone(&state2)).await;
             // Remove the control client
             state2.client.write().await.take();
-            info!("Attempting to reconnect to the control plane...");
+            tracing::trace!("Attempting to reconnect to the control plane...");
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });

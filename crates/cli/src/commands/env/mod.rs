@@ -305,6 +305,11 @@ pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Res
     let mut node_map: HashMap<NodeKey, AgentId> = res.json().await?;
     println!("{}", serde_json::to_string_pretty(&node_map)?);
 
+    // No agents to wait for
+    if node_map.is_empty() {
+        return Ok(());
+    }
+
     let filter = node_map
         .values()
         .copied()

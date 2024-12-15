@@ -168,6 +168,7 @@ impl KeyState {
     }
 }
 
+/// Peers sent to the agent with resolved addresses or port numbers
 #[derive(
     Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
