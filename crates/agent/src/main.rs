@@ -171,7 +171,7 @@ async fn main() {
             client::ws_connection(req, Arc::clone(&state2)).await;
             // Remove the control client
             state2.client.write().await.take();
-            info!("Attempting to reconnect to the control plane...");
+            tracing::trace!("Attempting to reconnect to the control plane...");
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });
