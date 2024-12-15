@@ -108,7 +108,7 @@ impl<'de> Deserialize<'de> for NodeTargets {
 
 lazy_static! {
     static ref NODE_TARGET_REGEX: Regex =
-        Regex::new(r"^(?P<ty>\*|any|client|validator|prover)\/(?P<id>[A-Za-z0-9\-*]+)(?:@(?P<ns>[A-Za-z0-9\-*]+))?$")
+        Regex::new(r"^(?P<ty>\*|any|client|validator|prover)(?:\/(?P<id>[A-Za-z0-9\-*]+))?(?:@(?P<ns>[A-Za-z0-9\-*]+))?$")
             .unwrap();
 }
 
@@ -192,10 +192,13 @@ impl FromStr for NodeTarget {
         };
 
         // match the node ID
-        let id = match &captures["id"] {
+        let id = match captures
+            .name("id")
+            .map(|id| id.as_str())
+            .unwrap_or_default()
+        {
             // full wildcard
-            "*" => NodeTargetId::All,
-            "any" => NodeTargetId::All,
+            "*" | "any" => NodeTargetId::All,
 
             // partial wildcard
             id if id.contains('*') => NodeTargetId::WildcardPattern(WildMatch::new(id)),
@@ -205,17 +208,16 @@ impl FromStr for NodeTarget {
         };
 
         // match the namespace
-        let ns = match captures.name("ns") {
+        let ns = match captures.name("ns").map(|id| id.as_str()) {
             // full wildcard
-            Some(id) if id.as_str() == "*" => NodeTargetNamespace::All,
-            Some(id) if id.as_str() == "any" => NodeTargetNamespace::All,
+            Some("*") | Some("any") => NodeTargetNamespace::All,
 
             // local; either explicitly stated, or empty
-            Some(id) if id.as_str() == "local" => NodeTargetNamespace::Local,
+            Some("local") => NodeTargetNamespace::Local,
             None => NodeTargetNamespace::Local,
 
             // literal namespace
-            Some(id) => NodeTargetNamespace::Literal(id.as_str().into()),
+            Some(id) => NodeTargetNamespace::Literal(id.to_string()),
         };
 
         Ok(Self { ty, id, ns })
@@ -452,5 +454,68 @@ impl NodeTargets {
             NodeTargets::One(target) => target.matches(key),
             NodeTargets::Many(targets) => targets.iter().any(|target| target.matches(key)),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use wildmatch::WildMatch;
+
+    use crate::{
+        node_targets::{
+            NodeTarget, NodeTargetId, NodeTargetNamespace, NodeTargetType, NodeTargets,
+        },
+        state::NodeType::*,
+    };
+
+    #[test]
+    fn test_node_key_serde() {
+        assert_eq!(
+            serde_yaml::from_str::<NodeTargets>("client").unwrap(),
+            NodeTargets::One(NodeTarget {
+                ty: NodeTargetType::One(Client),
+                id: NodeTargetId::Literal("".to_string()),
+                ns: NodeTargetNamespace::Local
+            })
+        );
+        assert_eq!(
+            serde_yaml::from_str::<NodeTargets>("validator/foo").unwrap(),
+            NodeTargets::One(NodeTarget {
+                ty: NodeTargetType::One(Validator),
+                id: NodeTargetId::Literal("foo".to_string()),
+                ns: NodeTargetNamespace::Local,
+            })
+        );
+        assert_eq!(
+            serde_yaml::from_str::<NodeTargets>("validator@foo").unwrap(),
+            NodeTargets::One(NodeTarget {
+                ty: NodeTargetType::One(Validator),
+                id: NodeTargetId::Literal("".to_string()),
+                ns: NodeTargetNamespace::Literal("foo".to_string()),
+            })
+        );
+        assert_eq!(
+            serde_yaml::from_str::<NodeTargets>("client/foo@bar").unwrap(),
+            NodeTargets::One(NodeTarget {
+                ty: NodeTargetType::One(Client),
+                id: NodeTargetId::Literal("foo".to_string()),
+                ns: NodeTargetNamespace::Literal("bar".to_string()),
+            })
+        );
+        assert_eq!(
+            serde_yaml::from_str::<NodeTargets>("client/foo-*@bar").unwrap(),
+            NodeTargets::One(NodeTarget {
+                ty: NodeTargetType::One(Client),
+                id: NodeTargetId::WildcardPattern(WildMatch::new("foo-*")),
+                ns: NodeTargetNamespace::Literal("bar".to_string()),
+            })
+        );
+
+        assert!(serde_yaml::from_str::<NodeTargets>("client@").is_err());
+        assert!(serde_yaml::from_str::<NodeTargets>("unknown@").is_err());
+        assert!(serde_yaml::from_str::<NodeTargets>("unknown").is_err());
+        assert!(serde_yaml::from_str::<NodeTargets>("client@@").is_err());
+        assert!(serde_yaml::from_str::<NodeTargets>("validator/!").is_err());
+        assert!(serde_yaml::from_str::<NodeTargets>("client/!").is_err());
     }
 }

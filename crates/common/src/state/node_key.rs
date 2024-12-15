@@ -25,7 +25,10 @@ impl FromStr for NodeKey {
         let ty = NodeType::from_str(&captures["ty"]).unwrap();
 
         // match the node ID
-        let id = String::from(&captures["id"]);
+        let id = captures
+            .name("id")
+            .map(|id| id.as_str().to_string())
+            .unwrap_or_default();
 
         // match the namespace
         let ns = match captures.name("ns") {
@@ -104,5 +107,82 @@ impl DataFormat for NodeKey {
         let ns = reader.read_data(&())?;
 
         Ok(Self { ty, id, ns })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::state::{NodeKey, NodeType::*};
+
+    #[test]
+    fn test_node_key_parse() {
+        use super::NodeKey;
+
+        let key = NodeKey {
+            ty: Client,
+            id: "test".to_string(),
+            ns: None,
+        };
+
+        let s = key.to_string();
+        assert_eq!(s, "client/test");
+
+        let key2 = s.parse::<NodeKey>().unwrap();
+        assert_eq!(key, key2);
+
+        let key = NodeKey {
+            ty: Client,
+            id: "test".to_string(),
+            ns: Some("ns".to_string()),
+        };
+
+        let s = key.to_string();
+        assert_eq!(s, "client/test@ns");
+
+        let key2 = s.parse::<NodeKey>().unwrap();
+        assert_eq!(key, key2);
+    }
+
+    #[test]
+    fn test_node_key_serde() {
+        assert_eq!(
+            serde_yaml::from_str::<NodeKey>("client").unwrap(),
+            NodeKey {
+                ty: Client,
+                id: "".to_string(),
+                ns: None
+            }
+        );
+        assert_eq!(
+            serde_yaml::from_str::<NodeKey>("validator/foo").unwrap(),
+            NodeKey {
+                ty: Validator,
+                id: "foo".to_string(),
+                ns: None
+            }
+        );
+        assert_eq!(
+            serde_yaml::from_str::<NodeKey>("validator@foo").unwrap(),
+            NodeKey {
+                ty: Validator,
+                id: "".to_string(),
+                ns: Some("foo".to_string())
+            }
+        );
+        assert_eq!(
+            serde_yaml::from_str::<NodeKey>("client/foo@bar").unwrap(),
+            NodeKey {
+                ty: Client,
+                id: "foo".to_string(),
+                ns: Some("bar".to_string())
+            }
+        );
+
+        assert!(serde_yaml::from_str::<NodeKey>("client@").is_err());
+        assert!(serde_yaml::from_str::<NodeKey>("unknown@").is_err());
+        assert!(serde_yaml::from_str::<NodeKey>("unknown").is_err());
+        assert!(serde_yaml::from_str::<NodeKey>("client@@").is_err());
+        assert!(serde_yaml::from_str::<NodeKey>("validator/!").is_err());
+        assert!(serde_yaml::from_str::<NodeKey>("client/!").is_err());
     }
 }

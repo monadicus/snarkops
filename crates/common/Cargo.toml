@@ -46,3 +46,4 @@ wildmatch.workspace = true
 [dev-dependencies]
 indexmap = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["io-util", "process"] }
+serde_yaml = { workspace = true }
