@@ -82,7 +82,12 @@ impl LoadedStorage {
         let base = state.storage_path(network, id);
         let version_file = base.join(VERSION_FILE);
 
-        let mut native_genesis = false;
+        // No need to generate if we have a connect url or a genesis block
+        let native_genesis =
+            !(doc.connect.is_some() || doc.generate.as_ref().is_some_and(|c| c.genesis.is_some()));
+        if native_genesis {
+            info!("{id}: using network native genesis");
+        }
 
         // TODO: The dir can be made by a previous run and the aot stuff can fail
         // i.e an empty/incomplete directory can exist and we should check those
@@ -154,8 +159,7 @@ impl LoadedStorage {
 
             match (doc.connect, generation.genesis.as_ref()) {
                 (None, None) => {
-                    native_genesis = true;
-                    info!("{id}: using network native genesis")
+                    // no genesis needed
                 }
                 (Some(ref url), _) => {
                     // downloaded genesis block is not native
@@ -291,13 +295,6 @@ impl LoadedStorage {
                         .await
                         .map_err(|e| StorageError::FailedToGenGenesis(id, e))?;
                 }
-            }
-        } else {
-            // if there is no generation params, then we should use the network's native
-            // genesis
-            if doc.connect.is_none() {
-                native_genesis = true;
-                info!("{id}: using network native genesis")
             }
         }
 
