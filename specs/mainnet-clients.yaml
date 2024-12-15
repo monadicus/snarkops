@@ -1,0 +1,5 @@
+kind: snops/nodes/v1
+network: mainnet
+nodes:
+  client:
+    replicas: 4

@@ -20,13 +20,17 @@ use crate::{
 /// A document describing the node infrastructure for a test.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NodesDocument {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub description: Option<String>,
+
     /// The network to use for all nodes.
     ///
     /// Determines if /mainnet/ or /testnet/ are used in routes.
     ///
     /// Also determines which parameters/genesis block to use
+    #[serde(default)]
     pub network: Option<NetworkId>,
 
     #[serde(default)]

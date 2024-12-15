@@ -18,9 +18,7 @@ name: 4-validators
 network: testnet
 
 nodes:
-  validator/test:
+  validator:
     replicas: 4
     key: committee.$
-    height: 0
     validators: validator/*
-    peers: []
