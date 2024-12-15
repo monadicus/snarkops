@@ -292,6 +292,13 @@ impl LoadedStorage {
                         .map_err(|e| StorageError::FailedToGenGenesis(id, e))?;
                 }
             }
+        } else {
+            // if there is no generation params, then we should use the network's native
+            // genesis
+            if doc.connect.is_none() {
+                native_genesis = true;
+                info!("{id}: using network native genesis")
+            }
         }
 
         let mut accounts = IndexMap::new();
