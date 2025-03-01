@@ -8,7 +8,7 @@ use snops_common::{
 use tokio::{process::Child, select};
 use tracing::{error, info};
 
-use super::{command::NodeCommand, Reconcile};
+use super::{Reconcile, command::NodeCommand};
 use crate::state::NODE_GRACEFUL_SHUTDOWN_TIMEOUT;
 
 /// Information about the current process
@@ -135,7 +135,7 @@ impl ProcessContext {
 /// before sending a SIGKILL (if the childi process has not exited),
 pub struct EndProcessReconciler<'a>(pub &'a mut ProcessContext);
 
-impl<'a> Reconcile<(), ReconcileError> for EndProcessReconciler<'a> {
+impl Reconcile<(), ReconcileError> for EndProcessReconciler<'_> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         if !self.0.is_running() {
             return Ok(ReconcileStatus::default());

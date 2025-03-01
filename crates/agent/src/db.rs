@@ -9,9 +9,9 @@ use indexmap::IndexMap;
 use snops_common::{
     api::AgentEnvInfo,
     db::{
+        Database as DatabaseTrait,
         error::DatabaseError,
         tree::{DbRecords, DbTree},
-        Database as DatabaseTrait,
     },
     format::{DataFormat, DataReadError, DataWriteError, PackedUint},
     state::{AgentId, AgentState, EnvId, HeightRequest},
@@ -123,9 +123,7 @@ impl Database {
     }
 
     pub fn env_info(&self) -> Result<Option<(EnvId, Arc<AgentEnvInfo>)>, DatabaseError> {
-        self.documents
-            .restore(&AgentDbString::EnvInfo)
-            .map_err(DatabaseError::from)
+        self.documents.restore(&AgentDbString::EnvInfo)
     }
 
     pub fn set_env_info(

@@ -19,7 +19,7 @@ use tokio::{process::Command, sync::Mutex, task::AbortHandle};
 use tracing::{error, info, trace};
 use url::Url;
 
-use super::{default_binary, get_genesis_route, DirectoryReconciler, FileReconciler, Reconcile};
+use super::{DirectoryReconciler, FileReconciler, Reconcile, default_binary, get_genesis_route};
 use crate::state::GlobalState;
 
 /// Download a specific binary file needed to run the node
@@ -33,7 +33,7 @@ pub struct BinaryReconciler<'a> {
     pub ok_at: &'a mut Option<Instant>,
 }
 
-impl<'a> Reconcile<(), ReconcileError> for BinaryReconciler<'a> {
+impl Reconcile<(), ReconcileError> for BinaryReconciler<'_> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let BinaryReconciler {
             state,
@@ -123,7 +123,7 @@ pub struct GenesisReconciler<'a> {
     pub ok_at: &'a mut Option<Instant>,
 }
 
-impl<'a> Reconcile<(), ReconcileError> for GenesisReconciler<'a> {
+impl Reconcile<(), ReconcileError> for GenesisReconciler<'_> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let GenesisReconciler {
             state,
@@ -324,7 +324,7 @@ impl LedgerReconciler<'_> {
     }
 }
 
-impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
+impl Reconcile<(), ReconcileError> for LedgerReconciler<'_> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let env_info = self.env_info.clone();
         let target_height = self.target_height;
@@ -474,7 +474,7 @@ impl<'a> Reconcile<(), ReconcileError> for LedgerReconciler<'a> {
 
 pub struct StorageVersionReconciler<'a>(pub &'a Path, pub u16);
 
-impl<'a> Reconcile<(), ReconcileError> for StorageVersionReconciler<'a> {
+impl Reconcile<(), ReconcileError> for StorageVersionReconciler<'_> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         let StorageVersionReconciler(path, version) = self;
 
@@ -493,7 +493,9 @@ impl<'a> Reconcile<(), ReconcileError> for StorageVersionReconciler<'a> {
         if path.exists() {
             // wipe old storage when the version changes
             if version_file_data != Some(*version) {
-                info!("Removing storage directory for version mismatch: local {version_file_data:?} != remote {version:?}");
+                info!(
+                    "Removing storage directory for version mismatch: local {version_file_data:?} != remote {version:?}"
+                );
                 let _ = tokio::fs::remove_dir_all(&path).await;
             } else {
                 // return an empty status if the version is the same

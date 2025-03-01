@@ -42,7 +42,7 @@ pub fn get_genesis_route(endpoint: &str, network: NetworkId, storage_id: Storage
 
 /// This reconciler creates a directory if it does not exist
 pub struct DirectoryReconciler<'a>(pub &'a Path);
-impl<'a> Reconcile<(), ReconcileError> for DirectoryReconciler<'a> {
+impl Reconcile<(), ReconcileError> for DirectoryReconciler<'_> {
     async fn reconcile(&mut self) -> Result<ReconcileStatus<()>, ReconcileError> {
         std::fs::create_dir_all(self.0)
             .map(ReconcileStatus::with)

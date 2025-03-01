@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use promql_parser::{label::Matcher, parser::ast::Expr as PromExpr};
-use serde::{de::Visitor, Deserialize};
+use serde::{Deserialize, de::Visitor};
 
 use super::error::SchemaError;
 
@@ -196,7 +196,7 @@ impl<'de> Deserialize<'de> for PromQuery {
     {
         struct PromQueryVisitor;
 
-        impl<'de> Visitor<'de> for PromQueryVisitor {
+        impl Visitor<'_> for PromQueryVisitor {
             type Value = PromQuery;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
