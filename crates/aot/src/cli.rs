@@ -10,11 +10,11 @@ use clap::CommandFactory;
 use clap::Parser;
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, reload, util::SubscriberInitExt};
 
 use crate::{
-    accounts::GenAccounts, auth::AuthCommand, genesis::Genesis, ledger::Ledger,
-    program::ProgramCommand, Network,
+    Network, accounts::GenAccounts, auth::AuthCommand, genesis::Genesis, ledger::Ledger,
+    program::ProgramCommand,
 };
 
 #[derive(Debug, Parser)]

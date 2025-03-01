@@ -18,18 +18,18 @@ use tokio::sync::Semaphore;
 use tracing::info;
 
 use super::{
-    snarkos_request::{self, reparse_json_env},
     AddrMap, AgentClient, AgentPool, EnvMap, StorageMap,
+    snarkos_request::{self, reparse_json_env},
 };
 use crate::{
+    ReloadHandler,
     cli::Cli,
     db::Database,
-    env::{cache::NetworkCache, error::EnvRequestError, Environment, PortType},
+    env::{Environment, PortType, cache::NetworkCache, error::EnvRequestError},
     error::StateError,
     events::Events,
     schema::storage::{LoadedStorage, STORAGE_DIR},
     server::error::StartError,
-    ReloadHandler,
 };
 
 lazy_static::lazy_static! {

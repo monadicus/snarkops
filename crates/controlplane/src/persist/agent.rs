@@ -101,7 +101,7 @@ impl DataFormat for Agent {
             n => {
                 return Err(DataReadError::Custom(format!(
                     "invalid AgentState discriminant: {n}"
-                )))
+                )));
             }
         };
         let flags = reader.read_data(&header.flags)?;

@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use snarkvm::{console::types::Field, ledger::block::Transaction};
 
 use crate::{Authorization, Network};

@@ -137,7 +137,9 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                     // any authorized transaction that is not started should be queued
                     TransactionSendState::Authorized => {
                         if cannon.sink.authorize_attempts.is_some_and(|a| attempts > a) {
-                            info!("cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)");
+                            info!(
+                                "cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)"
+                            );
                             to_remove.push(tx_id);
                             ev.replace_content(TransactionEvent::ExecuteExceeded { attempts })
                                 .emit(state);
@@ -151,7 +153,9 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                             > TimeDelta::seconds(cannon.sink.authorize_timeout as i64) =>
                     {
                         if cannon.sink.authorize_attempts.is_some_and(|a| attempts > a) {
-                            info!("cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)");
+                            info!(
+                                "cannon {env_id}.{cannon_id} removed auth {tx_id} (too many attempts)"
+                            );
                             ev.replace_content(TransactionEvent::ExecuteExceeded { attempts })
                                 .emit(state);
                             to_remove.push(tx_id);
@@ -162,7 +166,9 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                     // any unbroadcasted transaction that is not started should be queued
                     TransactionSendState::Unsent => {
                         if cannon.sink.broadcast_attempts.is_some_and(|a| attempts > a) {
-                            info!("cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)");
+                            info!(
+                                "cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)"
+                            );
                             ev.replace_content(TransactionEvent::BroadcastExceeded { attempts })
                                 .emit(state);
                             to_remove.push(tx_id);
@@ -200,7 +206,9 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                             > TimeDelta::seconds(cannon.sink.broadcast_timeout as i64)
                         {
                             if cannon.sink.broadcast_attempts.is_some_and(|a| attempts > a) {
-                                info!("cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)");
+                                info!(
+                                    "cannon {env_id}.{cannon_id} removed broadcast {tx_id} (too many attempts)"
+                                );
                                 ev.replace_content(TransactionEvent::BroadcastExceeded {
                                     attempts,
                                 })

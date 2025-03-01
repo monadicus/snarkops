@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use http::StatusCode;
 use lazy_static::lazy_static;
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 

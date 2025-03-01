@@ -8,7 +8,7 @@ use snops_common::db::Database;
 use state::GlobalState;
 use tokio::select;
 use tracing::{error, info, level_filters::LevelFilter, trace};
-use tracing_subscriber::{prelude::*, reload, EnvFilter};
+use tracing_subscriber::{EnvFilter, prelude::*, reload};
 
 pub mod agent_version;
 pub mod cannon;

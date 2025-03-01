@@ -1,4 +1,4 @@
-use serde::{ser::SerializeStruct, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 use snops_common::state::AgentId;
 use snops_common::{impl_into_status_code, impl_into_type_str};
 use strum_macros::AsRefStr;

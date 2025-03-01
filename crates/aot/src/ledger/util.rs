@@ -1,6 +1,6 @@
 use aleo_std::StorageMode;
 use anyhow::bail;
-use rand::{thread_rng, SeedableRng};
+use rand::{SeedableRng, thread_rng};
 use rand_chacha::ChaChaRng;
 use snarkvm::{
     circuit::Aleo,
@@ -9,8 +9,8 @@ use snarkvm::{
         program::{Ciphertext, Identifier, Literal, Plaintext, ProgramID, Record, Value},
         types::{Address, Field, U64},
     },
-    ledger::{query::Query, store::ConsensusStorage, Block, Execution, Fee, Ledger, Transaction},
-    prelude::{execution_cost_v2, Network},
+    ledger::{Block, Execution, Fee, Ledger, Transaction, query::Query, store::ConsensusStorage},
+    prelude::{Network, execution_cost_v2},
     synthesizer::VM,
 };
 

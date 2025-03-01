@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use lasso::Spur;
 
-use super::{packed_int::PackedUint, DataFormat, DataReadError, DataWriteError};
+use super::{DataFormat, DataReadError, DataWriteError, packed_int::PackedUint};
 use crate::INTERN;
 
 impl DataFormat for String {

@@ -259,7 +259,7 @@ impl DataFormat for AgentPeer {
 mod tests {
 
     use crate::{
-        format::{read_dataformat, write_dataformat, DataFormat},
+        format::{DataFormat, read_dataformat, write_dataformat},
         prelude::{HeightRequest, KeyState, NodeState, NodeStateFormatHeader},
     };
 

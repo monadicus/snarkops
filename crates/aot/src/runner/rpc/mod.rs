@@ -7,11 +7,11 @@ use std::{
 use futures_util::{SinkExt, StreamExt};
 use http::Uri;
 use node::{MuxedMessageIncoming, MuxedMessageOutgoing, NodeRpcServer};
-use snarkvm::ledger::store::{helpers::rocksdb::BlockDB, BlockStorage};
+use snarkvm::ledger::store::{BlockStorage, helpers::rocksdb::BlockDB};
 use snops_common::{
     rpc::{
-        agent::{node::NodeService, AgentNodeServiceClient, PING_HEADER},
-        RpcTransport, PING_INTERVAL_SEC, PING_LENGTH,
+        PING_INTERVAL_SEC, PING_LENGTH, RpcTransport,
+        agent::{AgentNodeServiceClient, PING_HEADER, node::NodeService},
     },
     state::snarkos_status::{SnarkOSBlockInfo, SnarkOSStatus},
 };
@@ -20,7 +20,7 @@ use tokio::select;
 use tokio_tungstenite::{connect_async, tungstenite, tungstenite::client::IntoClientRequest};
 use tracing::{error, info, warn};
 
-use crate::{cli::ReloadHandler, Network};
+use crate::{Network, cli::ReloadHandler};
 
 pub mod node;
 

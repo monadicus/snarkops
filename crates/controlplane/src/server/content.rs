@@ -1,16 +1,16 @@
 use std::str::FromStr;
 
 use axum::{
+    Router,
     extract::{Path, Request, State},
     middleware,
     response::{IntoResponse, Redirect, Response},
     routing::get,
-    Router,
 };
 use http::{StatusCode, Uri};
 use snops_common::{
     binaries::{BinaryEntry, BinarySource},
-    state::{id_or_none, InternedId, NetworkId},
+    state::{InternedId, NetworkId, id_or_none},
 };
 use tower::Service;
 use tower_http::services::ServeFile;

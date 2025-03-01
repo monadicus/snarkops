@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 use snops_common::{
     rpc::{control::agent::AgentServiceClient, error::SnarkosRequestError},
     state::{
-        snarkos_status::SnarkOSLiteBlock, AgentId, AgentState, EnvId, NetworkId, ReconcileOptions,
+        AgentId, AgentState, EnvId, NetworkId, ReconcileOptions, snarkos_status::SnarkOSLiteBlock,
     },
 };
 use tarpc::{client::RpcError, context};

@@ -112,11 +112,11 @@ impl DataFormat for TxSource {
 #[cfg(test)]
 mod tests {
 
-    use snops_common::{node_targets::NodeTargets, INTERN};
+    use snops_common::{INTERN, node_targets::NodeTargets};
 
     use crate::{
         cannon::source::{ComputeTarget, LocalService, QueryTarget, TxSource},
-        persist::{prelude::*, TxSourceFormatHeader},
+        persist::{TxSourceFormatHeader, prelude::*},
     };
 
     macro_rules! case {

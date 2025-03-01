@@ -86,7 +86,7 @@ impl DataFormat for TransactionSendState {
             _ => {
                 return Err(crate::format::DataReadError::Custom(
                     "Invalid CannonTransactionStatus tag".to_string(),
-                ))
+                ));
             }
         })
     }

@@ -13,8 +13,8 @@ use crate::{
     schema::{
         error::StorageError,
         storage::{
-            pick_account_addr, pick_additional_addr, pick_commitee_addr, read_to_addrs,
-            LoadedStorage, STORAGE_DIR,
+            LoadedStorage, STORAGE_DIR, pick_account_addr, pick_additional_addr,
+            pick_commitee_addr, read_to_addrs,
         },
     },
 };
@@ -198,7 +198,7 @@ mod tests {
     use snops_checkpoint::RetentionPolicy;
     use snops_common::{
         binaries::BinaryEntry,
-        format::{read_dataformat, write_dataformat, DataFormat},
+        format::{DataFormat, read_dataformat, write_dataformat},
         state::{InternedId, NetworkId},
     };
 

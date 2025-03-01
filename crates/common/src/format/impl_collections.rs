@@ -6,8 +6,8 @@ use std::{
 use indexmap::{IndexMap, IndexSet};
 
 use super::{
-    packed_int::PackedUint, DataFormat, DataFormatReader, DataFormatWriter, DataReadError,
-    DataWriteError,
+    DataFormat, DataFormatReader, DataFormatWriter, DataReadError, DataWriteError,
+    packed_int::PackedUint,
 };
 
 /// BytesFormat is a simple wrapper around a Vec<u8> that implements DataFormat

@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use clap::{error::ErrorKind, ArgGroup, CommandFactory, Parser, ValueHint};
+use clap::{ArgGroup, CommandFactory, Parser, ValueHint, error::ErrorKind};
 use reqwest::{Client, Response};
 use serde_json::json;
 use snops_common::state::AgentId;

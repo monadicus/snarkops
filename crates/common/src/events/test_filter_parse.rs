@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use super::{
-    filter_parse::EventFilterParseError,
     EventFilter::{self, *},
     EventKindFilter::*,
+    filter_parse::EventFilterParseError,
 };
 use crate::events::filter_parse::EventFilterParsable;
 use crate::{node_targets::NodeTargets, state::InternedId};

@@ -2,10 +2,10 @@ use fixedbitset::FixedBitSet;
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 use snops_common::{
-    lasso::Spur,
-    set::{MaskBit, MASK_PREFIX_LEN},
-    state::AgentModeOptions,
     INTERN,
+    lasso::Spur,
+    set::{MASK_PREFIX_LEN, MaskBit},
+    state::AgentModeOptions,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

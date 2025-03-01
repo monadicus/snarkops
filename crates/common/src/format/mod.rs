@@ -162,7 +162,7 @@ macro_rules! dataformat_test {
 
 #[cfg(test)]
 mod test {
-    use super::{read_dataformat, write_dataformat, DataFormat, DataReadError, DataWriteError};
+    use super::{DataFormat, DataReadError, DataWriteError, read_dataformat, write_dataformat};
 
     #[test]
     fn test_read_write() -> Result<(), Box<dyn std::error::Error>> {

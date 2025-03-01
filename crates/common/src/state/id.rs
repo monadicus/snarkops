@@ -4,7 +4,7 @@ use rand::RngCore;
 use serde::de::Error;
 
 use super::INTERNED_ID_REGEX;
-use crate::{format::DataFormat, INTERN};
+use crate::{INTERN, format::DataFormat};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct InternedId(lasso::Spur);

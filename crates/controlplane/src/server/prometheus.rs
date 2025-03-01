@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, response::IntoResponse, routing::get};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::Serialize;
 use snops_common::state::AgentState;

@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{mpsc, Arc, Weak},
+    sync::{Arc, Weak, mpsc},
 };
 
 use fixedbitset::FixedBitSet;
@@ -240,11 +240,14 @@ pub fn pair_with_nodes(
         match agents
             .iter()
             .find_map(|a| a.claim_if_subset(&mask).map(|c| (a.id, c)))
-        { Some((id, claim)) => {
-            let _ = claimed_tx.send((key.clone(), id, claim));
-        } _ => {
-            let _ = errors_tx.send(DelegationError::NoAvailableAgents(key.clone()));
-        }}
+        {
+            Some((id, claim)) => {
+                let _ = claimed_tx.send((key.clone(), id, claim));
+            }
+            _ => {
+                let _ = errors_tx.send(DelegationError::NoAvailableAgents(key.clone()));
+            }
+        }
     });
 
     let errors = errors_rx.try_iter().collect::<Vec<_>>();

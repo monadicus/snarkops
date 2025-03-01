@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use axum::{
+    Router,
     extract::{Extension, FromRequestParts, Path},
     response::{IntoResponse, Response},
     routing::post,
-    Router,
 };
 use http::request::Parts;
-use snops_common::state::{id_or_none, EnvId};
+use snops_common::state::{EnvId, id_or_none};
 
 use super::error::ServerError;
 use crate::{env::Environment, state::AppState};

@@ -1,8 +1,8 @@
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::sync::{Arc, atomic::AtomicUsize};
 
 use chrono::Utc;
 use dashmap::DashMap;
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use lazysort::SortedBy;
 use snops_common::{
     events::{Event, TransactionAbortReason, TransactionEvent},
@@ -11,12 +11,12 @@ use snops_common::{
 use tracing::{error, trace, warn};
 
 use super::{
+    CannonReceivers,
     error::{CannonError, ExecutionContextError, SourceError},
     file::TransactionSink,
     sink::TxSink,
     source::TxSource,
     tracker::TransactionTracker,
-    CannonReceivers,
 };
 use crate::{
     cannon::source::ComputeTarget,
@@ -308,7 +308,9 @@ impl ExecutionContext {
                     };
 
                     if let Err(e) = client.broadcast_tx(tx_str.clone()).await {
-                        warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e:?}");
+                        warn!(
+                            "cannon {env_id}.{cannon_id} failed to broadcast transaction to agent {id}: {e:?}"
+                        );
                         continue;
                     }
 
@@ -326,13 +328,17 @@ impl ExecutionContext {
                     let Ok(res) =
                         tokio::time::timeout(std::time::Duration::from_secs(5), req).await
                     else {
-                        warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: timeout");
+                        warn!(
+                            "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: timeout"
+                        );
                         continue;
                     };
 
                     match res {
                         Err(e) => {
-                            warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e:?}");
+                            warn!(
+                                "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {e:?}"
+                            );
                             continue;
                         }
                         Ok(req) => {
@@ -350,7 +356,9 @@ impl ExecutionContext {
                                     return Ok(tx_id);
                                 }
 
-                                warn!("cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {status}");
+                                warn!(
+                                    "cannon {env_id}.{cannon_id} failed to broadcast transaction to {addr}: {status}"
+                                );
                                 continue;
                             }
                         }

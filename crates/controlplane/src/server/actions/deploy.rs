@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
 use axum::{
+    Json,
     extract::{Query, State},
     response::{IntoResponse, Response},
-    Json,
 };
 use http::StatusCode;
 use snops_common::{
     action_models::DeployAction,
     aot_cmds::AotCmd,
-    state::{id_or_none, Authorization, KeyState},
+    state::{Authorization, KeyState, id_or_none},
 };
 
-use super::{execute::execute_status, Env};
+use super::{Env, execute::execute_status};
 use crate::{
     cannon::{error::AuthorizeError, router::AuthQuery},
-    env::{error::ExecutionError, Environment},
+    env::{Environment, error::ExecutionError},
     server::error::ServerError,
     state::GlobalState,
     unwrap_or_not_found,

@@ -8,8 +8,8 @@ use http::{HeaderValue, StatusCode, Uri};
 use snops_common::{
     constant::{ENV_AGENT_KEY, HEADER_AGENT_KEY},
     rpc::{
-        control::{agent::AgentService, ControlServiceClient, PING_HEADER},
-        RpcTransport, PING_INTERVAL_SEC, PING_LENGTH,
+        PING_INTERVAL_SEC, PING_LENGTH, RpcTransport,
+        control::{ControlServiceClient, PING_HEADER, agent::AgentService},
     },
 };
 use tarpc::server::Channel;
@@ -56,7 +56,7 @@ pub async fn ws_connection(ws_req: Request, state: Arc<GlobalState>) {
                 // Ignore connection refused errors, we only care if something interesting is
                 // causing the connection to fail.
                 tungstenite::Error::Io(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
-                    return
+                    return;
                 }
                 // Shutdown the agent if the control plane requires an upgrade
                 tungstenite::Error::Http(e) if e.status() == StatusCode::UPGRADE_REQUIRED => {

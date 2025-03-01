@@ -3,8 +3,8 @@ use std::sync::Arc;
 use ::jwt::VerifyWithKey;
 use axum::{
     extract::{
-        ws::{Message, WebSocket},
         Query, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     http::HeaderMap,
     response::{IntoResponse, Response},
@@ -18,8 +18,8 @@ use snops_common::{
     constant::HEADER_AGENT_KEY,
     prelude::*,
     rpc::control::{
-        agent::{AgentServiceClient, Handshake},
         ControlService,
+        agent::{AgentServiceClient, Handshake},
     },
 };
 use tarpc::{context, server::Channel};

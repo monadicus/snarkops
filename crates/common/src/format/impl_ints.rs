@@ -3,7 +3,7 @@ use std::{
     num::NonZeroU8,
 };
 
-use super::{packed_int::PackedUint, DataFormat, DataReadError, DataWriteError};
+use super::{DataFormat, DataReadError, DataWriteError, packed_int::PackedUint};
 
 macro_rules! impl_integer_dataformat {
     ($ty:ty) => {

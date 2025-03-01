@@ -8,7 +8,7 @@ use tracing::{error, trace};
 #[cfg(feature = "write")]
 use crate::errors::{ManagerCullError, ManagerInsertError, ManagerPollError};
 use crate::{
-    errors::ManagerLoadError, path_from_height, CheckpointHeader, RetentionPolicy, RetentionSpan,
+    CheckpointHeader, RetentionPolicy, RetentionSpan, errors::ManagerLoadError, path_from_height,
 };
 
 #[derive(Debug, Clone)]

@@ -1,29 +1,29 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use aleo_std::StorageMode;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Args;
 use rpc::RpcClient;
 use snarkos_node::{
-    bft::helpers::{proposal_cache_path, ProposalCache},
     Node,
+    bft::helpers::{ProposalCache, proposal_cache_path},
 };
 use snarkvm::{
     ledger::store::{
-        helpers::rocksdb::{BlockDB, CommitteeDB},
         BlockStorage, CommitteeStorage,
+        helpers::rocksdb::{BlockDB, CommitteeDB},
     },
     prelude::Block,
     utilities::FromBytes,
 };
 use snops_checkpoint::{CheckpointManager, RetentionPolicy};
-use snops_common::state::{snarkos_status::SnarkOSStatus, NodeType};
+use snops_common::state::{NodeType, snarkos_status::SnarkOSStatus};
 
-use crate::{cli::ReloadHandler, Account, Address, DbLedger, Key, Network};
+use crate::{Account, Address, DbLedger, Key, Network, cli::ReloadHandler};
 
 mod metrics;
 mod rpc;

@@ -1,9 +1,9 @@
 use std::{path::PathBuf, sync::Arc};
 
 use axum::http::StatusCode;
-use serde::{ser::SerializeStruct, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 use snops_common::{
-    aot_cmds::{error::CommandError, AotCmdError},
+    aot_cmds::{AotCmdError, error::CommandError},
     db::error::DatabaseError,
     impl_into_status_code, impl_into_type_str,
     node_targets::NodeTargets,

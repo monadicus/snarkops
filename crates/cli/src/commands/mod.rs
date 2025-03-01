@@ -3,7 +3,7 @@ use clap::{CommandFactory, Parser};
 use serde_json::Value;
 use snops_common::events::EventFilter;
 
-use crate::{events::EventsClient, Cli};
+use crate::{Cli, events::EventsClient};
 
 /// The dummy value for the ids to hack around the missing required argument.
 pub(crate) static DUMMY_ID: &str = "dummy_value___";

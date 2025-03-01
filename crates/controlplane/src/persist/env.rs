@@ -6,13 +6,14 @@ use snops_common::state::TransactionSendState;
 use snops_common::state::{CannonId, EnvId, NetworkId, NodeKey, StorageId};
 use tokio::sync::Semaphore;
 
-use super::prelude::*;
 use super::PersistNode;
+use super::prelude::*;
 use crate::{
     cannon::{sink::TxSink, source::TxSource, tracker::TransactionTracker},
     env::{
+        EnvNodeState, EnvPeer, Environment,
         error::{EnvError, PrepareError},
-        prepare_cannons, EnvNodeState, EnvPeer, Environment,
+        prepare_cannons,
     },
     state::GlobalState,
 };
@@ -248,7 +249,7 @@ mod tests {
     use std::str::FromStr;
 
     use snops_common::{
-        format::{read_dataformat, write_dataformat, DataFormat},
+        format::{DataFormat, read_dataformat, write_dataformat},
         state::{InternedId, NetworkId},
     };
 

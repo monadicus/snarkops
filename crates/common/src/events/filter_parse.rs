@@ -275,7 +275,7 @@ impl<'a> FilterParser<'a> {
                     return Err(ExpectedToken(
                         CommaOrCloseParen,
                         self.tokens.peek().unwrap().label().to_string(),
-                    ))
+                    ));
                 }
                 None => return Err(ExpectedToken(CommaOrCloseParen, "EOF".to_string())),
             }

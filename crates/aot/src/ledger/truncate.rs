@@ -1,7 +1,7 @@
 use std::{os::fd::AsRawFd, path::PathBuf};
 
 use aleo_std::StorageMode;
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use clap::{Args, Parser};
 use nix::{
     sys::wait::waitpid,
@@ -15,7 +15,7 @@ use snarkvm::{
 use snops_checkpoint::{Checkpoint, CheckpointManager, RetentionPolicy};
 use tracing::info;
 
-use crate::{ledger::util, DbLedger};
+use crate::{DbLedger, ledger::util};
 
 /// Replays blocks from a ledger to a specific height or amount to rollback to.
 #[derive(Debug, Args)]

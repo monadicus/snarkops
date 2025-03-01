@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::json;
 use snops_common::{rpc::error::SnarkosRequestError, state::NetworkId};
 

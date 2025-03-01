@@ -1,19 +1,19 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 
 use axum::{
-    response::{IntoResponse, Response},
     Json,
+    response::{IntoResponse, Response},
 };
 use snops_common::{
     action_models::{Reconfig, WithTargets},
-    state::{id_or_none, AgentId, AgentState, InternedId},
+    state::{AgentId, AgentState, InternedId, id_or_none},
 };
 
 use super::Env;
 use crate::{
     env::PortType,
     server::error::ServerError,
-    state::{pending_reconcile_node_map, PendingAgentReconcile},
+    state::{PendingAgentReconcile, pending_reconcile_node_map},
     unwrap_or_not_found,
 };
 
@@ -55,11 +55,10 @@ pub async fn config(
     }
 
     for WithTargets { nodes, data } in configs {
-        let binary = match data.binary.as_ref() { Some(b) => {
-            Some(unwrap_or_not_found!("unknown binary id", id_or_none(b)))
-        } _ => {
-            None
-        }};
+        let binary = match data.binary.as_ref() {
+            Some(b) => Some(unwrap_or_not_found!("unknown binary id", id_or_none(b))),
+            _ => None,
+        };
 
         for agent in env.matching_agents(&nodes, &state.pool) {
             if let Some(h) = data.height {

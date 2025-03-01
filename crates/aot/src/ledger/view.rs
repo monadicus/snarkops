@@ -8,7 +8,7 @@ use snarkvm::{
     prelude::Zero,
 };
 
-use crate::{ledger::util, Address, DbLedger, PrivateKey, ViewKey};
+use crate::{Address, DbLedger, PrivateKey, ViewKey, ledger::util};
 
 /// Used to view information about the ledger.
 #[derive(Debug, Subcommand)]

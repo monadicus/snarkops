@@ -1,13 +1,13 @@
-use anyhow::{anyhow, bail, Ok, Result};
+use anyhow::{Ok, Result, anyhow, bail};
 use clap::Args;
 use clap_stdin::MaybeStdin;
 use rand::{CryptoRng, Rng};
 use snarkvm::{
     ledger::Deployment,
-    prelude::{cost_in_microcredits_v1, Field},
+    prelude::{Field, cost_in_microcredits_v1},
     synthesizer::{
-        process::{cost_in_microcredits_v2, deployment_cost},
         Process,
+        process::{cost_in_microcredits_v2, deployment_cost},
     },
     utilities::ToBytes,
 };
@@ -112,24 +112,23 @@ pub fn fee_auth<N: Network>(
     let process = N::process();
 
     // Authorize the fee.
-    let fee = match record { Some(record) => {
-        process.authorize_fee_private::<N::Circuit, _>(
+    let fee = match record {
+        Some(record) => process.authorize_fee_private::<N::Circuit, _>(
             &private_key,
             record,
             base_fee_in_microcredits,
             priority_fee_in_microcredits,
             execution_id,
             rng,
-        )?
-    } _ => {
-        process.authorize_fee_public::<N::Circuit, _>(
+        )?,
+        _ => process.authorize_fee_public::<N::Circuit, _>(
             &private_key,
             base_fee_in_microcredits,
             priority_fee_in_microcredits,
             execution_id,
             rng,
-        )?
-    }};
+        )?,
+    };
 
     Ok(Some(fee))
 }

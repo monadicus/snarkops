@@ -1,7 +1,7 @@
 use bytes::Buf;
 
 use super::error::DatabaseError;
-use crate::format::{read_dataformat, write_dataformat, DataFormat};
+use crate::format::{DataFormat, read_dataformat, write_dataformat};
 
 pub struct DbTree<K, V> {
     tree: sled::Tree,

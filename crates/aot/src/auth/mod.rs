@@ -4,7 +4,7 @@ use auth_fee::estimate_cost;
 use clap::{Args, Subcommand};
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
-use snarkvm::synthesizer::{process::deployment_cost, Process};
+use snarkvm::synthesizer::{Process, process::deployment_cost};
 
 use crate::{Key, Network};
 
