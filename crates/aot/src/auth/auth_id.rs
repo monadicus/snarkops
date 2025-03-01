@@ -17,11 +17,10 @@ pub fn fee_from_auth<N: Network>(
 /// fee authorization
 pub fn auth_tx_id<N: Network>(
     auth: &Authorization<N>,
-    fee_auth: Option<&Authorization<N>>,
+    // Left in for backwards compatibility
+    _fee_auth: Option<&Authorization<N>>,
 ) -> Result<N::TransactionID> {
-    let fee = fee_auth.map(fee_from_auth).transpose()?;
-
-    let field: Field<N> = *Transaction::transitions_tree(auth.transitions().values(), &fee)?.root();
+    let field: Field<N> = *Transaction::transitions_tree(auth.transitions().values())?.root();
 
     Ok(field.into())
 }
@@ -29,11 +28,10 @@ pub fn auth_tx_id<N: Network>(
 /// compute the transaction ID for a deployment using the deployment and fee
 pub fn deploy_tx_id<N: Network>(
     deployment: &snarkvm::ledger::block::Deployment<N>,
-    fee_auth: Option<&Authorization<N>>,
+    // Left in for backwards compatibility
+    _fee_auth: Option<&Authorization<N>>,
 ) -> Result<N::TransactionID> {
-    let fee = fee_auth.map(fee_from_auth).transpose()?;
-
-    let field: Field<N> = *Transaction::deployment_tree(deployment, fee.as_ref())?.root();
+    let field: Field<N> = *Transaction::deployment_tree(deployment)?.root();
 
     Ok(field.into())
 }

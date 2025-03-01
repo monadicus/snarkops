@@ -162,6 +162,8 @@ The compiled binary can be found in `target/release-big/snarkos-aot`.
 Use the `NETWORK` environment variable to specify `mainnet` (default),
 `testnet`, or `canary`.
 
+To select a custom snarkOS branch/tag for source, run `./scripts/update_snarkos_dep.sh v3.3.1`. Be warned - sometimes there are breaking changes!
+
 ### Transaction Authorizations
 
 Typically when executing snarkOS transactions you specify the program and inputs
