@@ -6,7 +6,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   # https://releases.rs/docs/1.83.0/ release date
-  NIGHTLY_TOOLCHAIN: nightly-2024-11-28
+  NIGHTLY_TOOLCHAIN: nightly-2025-02-20
 
 # Cancel in progress workflows on pull_requests.
 # https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-a-fallback-value
@@ -99,19 +99,21 @@ jobs:
       - name: ☁️ Install Nextest
         uses: taiki-e/install-action@nextest
 
-      # - name: ☁️ Install cargo-machete
-      # run: cargo install cargo-machete
+      - name: ☁️ Install cargo-machete
+        uses: taiki-e/install-action@cargo-machete
 
-      # - name: 📋 Clippy Check
-      #   env:
-      #     RUSTFLAGS: -Zcodegen-backend=cranelift
-      #   run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy --all --all-targets -- -D warnings
+      - name: ☁️ Install cargo-binstall
+        uses: taiki-e/install-action@cargo-binstall
 
-      # - name: 📋 Check Unused Deps
-      #   if: always()
-      #   env:
-      #     RUSTFLAGS: -Zcodegen-backend=cranelift
-      #   run: cargo machete
+      - name: ☁️ Install cargo-msrv
+        run: cargo binstall cargo-msrv -y
+
+      # Needed for cargo-minimal-versions
+      - name: ☁️ Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+
+      - name: ☁️ Install cargo-minimal-versions
+        uses: taiki-e/install-action@cargo-minimal-versions
 
       - uses: dorny/paths-filter@v3
         id: changes
@@ -134,39 +136,168 @@ jobs:
               - 'crates/common/**/*'
 
       - name: 🧪 Test All
-        if: steps.changes.outputs.top_toml == 'true'
+        if: always() && steps.changes.outputs.top_toml == 'true'
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run --all --verbose --fail-fast --all-features --exclude snops-agent --exclude xtask --no-tests=warn
 
       - name: 🧪 Test Aot
-        if: steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snarkos-aot --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Checkpoint
-        # env:
-        #   RUSTFLAGS: -Zcodegen-backend=cranelift
-        if: steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-checkpoint --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Common
-        # env:
-        #   RUSTFLAGS: -Zcodegen-backend=cranelift
-        if: steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-common --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Control Plane
-        # env:
-        #   RUSTFLAGS: -Zcodegen-backend=cranelift
-        if: (steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() &&(steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Agent
-        # env:
-        #   RUSTFLAGS: ""
-        if: (steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true')
+        if: always() &&(steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-agent --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🧪 Test Scli
-        # env:
-        # RUSTFLAGS: -Zcodegen-backend=cranelift
-        if: (steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        if: always() &&(steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p snops-cli --verbose --fail-fast --all-features --no-tests=warn
+
+      # machete doesn't have a workspace option
+      - name: 🕵️ Check Unused Deps Aot
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.aot == 'true'
+        run: cd crates/aot && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
+
+      - name: 🕵️ Check Unused Deps Checkpoint
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.checkpoint == 'true'
+        run: cd crates/checkpoint && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
+
+      - name: 🕵️ Check Unused Deps Common
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.common == 'true'
+        run: cd crates/common && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
+
+      - name: 🕵️ Check Unused Deps Control Plane
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true'
+        run: cd crates/controlplane && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
+
+      - name: 🕵️ Check Unused Deps Agent
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true'
+        run: cd crates/agent && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
+
+      - name: 🕵️ Check Unused Deps Scli
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true'
+        run: cd crates/cli && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
+
+      # msrv also doesn't have a workspace option
+      - name: 🚯 Check MSRV Aot
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.aot == 'true'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} msrv -manifest-path crates/aot/Cargo.toml verify
+
+      - name: 🚯 Check MSRV Checkpoint
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.checkpoint == 'true'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} msrv -manifest-path crates/checkpoint/Cargo.toml verify
+
+      - name: 🚯 Check MSRV Common
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.common == 'true'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} msrv -manifest-path crates/common/Cargo.toml verify
+
+      - name: 🚯 Check MSRV Control Plane
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} msrv -manifest-path crates/controlplane/Cargo.toml verify
+
+      - name: 🚯 Check MSRV Agent
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} msrv -manifest-path crates/agent/Cargo.toml verify
+
+      - name: 🚯 Check MSRV Scli
+        if: always() && steps.changes.outputs.top_toml == 'true' || steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} msrv -manifest-path crates/cli/Cargo.toml verify
+
+      # minimal-versions also does have a workspace option
+      - name: 🦀 Check Minimal Versions All
+        if: always() && steps.changes.outputs.top_toml == 'true'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check --workspace
+
+      - name: 🦀 Check Minimal Versions Aot
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check -p snarkos-aot
+
+      - name: 🦀 Check Minimal Versions Checkpoint
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check -p snops-checkpoint
+
+      - name: 🦀 Check Minimal Versions Common
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() && steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check -p snops-common
+
+      - name: 🦀 Check Minimal Versions Control Plane
+        env:
+          RUSTFLAGS: -Zcodegen-backend=cranelift
+        if: always() &&(steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check -p snops
+
+      - name: 🦀 Check Minimal Versions Agent
+        if: always() &&(steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check -p snops-agent
+
+      - name: 🦀 Check Minimal Versions Scli
+        if: always() &&(steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check -p snops-cli
+
+      - name: 📋 Clippy Check All
+        if: always() && steps.changes.outputs.top_toml == 'true'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy --all --all-targets --locked -- -D warnings
+
+      - name: 📋 Clippy Check Aot
+        if: always() && steps.changes.outputs.aot == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy -p snarkos-aot --all-targets --locked -- -D warnings
+
+      - name: 📋 Clippy Check Checkpoint
+        if: always() && steps.changes.outputs.checkpoint == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy -p snops-checkpoint --all-targets --locked -- -D warnings
+
+      - name: 📋 Clippy Check Common
+        if: always() && steps.changes.outputs.common == 'true' && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy -p snops-common --all-targets --locked -- -D warnings
+
+      - name: 📋 Clippy Check Control Plane
+        if: always() &&(steps.changes.outputs.control_plane == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy -p snops --all-targets --locked -- -D warnings
+
+      - name: 📋 Clippy Check Agent
+        if: always() &&(steps.changes.outputs.agent == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy -p snops-agent --all-targets --locked -- -D warnings
+
+      - name: 📋 Clippy Check Scli
+        if: always() &&(steps.changes.outputs.scli == 'true' || steps.changes.outputs.common == 'true') && steps.changes.outputs.top_toml == 'false'
+        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy -p snops-cli --all-targets --locked -- -D warnings
