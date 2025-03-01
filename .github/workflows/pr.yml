@@ -31,45 +31,6 @@ jobs:
       - name: 📋 Format Check
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} fmt -- --check
 
-  setup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-
-      - name: 🥬 Use Mold Linker
-        uses: rui314/setup-mold@v1
-
-      - name: ☁️ Install Nightly
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          toolchain: ${{ env.NIGHTLY_TOOLCHAIN }}
-          components: rustc-codegen-cranelift-preview clippy
-
-      - name: 🫙 Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: cache-v1
-          cache-on-failure: true
-
-      - name: ☁️ Install Nextest
-        uses: taiki-e/install-action@nextest
-
-      - name: ☁️ Install cargo-machete
-        uses: taiki-e/install-action@cargo-machete
-
-      - name: ☁️ Install cargo-binstall
-        uses: taiki-e/install-action@cargo-binstall
-
-      - name: ☁️ Install cargo-msrv
-        run: cargo binstall cargo-msrv -y
-
-      - name: ☁️ Install cargo-hack
-        uses: taiki-e/install-action@cargo-hack
-
-      - name: ☁️ Install cargo-minimal-versions
-        uses: taiki-e/install-action@cargo-minimal-versions
-
   filter:
     runs-on: ubuntu-latest
     outputs:
@@ -104,7 +65,7 @@ jobs:
 
   crate-checks:
     runs-on: ubuntu-latest
-    needs: [setup, filter]
+    needs: [filter]
     env:
       TOP_TOML: ${{ needs.filter.outputs.top_toml }}
       AOT: ${{ needs.filter.outputs.aot }}
@@ -147,28 +108,62 @@ jobs:
               manifest: "crates/cli/Cargo.toml",
             }
     steps:
-      - uses: actions/checkout@v4
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
 
-      - name: Test ${{ matrix.crate.name }}
+      - name: 🥬 Use Mold Linker
+        uses: rui314/setup-mold@v1
+
+      - name: ☁️ Install Nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: ${{ env.NIGHTLY_TOOLCHAIN }}
+          components: rustc-codegen-cranelift-preview clippy
+
+      - name: 🫙 Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cache-v1
+          cache-on-failure: true
+
+      - name: ☁️ Install Nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: ☁️ Install cargo-machete
+        uses: taiki-e/install-action@cargo-machete
+
+      - name: ☁️ Install cargo-binstall
+        uses: taiki-e/install-action@cargo-binstall
+
+      - name: ☁️ Install cargo-msrv
+        run: cargo binstall cargo-msrv -y
+
+      - name: ☁️ Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+
+      - name: ☁️ Install cargo-minimal-versions
+        uses: taiki-e/install-action@cargo-minimal-versions
+
+      - name: 🧪 Test ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'control_plane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
         env:
           RUSTFLAGS: ${{ (matrix.crate.name == 'aot' || matrix.crate.name == 'checkpoint' || matrix.crate.name == 'common' || matrix.crate.name == 'control_plane') && '-Zcodegen-backend=cranelift' || '' }}
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p ${{ matrix.crate.package }} --verbose --fail-fast --all-features --no-tests=warn
 
-      - name: Unused Deps ${{ matrix.crate.name }}
+      - name: 🚯 Unused Deps ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'control_plane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
         run: cd crates/${{ matrix.crate.name }} && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
 
-      - name: MSRV ${{ matrix.crate.name }}
+      - name: 🦀 MSRV ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'control_plane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} msrv --manifest-path ${{ matrix.crate.manifest }} verify
 
-      - name: Minimal Versions ${{ matrix.crate.name }}
+      - name: 🕵️ Minimal Versions ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'control_plane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
         continue-on-error: true
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check -p ${{ matrix.crate.package }}
 
-      - name: Clippy ${{ matrix.crate.name }}
+      - name: 📋 Clippy ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'control_plane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
         env:
           RUSTFLAGS: ${{ (matrix.crate.name == 'aot' || matrix.crate.name == 'checkpoint' || matrix.crate.name == 'common' || matrix.crate.name == 'control_plane') && '-Zcodegen-backend=cranelift' || '' }}
