@@ -295,7 +295,7 @@ pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Res
             }
             _ => {
                 let text = res.text().await?;
-                serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text))
+                serde_json::from_str(&text).unwrap_or(Value::String(text))
             }
         };
         println!("{}", serde_json::to_string_pretty(&value)?);
