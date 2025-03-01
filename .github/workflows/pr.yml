@@ -137,7 +137,7 @@ jobs:
         uses: taiki-e/install-action@cargo-binstall
 
       - name: ☁️ Install cargo-msrv
-        run: cargo binstall cargo-msrv -y
+        run: cargo binstall --version 0.18.1 --no-confirm cargo-msrv --force
 
       - name: ☁️ Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
@@ -157,7 +157,7 @@ jobs:
 
       - name: 🦀 MSRV ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'controlplane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
-        run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} msrv --manifest-path ${{ matrix.crate.manifest }} verify
+        run: cargo msrv --manifest-path ${{ matrix.crate.manifest }} verify --output-format minimal
 
       - name: 🕵️ Minimal Versions ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'controlplane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
