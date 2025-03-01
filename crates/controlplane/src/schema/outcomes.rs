@@ -149,10 +149,10 @@ impl PromQuery {
 
     fn inject_matchers(expr: &mut PromExpr, matchers: &[Matcher]) {
         macro_rules! inject {
-            ($into:expr) => {
+            ($into:expr_2021) => {
                 Self::inject_matchers(&mut $into, matchers)
             };
-            ($into:expr, $($into2:expr),+) => {
+            ($into:expr_2021, $($into2:expr_2021),+) => {
                 {
                     inject!($into);
                     inject!($($into2),+);

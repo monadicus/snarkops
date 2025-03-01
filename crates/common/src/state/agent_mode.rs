@@ -24,9 +24,9 @@ pub struct AgentModeOptions {
 impl From<AgentModeOptions> for u8 {
     fn from(mode: AgentModeOptions) -> u8 {
         (mode.validator as u8)
-            | (mode.prover as u8) << 1
-            | (mode.client as u8) << 2
-            | (mode.compute as u8) << 3
+            | ((mode.prover as u8) << 1)
+            | ((mode.client as u8) << 2)
+            | ((mode.compute as u8) << 3)
     }
 }
 
@@ -34,9 +34,9 @@ impl From<u8> for AgentModeOptions {
     fn from(mode: u8) -> Self {
         Self {
             validator: mode & 1 != 0,
-            prover: mode & 1 << 1 != 0,
-            client: mode & 1 << 2 != 0,
-            compute: mode & 1 << 3 != 0,
+            prover: mode & (1 << 1) != 0,
+            client: mode & (1 << 2) != 0,
+            compute: mode & (1 << 3) != 0,
         }
     }
 }

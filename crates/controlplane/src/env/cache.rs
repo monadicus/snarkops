@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{atomic::AtomicU64, Arc},
+    sync::{Arc, atomic::AtomicU64},
     time::Duration,
 };
 
@@ -108,7 +108,7 @@ impl NetworkCache {
     pub fn is_peer_penalized(&self, key: &NodeKey) -> bool {
         self.external_peer_record
             .get(key)
-            .map_or(false, ResponsiveRecord::has_penalty)
+            .is_some_and(ResponsiveRecord::has_penalty)
     }
 
     /// Update a peer's node info if the provided block hash exists in the cache

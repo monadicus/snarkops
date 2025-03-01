@@ -36,7 +36,7 @@ mod test {
     use crate::format::PackedUint;
 
     macro_rules! case {
-        ($name:ident, $ty:ty, $a:expr) => {
+        ($name:ident, $ty:ty, $a:expr_2021) => {
             #[test]
             fn $name() {
                 let mut data = Vec::new();

@@ -352,11 +352,11 @@ impl AgentService for AgentRpcServer {
     }
 
     async fn get_status(self, ctx: Context) -> Result<AgentStatus, AgentError> {
-        let aot_online = if let Some(c) = self.state.get_node_client().await {
+        let aot_online = match self.state.get_node_client().await { Some(c) => {
             c.status(ctx).await.is_ok()
-        } else {
+        } _ => {
             false
-        };
+        }};
 
         Ok(AgentStatus {
             aot_online,

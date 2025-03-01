@@ -1,9 +1,10 @@
 [package]
-edition = "2021"
+
 name = "snops-checkpoint"
 version = "0.1.0"
 description = "Ledger checkpointing for SnarkOS"
 authors.workspace = true
+edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 rust-version.workspace = true

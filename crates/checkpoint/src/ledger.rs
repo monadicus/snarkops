@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use snarkvm::console::program::Network;
 
 use crate::aleo::*;
@@ -63,13 +63,17 @@ impl<N: Network> Stores<N> {
         // Retrieve the transaction IDs.
         let transaction_ids = match db.transactions_map().get_confirmed(&block_hash)? {
             Some(transaction_ids) => transaction_ids,
-            None => bail!("Failed to remove block: missing transactions for block '{block_height}' ('{block_hash}')"),
+            None => bail!(
+                "Failed to remove block: missing transactions for block '{block_height}' ('{block_hash}')"
+            ),
         };
         // Retrieve the solutions.
         let solutions = match db.solutions_map().get_confirmed(&block_hash)? {
             Some(solutions) => cow_to_cloned!(solutions),
             None => {
-                bail!("Failed to remove block: missing solutions for block '{block_height}' ('{block_hash}')")
+                bail!(
+                    "Failed to remove block: missing solutions for block '{block_height}' ('{block_hash}')"
+                )
             }
         };
 
@@ -94,18 +98,13 @@ impl<N: Network> Stores<N> {
 
         // Determine the certificate IDs to remove.
         let certificate_ids_to_remove = match db.authority_map().get_confirmed(&block_hash)? {
-            Some(authority) => match authority {
-                Cow::Owned(Authority::Beacon(_)) | Cow::Borrowed(Authority::Beacon(_)) => {
-                    Vec::new()
-                }
-                Cow::Owned(Authority::Quorum(ref subdag))
-                | Cow::Borrowed(Authority::Quorum(ref subdag)) => {
-                    subdag.values().flatten().map(|c| c.id()).collect()
-                }
+            Some(authority) => match &*authority {
+                Authority::Beacon(_) => Vec::new(),
+                Authority::Quorum(subdag) => subdag.values().flatten().map(|c| c.id()).collect(),
             },
             None => bail!(
-            "Failed to remove block: missing authority for block '{block_height}' ('{block_hash}')"
-        ),
+                "Failed to remove block: missing authority for block '{block_height}' ('{block_hash}')"
+            ),
         };
 
         // Remove the (block height, state root) pair.

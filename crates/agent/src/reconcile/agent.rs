@@ -103,10 +103,10 @@ impl AgentStateReconcilerContext {
 /// added to the scope when a requeue is needed to provide more context when
 /// monitoring the agent.
 macro_rules! reconcile {
-    ($id:ident, $e:expr) => {
+    ($id:ident, $e:expr_2021) => {
         reconcile!($id, $e, res => {})
     };
-    ($id:ident, $e:expr, $v:ident => $rest:expr) => {
+    ($id:ident, $e:expr_2021, $v:ident => $rest:expr_2021) => {
         let $v = $e.reconcile().await?;
         if $v.is_requeue() {
             trace!("Requeue needed for {} ({:?}) {:?}", stringify!($id), $v.scopes, $v.conditions);

@@ -58,7 +58,7 @@ impl Agent {
             env_claim: Arc::new(Busy),
             claims: Claims {
                 id,
-                nonce: ChaChaRng::from_entropy().gen(),
+                nonce: ChaChaRng::from_entropy().r#gen(),
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),

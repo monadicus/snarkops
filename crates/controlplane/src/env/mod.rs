@@ -123,13 +123,13 @@ impl Environment {
 
         let mut storage_doc = None;
 
-        let (mut node_peers, mut node_states) = if let Some(ref env) = prev_env {
+        let (mut node_peers, mut node_states) = match prev_env { Some(ref env) => {
             // reuse certain elements from the previous environment with the same
             // name
             (env.node_peers.clone(), env.node_states.clone())
-        } else {
+        } _ => {
             (Default::default(), Default::default())
-        };
+        }};
 
         let mut network = NetworkId::default();
 
@@ -252,13 +252,12 @@ impl Environment {
                     let mut removed_agents = node_peers
                         .iter()
                         .filter_map(|(key, mode)| {
-                            if let (EnvPeer::Internal(agent), false) =
-                                (mode, agent_keys.contains(key))
-                            {
+                            match (mode, agent_keys.contains(key))
+                            { (EnvPeer::Internal(agent), false) => {
                                 Some(*agent)
-                            } else {
+                            } _ => {
                                 None
-                            }
+                            }}
                         })
                         .collect::<IndexSet<_>>();
 

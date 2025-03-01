@@ -57,13 +57,10 @@ pub async fn tracking_task(state: Arc<GlobalState>) {
                     let state = state.clone();
                     let cannon_target = cannon.sink.target.as_ref();
                     async move {
-                        let (tx_id, hash) = if let Some(hash) = state.env_network_cache.get(&env_id).and_then(|cache| cache.find_transaction(&tx_id).cloned()) {
+                        let (tx_id, hash) = match state.env_network_cache.get(&env_id).and_then(|cache| cache.find_transaction(&tx_id).cloned()) { Some(hash) => {
                             trace!("cannon {env_id}.{cannon_id} confirmed transaction {tx_id} (cache hit)");
                             (tx_id, hash.to_string())
-                        }
-
-                        // check if the transaction not is in the cache, then check the peers
-                        else if let Some(target) = cannon_target {
+                        } _ => if let Some(target) = cannon_target {
                             match timeout(Duration::from_secs(1),
                             state.snarkos_get::<Option<String>>(env_id, format!("/find/blockHash/{tx_id}"), target)).await {
                                 Ok(Ok(Some(hash))) => {
@@ -75,7 +72,7 @@ pub async fn tracking_task(state: Arc<GlobalState>) {
                             }
                         } else {
                             return None;
-                        };
+                        }};
 
                         // Emit a confirmed event
                         TransactionEvent::Confirmed { hash }

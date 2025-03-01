@@ -72,7 +72,7 @@ mod test {
     use crate::state::PortConfig;
 
     macro_rules! case {
-        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+        ($name:ident, $ty:ty, $a:expr_2021, $b:expr_2021) => {
             #[test]
             fn $name() -> Result<(), Box<dyn std::error::Error>> {
                 let mut data = Vec::new();

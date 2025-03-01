@@ -155,7 +155,7 @@ impl<N: Network> Cli<N> {
         let mut guards = vec![];
 
         macro_rules! non_blocking_appender {
-            ($name:ident = ( $args:expr )) => {
+            ($name:ident = ( $args:expr_2021 )) => {
                 let ($name, guard) = tracing_appender::non_blocking($args);
                 guards.push(guard);
             };

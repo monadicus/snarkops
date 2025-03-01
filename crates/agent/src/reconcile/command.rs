@@ -90,15 +90,15 @@ impl NodeCommand {
             agent_rpc_port: state.agent_rpc_port,
             bind_addr: state.cli.bind_addr,
             ports: state.cli.ports,
-            private_key: if let KeyState::Literal(pk) = &node.private_key {
+            private_key: match &node.private_key { KeyState::Literal(pk) => {
                 Some(pk.clone())
-            } else {
+            } _ => {
                 None
-            },
+            }},
             // Ensure the private key file can be resolved.
             // This is only reachable when an agent is referred to by its
             // id in an environment spec.
-            private_key_file: if let KeyState::Local = &node.private_key {
+            private_key_file: match &node.private_key { KeyState::Local => {
                 Some(
                     state
                         .cli
@@ -106,9 +106,9 @@ impl NodeCommand {
                         .clone()
                         .ok_or(ReconcileError::MissingLocalPrivateKey)?,
                 )
-            } else {
+            } _ => {
                 None
-            },
+            }},
             peers: state.agentpeers_to_cli(&node.peers).await,
             validators: state.agentpeers_to_cli(&node.validators).await,
             retention_policy: env_info.storage.retention_policy.clone(),

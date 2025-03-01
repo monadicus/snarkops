@@ -1,11 +1,11 @@
 use std::{collections::HashMap, str::FromStr};
 
 use axum::{
+    Json, Router,
     extract::{self, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post},
-    Json, Router,
 };
 use indexmap::IndexSet;
 use serde::Deserialize;
@@ -15,7 +15,7 @@ use snops_common::{
     lasso::Spur,
     node_targets::NodeTargets,
     rpc::control::agent::AgentMetric,
-    state::{id_or_none, AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey},
+    state::{AgentModeOptions, AgentState, CannonId, EnvId, KeyState, NodeKey, id_or_none},
 };
 use tarpc::context;
 
@@ -32,7 +32,7 @@ use crate::{
 
 #[macro_export]
 macro_rules! unwrap_or_not_found {
-    ($s:expr, $e:expr) => {
+    ($s:expr_2021, $e:expr_2021) => {
         match $e {
             Some(v) => v,
             None => return ServerError::NotFound($s.to_owned()).into_response(),
@@ -42,7 +42,7 @@ macro_rules! unwrap_or_not_found {
 
 #[macro_export]
 macro_rules! unwrap_or_bad_request {
-    ($s:expr, $e:expr) => {
+    ($s:expr_2021, $e:expr_2021) => {
         match $e {
             Some(v) => v,
             None => return ServerError::BadRequest($s.to_owned()).into_response(),
@@ -447,7 +447,7 @@ async fn get_mapping_value(
         }
         _ => {
             return ServerError::BadRequest("either key or key_source must be provided".to_owned())
-                .into_response()
+                .into_response();
         }
     };
 
@@ -522,12 +522,17 @@ async fn find_agents(
             let env_matches = if payload.all {
                 // if we ask for all env we just say true
                 true
-            } else if let Some(env) = payload.env {
-                // otherwise if the env is specified we check it matches
-                agent.env().map_or(false, |a_env| env == a_env)
             } else {
-                // if no env is specified
-                agent.state() == &AgentState::Inventory
+                match payload.env {
+                    Some(env) => {
+                        // otherwise if the env is specified we check it matches
+                        agent.env() == Some(env)
+                    }
+                    _ => {
+                        // if no env is specified
+                        agent.state() == &AgentState::Inventory
+                    }
+                }
             };
 
             // if all is specified we don't care about whether an agent's connection

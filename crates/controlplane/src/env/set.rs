@@ -169,7 +169,7 @@ pub fn pair_with_nodes(
     agents: Vec<AgentMapping>,
     nodes: &IndexMap<NodeKey, EnvNodeState>,
     labels: &[Spur],
-) -> Result<impl Iterator<Item = (NodeKey, AgentId, Arc<Busy>)>, Vec<DelegationError>> {
+) -> Result<impl Iterator<Item = (NodeKey, AgentId, Arc<Busy>)> + use<>, Vec<DelegationError>> {
     // errors that occurred while pairing nodes with agents
     let (errors_tx, errors_rx) = mpsc::channel();
     // nodes that were successfully claimed. dropping this will automatically
@@ -237,14 +237,14 @@ pub fn pair_with_nodes(
     // pair them with an agent that has the matching mask
     want_labels.into_par_iter().for_each(|(key, mask)| {
         // find the first agent that can be claimed that fits the mask
-        if let Some((id, claim)) = agents
+        match agents
             .iter()
             .find_map(|a| a.claim_if_subset(&mask).map(|c| (a.id, c)))
-        {
+        { Some((id, claim)) => {
             let _ = claimed_tx.send((key.clone(), id, claim));
-        } else {
+        } _ => {
             let _ = errors_tx.send(DelegationError::NoAvailableAgents(key.clone()));
-        }
+        }}
     });
 
     let errors = errors_rx.try_iter().collect::<Vec<_>>();

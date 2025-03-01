@@ -5,9 +5,9 @@ use http::StatusCode;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{
+    Deserialize, Serialize,
     de::{Error, Visitor},
     ser::SerializeSeq,
-    Deserialize, Serialize,
 };
 use thiserror::Error;
 use wildmatch::WildMatch;
@@ -311,7 +311,7 @@ impl DataFormat for NodeTarget {
             n => {
                 return Err(DataReadError::Custom(format!(
                     "invalid NodeTarget type discriminant: {n}"
-                )))
+                )));
             }
         };
 
@@ -325,7 +325,7 @@ impl DataFormat for NodeTarget {
             n => {
                 return Err(DataReadError::Custom(format!(
                     "invalid NodeTarget ID discriminant: {n}"
-                )))
+                )));
             }
         };
 
@@ -336,7 +336,7 @@ impl DataFormat for NodeTarget {
             n => {
                 return Err(DataReadError::Custom(format!(
                     "invalid NodeTarget namespace discriminant: {n}"
-                )))
+                )));
             }
         };
 
@@ -426,8 +426,7 @@ impl NodeTarget {
             NodeTargetNamespace::All => true,
             NodeTargetNamespace::Local => key.ns.is_none() || key.ns == Some("local".into()),
             NodeTargetNamespace::Literal(ns) => {
-                ns == "local" && key.ns.is_none()
-                    || key.ns.as_ref().map_or(false, |key_ns| key_ns == ns)
+                ns == "local" && key.ns.is_none() || (key.ns.as_ref() == Some(ns))
             }
         })
     }

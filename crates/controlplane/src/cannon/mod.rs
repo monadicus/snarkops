@@ -389,7 +389,7 @@ impl CannonInstance {
         }
 
         // prevent already queued transactions from being re-broadcasted
-        let tracker = if let Some(mut tx) = self.transactions.get(&tx_id).as_deref().cloned() {
+        let tracker = match self.transactions.get(&tx_id).as_deref().cloned() { Some(mut tx) => {
             // if we receive a transaction that is not executing, it is a duplicate
             if !matches!(tx.status, TransactionSendState::Executing(_)) {
                 return Err(CannonError::TransactionAlreadyExists(
@@ -409,7 +409,7 @@ impl CannonInstance {
             tx.status = TransactionSendState::Unsent;
             tx.transaction = Some(Arc::new(body));
             tx
-        } else {
+        } _ => {
             trace!(
                 "cannon {}.{} received broadcast {tx_id}",
                 self.env_id,
@@ -426,7 +426,7 @@ impl CannonInstance {
                 transaction: Some(Arc::new(body)),
                 status: TransactionSendState::Unsent,
             }
-        };
+        }};
 
         // write the transaction to the store to prevent data loss
         tracker.write(&self.global_state, &key)?;

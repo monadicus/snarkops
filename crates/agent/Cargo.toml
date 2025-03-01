@@ -1,9 +1,10 @@
 [package]
 name = "snops-agent"
 version = "0.2.0"
-edition = "2021"
+
 description = "A snarkops agent for communicating with snarkos nodes and the control plane"
 authors.workspace = true
+edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 rust-version.workspace = true

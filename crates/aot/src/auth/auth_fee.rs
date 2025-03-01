@@ -112,7 +112,7 @@ pub fn fee_auth<N: Network>(
     let process = N::process();
 
     // Authorize the fee.
-    let fee = if let Some(record) = record {
+    let fee = match record { Some(record) => {
         process.authorize_fee_private::<N::Circuit, _>(
             &private_key,
             record,
@@ -121,7 +121,7 @@ pub fn fee_auth<N: Network>(
             execution_id,
             rng,
         )?
-    } else {
+    } _ => {
         process.authorize_fee_public::<N::Circuit, _>(
             &private_key,
             base_fee_in_microcredits,
@@ -129,7 +129,7 @@ pub fn fee_auth<N: Network>(
             execution_id,
             rng,
         )?
-    };
+    }};
 
     Ok(Some(fee))
 }

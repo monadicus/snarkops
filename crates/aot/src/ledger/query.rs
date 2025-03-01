@@ -140,15 +140,15 @@ impl<N: Network> LedgerQuery<N> {
             return StatusCode::BAD_REQUEST;
         };
 
-        if let Some(mut a) = state.appender.clone() {
+        match state.appender.clone() { Some(mut a) => {
             match write!(a, "{}", tx_json) {
                 Ok(_) => StatusCode::OK,
                 Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
             }
-        } else {
+        } _ => {
             println!("{}", tx_json);
             StatusCode::OK
-        }
+        }}
     }
 
     async fn add_block(

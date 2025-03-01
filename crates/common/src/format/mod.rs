@@ -141,7 +141,7 @@ impl<R: Read> DataFormatReader for R {
 
 #[macro_export]
 macro_rules! dataformat_test {
-    ($name:ident, $( $others:expr),* ) => {
+    ($name:ident, $( $others:expr_2021),* ) => {
         #[test]
         fn $name() -> Result<(), Box<dyn std::error::Error>> {
             use snops_common::format::{write_dataformat, read_dataformat};
