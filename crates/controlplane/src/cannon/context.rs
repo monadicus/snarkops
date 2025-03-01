@@ -6,6 +6,10 @@ use futures_util::{stream::FuturesUnordered, StreamExt};
 use lazysort::SortedBy;
 use snops_common::{
     events::{Event, TransactionAbortReason, TransactionEvent},
+    schema::cannon::{
+        sink::TxSink,
+        source::{ComputeTarget, TxSource},
+    },
     state::{AgentId, Authorization, CannonId, EnvId, NetworkId, TransactionSendState},
 };
 use tracing::{error, trace, warn};
@@ -13,15 +17,11 @@ use tracing::{error, trace, warn};
 use super::{
     error::{CannonError, ExecutionContextError, SourceError},
     file::TransactionSink,
-    sink::TxSink,
-    source::TxSource,
+    source::ExecuteAuth,
     tracker::TransactionTracker,
     CannonReceivers,
 };
-use crate::{
-    cannon::source::ComputeTarget,
-    state::{EmitEvent, GetGlobalState, GlobalState, REST_CLIENT},
-};
+use crate::state::{EmitEvent, GetGlobalState, GlobalState, REST_CLIENT};
 
 /// Information a transaction cannon needs for execution via spawned task
 pub struct ExecutionContext {

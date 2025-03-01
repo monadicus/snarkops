@@ -1,0 +1,24 @@
+apiVersion: v2
+name: snarkops
+description: A Helm chart for deploying snarkops along with some agents
+type: application
+version: 0.0.0
+
+appVersion: "latest"
+
+dependencies:
+  - alias: controlplane
+    name: snops-controlplane
+    enabled: true
+    version: "0.0.0"
+    repository: file://../snops-controlplane
+  - alias: agents
+    name: snops-agents
+    enabled: true
+    version: "0.0.0"
+    repository: file://../snops-agents
+  - alias: compute
+    name: snops-compute
+    enabled: true
+    version: "0.0.0"
+    repository: file://../snops-compute

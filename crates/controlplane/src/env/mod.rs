@@ -1,4 +1,3 @@
-use core::fmt;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -8,10 +7,18 @@ use bimap::BiMap;
 use dashmap::DashMap;
 use futures_util::future::join_all;
 use indexmap::{map::Entry, IndexMap, IndexSet};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use snops_common::{
     api::{AgentEnvInfo, EnvInfo},
     node_targets::NodeTargets,
+    schema::{
+        cannon::{
+            sink::TxSink,
+            source::{ComputeTarget, QueryTarget, TxSource},
+        },
+        nodes::{ExternalNode, NodeDoc},
+        ItemDocument,
+    },
     state::{
         AgentId, AgentPeer, AgentState, CannonId, EnvId, NetworkId, NodeKey, NodeState,
         ReconcileOptions, TxPipeId,
@@ -22,20 +29,10 @@ use tracing::{error, info, trace, warn};
 
 use self::error::*;
 use crate::{
-    cannon::{
-        file::TransactionSink,
-        sink::TxSink,
-        source::{ComputeTarget, QueryTarget, TxSource},
-        CannonInstance, CannonInstanceMeta,
-    },
+    apply::LoadedStorage,
+    cannon::{file::TransactionSink, CannonInstance, CannonInstanceMeta},
     env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, AgentMapping, BusyMode},
-    error::DeserializeError,
     persist::PersistEnv,
-    schema::{
-        nodes::{ExternalNode, Node},
-        storage::LoadedStorage,
-        ItemDocument,
-    },
     state::{Agent, GlobalState},
 };
 
@@ -49,9 +46,8 @@ pub struct Environment {
     pub storage: Arc<LoadedStorage>,
     pub network: NetworkId,
 
-    // TODO: pub outcome_results: RwLock<OutcomeResults>,
-    pub node_peers: BiMap<NodeKey, EnvPeer>,
-    pub node_states: DashMap<NodeKey, EnvNodeState>,
+    // A map of nodes to their respective states
+    pub nodes: DashMap<NodeKey, EnvNode>,
 
     /// Map of transaction files to their respective counters
     pub sinks: HashMap<TxPipeId, Arc<TransactionSink>>,
@@ -62,27 +58,12 @@ pub struct Environment {
 /// The effective test state of a node.
 #[derive(Debug, Clone, Serialize)]
 #[allow(clippy::large_enum_variant)]
-pub enum EnvNodeState {
-    Internal(Node),
+pub enum EnvNode {
+    Internal {
+        agent: Option<AgentId>,
+        node: NodeDoc,
+    },
     External(ExternalNode),
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize)]
-/// A way of looking up a peer in the test state.
-/// Could technically use AgentPeer like this but it would have needless port
-/// information
-pub enum EnvPeer {
-    Internal(AgentId),
-    External(NodeKey),
-}
-
-impl fmt::Display for EnvPeer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EnvPeer::Internal(id) => write!(f, "agent {id}"),
-            EnvPeer::External(k) => write!(f, "external node {k}"),
-        }
-    }
 }
 
 pub enum PortType {
@@ -92,22 +73,6 @@ pub enum PortType {
 }
 
 impl Environment {
-    /// Deserialize (YAML) many documents into a `Vec` of documents.
-    pub fn deserialize(str: &str) -> Result<Vec<ItemDocument>, DeserializeError> {
-        serde_yaml::Deserializer::from_str(str)
-            .enumerate()
-            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
-            .collect()
-    }
-
-    /// Deserialize (YAML) many documents into a `Vec` of documents.
-    pub fn deserialize_bytes(str: &[u8]) -> Result<Vec<ItemDocument>, DeserializeError> {
-        serde_yaml::Deserializer::from_slice(str)
-            .enumerate()
-            .map(|(i, doc)| ItemDocument::deserialize(doc).map_err(|e| DeserializeError { i, e }))
-            .collect()
-    }
-
     /// Apply an environment spec. This will attempt to delegate the given node
     /// configurations to available agents, or update existing agents with new
     /// configurations.
@@ -123,13 +88,12 @@ impl Environment {
 
         let mut storage_doc = None;
 
-        let (mut node_peers, mut node_states) = if let Some(ref env) = prev_env {
-            // reuse certain elements from the previous environment with the same
-            // name
-            (env.node_peers.clone(), env.node_states.clone())
-        } else {
-            (Default::default(), Default::default())
-        };
+        // reuse certain elements from the previous environment with the same
+        // name
+        let mut nodes = prev_env
+            .as_ref()
+            .map(|e| e.nodes.clone())
+            .unwrap_or_default();
 
         let mut network = NetworkId::default();
 
@@ -171,73 +135,73 @@ impl Environment {
                     pending_cannons.insert(cannon.name, (cannon.source, cannon.sink));
                 }
 
-                ItemDocument::Nodes(nodes) => {
-                    if let Some(n) = nodes.network {
+                ItemDocument::Nodes(nodes_doc) => {
+                    if let Some(n) = nodes_doc.network {
                         network = n;
                     }
 
                     // maps of states and peers that are new to this environment
                     let mut incoming_states = IndexMap::default();
-                    let mut updated_states = IndexMap::<NodeKey, EnvNodeState>::default();
+                    let mut updated_states = IndexMap::<NodeKey, EnvNode>::default();
                     let mut incoming_peers = BiMap::default();
 
                     // set of resolved keys that will be present (new and old)
                     let mut agent_keys = HashSet::new();
 
-                    // flatten replicas
-                    for (doc_node_key, mut doc_node) in nodes.nodes {
-                        let num_replicas = doc_node.replicas.unwrap_or(1);
-                        // nobody needs more than 10k replicas anyway
-                        for i in 0..num_replicas.min(10000) {
-                            let node_key = match num_replicas {
-                                0 => Err(PrepareError::NodeHas0Replicas)?,
-                                1 => doc_node_key.to_owned(),
-                                _ => {
-                                    let mut node_key = doc_node_key.to_owned();
-                                    if !node_key.id.is_empty() {
-                                        node_key.id.push('-');
-                                    }
-                                    node_key.id.push_str(&i.to_string());
-                                    node_key
-                                }
-                            };
-                            agent_keys.insert(node_key.clone());
+                    for (node_key, node) in nodes_doc.expand_internal_replicas() {
+                        // Track this node as a potential agent
+                        agent_keys.insert(node_key.clone());
 
-                            // nodes in flattened_nodes have replicas unset
-                            doc_node.replicas.take();
-
-                            // replace the key with a new one
-                            let mut node = doc_node.to_owned();
-                            if let Some(key) = node.key.as_mut() {
-                                *key = key.with_index(i);
-                            }
-
-                            // Skip delegating nodes that are already present in the node map
-                            // Agents are able to determine what updates need to be applied
-                            // based on their resolved node states.
-                            if node_peers.contains_left(&node_key) {
+                        // Skip delegating nodes that are already present in the node map
+                        // Agents are able to determine what updates need to be applied
+                        // based on their resolved node states.
+                        match nodes.get(&node_key).as_deref() {
+                            Some(EnvNode::Internal { agent, .. }) => {
                                 info!("{env_id}: updating node {node_key}");
-                                updated_states.insert(node_key, EnvNodeState::Internal(node));
+                                updated_states.insert(
+                                    node_key.clone(),
+                                    EnvNode::Internal {
+                                        agent: *agent,
+                                        node,
+                                    },
+                                );
                                 continue;
                             }
-
-                            match incoming_states.entry(node_key) {
-                                Entry::Occupied(ent) => {
-                                    Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
-                                }
-                                Entry::Vacant(ent) => ent.insert(EnvNodeState::Internal(node)),
-                            };
+                            Some(EnvNode::External(_)) => {
+                                warn!("{env_id}: replacing ext {node_key} with internal node");
+                                updated_states.insert(
+                                    node_key.clone(),
+                                    EnvNode::Internal { agent: None, node },
+                                );
+                                continue;
+                            }
+                            None => {}
                         }
+
+                        match incoming_states.entry(node_key) {
+                            Entry::Occupied(ent) => {
+                                Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
+                            }
+                            Entry::Vacant(ent) => {
+                                ent.insert(EnvNode::Internal { agent: None, node })
+                            }
+                        };
                     }
 
                     // list of nodes that will be removed after applying this document
-                    let nodes_to_remove = node_peers
+                    let nodes_to_remove = nodes
                         .iter()
-                        .filter_map(|(k, v)| match v {
-                            EnvPeer::Internal(_) => (!agent_keys.contains(k)).then_some(k),
-                            EnvPeer::External(_) => (!nodes.external.contains_key(k)).then_some(k),
+                        .filter_map(|e| {
+                            let key = e.key().clone();
+                            match e.value() {
+                                EnvNode::Internal { .. } => {
+                                    (!agent_keys.contains(&key)).then_some(key)
+                                }
+                                EnvNode::External(_) => {
+                                    (!nodes_doc.external.contains_key(&key)).then_some(key)
+                                }
+                            }
                         })
-                        .cloned()
                         .collect::<Vec<_>>();
 
                     // get a set of all labels the nodes can reference
@@ -249,11 +213,15 @@ impl Environment {
 
                     // list of agents that are now free because their nodes are no longer
                     // going to be part of the environment
-                    let mut removed_agents = node_peers
+                    let mut removed_agents = nodes
                         .iter()
-                        .filter_map(|(key, mode)| {
-                            if let (EnvPeer::Internal(agent), false) =
-                                (mode, agent_keys.contains(key))
+                        .filter_map(|ent| {
+                            if let (
+                                EnvNode::Internal {
+                                    agent: Some(agent), ..
+                                },
+                                false,
+                            ) = (ent.value(), agent_keys.contains(ent.key()))
                             {
                                 Some(*agent)
                             } else {
@@ -290,7 +258,7 @@ impl Environment {
                         }
                         .map(|(key, id, busy)| {
                             // extend the node map with the newly paired agent
-                            incoming_peers.insert(key, EnvPeer::Internal(id));
+                            incoming_peers.insert(key, id);
                             busy
                         })
                         .collect();
@@ -299,46 +267,42 @@ impl Environment {
                         "{env_id}: delegated {} nodes to agents",
                         incoming_peers.len()
                     );
-                    for (key, node) in &incoming_peers {
-                        info!("node {key}: {node}");
+                    for (key, agent) in &incoming_peers {
+                        // Insert the agent into the node map
+                        if let Some(EnvNode::Internal { agent: v, .. }) =
+                            incoming_states.get_mut(key)
+                        {
+                            info!("node {key}: {agent}");
+                            *v = Some(*agent);
+                        }
 
-                        // all re-allocated potentially removed agents are removed
+                        // All re-allocated potentially removed agents are removed
                         // from the agents that will need to be inventoried
-                        match node {
-                            EnvPeer::Internal(agent) if removed_agents.contains(agent) => {
-                                removed_agents.swap_remove(agent);
-                            }
-                            _ => {}
+                        if removed_agents.contains(agent) {
+                            removed_agents.swap_remove(agent);
                         }
                     }
 
-                    // all removed agents that were not recycled are pending inventory
+                    // All removed agents that were not recycled are pending inventory
                     agents_to_inventory.extend(removed_agents);
 
                     // append external nodes to the node map
-                    for (node_key, node) in &nodes.external {
+                    for (node_key, node) in &nodes_doc.external {
                         match incoming_states.entry(node_key.clone()) {
                             Entry::Occupied(ent) => {
                                 Err(PrepareError::DuplicateNodeKey(ent.key().clone()))?
                             }
-                            Entry::Vacant(ent) => {
-                                ent.insert(EnvNodeState::External(node.to_owned()))
-                            }
+                            Entry::Vacant(ent) => ent.insert(EnvNode::External(node.to_owned())),
                         };
                     }
-                    nodes.external.keys().for_each(|k| {
-                        incoming_peers.insert(k.clone(), EnvPeer::External(k.clone()));
-                    });
 
                     // remove the nodes that are no longer relevant
                     nodes_to_remove.into_iter().for_each(|key| {
-                        node_peers.remove_by_left(&key);
-                        node_states.remove(&key);
+                        nodes.remove(&key);
                     });
 
-                    node_peers.extend(incoming_peers.into_iter());
-                    node_states.extend(incoming_states.into_iter());
-                    node_states.extend(updated_states.into_iter());
+                    nodes.extend(incoming_states.into_iter());
+                    nodes.extend(updated_states.into_iter());
                 }
 
                 _ => warn!("ignored unimplemented document type"),
@@ -347,10 +311,8 @@ impl Environment {
 
         // prepare the storage after all the other documents
         // as it depends on the network id
-        let storage = storage_doc
-            .ok_or(PrepareError::MissingStorage)?
-            .prepare(&state, network)
-            .await?;
+        let storage =
+            LoadedStorage::from_doc(*storage_doc.unwrap_or_default(), &state, network).await?;
 
         let storage_id = storage.id;
 
@@ -388,8 +350,7 @@ impl Environment {
             id: env_id,
             storage,
             network,
-            node_peers,
-            node_states,
+            nodes,
             sinks,
             cannons,
         });
@@ -435,13 +396,13 @@ impl Environment {
         let mut pending_changes = vec![];
         let mut node_map = HashMap::new();
 
-        for entry in self.node_states.iter() {
+        for entry in self.nodes.iter() {
             let key = entry.key();
             let node = entry.value();
-            let EnvNodeState::Internal(node) = node else {
+            let EnvNode::Internal { agent, node } = node else {
                 continue;
             };
-            let Some(agent_id) = self.get_agent_by_key(key) else {
+            let Some(agent_id) = *agent else {
                 continue;
             };
             let Some(agent) = state.pool.get(&agent_id) else {
@@ -512,14 +473,15 @@ impl Environment {
 
         state
             .update_agent_states(
-                env.node_peers
-                    .right_values()
+                env.nodes
+                    .iter()
                     // find all agents associated with the env
-                    .filter_map(|peer| match peer {
-                        EnvPeer::Internal(id) => Some(*id),
+                    .filter_map(|ent| match ent.value() {
+                        EnvNode::Internal {
+                            agent: Some(id), ..
+                        } => Some((*id, AgentState::Inventory)),
                         _ => None,
                     })
-                    .map(|id| (id, AgentState::Inventory))
                     // this collect is necessary because the iter sent to reconcile_agents
                     // must be owned by this thread. Without this, the iter would hold a reference
                     // to the env.node_peers.right_values(), which is NOT Send
@@ -532,15 +494,10 @@ impl Environment {
 
     /// Lookup a env agent id by node key.
     pub fn get_agent_by_key(&self, key: &NodeKey) -> Option<AgentId> {
-        self.node_peers.get_by_left(key).and_then(|id| match id {
-            EnvPeer::Internal(id) => Some(*id),
-            EnvPeer::External(_) => None,
+        self.nodes.get(key).and_then(|ent| match ent.value() {
+            EnvNode::Internal { agent, .. } => *agent,
+            _ => None,
         })
-    }
-
-    pub fn get_node_key_by_agent(&self, id: AgentId) -> Option<&NodeKey> {
-        let peer = EnvPeer::Internal(id);
-        self.node_peers.get_by_right(&peer)
     }
 
     pub fn matching_nodes<'a>(
@@ -558,42 +515,34 @@ impl Environment {
         targets: &'a NodeTargets,
         pool: &'a DashMap<AgentId, Agent>,
         port_type: PortType,
-    ) -> impl Iterator<Item = (&'a NodeKey, AgentPeer)> + 'a {
-        self.node_peers
+    ) -> impl Iterator<Item = (NodeKey, AgentPeer)> + 'a {
+        self.nodes
             .iter()
-            .filter(|(key, _)| targets.matches(key))
-            .filter_map(move |(key, value)| match value {
-                EnvPeer::Internal(id) => {
-                    let agent = pool.get(id)?;
+            .filter(|ent| targets.matches(ent.key()))
+            .filter_map(move |ent| {
+                Some((
+                    ent.key().clone(),
+                    match ent.value() {
+                        EnvNode::Internal { agent: id, .. } => {
+                            let agent = id.and_then(|id| pool.get(&id))?;
 
-                    Some((
-                        key,
-                        AgentPeer::Internal(
-                            *id,
-                            match port_type {
-                                PortType::Bft => agent.bft_port(),
-                                PortType::Node => agent.node_port(),
-                                PortType::Rest => agent.rest_port(),
-                            },
-                        ),
-                    ))
-                }
+                            AgentPeer::Internal(
+                                agent.id,
+                                match port_type {
+                                    PortType::Bft => agent.bft_port(),
+                                    PortType::Node => agent.node_port(),
+                                    PortType::Rest => agent.rest_port(),
+                                },
+                            )
+                        }
 
-                EnvPeer::External(_key) => {
-                    let entry = self.node_states.get(key)?;
-                    let EnvNodeState::External(external) = entry.value() else {
-                        return None;
-                    };
-
-                    Some((
-                        key,
-                        AgentPeer::External(match port_type {
-                            PortType::Bft => external.bft?,
-                            PortType::Node => external.node?,
-                            PortType::Rest => external.rest?,
+                        EnvNode::External(ext) => AgentPeer::External(match port_type {
+                            PortType::Bft => ext.bft?,
+                            PortType::Node => ext.node?,
+                            PortType::Rest => ext.rest?,
                         }),
-                    ))
-                }
+                    },
+                ))
             })
     }
 
@@ -612,15 +561,15 @@ impl Environment {
     fn nodes_with_peer<'a>(
         &'a self,
         key: &'a NodeKey,
-    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'a, NodeKey, EnvNodeState>> {
-        self.node_states.iter().filter(move |s| {
+    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'a, NodeKey, EnvNode>> {
+        self.nodes.iter().filter(move |ent| {
             // Only internal nodes can be agents
-            let EnvNodeState::Internal(node) = s.value() else {
+            let EnvNode::Internal { node, .. } = ent.value() else {
                 return false;
             };
 
             // Ignore self-reference
-            if s.key() == key {
+            if ent.key() == key {
                 return false;
             }
 
@@ -636,13 +585,18 @@ impl Environment {
         is_port_change: bool,
         is_ip_change: bool,
     ) {
-        let Some(key) = self.get_node_key_by_agent(agent_id) else {
+        let Some(key) = state
+            .pool
+            .get(&agent_id)
+            .and_then(|a| a.node_key().cloned())
+        else {
             return;
         };
+
         let pending_reconciles = self
-            .nodes_with_peer(key)
+            .nodes_with_peer(&key)
             .filter_map(|ent| {
-                let EnvNodeState::Internal(env_node) = ent.value() else {
+                let EnvNode::Internal { node: env_node, .. } = ent.value() else {
                     return None;
                 };
 
@@ -733,7 +687,7 @@ impl Environment {
         state: &GlobalState,
         id: AgentId,
         key: &NodeKey,
-        node: &Node,
+        node: &NodeDoc,
     ) -> NodeState {
         // base node state
         let mut node_state = node.into_state(key.to_owned());
@@ -754,7 +708,7 @@ impl Environment {
         &self,
         pool: &DashMap<AgentId, Agent>,
         id: AgentId,
-        node: &Node,
+        node: &NodeDoc,
     ) -> (Vec<AgentPeer>, Vec<AgentPeer>) {
         // a filter to exclude the current node from the list of peers
         let not_me = |agent: &AgentPeer| !matches!(agent, AgentPeer::Internal(candidate_id, _) if *candidate_id == id);

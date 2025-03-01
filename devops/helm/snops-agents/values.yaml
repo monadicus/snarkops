@@ -1,0 +1,37 @@
+imagePullSecrets: []
+
+podAnnotations: {}
+podLabels: {}
+
+# Comma separated list of labels to add to the agent CLI
+agentLabels: ""
+
+# Must be the same as the controlplane service name and port
+controlplaneService:
+  name: snops-service
+  port: 1234
+
+# Configurations for the agent pods
+image:
+  repository: snops-agent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicas: 4
+
+resources: {}
+# limits:
+#   cpu: 500m
+#   memory: 2Gi
+# requests:
+#   cpu: 500m
+#   memory: 2Gi
+
+volumes: []
+nodeSelector: {}
+affinity: {}
+volumeMounts: []
+
+nameOverride: ""
+fullnameOverride: ""

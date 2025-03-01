@@ -10,19 +10,25 @@ pub(crate) static DUMMY_ID: &str = "dummy_value___";
 
 mod agent;
 mod env;
+mod spec;
 
 #[derive(Debug, Parser)]
 pub enum Commands {
     /// Generate shell completions.
     #[command(arg_required_else_help = true)]
-    Autocomplete {
+    Completion {
         /// Which shell you want to generate completions for.
         shell: clap_complete::Shell,
+        /// Rename the command in the completions.
+        #[clap(long)]
+        rename: Option<String>,
     },
     #[clap(alias = "a")]
     Agent(agent::Agent),
     #[clap(alias = "e")]
     Env(env::Env),
+    #[clap(alias = "s")]
+    Spec(spec::Spec),
     SetLogLevel {
         level: String,
     },
@@ -44,9 +50,9 @@ impl Commands {
         let client = reqwest::Client::new();
 
         let response = match self {
-            Commands::Autocomplete { shell } => {
+            Commands::Completion { shell, rename } => {
                 let mut cmd = Cli::command();
-                let cmd_name = cmd.get_name().to_string();
+                let cmd_name = rename.unwrap_or_else(|| cmd.get_name().to_string());
 
                 clap_complete::generate(shell, &mut cmd, cmd_name, &mut std::io::stdout());
                 return Ok(());
@@ -68,6 +74,7 @@ impl Commands {
                 client.close().await?;
                 return Ok(());
             }
+            Commands::Spec(spec) => return spec.command.run(url, client).await,
             #[cfg(feature = "mangen")]
             Commands::Man(mangen) => {
                 mangen.run(

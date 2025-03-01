@@ -1,23 +1,21 @@
-use snops_common::state::AgentId;
+use snops_common::schema::{
+    nodes::{ExternalNode, NodeDoc},
+    persist::NodeFormatHeader,
+};
 
 use super::prelude::*;
-use crate::schema::nodes::{ExternalNode, Node, NodeFormatHeader};
+use crate::env::EnvNode;
 
 #[derive(Debug, Clone)]
-pub struct PersistNodeFormatHeader {
+pub struct EnvNodeStateFormatHeader {
+    pub(crate) version: u8,
     pub(crate) node: NodeFormatHeader,
     pub(crate) external_node: DataHeaderOf<ExternalNode>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PersistNode {
-    Internal(AgentId, Box<Node>),
-    External(ExternalNode),
-}
-
-impl DataFormat for PersistNodeFormatHeader {
+impl DataFormat for EnvNodeStateFormatHeader {
     type Header = u8;
-    const LATEST_HEADER: Self::Header = 1;
+    const LATEST_HEADER: Self::Header = 2;
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         Ok(write_dataformat(writer, &self.node)? + write_dataformat(writer, &self.external_node)?)
@@ -35,29 +33,31 @@ impl DataFormat for PersistNodeFormatHeader {
         let node = read_dataformat(reader)?;
         let external_node = read_dataformat(reader)?;
 
-        Ok(PersistNodeFormatHeader {
+        Ok(EnvNodeStateFormatHeader {
+            version: *header,
             node,
             external_node,
         })
     }
 }
 
-impl DataFormat for PersistNode {
-    type Header = PersistNodeFormatHeader;
-    const LATEST_HEADER: Self::Header = PersistNodeFormatHeader {
-        node: Node::LATEST_HEADER,
+impl DataFormat for EnvNode {
+    type Header = EnvNodeStateFormatHeader;
+    const LATEST_HEADER: Self::Header = EnvNodeStateFormatHeader {
+        version: EnvNodeStateFormatHeader::LATEST_HEADER,
+        node: NodeDoc::LATEST_HEADER,
         external_node: ExternalNode::LATEST_HEADER,
     };
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
         let mut written = 0;
         match self {
-            PersistNode::Internal(id, state) => {
+            EnvNode::Internal { agent, node } => {
                 written += writer.write_data(&0u8)?;
-                written += writer.write_data(id)?;
-                written += writer.write_data(state)?;
+                written += writer.write_data(agent)?;
+                written += writer.write_data(node)?;
             }
-            PersistNode::External(n) => {
+            EnvNode::External(n) => {
                 written += writer.write_data(&1u8)?;
                 written += writer.write_data(n)?;
             }
@@ -68,16 +68,21 @@ impl DataFormat for PersistNode {
     fn read_data<R: Read>(reader: &mut R, header: &Self::Header) -> Result<Self, DataReadError> {
         match reader.read_data(&())? {
             0u8 => {
-                let id = reader.read_data(&())?;
-                let state = reader.read_data(&header.node)?;
-                Ok(PersistNode::Internal(id, Box::new(state)))
+                let agent = if header.version == 1 {
+                    // Version 1 required an agent id, later versions have the agent id as an option
+                    Some(reader.read_data(&())?)
+                } else {
+                    reader.read_data(&())?
+                };
+                let node = reader.read_data(&header.node)?;
+                Ok(EnvNode::Internal { agent, node })
             }
             1u8 => {
                 let n = reader.read_data(&header.external_node)?;
-                Ok(PersistNode::External(n))
+                Ok(EnvNode::External(n))
             }
             n => Err(DataReadError::Custom(format!(
-                "invalid PersistNode discriminant: {n}"
+                "invalid EnvNodeState discriminant: {n}"
             ))),
         }
     }
@@ -90,13 +95,14 @@ mod tests {
     use snops_common::{
         format::DataFormat,
         node_targets::NodeTargets,
+        schema::{
+            nodes::{ExternalNode, NodeDoc},
+            persist::NodeFormatHeader,
+        },
         state::{HeightRequest, InternedId},
     };
 
-    use crate::{
-        persist::{PersistNode, PersistNodeFormatHeader},
-        schema::nodes::{ExternalNode, Node, NodeFormatHeader},
-    };
+    use crate::{env::EnvNode, persist::EnvNodeStateFormatHeader};
 
     macro_rules! case {
         ($name:ident, $ty:ty, $a:expr, $b:expr) => {
@@ -121,11 +127,11 @@ mod tests {
 
     case!(
         node_header,
-        PersistNodeFormatHeader,
-        PersistNode::LATEST_HEADER,
+        EnvNodeStateFormatHeader,
+        EnvNode::LATEST_HEADER,
         [
             NodeFormatHeader::LATEST_HEADER.to_byte_vec()?,
-            Node::LATEST_HEADER.to_byte_vec()?,
+            NodeDoc::LATEST_HEADER.to_byte_vec()?,
             ExternalNode::LATEST_HEADER.to_byte_vec()?,
         ]
         .concat()
@@ -133,10 +139,10 @@ mod tests {
 
     case!(
         node_internal,
-        PersistNode,
-        PersistNode::Internal(
-            InternedId::from_str("id")?,
-            Box::new(Node {
+        EnvNode,
+        EnvNode::Internal {
+            agent: Some(InternedId::from_str("id")?),
+            node: NodeDoc {
                 online: true,
                 replicas: None,
                 key: None,
@@ -147,12 +153,12 @@ mod tests {
                 peers: NodeTargets::None,
                 env: Default::default(),
                 binary: None,
-            })
-        ),
+            }
+        },
         [
             0u8.to_byte_vec()?,
-            InternedId::from_str("id")?.to_byte_vec()?,
-            Node {
+            Some(InternedId::from_str("id")?).to_byte_vec()?,
+            NodeDoc {
                 online: true,
                 replicas: None,
                 key: None,
@@ -171,8 +177,8 @@ mod tests {
 
     case!(
         node_external,
-        PersistNode,
-        PersistNode::External(ExternalNode {
+        EnvNode,
+        EnvNode::External(ExternalNode {
             bft: None,
             node: None,
             rest: None

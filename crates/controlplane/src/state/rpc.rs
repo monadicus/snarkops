@@ -50,7 +50,7 @@ impl AgentClient {
         auth: String,
     ) -> Result<String, StateError> {
         let mut ctx = context::current();
-        ctx.deadline += Duration::from_secs(30);
+        ctx.deadline += Duration::from_secs(60);
         Ok(self
             .0
             .execute_authorization(ctx, env_id, network, query, auth)

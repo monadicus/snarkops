@@ -134,7 +134,7 @@ A few different examples of topology docs.
 ### Four Validators
 
 ```yaml
-version: nodes.snarkos.testing.monadic.us/v1
+kind: snops/nodes/v1
 name: 4-validators
 
 nodes:
@@ -150,7 +150,7 @@ nodes:
 ### External Connections and a Client
 
 ```yaml
-version: nodes.snarkos.testing.monadic.us/v1
+kind: snops/nodes/v1
 name: 4-clients-canary
 
 external:
@@ -170,13 +170,13 @@ nodes:
     height: 0
     validators: []
     # has all of every type of node that are at canarynet as peers
-    peers: ["*/*@canarynet"] # so both validators and the client. 
+    peers: ["*/*@canarynet"] # so both validators and the client.
 ```
 
 ### Using a custom binary
 
 ```yaml
-version: nodes.snarkos.testing.monadic.us/v1
+kind: snops/nodes/v1
 name: example-storage
 
 nodes:

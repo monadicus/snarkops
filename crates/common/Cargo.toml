@@ -8,6 +8,7 @@ description = "Common types and utilities for snops"
 [features]
 default = []
 aot_cmds = []
+schema = ["fixedbitset", "serde_yaml", "lazysort"]
 clipages = ["anyhow", "clap-markdown"]
 mangen = ["anyhow", "clap_mangen"]
 
@@ -18,16 +19,19 @@ chrono = { workspace = true, features = ["serde"] }
 clap.workspace = true
 clap_mangen = { workspace = true, optional = true }
 clap-markdown = { workspace = true, optional = true }
+fixedbitset = { workspace = true, optional = true }
 futures.workspace = true
 http = { workspace = true, features = ["std"] }
 indexmap = { workspace = true, features = ["std", "serde"] }
 lasso.workspace = true
 lazy_static.workspace = true
+lazysort = { workspace = true, optional = true }
 paste.workspace = true
 rand.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml = { workspace = true, optional = true }
 sha2.workspace = true
 sled.workspace = true
 snops-checkpoint = { workspace = true, features = ["serde"] }
@@ -42,3 +46,4 @@ wildmatch.workspace = true
 [dev-dependencies]
 indexmap = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["io-util", "process"] }
+serde_yaml = { workspace = true }

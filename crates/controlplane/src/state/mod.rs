@@ -18,7 +18,7 @@ pub use global::*;
 pub use reconcile::*;
 pub use rpc::*;
 
-use crate::{env::Environment, schema::storage::LoadedStorage};
+use crate::{apply::LoadedStorage, env::Environment};
 
 pub type AppState = Arc<GlobalState>;
 /// Map of agent ids to agents

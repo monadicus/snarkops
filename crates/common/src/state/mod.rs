@@ -33,7 +33,7 @@ pub use transaction_status::*;
 
 lazy_static! {
     static ref NODE_KEY_REGEX: Regex = Regex::new(
-        r"^(?P<ty>client|validator|prover)\/(?P<id>[A-Za-z0-9\-]*)(?:@(?P<ns>[A-Za-z0-9\-]+))?$"
+        r"^(?P<ty>client|validator|prover)(?:\/(?P<id>[A-Za-z0-9\-]*))?(?:@(?P<ns>[A-Za-z0-9\-]+))?$"
     )
     .unwrap();
     static ref INTERNED_ID_REGEX: Regex =

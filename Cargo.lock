@@ -525,12 +525,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cactus"
-version = "1.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acbc26382d871df4b7442e3df10a9402bf3cf5e55cbd66f12be38861425f0564"
-
-[[package]]
 name = "cc"
 version = "1.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -561,20 +555,6 @@ name = "cfg_aliases"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
-
-[[package]]
-name = "cfgrammar"
-version = "0.13.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6026d8cd82ada8bbcfe337805dd1eb6afdc9e80fa4d57e977b3a36315e0c5525"
-dependencies = [
- "indexmap 2.6.0",
- "lazy_static",
- "num-traits",
- "regex",
- "serde",
- "vob",
-]
 
 [[package]]
 name = "chrono"
@@ -1022,18 +1002,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
 
 [[package]]
-name = "filetime"
-version = "0.2.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35c0522e981e68cbfa8c3f978441a5f34b30b96e146b33cd3359176b50fe8586"
-dependencies = [
- "cfg-if",
- "libc",
- "libredox",
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1224,15 +1192,6 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
-]
-
-[[package]]
-name = "getopts"
-version = "0.2.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14dbbfd5c71d70241ecf9e6f13737f7b5ce823821063188d7e46c41d371eebd5"
-dependencies = [
- "unicode-width",
 ]
 
 [[package]]
@@ -1799,7 +1758,6 @@ checksum = "c0ff37bd590ca25063e35af745c343cb7a0271906fb7b37e4813e8f79f00268d"
 dependencies = [
  "bitflags 2.6.0",
  "libc",
- "redox_syscall 0.5.7",
 ]
 
 [[package]]
@@ -1887,60 +1845,6 @@ checksum = "674883a98273598ac3aad4301724c56734bea90574c5033af067e8f9fb5eb399"
 dependencies = [
  "prost",
  "prost-types",
-]
-
-[[package]]
-name = "lrlex"
-version = "0.13.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05863fdac293d1bc74f0cd91512933a5ab67e0cb607dc78ac4984be089456b49"
-dependencies = [
- "cfgrammar",
- "getopts",
- "lazy_static",
- "lrpar",
- "num-traits",
- "quote 1.0.37",
- "regex",
- "regex-syntax 0.8.5",
- "serde",
- "vergen",
-]
-
-[[package]]
-name = "lrpar"
-version = "0.13.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b1ecae55cf667db308d3555e22b20bcc28eaeca0c95a09b37171673be157c71"
-dependencies = [
- "bincode",
- "cactus",
- "cfgrammar",
- "filetime",
- "indexmap 2.6.0",
- "lazy_static",
- "lrtable",
- "num-traits",
- "packedvec",
- "regex",
- "serde",
- "static_assertions",
- "vergen",
- "vob",
-]
-
-[[package]]
-name = "lrtable"
-version = "0.13.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d42d2752cb50a171efadda0cb6fa97432e8bf05accfff3eed320b87e80a2f69e"
-dependencies = [
- "cfgrammar",
- "fnv",
- "num-traits",
- "serde",
- "sparsevec",
- "vob",
 ]
 
 [[package]]
@@ -2234,15 +2138,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num_threads"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "number_prefix"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2358,16 +2253,6 @@ name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
-
-[[package]]
-name = "packedvec"
-version = "1.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bde3c690ec20e4a2b4fb46f0289a451181eb50011a1e2acc8d85e2fde9062a45"
-dependencies = [
- "num-traits",
- "serde",
-]
 
 [[package]]
 name = "parking_lot"
@@ -2535,19 +2420,6 @@ dependencies = [
  "serde",
  "time",
  "url",
-]
-
-[[package]]
-name = "promql-parser"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "007a331efb31f6ddb644590ef22359c9469784931162aad92599e34bcfa66583"
-dependencies = [
- "cfgrammar",
- "lazy_static",
- "lrlex",
- "lrpar",
- "regex",
 ]
 
 [[package]]
@@ -4552,7 +4424,6 @@ dependencies = [
  "lazy_static",
  "lazysort",
  "prometheus-http-query",
- "promql-parser",
  "rand",
  "rand_chacha",
  "rayon",
@@ -4630,7 +4501,7 @@ dependencies = [
 
 [[package]]
 name = "snops-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4638,6 +4509,7 @@ dependencies = [
  "clap_complete",
  "futures-util",
  "http 1.1.0",
+ "indexmap 2.6.0",
  "reqwest 0.12.8",
  "rustls 0.23.15",
  "serde",
@@ -4645,7 +4517,7 @@ dependencies = [
  "snops-common",
  "tokio",
  "tokio-tungstenite",
- "urlencoding",
+ "url",
 ]
 
 [[package]]
@@ -4658,16 +4530,19 @@ dependencies = [
  "clap",
  "clap-markdown",
  "clap_mangen",
+ "fixedbitset",
  "futures",
  "http 1.1.0",
  "indexmap 2.6.0",
  "lasso",
  "lazy_static",
+ "lazysort",
  "paste",
  "rand",
  "regex",
  "serde",
  "serde_json",
+ "serde_yml",
  "sha2",
  "sled",
  "snops-checkpoint",
@@ -4688,18 +4563,6 @@ checksum = "ce305eb0b4296696835b71df73eb912e0f1ffd2556a501fcede6e0c50349191c"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "sparsevec"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35df5d2e580b29f3f7ec5b4ed49b0ab3acf7f3624122b3e823cafb9630f293b8"
-dependencies = [
- "num-traits",
- "packedvec",
- "serde",
- "vob",
 ]
 
 [[package]]
@@ -4970,9 +4833,7 @@ checksum = "5dfd88e563464686c916c7e46e623e520ddc6d79fa6641390f2e3fa86e83e885"
 dependencies = [
  "deranged",
  "itoa",
- "libc",
  "num-conv",
- "num_threads",
  "powerfmt",
  "serde",
  "time-core",
@@ -5509,32 +5370,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
-name = "vergen"
-version = "8.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2990d9ea5967266ea0ccf413a4aa5c42a93dbcfda9cb49a97de6931726b12566"
-dependencies = [
- "anyhow",
- "rustversion",
- "time",
-]
-
-[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vob"
-version = "3.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c058f4c41e71a043c67744cb76dcc1ae63ece328c1732a72489ccccc2dec23e6"
-dependencies = [
- "num-traits",
- "rustc_version",
- "serde",
-]
 
 [[package]]
 name = "walkdir"

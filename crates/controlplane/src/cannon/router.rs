@@ -11,10 +11,10 @@ use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
     key_source::KeySource,
+    schema::cannon::source::QueryTarget,
     state::{id_or_none, Authorization, KeyState, NetworkId},
 };
 
-use super::source::QueryTarget;
 use crate::{
     server::{actions::execute::execute_status, error::ServerError},
     state::AppState,

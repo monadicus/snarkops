@@ -15,46 +15,47 @@ use tracing::{info, warn};
 
 use crate::net;
 
-pub const ENV_ENDPOINT: &str = "SNOPS_ENDPOINT";
-pub const ENV_ENDPOINT_DEFAULT: &str = "127.0.0.1:1234";
-
 // TODO: allow agents to define preferred internal/external addrs
 
 #[derive(Debug, Parser)]
 pub struct Cli {
-    #[arg(long, env = ENV_ENDPOINT)]
+    #[clap(long, env = "SNOPS_ENDPOINT", default_value = "127.0.0.1:1234")]
     /// Control plane endpoint address (IP, or wss://host, http://host)
-    pub endpoint: Option<String>,
+    pub endpoint: String,
 
     /// Agent ID, used to identify the agent in the network.
-    #[arg(long)]
+    #[clap(long, env = "SNOPS_AGENT_ID")]
     pub id: AgentId,
 
     /// Locally provided private key file, used for envs where private keys are
     /// locally provided
-    #[arg(long)]
-    #[clap(long = "private-key-file")]
+    #[clap(long = "private-key-file", env = "SNOPS_AGENT_PRIVATE_KEY_FILE")]
     pub private_key_file: Option<PathBuf>,
 
     /// Labels to attach to the agent, used for filtering and grouping.
-    #[arg(long, value_delimiter = ',', num_args = 1..)]
+    #[clap(long, value_delimiter = ',', num_args = 1..)]
     pub labels: Option<Vec<String>>,
 
     /// Path to the directory containing the stored data and configuration
-    #[arg(long, default_value = "./snops-data")]
+    #[clap(long, env = "SNOPS_AGENT_DATA_DIR", default_value = "./snops-data")]
     pub path: PathBuf,
 
     /// Enable the agent to fetch its external address. Necessary to determine
     /// which agents are on shared networks, and for
     /// external-to-external connections
-    #[arg(long)]
+    #[clap(long)]
     pub external: Option<IpAddr>,
     /// Manually specify internal addresses.
-    #[arg(long)]
+    #[clap(long)]
     pub internal: Option<IpAddr>,
 
-    #[clap(long = "bind", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
+    /// Bind address for the agent to listen on
+    #[clap(long = "bind", env = "SNOPS_AGENT_HOST", default_value_t = IpAddr::V4(Ipv4Addr::UNSPECIFIED))]
     pub bind_addr: IpAddr,
+
+    /// Port for the agent to listen on for readiness and liveness checks
+    #[clap(long, env = "SNOPS_AGENT_HEALTH_PORT")]
+    pub service_port: Option<u16>,
 
     #[clap(flatten)]
     pub ports: PortConfig,
@@ -62,9 +63,13 @@ pub struct Cli {
     #[clap(flatten)]
     pub modes: AgentModeOptions,
 
-    #[clap(short, long, default_value_t = false)]
     /// Run the agent in quiet mode, suppressing most node output
+    #[clap(short, long, default_value_t = false, env = "SNOPS_AGENT_QUIET")]
     pub quiet: bool,
+
+    /// When present, delete the agent from the controlplane on disconnect
+    #[clap(long, default_value_t = false, env = "SNOPS_AGENT_EPHEMERAL")]
+    pub ephemeral: bool,
 
     #[cfg(any(feature = "clipages", feature = "mangen"))]
     #[clap(subcommand)]
@@ -113,24 +118,26 @@ impl Cli {
 
     pub fn endpoint_and_uri(&self) -> (String, Uri) {
         // get the endpoint
-        let endpoint = self
-            .endpoint
-            .as_ref()
-            .cloned()
-            .unwrap_or(ENV_ENDPOINT_DEFAULT.to_owned());
+        let endpoint = &self.endpoint;
 
-        let mut query = format!("/agent?mode={}", u8::from(self.modes));
+        let mut qs = url::form_urlencoded::Serializer::new(String::new());
+
+        qs.append_pair("mode", &u8::from(self.modes).to_string());
 
         // Add agent version
-        query.push_str(&format!("&version={}", env!("CARGO_PKG_VERSION")));
+        qs.append_pair("version", env!("CARGO_PKG_VERSION"));
 
         // add &id=
-        query.push_str(&format!("&id={}", self.id));
+        qs.append_pair("id", self.id.as_ref());
+
+        if self.ephemeral {
+            qs.append_pair("ephemeral", "true");
+        }
 
         // add local pk flag
         if let Some(file) = self.private_key_file.as_ref() {
             if fs::metadata(file).is_ok() {
-                query.push_str("&local_pk=true");
+                qs.append_pair("local_pk", "true");
             } else {
                 warn!("Private-key-file flag ignored as the file was not found: {file:?}")
             }
@@ -138,16 +145,13 @@ impl Cli {
 
         // add &labels= if id is present
         if let Some(labels) = &self.labels {
-            info!("Using labels: {:?}", labels);
-            query.push_str(&format!(
-                "&labels={}",
-                labels
-                    .iter()
-                    .filter(|s| !s.is_empty())
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(",")
-            ));
+            let label_vec = labels
+                .iter()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.trim())
+                .collect::<Vec<_>>();
+            info!("Using labels: {label_vec:?}");
+            qs.append_pair("labels", &label_vec.join(","));
         }
 
         let (is_tls, host) = endpoint
@@ -160,7 +164,7 @@ impl Cli {
         let ws_uri = Uri::builder()
             .scheme(if is_tls { "wss" } else { "ws" })
             .authority(addr.to_owned())
-            .path_and_query(query)
+            .path_and_query(format!("/agent?{}", qs.finish()))
             .build()
             .unwrap();
 

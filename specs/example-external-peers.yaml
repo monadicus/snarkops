@@ -1,0 +1,28 @@
+---
+kind: snops/storage/v1
+
+id: canary-clients
+name: canary-clients
+
+generate:
+  accounts:
+    extra: 5
+
+---
+kind: snops/nodes/v1
+name: 4-clients-canary
+
+network: canary
+
+external:
+  validator/1@canarynet: 11.12.13.14
+  validator/2@canarynet: 11.12.13.14
+  client/1@canarynet: 11.12.13.14
+
+nodes:
+  client/test:
+    key: extra.$
+    replicas: 4
+    height: 0
+    validators: []
+    peers: ["*/*@canarynet"]

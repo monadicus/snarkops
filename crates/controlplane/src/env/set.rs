@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{mpsc, Arc, Weak},
+    sync::{mpsc, Arc},
 };
 
 use fixedbitset::FixedBitSet;
@@ -11,13 +11,14 @@ use snops_common::{
     set::MASK_PREFIX_LEN,
     state::{AgentId, NodeKey},
 };
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-use super::{DelegationError, EnvNodeState};
-use crate::state::{Agent, AgentClient, Busy, GlobalState};
+use super::{DelegationError, EnvNode};
+use crate::state::{Agent, AgentClient, GlobalState};
 
 pub struct AgentMapping {
     id: AgentId,
-    claim: Weak<Busy>,
+    claim: Arc<Semaphore>,
     mask: FixedBitSet,
 }
 
@@ -53,7 +54,7 @@ impl AgentMapping {
         };
 
         // check if the agent is already claimed
-        if claim.strong_count() > 1 {
+        if claim.available_permits() == 0 {
             return None;
         }
 
@@ -73,22 +74,12 @@ impl AgentMapping {
     }
 
     /// Attempt to atomically claim the agent
-    pub fn claim(&self) -> Option<Arc<Busy>> {
-        // avoid needlessly upgrading the weak pointer
-        if self.claim.strong_count() > 1 {
-            return None;
-        }
-
-        let arc = self.claim.upgrade()?;
-        // 2 because the agent owns arc, and this would be the second
-        // there is a slim chance that two nodes could claim the same agent. if we run
-        // into this we can add an AtomicBool to the mapping to determine if the
-        // agent is claimed by the node on this thread
-        (Arc::strong_count(&arc) == 2).then_some(arc)
+    pub fn claim(&self) -> Option<OwnedSemaphorePermit> {
+        self.claim.clone().try_acquire_owned().ok()
     }
 
     /// Attempt to atomically claim the agent if there is a mask subset
-    pub fn claim_if_subset(&self, mask: &FixedBitSet) -> Option<Arc<Busy>> {
+    pub fn claim_if_subset(&self, mask: &FixedBitSet) -> Option<OwnedSemaphorePermit> {
         if mask.is_subset(&self.mask) {
             self.claim()
         } else {
@@ -113,15 +104,12 @@ pub fn get_agent_mappings(
 }
 
 /// Get a list of unique labels given a node config
-pub fn labels_from_nodes(nodes: &IndexMap<NodeKey, EnvNodeState>) -> Vec<Spur> {
+pub fn labels_from_nodes(nodes: &IndexMap<NodeKey, EnvNode>) -> Vec<Spur> {
     let mut labels = HashSet::new();
 
     for node in nodes.values() {
-        match node {
-            EnvNodeState::Internal(n) => {
-                labels.extend(&n.labels);
-            }
-            EnvNodeState::External(_) => {}
+        if let EnvNode::Internal { node: n, .. } = node {
+            labels.extend(&n.labels);
         }
     }
 
@@ -136,7 +124,7 @@ pub fn labels_from_nodes(nodes: &IndexMap<NodeKey, EnvNodeState>) -> Vec<Spur> {
 fn _find_compute_agent_by_mask<'a, I: Iterator<Item = &'a Agent>>(
     mut agents: I,
     labels: &[Spur],
-) -> Option<(&'a Agent, Arc<Busy>)> {
+) -> Option<(&'a Agent, OwnedSemaphorePermit)> {
     // replace with
     let mut mask = FixedBitSet::with_capacity(labels.len() + MASK_PREFIX_LEN);
     mask.insert_range(MASK_PREFIX_LEN..labels.len() + MASK_PREFIX_LEN);
@@ -152,14 +140,12 @@ fn _find_compute_agent_by_mask<'a, I: Iterator<Item = &'a Agent>>(
 pub fn find_compute_agent(
     state: &GlobalState,
     labels: &[Spur],
-) -> Option<(AgentId, AgentClient, Arc<Busy>)> {
+) -> Option<(AgentId, AgentClient, OwnedSemaphorePermit)> {
     state.pool.iter().find_map(|a| {
         if !a.can_compute() || a.is_compute_claimed() || !labels.iter().all(|l| a.has_label(*l)) {
             return None;
         }
-        let arc = a.make_busy();
-        a.client_owned()
-            .and_then(|c| (Arc::strong_count(&arc) == 2).then_some((a.id(), c, arc)))
+        Some((a.id, a.client_owned()?, a.make_busy()?))
     })
 }
 
@@ -167,9 +153,9 @@ pub fn find_compute_agent(
 /// with an agent in parallel
 pub fn pair_with_nodes(
     agents: Vec<AgentMapping>,
-    nodes: &IndexMap<NodeKey, EnvNodeState>,
+    nodes: &IndexMap<NodeKey, EnvNode>,
     labels: &[Spur],
-) -> Result<impl Iterator<Item = (NodeKey, AgentId, Arc<Busy>)>, Vec<DelegationError>> {
+) -> Result<impl Iterator<Item = (NodeKey, AgentId, OwnedSemaphorePermit)>, Vec<DelegationError>> {
     // errors that occurred while pairing nodes with agents
     let (errors_tx, errors_rx) = mpsc::channel();
     // nodes that were successfully claimed. dropping this will automatically
@@ -181,11 +167,11 @@ pub fn pair_with_nodes(
         // filter out external nodes
         // split into nodes that want specific agents and nodes that want specific labels
         .filter_map(|(key, env_node)| match env_node {
-            EnvNodeState::Internal(n) => match n.agent {
+            EnvNode::Internal { node: n, .. } => match n.agent {
                 Some(agent) => Some((Some((key, agent)), None)),
                 None => Some((None, Some((key, n.mask(key, labels))))),
             },
-            EnvNodeState::External(_) => None,
+            EnvNode::External(_) => None,
         })
         // unzip and filter out the Nones
         .fold((vec![], vec![]), |(mut vec_a, mut vec_b), (a, b)| {

@@ -42,6 +42,8 @@ pub struct AgentWsQuery {
     pub version: Option<Version>,
     #[serde(flatten)]
     pub flags: AgentFlags,
+    #[serde(default)]
+    pub ephemeral: Option<bool>,
 }
 
 pub async fn agent_ws_handler(
@@ -69,7 +71,18 @@ pub async fn agent_ws_handler(
         _ => (),
     }
 
-    ws.on_upgrade(|socket| handle_socket(socket, headers, state, query))
+    ws.on_upgrade(|socket| async move {
+        let ephemeral = query.ephemeral.is_some_and(|e| e);
+        let Some(id) = handle_socket(socket, headers, Arc::clone(&state), query).await else {
+            return;
+        };
+        if ephemeral {
+            info!("Removing ephemeral agent {id}");
+            if let Err(e) = state.db.agents.delete(&id) {
+                error!("failed to remove agent {id} to the database: {e}");
+            }
+        }
+    })
 }
 
 async fn handle_socket(
@@ -77,7 +90,8 @@ async fn handle_socket(
     headers: HeaderMap,
     state: AppState,
     query: AgentWsQuery,
-) {
+) -> Option<AgentId> {
+    let is_ephemeral = query.ephemeral.is_some_and(|e| e);
     // Safe because handle socket is only called if version is Some
     let agent_version = query.version.unwrap();
 
@@ -170,7 +184,10 @@ async fn handle_socket(
                 // mark the agent as connected, update the flags as well
                 agent.mark_connected(client.clone(), query.flags);
 
-                info!("Agent {id} reconnected with version {agent_version}");
+                info!(
+                    "Agent {id} reconnected with version {agent_version}{}",
+                    if is_ephemeral { " (ephemeral)" } else { "" }
+                );
                 if let Err(e) = state.db.agents.save(&id, &agent) {
                     error!("failed to save agent {id} to the database: {e}");
                 }
@@ -192,7 +209,7 @@ async fn handle_socket(
         {
             warn!("An agent is trying to identify as an already-connected agent {id}");
             let _ = socket.send(Message::Close(None)).await;
-            return;
+            return None;
         }
 
         // create a new agent
@@ -209,7 +226,8 @@ async fn handle_socket(
         state.pool.insert(id, agent);
 
         info!(
-            "Agent {id} connected with version {agent_version}; pool is now {} nodes",
+            "Agent {id} connected with version {agent_version}{}; pool is now {} nodes",
+            if is_ephemeral { " (ephemeral)" } else { "" },
             state.pool.len()
         );
 
@@ -383,4 +401,5 @@ async fn handle_socket(
     }
 
     info!("Agent {id} disconnected");
+    Some(id)
 }
