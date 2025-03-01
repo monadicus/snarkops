@@ -2,8 +2,11 @@
 edition = "2021"
 name = "snarkos-aot"
 version = "0.1.1"
-license = "MIT"
 description = "Ahead of time utilities for SnarkVM, and a wrapper around the SnarkOS node for more options"
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 [features]
 default = ["node"]
