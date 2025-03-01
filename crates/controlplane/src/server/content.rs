@@ -29,7 +29,7 @@ async fn not_found(uri: Uri, res: Response) -> Response {
     match res.status() {
         StatusCode::NOT_FOUND => {
             let path = uri.path();
-            let content = path.split('/').last().unwrap();
+            let content = path.split('/').next_back().unwrap();
             ServerError::ContentNotFound(content.to_owned()).into_response()
         }
         _ => res,

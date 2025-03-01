@@ -38,7 +38,7 @@ jobs:
       aot: ${{ steps.filter.outputs.aot }}
       checkpoint: ${{ steps.filter.outputs.checkpoint }}
       common: ${{ steps.filter.outputs.common }}
-      controlplane: ${{ steps.filter.outputs.controlplane }}
+      snops: ${{ steps.filter.outputs.snops }}
       agent: ${{ steps.filter.outputs.agent }}
       scli: ${{ steps.filter.outputs.scli }}
     steps:
@@ -54,7 +54,7 @@ jobs:
               - 'crates/aot/**/*'
             checkpoint:
               - 'crates/checkpoint/**/*'
-            controlplane:
+            snops:
               - 'crates/controlplane/**/*'
             agent:
               - 'crates/agent/**/*'
@@ -71,43 +71,23 @@ jobs:
       AOT: ${{ needs.filter.outputs.aot }}
       CHECKPOINT: ${{ needs.filter.outputs.checkpoint }}
       COMMON: ${{ needs.filter.outputs.common }}
-      CONTROL_PLANE: ${{ needs.filter.outputs.controlplane }}
+      SNOPS: ${{ needs.filter.outputs.snops }}
       AGENT: ${{ needs.filter.outputs.agent }}
       SCLI: ${{ needs.filter.outputs.scli }}
     strategy:
       fail-fast: false
       matrix:
         crate:
-          - {
-              name: "aot",
-              package: "snarkos-aot",
-              manifest: "crates/aot/Cargo.toml",
-            }
+          - { name: "aot", package: "snarkos-aot", dir: "crates/aot" }
           - {
               name: "checkpoint",
               package: "snops-checkpoint",
-              manifest: "crates/checkpoint/Cargo.toml",
+              dir: "crates/checkpoint",
             }
-          - {
-              name: "common",
-              package: "snops-common",
-              manifest: "crates/common/Cargo.toml",
-            }
-          - {
-              name: "controlplane",
-              package: "snops",
-              manifest: "crates/controlplane/Cargo.toml",
-            }
-          - {
-              name: "agent",
-              package: "snops-agent",
-              manifest: "crates/agent/Cargo.toml",
-            }
-          - {
-              name: "scli",
-              package: "snops-cli",
-              manifest: "crates/cli/Cargo.toml",
-            }
+          - { name: "common", package: "snops-common", dir: "crates/common" }
+          - { name: "snops", package: "snops", dir: "crates/controlplane" }
+          - { name: "agent", package: "snops-agent", dir: "crates/agent" }
+          - { name: "snops-cli", package: "snops-cli", dir: "crates/cli" }
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
@@ -146,26 +126,26 @@ jobs:
         uses: taiki-e/install-action@cargo-minimal-versions
 
       - name: 🧪 Test ${{ matrix.crate.name }}
-        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'controlplane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
+        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'snops' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
         env:
-          RUSTFLAGS: ${{ (matrix.crate.name == 'aot' || matrix.crate.name == 'checkpoint' || matrix.crate.name == 'common' || matrix.crate.name == 'controlplane') && '-Zcodegen-backend=cranelift' || '' }}
+          RUSTFLAGS: ${{ (matrix.crate.name == 'aot' || matrix.crate.name == 'checkpoint' || matrix.crate.name == 'common' || matrix.crate.name == 'snops') && '-Zcodegen-backend=cranelift' || '' }}
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p ${{ matrix.crate.package }} --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🚯 Unused Deps ${{ matrix.crate.name }}
-        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'controlplane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
-        run: cd crates/${{ matrix.crate.name }} && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
+        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'snops' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
+        run: cd ${{ matrix.crate.dir }} && cargo +${{ env.NIGHTLY_TOOLCHAIN }} machete
 
       - name: 🦀 MSRV ${{ matrix.crate.name }}
-        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'controlplane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
-        run: cargo msrv --manifest-path ${{ matrix.crate.manifest }} verify --output-format minimal
+        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'snops' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
+        run: cargo msrv --manifest-path ${{ matrix.crate.dir }}/Cargo.toml verify --output-format minimal
 
       - name: 🕵️ Minimal Versions ${{ matrix.crate.name }}
-        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'controlplane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
+        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'snops' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
         continue-on-error: true
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} minimal-versions check -p ${{ matrix.crate.package }}
 
       - name: 📋 Clippy ${{ matrix.crate.name }}
-        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'controlplane' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
+        if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'snops' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
         env:
-          RUSTFLAGS: ${{ (matrix.crate.name == 'aot' || matrix.crate.name == 'checkpoint' || matrix.crate.name == 'common' || matrix.crate.name == 'controlplane') && '-Zcodegen-backend=cranelift' || '' }}
+          RUSTFLAGS: ${{ (matrix.crate.name == 'aot' || matrix.crate.name == 'checkpoint' || matrix.crate.name == 'common' || matrix.crate.name == 'snops') && '-Zcodegen-backend=cranelift' || '' }}
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy -p ${{ matrix.crate.package }} --all-targets --locked -- -D warnings
