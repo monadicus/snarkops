@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tokio::task::AbortHandle;
 
-use super::{snarkos_status::SnarkOSStatus, ReconcileStatus};
+use super::{ReconcileStatus, snarkos_status::SnarkOSStatus};
 use crate::{format::DataFormat, rpc::error::ReconcileError};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]

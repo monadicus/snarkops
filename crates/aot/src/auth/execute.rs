@@ -1,15 +1,15 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
 use snarkvm::ledger::{
     query::Query,
-    store::{helpers::memory::ConsensusMemory, ConsensusStore},
+    store::{ConsensusStore, helpers::memory::ConsensusMemory},
 };
 use tracing::error;
 
 use super::{args::AuthArgs, query};
 use crate::{
-    auth::args::AuthBlob, Authorization, DbLedger, MemVM, Network, NetworkId, Transaction,
+    Authorization, DbLedger, MemVM, Network, NetworkId, Transaction, auth::args::AuthBlob,
 };
 
 #[derive(Debug, Clone, ValueEnum)]

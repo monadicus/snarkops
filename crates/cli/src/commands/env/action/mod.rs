@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Parser;
 use clap_stdin::FileOrStdin;
 use reqwest::{Client, RequestBuilder, Response};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use snops_cli::events::EventsClient;
 use snops_common::{
     action_models::{AleoValue, WithTargets},
@@ -356,10 +356,11 @@ impl Action {
                     json["private_key"] = json!(private_key);
                 }
                 if let Some(env) = env {
-                    json["set_env"] = json!(env
-                        .into_iter()
-                        .map(KeyEqValue::pair)
-                        .collect::<HashMap<_, _>>())
+                    json["set_env"] = json!(
+                        env.into_iter()
+                            .map(KeyEqValue::pair)
+                            .collect::<HashMap<_, _>>()
+                    )
                 }
                 if let Some(del_env) = del_env {
                     json["del_env"] = json!(del_env)
@@ -391,7 +392,7 @@ pub async fn post_and_wait_tx(url: &str, req: RequestBuilder) -> Result<()> {
             }
             _ => {
                 let text = res.text().await?;
-                serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text))
+                serde_json::from_str(&text).unwrap_or(Value::String(text))
             }
         };
         println!("{}", serde_json::to_string_pretty(&value)?);

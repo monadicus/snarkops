@@ -10,8 +10,8 @@ pub mod tracker;
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicU64, AtomicUsize},
         Arc,
+        atomic::{AtomicU64, AtomicUsize},
     },
 };
 
@@ -24,8 +24,8 @@ use snops_common::{
 };
 use tokio::{
     sync::{
-        mpsc::{UnboundedReceiver, UnboundedSender},
         Semaphore,
+        mpsc::{UnboundedReceiver, UnboundedSender},
     },
     task::AbortHandle,
 };
@@ -173,7 +173,8 @@ impl CannonInstance {
                 Ok(Some(index)) => index.0,
                 Ok(None) => {
                     warn!(
-                        "cannon {env_id}.{cannon_id} failed to restore index for transaction {} (missing index)", key.2
+                        "cannon {env_id}.{cannon_id} failed to restore index for transaction {} (missing index)",
+                        key.2
                     );
                     continue;
                 }
@@ -389,42 +390,44 @@ impl CannonInstance {
         }
 
         // prevent already queued transactions from being re-broadcasted
-        let tracker = if let Some(mut tx) = self.transactions.get(&tx_id).as_deref().cloned() {
-            // if we receive a transaction that is not executing, it is a duplicate
-            if !matches!(tx.status, TransactionSendState::Executing(_)) {
-                return Err(CannonError::TransactionAlreadyExists(
-                    self.id,
-                    tx_id.to_string(),
-                ));
-            }
+        let tracker = match self.transactions.get(&tx_id).as_deref().cloned() {
+            Some(mut tx) => {
+                // if we receive a transaction that is not executing, it is a duplicate
+                if !matches!(tx.status, TransactionSendState::Executing(_)) {
+                    return Err(CannonError::TransactionAlreadyExists(
+                        self.id,
+                        tx_id.to_string(),
+                    ));
+                }
 
-            // clear attempts (as this was a successful execute)
-            if let Err(e) = TransactionTracker::clear_attempts(&self.global_state, &key) {
-                error!(
-                    "cannon {}.{} failed to clear attempts for {tx_id} (in proxy_broadcast): {e:?}",
+                // clear attempts (as this was a successful execute)
+                if let Err(e) = TransactionTracker::clear_attempts(&self.global_state, &key) {
+                    error!(
+                        "cannon {}.{} failed to clear attempts for {tx_id} (in proxy_broadcast): {e:?}",
+                        self.env_id, self.id
+                    );
+                }
+                // update the status to pending broadcast, and write the transaction
+                tx.status = TransactionSendState::Unsent;
+                tx.transaction = Some(Arc::new(body));
+                tx
+            }
+            _ => {
+                trace!(
+                    "cannon {}.{} received broadcast {tx_id}",
                     self.env_id, self.id
                 );
-            }
-            // update the status to pending broadcast, and write the transaction
-            tx.status = TransactionSendState::Unsent;
-            tx.transaction = Some(Arc::new(body));
-            tx
-        } else {
-            trace!(
-                "cannon {}.{} received broadcast {tx_id}",
-                self.env_id,
-                self.id
-            );
-            TransactionTracker {
-                index: Self::inc_received_txs(
-                    &self.global_state,
-                    self.env_id,
-                    self.id,
-                    &self.received_txs,
-                ),
-                authorization: None,
-                transaction: Some(Arc::new(body)),
-                status: TransactionSendState::Unsent,
+                TransactionTracker {
+                    index: Self::inc_received_txs(
+                        &self.global_state,
+                        self.env_id,
+                        self.id,
+                        &self.received_txs,
+                    ),
+                    authorization: None,
+                    transaction: Some(Arc::new(body)),
+                    status: TransactionSendState::Unsent,
+                }
             }
         };
 

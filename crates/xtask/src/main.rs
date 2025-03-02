@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use xshell::{cmd, Shell};
+use xshell::{Shell, cmd};
 
 #[derive(Parser)]
 struct Args {

@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use snarkvm::{console::program::Network, ledger::Block, utilities::ToBytes};
-use snops_checkpoint::{path_from_height, Checkpoint, CheckpointManager, RetentionPolicy};
+use snops_checkpoint::{Checkpoint, CheckpointManager, RetentionPolicy, path_from_height};
 use tracing::{info, trace};
 
 use super::truncate::Truncate;
-use crate::{ledger::util, DbLedger};
+use crate::{DbLedger, ledger::util};
 
 /// A command to interact with checkpoints.
 #[derive(Debug, Parser)]

@@ -2,13 +2,13 @@
 
 use std::sync::{Arc, RwLock};
 
-use snarkvm::ledger::store::{helpers::rocksdb::BlockDB, BlockStorage};
+use snarkvm::ledger::store::{BlockStorage, helpers::rocksdb::BlockDB};
 use snops_common::{
     define_rpc_mux,
     rpc::{
         agent::{
-            node::{NodeService, NodeServiceRequest, NodeServiceResponse},
             AgentNodeServiceRequest, AgentNodeServiceResponse,
+            node::{NodeService, NodeServiceRequest, NodeServiceResponse},
         },
         error::AgentError,
     },
@@ -17,9 +17,9 @@ use snops_common::{
 use tarpc::context;
 
 use crate::{
-    cli::{make_env_filter, ReloadHandler},
-    runner::rpc::get_block_info_for_height,
     Network,
+    cli::{ReloadHandler, make_env_filter},
+    runner::rpc::get_block_info_for_height,
 };
 
 define_rpc_mux!(child;

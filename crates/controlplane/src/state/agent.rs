@@ -11,13 +11,13 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use snops_common::{
+    INTERN,
     events::Event,
     lasso::Spur,
     rpc::control::agent::AgentServiceClient,
     state::{
         AgentId, AgentModeOptions, AgentState, AgentStatus, EnvId, NodeKey, NodeState, PortConfig,
     },
-    INTERN,
 };
 
 use super::{AgentClient, AgentFlags, PendingAgentReconcile};
@@ -58,7 +58,7 @@ impl Agent {
             env_claim: Arc::new(Busy),
             claims: Claims {
                 id,
-                nonce: ChaChaRng::from_entropy().gen(),
+                nonce: ChaChaRng::from_entropy().r#gen(),
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),
@@ -121,7 +121,7 @@ impl Agent {
     pub fn has_label_str(&self, label: &str) -> bool {
         INTERN
             .get(label)
-            .map_or(false, |label| self.flags.labels.contains(&label))
+            .is_some_and(|label| self.flags.labels.contains(&label))
     }
 
     pub fn str_labels(&self) -> IndexSet<&str> {

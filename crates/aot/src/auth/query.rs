@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use snarkvm::{
     prelude::ProgramID,
     synthesizer::{Authorization, Process, Program, Stack},

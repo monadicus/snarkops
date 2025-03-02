@@ -24,8 +24,8 @@ use reconcile::agent::{AgentStateReconciler, AgentStateReconcilerContext};
 use snops_common::{db::Database, util::OpaqueDebug};
 use tokio::{
     select,
-    signal::unix::{signal, Signal, SignalKind},
-    sync::{mpsc, RwLock},
+    signal::unix::{Signal, SignalKind, signal},
+    sync::{RwLock, mpsc},
 };
 use tracing::{error, info};
 

@@ -2,14 +2,14 @@ use std::net::{IpAddr, SocketAddr};
 
 use fixedbitset::FixedBitSet;
 use indexmap::{IndexMap, IndexSet};
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
 use snops_common::{
+    INTERN,
     key_source::KeySource,
     lasso::Spur,
     node_targets::NodeTargets,
-    set::{MaskBit, MASK_PREFIX_LEN},
+    set::{MASK_PREFIX_LEN, MaskBit},
     state::{AgentId, HeightRequest, InternedId, NetworkId, NodeState},
-    INTERN,
 };
 
 use super::NodeKey;

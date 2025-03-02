@@ -1,6 +1,6 @@
 use std::{path::PathBuf, str::FromStr};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Args;
 
 use crate::{Network, PrivateKey};

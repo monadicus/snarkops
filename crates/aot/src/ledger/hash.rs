@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::{HashMap, hash_map::DefaultHasher},
     hash::Hasher,
     path::PathBuf,
 };
@@ -12,8 +12,8 @@ use snarkvm::{
     ledger::{
         narwhal::{Transmission, TransmissionID},
         store::helpers::rocksdb::{
-            BFTMap, BlockMap, CommitteeMap, DeploymentMap, ExecutionMap, FeeMap, MapID, ProgramMap,
-            TransactionMap, TransitionInputMap, TransitionMap, TransitionOutputMap, PREFIX_LEN,
+            BFTMap, BlockMap, CommitteeMap, DeploymentMap, ExecutionMap, FeeMap, MapID, PREFIX_LEN,
+            ProgramMap, TransactionMap, TransitionInputMap, TransitionMap, TransitionOutputMap,
         },
     },
 };

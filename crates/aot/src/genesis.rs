@@ -1,26 +1,26 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
 use aleo_std::StorageMode;
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{Result, anyhow, ensure};
 use clap::Parser;
 use colored::Colorize;
 use indexmap::IndexMap;
 use rand::{CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use snarkvm::{
     ledger::{
-        committee::MIN_VALIDATOR_STAKE,
-        store::{helpers::memory::ConsensusMemory, ConsensusStore},
         Header, Ratify, Solutions,
+        committee::MIN_VALIDATOR_STAKE,
+        store::{ConsensusStore, helpers::memory::ConsensusMemory},
     },
     synthesizer::program::FinalizeGlobalState,
     utilities::ToBytes,
 };
 
 use crate::{
-    ledger::util::public_transaction, Address, Block, CTRecord, Committee, DbLedger, MemVM,
-    Network, NetworkId, PTRecord, PrivateKey, Transaction, ViewKey,
+    Address, Block, CTRecord, Committee, DbLedger, MemVM, Network, NetworkId, PTRecord, PrivateKey,
+    Transaction, ViewKey, ledger::util::public_transaction,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

@@ -6,13 +6,14 @@ use snops_common::state::TransactionSendState;
 use snops_common::state::{CannonId, EnvId, NetworkId, NodeKey, StorageId};
 use tokio::sync::Semaphore;
 
-use super::prelude::*;
 use super::PersistNode;
+use super::prelude::*;
 use crate::{
     cannon::{sink::TxSink, source::TxSource, tracker::TransactionTracker},
     env::{
+        EnvNodeState, EnvPeer, Environment,
         error::{EnvError, PrepareError},
-        prepare_cannons, EnvNodeState, EnvPeer, Environment,
+        prepare_cannons,
     },
     state::GlobalState,
 };
@@ -248,7 +249,7 @@ mod tests {
     use std::str::FromStr;
 
     use snops_common::{
-        format::{read_dataformat, write_dataformat, DataFormat},
+        format::{DataFormat, read_dataformat, write_dataformat},
         state::{InternedId, NetworkId},
     };
 
@@ -261,7 +262,7 @@ mod tests {
     };
 
     macro_rules! case {
-        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+        ($name:ident, $ty:ty, $a:expr_2021, $b:expr_2021) => {
             #[test]
             fn $name() -> Result<(), Box<dyn std::error::Error>> {
                 let mut data = Vec::new();

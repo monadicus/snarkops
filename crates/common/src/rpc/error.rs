@@ -16,7 +16,7 @@ macro_rules! impl_into_type_str {
         }
     };
 
-    ($name:path, |_| $body:expr) => {
+    ($name:path, |_| $body:expr_2021) => {
         impl From<&$name> for String {
             fn from(_: &$name) -> Self {
                 $body
@@ -24,7 +24,7 @@ macro_rules! impl_into_type_str {
         }
     };
 
-    ($name:path, |$from_var:ident| $body:expr) => {
+    ($name:path, |$from_var:ident| $body:expr_2021) => {
         impl From<&$name> for String {
             fn from($from_var: &$name) -> Self {
                 use $name::*;
@@ -45,7 +45,7 @@ macro_rules! impl_into_status_code {
         }
     };
 
-    ($name:path, |_| $body:expr) => {
+    ($name:path, |_| $body:expr_2021) => {
         impl From<&$name> for ::http::status::StatusCode {
             fn from(_: &$name) -> Self {
                 $body
@@ -53,7 +53,7 @@ macro_rules! impl_into_status_code {
         }
     };
 
-    ($name:path, |$from_var:ident| $body:expr) => {
+    ($name:path, |$from_var:ident| $body:expr_2021) => {
         impl From<&$name> for ::http::status::StatusCode {
             fn from($from_var: &$name) -> Self {
                 use $name::*;

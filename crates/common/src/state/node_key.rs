@@ -2,7 +2,7 @@ use std::{fmt::Write, str::FromStr};
 
 use serde::de::Error;
 
-use super::{NodeType, NODE_KEY_REGEX};
+use super::{NODE_KEY_REGEX, NodeType};
 use crate::format::{DataFormat, DataFormatReader, DataFormatWriter, DataHeaderOf};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]

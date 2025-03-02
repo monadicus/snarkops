@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket},
         Query, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     response::Response,
 };

@@ -1,14 +1,14 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use clap::Args;
 use clap_stdin::FileOrStdin;
 use snarkvm::{
     prelude::{Identifier, Value},
-    synthesizer::{process::deployment_cost, Process, Program},
+    synthesizer::{Process, Program, process::deployment_cost},
 };
 
 use crate::{
-    auth::{auth_fee::estimate_cost, query},
     Network, PrivateKey,
+    auth::{auth_fee::estimate_cost, query},
 };
 
 /// Compute the cost to execute a function in a given program.

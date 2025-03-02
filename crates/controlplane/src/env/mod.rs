@@ -7,7 +7,7 @@ use std::{
 use bimap::BiMap;
 use dashmap::DashMap;
 use futures_util::future::join_all;
-use indexmap::{map::Entry, IndexMap, IndexSet};
+use indexmap::{IndexMap, IndexSet, map::Entry};
 use serde::{Deserialize, Serialize};
 use snops_common::{
     api::{AgentEnvInfo, EnvInfo},
@@ -23,18 +23,18 @@ use tracing::{error, info, trace, warn};
 use self::error::*;
 use crate::{
     cannon::{
+        CannonInstance, CannonInstanceMeta,
         file::TransactionSink,
         sink::TxSink,
         source::{ComputeTarget, QueryTarget, TxSource},
-        CannonInstance, CannonInstanceMeta,
     },
-    env::set::{get_agent_mappings, labels_from_nodes, pair_with_nodes, AgentMapping, BusyMode},
+    env::set::{AgentMapping, BusyMode, get_agent_mappings, labels_from_nodes, pair_with_nodes},
     error::DeserializeError,
     persist::PersistEnv,
     schema::{
+        ItemDocument,
         nodes::{ExternalNode, Node},
         storage::LoadedStorage,
-        ItemDocument,
     },
     state::{Agent, GlobalState},
 };
@@ -123,12 +123,13 @@ impl Environment {
 
         let mut storage_doc = None;
 
-        let (mut node_peers, mut node_states) = if let Some(ref env) = prev_env {
-            // reuse certain elements from the previous environment with the same
-            // name
-            (env.node_peers.clone(), env.node_states.clone())
-        } else {
-            (Default::default(), Default::default())
+        let (mut node_peers, mut node_states) = match prev_env {
+            Some(ref env) => {
+                // reuse certain elements from the previous environment with the same
+                // name
+                (env.node_peers.clone(), env.node_states.clone())
+            }
+            _ => (Default::default(), Default::default()),
         };
 
         let mut network = NetworkId::default();
@@ -251,14 +252,9 @@ impl Environment {
                     // going to be part of the environment
                     let mut removed_agents = node_peers
                         .iter()
-                        .filter_map(|(key, mode)| {
-                            if let (EnvPeer::Internal(agent), false) =
-                                (mode, agent_keys.contains(key))
-                            {
-                                Some(*agent)
-                            } else {
-                                None
-                            }
+                        .filter_map(|(key, mode)| match (mode, agent_keys.contains(key)) {
+                            (EnvPeer::Internal(agent), false) => Some(*agent),
+                            _ => None,
                         })
                         .collect::<IndexSet<_>>();
 

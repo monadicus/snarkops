@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use promql_parser::{label::Matcher, parser::ast::Expr as PromExpr};
-use serde::{de::Visitor, Deserialize};
+use serde::{Deserialize, de::Visitor};
 
 use super::error::SchemaError;
 
@@ -149,10 +149,10 @@ impl PromQuery {
 
     fn inject_matchers(expr: &mut PromExpr, matchers: &[Matcher]) {
         macro_rules! inject {
-            ($into:expr) => {
+            ($into:expr_2021) => {
                 Self::inject_matchers(&mut $into, matchers)
             };
-            ($into:expr, $($into2:expr),+) => {
+            ($into:expr_2021, $($into2:expr_2021),+) => {
                 {
                     inject!($into);
                     inject!($($into2),+);
@@ -196,7 +196,7 @@ impl<'de> Deserialize<'de> for PromQuery {
     {
         struct PromQueryVisitor;
 
-        impl<'de> Visitor<'de> for PromQueryVisitor {
+        impl Visitor<'_> for PromQueryVisitor {
             type Value = PromQuery;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

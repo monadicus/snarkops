@@ -12,13 +12,13 @@ use snops_common::{
     api::AgentEnvInfo,
     rpc::{agent::node::NodeServiceClient, control::ControlServiceClient, error::ReconcileError},
     state::{
-        snarkos_status::SnarkOSStatus, AgentId, AgentPeer, AgentState, EnvId, ReconcileOptions,
-        TransferId, TransferStatus,
+        AgentId, AgentPeer, AgentState, EnvId, ReconcileOptions, TransferId, TransferStatus,
+        snarkos_status::SnarkOSStatus,
     },
     util::OpaqueDebug,
 };
 use tarpc::context;
-use tokio::sync::{mpsc::Sender, oneshot, RwLock};
+use tokio::sync::{RwLock, mpsc::Sender, oneshot};
 use tracing::{error, info};
 
 use crate::{cli::Cli, db::Database, log::ReloadHandler, metrics::Metrics, transfers::TransferTx};

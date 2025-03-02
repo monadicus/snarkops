@@ -1,6 +1,6 @@
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, reload, util::SubscriberInitExt};
 
 pub type ReloadHandler = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
 

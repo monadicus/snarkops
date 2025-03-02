@@ -3,7 +3,7 @@ use std::{
     num::NonZeroU8,
 };
 
-use super::{packed_int::PackedUint, DataFormat, DataReadError, DataWriteError};
+use super::{DataFormat, DataReadError, DataWriteError, packed_int::PackedUint};
 
 macro_rules! impl_integer_dataformat {
     ($ty:ty) => {
@@ -87,7 +87,7 @@ mod test {
     use crate::format::DataFormat;
 
     macro_rules! case {
-        ($ty:ty, $a:expr, $b:expr) => {
+        ($ty:ty, $a:expr_2021, $b:expr_2021) => {
             paste::paste! {
                 #[test]
                 fn [<test_ $a>]() {

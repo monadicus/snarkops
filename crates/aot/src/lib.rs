@@ -21,8 +21,8 @@ use snarkvm::{
         program::Network as NetworkTrait,
     },
     ledger::{
-        store::helpers::{memory::ConsensusMemory, rocksdb::ConsensusDB},
         Ledger,
+        store::helpers::{memory::ConsensusMemory, rocksdb::ConsensusDB},
     },
     prelude::ProgramID,
     synthesizer::Process,

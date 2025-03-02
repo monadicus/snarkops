@@ -7,9 +7,9 @@ use snarkvm::{ledger::Block, utilities::FromBytes};
 
 use self::checkpoint::CheckpointCommand;
 use crate::{
-    auth::execute::{execute_local, Execute},
-    cli::ReloadHandler,
     Network,
+    auth::execute::{Execute, execute_local},
+    cli::ReloadHandler,
 };
 
 pub mod checkpoint;

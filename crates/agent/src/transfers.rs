@@ -1,10 +1,10 @@
 use std::sync::{
-    atomic::{AtomicU32, Ordering},
     Arc,
+    atomic::{AtomicU32, Ordering},
 };
 
 use chrono::{TimeDelta, Utc};
-use dashmap::{mapref::entry::Entry, DashMap};
+use dashmap::{DashMap, mapref::entry::Entry};
 use snops_common::state::{TransferId, TransferStatus, TransferStatusUpdate};
 use tarpc::context;
 use tokio::{select, sync::mpsc};

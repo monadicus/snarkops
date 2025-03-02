@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use snops_common::{
-    db::{error::DatabaseError, tree::DbTree, Database as DatabaseTrait},
+    db::{Database as DatabaseTrait, error::DatabaseError, tree::DbTree},
     format::PackedUint,
     state::{AgentId, Authorization, CannonId, EnvId, NetworkId, StorageId, TransactionSendState},
 };

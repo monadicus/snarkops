@@ -1,7 +1,7 @@
 use bytes::Buf;
 
 use super::error::DatabaseError;
-use crate::format::{read_dataformat, write_dataformat, DataFormat};
+use crate::format::{DataFormat, read_dataformat, write_dataformat};
 
 pub struct DbTree<K, V> {
     tree: sled::Tree,
@@ -16,7 +16,7 @@ impl<K: DataFormat, V: DataFormat> DbTree<K, V> {
         }
     }
 
-    pub fn read_all(&self) -> impl Iterator<Item = (K, V)> {
+    pub fn read_all(&self) -> impl Iterator<Item = (K, V)> + use<K, V> {
         self.tree.iter().filter_map(|row| {
             let (key_bytes, value_bytes) = match row {
                 Ok((key, value)) => (key, value),
@@ -49,7 +49,7 @@ impl<K: DataFormat, V: DataFormat> DbTree<K, V> {
     pub fn read_with_prefix<Prefix: DataFormat>(
         &self,
         prefix: &Prefix,
-    ) -> Result<impl Iterator<Item = (K, V)>, DatabaseError> {
+    ) -> Result<impl Iterator<Item = (K, V)> + use<Prefix, K, V>, DatabaseError> {
         Ok(self
             .tree
             .scan_prefix(prefix.to_byte_vec()?)

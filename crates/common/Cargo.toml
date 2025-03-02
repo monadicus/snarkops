@@ -1,9 +1,13 @@
 [package]
 name = "snops-common"
 version = "0.2.0"
-edition = "2021"
-license = "MIT"
+
 description = "Common types and utilities for snops"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 [features]
 default = []

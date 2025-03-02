@@ -3,9 +3,10 @@ use std::{io, path::PathBuf, sync::Arc};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
+    CheckpointContent, CheckpointHeader, ROUND_KEY,
     aleo::*,
     errors::{CheckpointCheckError, CheckpointReadError, CheckpointRewindError},
-    ledger, CheckpointContent, CheckpointHeader, ROUND_KEY,
+    ledger,
 };
 
 pub struct Checkpoint<N: Network> {

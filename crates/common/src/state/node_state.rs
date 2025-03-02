@@ -259,12 +259,12 @@ impl DataFormat for AgentPeer {
 mod tests {
 
     use crate::{
-        format::{read_dataformat, write_dataformat, DataFormat},
+        format::{DataFormat, read_dataformat, write_dataformat},
         prelude::{HeightRequest, KeyState, NodeState, NodeStateFormatHeader},
     };
 
     macro_rules! case {
-        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+        ($name:ident, $ty:ty, $a:expr_2021, $b:expr_2021) => {
             #[test]
             fn $name() -> Result<(), Box<dyn std::error::Error>> {
                 let mut data = Vec::new();

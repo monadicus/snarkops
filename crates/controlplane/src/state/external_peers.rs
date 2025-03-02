@@ -6,11 +6,11 @@ use serde_json::Value;
 use snops_common::state::{EnvId, LatestBlockInfo, NetworkId, NodeKey};
 use tokio::{sync::mpsc, time::timeout};
 
-use super::{snarkos_request, AgentClient, GlobalState};
+use super::{AgentClient, GlobalState, snarkos_request};
 use crate::{
     env::{
-        cache::{ABlockHash, ATransactionId, MAX_BLOCK_RANGE},
         EnvNodeState, EnvPeer,
+        cache::{ABlockHash, ATransactionId, MAX_BLOCK_RANGE},
     },
     schema::nodes::ExternalNode,
 };

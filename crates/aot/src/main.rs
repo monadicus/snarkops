@@ -2,7 +2,7 @@ use std::{env, process::exit};
 
 use anyhow::Result;
 use clap::Parser;
-use snarkos_aot::{cli::Cli, Network, NetworkId};
+use snarkos_aot::{Network, NetworkId, cli::Cli};
 use snarkvm::console::network::{CanaryV0, MainnetV0, TestnetV0};
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::Arc};
 
-use axum::{middleware, routing::get, Extension, Router};
+use axum::{Extension, Router, middleware, routing::get};
 
 use self::error::StartError;
 use crate::{

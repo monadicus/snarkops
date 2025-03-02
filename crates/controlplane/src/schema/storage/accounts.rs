@@ -1,4 +1,4 @@
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Accounts {

@@ -3,8 +3,8 @@
 use snops_common::{
     define_rpc_mux,
     rpc::agent::{
-        node::{NodeServiceRequest, NodeServiceResponse},
         AgentNodeService, AgentNodeServiceRequest, AgentNodeServiceResponse,
+        node::{NodeServiceRequest, NodeServiceResponse},
     },
     state::snarkos_status::{SnarkOSBlockInfo, SnarkOSStatus},
 };

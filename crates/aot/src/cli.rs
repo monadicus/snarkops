@@ -10,11 +10,11 @@ use clap::CommandFactory;
 use clap::Parser;
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, reload, util::SubscriberInitExt};
 
 use crate::{
-    accounts::GenAccounts, auth::AuthCommand, genesis::Genesis, ledger::Ledger,
-    program::ProgramCommand, Network,
+    Network, accounts::GenAccounts, auth::AuthCommand, genesis::Genesis, ledger::Ledger,
+    program::ProgramCommand,
 };
 
 #[derive(Debug, Parser)]
@@ -155,7 +155,7 @@ impl<N: Network> Cli<N> {
         let mut guards = vec![];
 
         macro_rules! non_blocking_appender {
-            ($name:ident = ( $args:expr )) => {
+            ($name:ident = ( $args:expr_2021 )) => {
                 let ($name, guard) = tracing_appender::non_blocking($args);
                 guards.push(guard);
             };

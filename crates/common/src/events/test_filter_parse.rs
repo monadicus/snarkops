@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
 use super::{
-    filter_parse::EventFilterParseError,
     EventFilter::{self, *},
     EventKindFilter::*,
+    filter_parse::EventFilterParseError,
 };
 use crate::events::filter_parse::EventFilterParsable;
 use crate::{node_targets::NodeTargets, state::InternedId};
 
 macro_rules! eq {
-    ($s:expr, $f:expr) => {
+    ($s:expr_2021, $f:expr_2021) => {
         assert_eq!($s.parse::<EventFilter>()?, $f);
     };
 }
 
 macro_rules! err {
-    ($s:expr, $pattern:pat $(if $guard:expr)?) => {
+    ($s:expr_2021, $pattern:pat $(if $guard:expr_2021)?) => {
         assert!(match $s.parse::<EventFilter>() {
             $pattern $(if $guard)? => true,
             other => {
@@ -178,7 +178,7 @@ fn test_failed_agent_parse() {
 #[test]
 fn test_str() {
     macro_rules! test {
-        ($s:expr) => {
+        ($s:expr_2021) => {
             assert_eq!($s.parse::<EventFilter>().unwrap().to_string(), $s);
         };
     }

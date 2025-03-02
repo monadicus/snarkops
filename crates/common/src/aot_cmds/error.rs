@@ -1,7 +1,7 @@
 use std::process::ExitStatus;
 
 use http::StatusCode;
-use serde::{ser::SerializeStruct, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 

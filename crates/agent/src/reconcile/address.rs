@@ -47,7 +47,10 @@ impl Reconcile<(), ReconcileError> for AddressResolveReconciler {
         }
 
         let Some(client) = state.client.read().await.clone() else {
-            warn!("Agent state contains {} addresses that need to be resolved, but client is not connected", unresolved_addrs.len());
+            warn!(
+                "Agent state contains {} addresses that need to be resolved, but client is not connected",
+                unresolved_addrs.len()
+            );
 
             // Client is offline so new addrs cannot be requested
             return Ok(ReconcileStatus::default());

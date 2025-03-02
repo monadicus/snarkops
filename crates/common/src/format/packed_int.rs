@@ -59,7 +59,7 @@ mod test {
     use super::*;
 
     macro_rules! case {
-        ($a:expr, $b:expr) => {
+        ($a:expr_2021, $b:expr_2021) => {
             paste::paste! {
                 #[test]
                 fn [<test_ $a>]() {

@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use serde::{ser::SerializeStruct, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 use snops_common::{
     aot_cmds::AotCmdError,
     impl_into_status_code, impl_into_type_str,

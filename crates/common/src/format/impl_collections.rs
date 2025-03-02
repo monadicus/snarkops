@@ -6,8 +6,8 @@ use std::{
 use indexmap::{IndexMap, IndexSet};
 
 use super::{
-    packed_int::PackedUint, DataFormat, DataFormatReader, DataFormatWriter, DataReadError,
-    DataWriteError,
+    DataFormat, DataFormatReader, DataFormatWriter, DataReadError, DataWriteError,
+    packed_int::PackedUint,
 };
 
 /// BytesFormat is a simple wrapper around a Vec<u8> that implements DataFormat
@@ -190,7 +190,7 @@ mod test {
     use crate::format::{BytesFormat, DataFormat};
 
     macro_rules! case {
-        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+        ($name:ident, $ty:ty, $a:expr_2021, $b:expr_2021) => {
             #[test]
             fn $name() {
                 let mut data = Vec::new();

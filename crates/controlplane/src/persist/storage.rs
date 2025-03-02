@@ -13,8 +13,8 @@ use crate::{
     schema::{
         error::StorageError,
         storage::{
-            pick_account_addr, pick_additional_addr, pick_commitee_addr, read_to_addrs,
-            LoadedStorage, STORAGE_DIR,
+            LoadedStorage, STORAGE_DIR, pick_account_addr, pick_additional_addr,
+            pick_commitee_addr, read_to_addrs,
         },
     },
 };
@@ -198,14 +198,14 @@ mod tests {
     use snops_checkpoint::RetentionPolicy;
     use snops_common::{
         binaries::BinaryEntry,
-        format::{read_dataformat, write_dataformat, DataFormat},
+        format::{DataFormat, read_dataformat, write_dataformat},
         state::{InternedId, NetworkId},
     };
 
     use crate::persist::{PersistStorage, PersistStorageFormatHeader};
 
     macro_rules! case {
-        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+        ($name:ident, $ty:ty, $a:expr_2021, $b:expr_2021) => {
             #[test]
             fn $name() -> Result<(), Box<dyn std::error::Error>> {
                 let mut data = Vec::new();

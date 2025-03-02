@@ -1,7 +1,7 @@
 use axum::{
     async_trait,
     extract::{FromRequestParts, Request},
-    http::{request::Parts, Method, StatusCode, Uri},
+    http::{Method, StatusCode, Uri, request::Parts},
     middleware::Next,
     response::Response,
 };

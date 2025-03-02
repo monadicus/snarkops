@@ -5,11 +5,11 @@ use snops_common::events::AgentEvent;
 use snops_common::{
     api::AgentEnvInfo,
     define_rpc_mux,
-    prelude::{error::ReconcileError, ReconcileStatus},
+    prelude::{ReconcileStatus, error::ReconcileError},
     rpc::{
         control::{
-            agent::{AgentServiceRequest, AgentServiceResponse},
             ControlService, ControlServiceRequest, ControlServiceResponse,
+            agent::{AgentServiceRequest, AgentServiceResponse},
         },
         error::ResolveError,
     },

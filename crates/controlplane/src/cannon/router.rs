@@ -1,17 +1,17 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 use snops_common::{
     key_source::KeySource,
-    state::{id_or_none, Authorization, KeyState, NetworkId},
+    state::{Authorization, KeyState, NetworkId, id_or_none},
 };
 
 use super::source::QueryTarget;
@@ -75,7 +75,7 @@ async fn state_root(
                     StatusCode::REQUEST_TIMEOUT,
                     Json(json!({ "error": "non-responsive query node", "inner": format!("{e}") })),
                 )
-                    .into_response()
+                    .into_response();
             }
 
             _ => attempts += 1,
@@ -261,7 +261,7 @@ async fn get_mapping_json(
                     StatusCode::UNPROCESSABLE_ENTITY,
                     Json(json!({ "error": format!("invalid keysource: {e}") })),
                 )
-                    .into_response()
+                    .into_response();
             }
         };
 

@@ -8,11 +8,11 @@ use snops_common::{
     prelude::snarkos_status::SnarkOSLiteBlock,
     rpc::{
         control::{
+            ControlServiceClient, ControlServiceRequest, ControlServiceResponse,
             agent::{
                 AgentMetric, AgentService, AgentServiceRequest, AgentServiceResponse, AgentStatus,
                 Handshake,
             },
-            ControlServiceClient, ControlServiceRequest, ControlServiceResponse,
         },
         error::{AgentError, SnarkosRequestError},
     },
@@ -352,10 +352,9 @@ impl AgentService for AgentRpcServer {
     }
 
     async fn get_status(self, ctx: Context) -> Result<AgentStatus, AgentError> {
-        let aot_online = if let Some(c) = self.state.get_node_client().await {
-            c.status(ctx).await.is_ok()
-        } else {
-            false
+        let aot_online = match self.state.get_node_client().await {
+            Some(c) => c.status(ctx).await.is_ok(),
+            _ => false,
         };
 
         Ok(AgentStatus {

@@ -86,7 +86,7 @@ impl DataFormat for TransactionSendState {
             _ => {
                 return Err(crate::format::DataReadError::Custom(
                     "Invalid CannonTransactionStatus tag".to_string(),
-                ))
+                ));
             }
         })
     }
@@ -100,7 +100,7 @@ mod test {
     use crate::format::DataFormat;
 
     macro_rules! case {
-        ($name:ident, $ty:ty, $a:expr, $b:expr) => {
+        ($name:ident, $ty:ty, $a:expr_2021, $b:expr_2021) => {
             #[test]
             fn $name() {
                 let mut data = Vec::new();

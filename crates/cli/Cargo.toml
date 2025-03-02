@@ -1,9 +1,13 @@
 [package]
 name = "snops-cli"
 version = "0.1.0"
-edition = "2021"
-license = "MIT"
+
 description = "CLI for interacting with snarkops control plane API"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 [features]
 default = []

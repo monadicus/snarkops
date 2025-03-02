@@ -1,19 +1,19 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 
 use axum::{
-    response::{IntoResponse, Response},
     Json,
+    response::{IntoResponse, Response},
 };
 use snops_common::{
     action_models::{Reconfig, WithTargets},
-    state::{id_or_none, AgentId, AgentState, InternedId},
+    state::{AgentId, AgentState, InternedId, id_or_none},
 };
 
 use super::Env;
 use crate::{
     env::PortType,
     server::error::ServerError,
-    state::{pending_reconcile_node_map, PendingAgentReconcile},
+    state::{PendingAgentReconcile, pending_reconcile_node_map},
     unwrap_or_not_found,
 };
 
@@ -24,7 +24,7 @@ pub async fn config(
     let mut pending: HashMap<AgentId, PendingAgentReconcile> = HashMap::new();
 
     macro_rules! set_node_field {
-        ($agent:ident , $($key:ident = $val:expr),* ) => {
+        ($agent:ident , $($key:ident = $val:expr_2021),* ) => {
             #[allow(unused_variables)]
             match pending.entry($agent.id()) {
                 Entry::Occupied(mut ent) => {
@@ -55,10 +55,9 @@ pub async fn config(
     }
 
     for WithTargets { nodes, data } in configs {
-        let binary = if let Some(b) = data.binary.as_ref() {
-            Some(unwrap_or_not_found!("unknown binary id", id_or_none(b)))
-        } else {
-            None
+        let binary = match data.binary.as_ref() {
+            Some(b) => Some(unwrap_or_not_found!("unknown binary id", id_or_none(b))),
+            _ => None,
         };
 
         for agent in env.matching_agents(&nodes, &state.pool) {

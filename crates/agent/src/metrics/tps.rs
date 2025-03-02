@@ -1,4 +1,4 @@
-use simple_moving_average::{SingleSumSMA, SMA};
+use simple_moving_average::{SMA, SingleSumSMA};
 
 use super::*;
 

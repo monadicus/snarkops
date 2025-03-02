@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use axum::{
-    response::{IntoResponse, Response},
     Json,
+    response::{IntoResponse, Response},
 };
 use snops_common::{
     action_models::WithTargets,
@@ -12,7 +12,7 @@ use snops_common::{
 use tracing::info;
 
 use super::Env;
-use crate::state::{pending_reconcile_node_map, GlobalState};
+use crate::state::{GlobalState, pending_reconcile_node_map};
 
 async fn wait_for_nodes(
     state: &GlobalState,

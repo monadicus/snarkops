@@ -14,18 +14,18 @@ use snops_common::{
 use tarpc::context;
 use tokio::{
     select,
-    sync::{mpsc::Receiver, Mutex},
+    sync::{Mutex, mpsc::Receiver},
     task::AbortHandle,
     time::sleep_until,
 };
 use tracing::{error, info, trace};
 
 use super::{
+    Reconcile, ReconcileStatus,
     command::NodeCommand,
     process::ProcessContext,
     state::EnvState,
     storage::{BinaryReconciler, GenesisReconciler, LedgerModifyResult, StorageVersionReconciler},
-    Reconcile, ReconcileStatus,
 };
 use crate::{
     db::Database,
@@ -103,10 +103,10 @@ impl AgentStateReconcilerContext {
 /// added to the scope when a requeue is needed to provide more context when
 /// monitoring the agent.
 macro_rules! reconcile {
-    ($id:ident, $e:expr) => {
+    ($id:ident, $e:expr_2021) => {
         reconcile!($id, $e, res => {})
     };
-    ($id:ident, $e:expr, $v:ident => $rest:expr) => {
+    ($id:ident, $e:expr_2021, $v:ident => $rest:expr_2021) => {
         let $v = $e.reconcile().await?;
         if $v.is_requeue() {
             trace!("Requeue needed for {} ({:?}) {:?}", stringify!($id), $v.scopes, $v.conditions);

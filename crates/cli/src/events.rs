@@ -3,15 +3,14 @@
 
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use futures_util::{SinkExt, StreamExt};
 use http::Uri;
 use snops_common::events::{Event, EventFilter, EventWsRequest};
 use tokio::{net::TcpStream, select};
 use tokio_tungstenite::{
-    connect_async,
+    MaybeTlsStream, WebSocketStream, connect_async,
     tungstenite::{self, client::IntoClientRequest},
-    MaybeTlsStream, WebSocketStream,
 };
 
 pub struct EventsClient {

@@ -10,6 +10,13 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+authors = []
+edition = "2024"
+homepage = "https://github.com/monadicus/snarkops"
+license = "MIT"
+rust-version = "1.85.0"
+
 [profile.dev]
 codegen-units = 512
 opt-level = 1

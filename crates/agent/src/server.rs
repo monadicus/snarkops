@@ -2,18 +2,18 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
+    Router,
     extract::{
-        ws::{Message, WebSocket},
         State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     response::{IntoResponse, Response},
     routing::get,
-    Router,
 };
 use futures::StreamExt;
 use snops_common::rpc::{
-    agent::{node::NodeServiceClient, AgentNodeService},
     RpcTransport,
+    agent::{AgentNodeService, node::NodeServiceClient},
 };
 use tarpc::server::Channel;
 use tokio::select;

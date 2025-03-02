@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fs, path::PathBuf};
 
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use bech32::ToBase32;
 use clap::Parser;
 use colored::Colorize;

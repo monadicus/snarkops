@@ -9,10 +9,10 @@ use std::{
 
 use anyhow::Result;
 use axum::{
+    Json, Router,
     extract::{self, Query, State},
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use clap::Args;
 use reqwest::StatusCode;
@@ -20,8 +20,8 @@ use serde_json::json;
 use tracing_appender::non_blocking::NonBlocking;
 
 use crate::{
-    cli::{make_env_filter, ReloadHandler},
     Block, DbLedger, Network, Transaction,
+    cli::{ReloadHandler, make_env_filter},
 };
 
 /// Receive inquiries on `/<network>/latest/stateRoot`.
@@ -140,14 +140,15 @@ impl<N: Network> LedgerQuery<N> {
             return StatusCode::BAD_REQUEST;
         };
 
-        if let Some(mut a) = state.appender.clone() {
-            match write!(a, "{}", tx_json) {
+        match state.appender.clone() {
+            Some(mut a) => match write!(a, "{}", tx_json) {
                 Ok(_) => StatusCode::OK,
                 Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            _ => {
+                println!("{}", tx_json);
+                StatusCode::OK
             }
-        } else {
-            println!("{}", tx_json);
-            StatusCode::OK
         }
     }
 
