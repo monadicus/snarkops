@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use snarkvm::{console::types::Field, ledger::block::Transaction};
+use snarkvm::ledger::block::Transaction;
 
 use crate::{Authorization, Network};
 
@@ -18,20 +18,32 @@ pub fn fee_from_auth<N: Network>(
 pub fn auth_tx_id<N: Network>(
     auth: &Authorization<N>,
     // Left in for backwards compatibility
-    _fee_auth: Option<&Authorization<N>>,
+    fee_auth: Option<&Authorization<N>>,
 ) -> Result<N::TransactionID> {
-    let field: Field<N> = *Transaction::transitions_tree(auth.transitions().values())?.root();
+    let execute_tree = Transaction::transitions_tree(auth.transitions().values())?;
+    let fee = fee_auth.map(fee_from_auth).transpose()?;
 
-    Ok(field.into())
+    let tree = match fee {
+        Some(fee) => Transaction::transaction_tree(execute_tree, auth.len(), &fee)?,
+        None => execute_tree,
+    };
+
+    Ok((*tree.root()).into())
 }
 
 /// compute the transaction ID for a deployment using the deployment and fee
 pub fn deploy_tx_id<N: Network>(
     deployment: &snarkvm::ledger::block::Deployment<N>,
     // Left in for backwards compatibility
-    _fee_auth: Option<&Authorization<N>>,
+    fee_auth: Option<&Authorization<N>>,
 ) -> Result<N::TransactionID> {
-    let field: Field<N> = *Transaction::deployment_tree(deployment)?.root();
+    let deployment_tree = Transaction::deployment_tree(deployment)?;
+    let fee = fee_auth.map(fee_from_auth).transpose()?;
 
-    Ok(field.into())
+    let tree = match fee {
+        Some(fee) => Transaction::transaction_tree(deployment_tree, deployment.len(), &fee)?,
+        None => deployment_tree,
+    };
+
+    Ok((*tree.root()).into())
 }
