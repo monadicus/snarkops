@@ -190,7 +190,7 @@ pub fn estimate_cost<N: Network>(
             .next()
             .ok_or(anyhow!("No transitions"))?;
         let stack = process.get_stack(transition.program_id())?;
-        cost_in_microcredits_v2(stack, transition.function_name())?
+        cost_in_microcredits_v2(&stack, transition.function_name())?
     } else {
         // Compute the finalize cost in microcredits.
         let mut finalize_cost = 0u64;
@@ -200,7 +200,7 @@ pub fn estimate_cost<N: Network>(
             // Retrieve the function name, program id, and program.
             let function_name = *transition.function_name();
             let stack = process.get_stack(transition.program_id())?;
-            let cost = cost_in_microcredits_v1(stack, &function_name)?;
+            let cost = cost_in_microcredits_v1(&stack, &function_name)?;
 
             // Accumulate the finalize cost.
             if let Some(cost) = finalize_cost.checked_add(cost) {

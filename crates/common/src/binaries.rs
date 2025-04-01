@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
@@ -90,7 +90,11 @@ impl Display for BinaryEntry {
         )?;
         if let BinarySource::Path(path) = &self.source {
             if let Ok(time) = path.metadata().and_then(|m| m.modified()) {
-                writeln!(f, "last modified: {}", DateTime::from(time).naive_local())?;
+                writeln!(
+                    f,
+                    "last modified: {}",
+                    DateTime::<Utc>::from(time).naive_local()
+                )?;
             }
         }
         Ok(())

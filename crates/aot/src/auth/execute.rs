@@ -1,3 +1,4 @@
+use aleo_std::StorageMode;
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
@@ -95,7 +96,7 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
     } else {
         let query = query_raw.clone().map(Query::REST);
 
-        let store = ConsensusStore::<N, ConsensusMemory<_>>::open(None)?;
+        let store = ConsensusStore::<N, ConsensusMemory<_>>::open(StorageMode::Production)?;
         let vm = MemVM::from(store)?;
 
         match auth {
