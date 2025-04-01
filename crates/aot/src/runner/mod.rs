@@ -226,8 +226,6 @@ impl<N: Network> Runner<N> {
             .map_err(|e| e.context("create client"))?,
         };
 
-        agent.status(SnarkOSStatus::Started);
-
         // only monitor block updates if we have a checkpoint manager or agent status
         // API
         if manager.is_some() || agent.is_enabled() {
@@ -283,12 +281,12 @@ impl<N: Network> Runner<N> {
     /// Check the proposal cache for this address and remove it if it is
     /// invalid.
     fn check_proposal_cache(addr: Address<N>) {
-        let proposal_cache_path = proposal_cache_path(N::ID, None);
+        let proposal_cache_path = proposal_cache_path(N::ID, &StorageMode::Production);
         if !proposal_cache_path.exists() {
             return;
         }
 
-        let Err(e) = ProposalCache::<N>::load(addr, None) else {
+        let Err(e) = ProposalCache::<N>::load(addr, &StorageMode::Production) else {
             return;
         };
 

@@ -346,7 +346,7 @@ impl<N: Network> Genesis<N> {
 
         // Initialize a new VM.
         let vm = snarkvm::synthesizer::VM::from(ConsensusStore::<N, ConsensusMemory<_>>::open(
-            Some(0),
+            StorageMode::Development(0),
         )?)?;
 
         // region: Genesis Records

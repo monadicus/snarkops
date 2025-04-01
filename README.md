@@ -222,6 +222,15 @@ credits.aleo
 $ snarkos-aot program cost ./example.aleo
 2568400
 
+# Calculate the cost of executing a function in a program
+$ snarkos-aot program cost ./credits.aleo transfer_public example.aleo 1u64
+34060
+
+# Calculate the cost of executing a function in a program for devnets below the cost-v2 height
+# Programs that call other programs will be much more expensive with cost-v1
+$ snarkos-aot program cost --cost-v1 ./credits.aleo transfer_public example.aleo 1u64
+51060
+
 # Get a list of imports for a program (output in a json format with --json)
 $ snarkos-aot program imports ./staking_v1.aleo --json
 ["credits.aleo"]
