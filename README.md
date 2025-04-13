@@ -37,7 +37,7 @@ To learn more about `snops` we recommend checking out the mdbook [here](https://
     The controlplane is the webserver that communicates to agents how to
     run snarkOS, or what transactions to execute.
 
-1. In another terminal, install the cli: `cargo install --path ./crates/snops-cli`, or build with `cargo xtask build cli` and use from `target/release-big/snops-cli`.
+1. In another terminal, install the cli: `cargo install --path ./crates/cli`, or build with `cargo xtask build cli` and use from `target/release-big/snops-cli`.
 
     The cli is used to interact with the controlplane and manage environments.
     It provides JSON based output. We recommend pairing our cli with [`jq`](https://jqlang.github.io/jq/) when leveraging other scripts and tools
@@ -55,10 +55,10 @@ To learn more about `snops` we recommend checking out the mdbook [here](https://
 1. In separate terminals, start up some agents with the following commands:
 
     ```sh
-    ./script/agent.sh 0
-    ./script/agent.sh 1
-    ./script/agent.sh 2
-    ./script/agent.sh 3
+    ./scripts/agent.sh 0
+    ./scripts/agent.sh 1
+    ./scripts/agent.sh 2
+    ./scripts/agent.sh 3
     ```
 
     Each of these can be dynamically configured as snarkos nodes. The default
@@ -81,7 +81,7 @@ been more convenient. Snops aliases locally generated keys automatically from co
 reduces the need to keep track of individual key files.
 
 1. Start an environment (see previous example)
-1. Start a compute agent: `./scripts/agent_compute.sh 0`
+1. Start a compute agent: `./scripts/compute_agent.sh 0`
 
     Compute agents are able to distribute the execution of transactions,
     offloading the compute task to different servers.
