@@ -73,6 +73,8 @@ pub enum SourceError {
     CouldNotSelect(&'static str),
     #[error("error fetching state root from `{0}`: {1}")]
     FailedToGetStateRoot(String, #[source] reqwest::Error),
+    #[error("error fetching latest height from `{0}`: {1}")]
+    FailedToGetHeight(String, #[source] reqwest::Error),
     #[error("error jsonifying `{0}`: {1}")]
     Json(&'static str, #[source] serde_json::Error),
     #[error("no agents available to execute `{0}`")]

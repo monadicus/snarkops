@@ -155,7 +155,7 @@ impl<N: Network> From<ProxyAuthorization<N>> for Authorization<N> {
     fn from(auth: ProxyAuthorization<N>) -> Self {
         let new_auth = Authorization::try_from((vec![], vec![])).unwrap();
         for req in auth.requests {
-            new_auth.push(req);
+            let _ = new_auth.push(req);
         }
         for transition in auth.transitions {
             let _ = new_auth.insert_transition(transition);

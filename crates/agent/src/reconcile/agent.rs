@@ -419,8 +419,11 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
 
                 let rec = if node_status.is_started() {
                     ReconcileStatus::default()
-                } else {
+                } else if node_status.is_stopped() {
+                    // Terminate looping after some kind of failure
                     ReconcileStatus::empty()
+                } else {
+                    ReconcileStatus::empty().requeue_after(Duration::from_secs(5))
                 };
 
                 return Ok(rec.add_scope(format!("agent_state/node/{}", node_status.label())));

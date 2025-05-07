@@ -364,6 +364,36 @@ impl CannonInstance {
         }
     }
 
+    /// Called by axum to forward /cannon/<id>/<network>/block/height/latest
+    pub async fn proxy_latest_height(&self) -> Result<u32, CannonError> {
+        let cannon_id = self.id;
+        let env_id = self.env_id;
+        let network = self.network;
+
+        match &self.source.query {
+            QueryTarget::Local(qs) => {
+                if let Some(port) = self.query_port {
+                    qs.get_latest_height(network, port).await
+                } else {
+                    Err(CannonInstanceError::MissingQueryPort(cannon_id).into())
+                }
+            }
+            QueryTarget::Node(target) => {
+                // shortcut to cached state root if the target is all nodes
+                if target.is_all() {
+                    if let Some(info) = self.global_state.get_env_block_info(env_id) {
+                        return Ok(info.height);
+                    }
+                }
+
+                Ok(self
+                    .global_state
+                    .snarkos_get::<u32>(env_id, "/block/height/latest", target)
+                    .await?)
+            }
+        }
+    }
+
     /// Called by axum to forward /cannon/<id>/<network>/transaction/broadcast
     /// to the desired sink
     pub fn proxy_broadcast(

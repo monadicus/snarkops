@@ -25,6 +25,13 @@ impl SnarkOSStatus {
         matches!(self, SnarkOSStatus::Started)
     }
 
+    pub fn is_stopped(&self) -> bool {
+        matches!(
+            self,
+            SnarkOSStatus::Halted(_) | SnarkOSStatus::LedgerFailure(_)
+        )
+    }
+
     pub fn label(&self) -> &'static str {
         match self {
             SnarkOSStatus::Starting => "starting",
