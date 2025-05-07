@@ -29,6 +29,10 @@ pub(crate) fn redirect_cannon_routes() -> Router<AppState> {
             "/:cannon/:network/find/blockHash/:tx",
             get(get_tx_blockhash),
         )
+        .route(
+            "/:cannon/:network/block/height/latest",
+            get(get_latest_height),
+        )
         .route("/:cannon/:network/block/:height_or_hash", get(get_block))
         .route("/:cannon/:network/program/:program", get(get_program_json))
         .route(
@@ -69,6 +73,48 @@ async fn state_root(
         attempts += 1;
         match cannon.proxy_state_root().await {
             Ok(root) => break Json(root).into_response(),
+
+            Err(e) if attempts > 5 => {
+                break (
+                    StatusCode::REQUEST_TIMEOUT,
+                    Json(json!({ "error": "non-responsive query node", "inner": format!("{e}") })),
+                )
+                    .into_response();
+            }
+
+            _ => attempts += 1,
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+async fn get_latest_height(
+    Path((env_id, cannon_id, network)): Path<(String, String, NetworkId)>,
+    state: State<AppState>,
+) -> Response {
+    let (Some(env_id), Some(cannon_id)) = (id_or_none(&env_id), id_or_none(&cannon_id)) else {
+        return ServerError::NotFound("unknown cannon or environment".to_owned()).into_response();
+    };
+
+    let Some(env) = state.get_env(env_id) else {
+        return ServerError::NotFound("environment not found".to_owned()).into_response();
+    };
+
+    if env.network != network {
+        return ServerError::NotFound("network mismatch".to_owned()).into_response();
+    }
+
+    let Some(cannon) = env.get_cannon(cannon_id) else {
+        return ServerError::NotFound("cannon not found".to_owned()).into_response();
+    };
+
+    // TODO: lock this with a mutex or something so that multiple route callers
+    // can't bombard the cannon with proxy_state_root call attempts
+    let mut attempts = 0;
+    loop {
+        attempts += 1;
+        match cannon.proxy_latest_height().await {
+            Ok(height) => break Json(height).into_response(),
 
             Err(e) if attempts > 5 => {
                 break (

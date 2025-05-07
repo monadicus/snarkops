@@ -43,7 +43,25 @@ impl LocalService {
         network: NetworkId,
         port: u16,
     ) -> Result<String, CannonError> {
-        let url = format!("http://127.0.0.1:{port}/{network}/latest/stateRoot");
+        let url = format!("http://127.0.0.1:{port}/{network}/stateRoot/latest");
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| SourceError::FailedToGetStateRoot(url, e))?;
+        Ok(response
+            .json()
+            .await
+            .map_err(SourceError::StateRootInvalidJson)?)
+    }
+
+    // TODO: cache this when sync_from is false
+    /// Fetch the state root from the local query service
+    /// (non-cached)
+    pub async fn get_latest_height(
+        &self,
+        network: NetworkId,
+        port: u16,
+    ) -> Result<u32, CannonError> {
+        let url = format!("http://127.0.0.1:{port}/{network}/block/height/latest");
         let response = reqwest::get(&url)
             .await
             .map_err(|e| SourceError::FailedToGetStateRoot(url, e))?;
