@@ -144,16 +144,16 @@ snops-common = { path = "./crates/common" }
 
 ## Comment to use version-pinned or local dependencies
 
-snarkos-account = { git = "https://github.com/ProvableHQ/snarkOS", rev = "a1e4a28" }
-snarkos-node = { git = "https://github.com/ProvableHQ/snarkOS", rev = "a1e4a28" }
-snarkos-node-metrics = { git = "https://github.com/ProvableHQ/snarkOS", rev = "a1e4a28" }
+snarkos-account = { git = "https://github.com/ProvableHQ/snarkOS", rev = "c7390bd" }
+snarkos-node = { git = "https://github.com/ProvableHQ/snarkOS", rev = "c7390bd" }
+snarkos-node-metrics = { git = "https://github.com/ProvableHQ/snarkOS", rev = "c7390bd" }
 [workspace.dependencies.snarkvm]
 ## The following anchors are used by the `update_snarkos_dep.sh` script.
 ## Everything in-between the anchors is copied from the snarkos Cargo.toml
 ## CODEGEN_START
 #path = "../snarkVM"
 git = "https://github.com/ProvableHQ/snarkVM.git"
-rev = "a296d35"
-#version = "=1.4.0"
+rev = "629cccc"
+version = "=1.6.0"
 ## CODEGEN_END
 features = ["rocks"]

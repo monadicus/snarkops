@@ -3,6 +3,7 @@ use anyhow::bail;
 use rand::{SeedableRng, thread_rng};
 use rand_chacha::ChaChaRng;
 use snarkvm::{
+    algorithms::snark::varuna::VarunaVersion,
     circuit::Aleo,
     console::{
         account::{PrivateKey, ViewKey},
@@ -43,7 +44,7 @@ pub fn prove_credits<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
     // assemble the proof
     let (_, mut trace) = vm.process().read().execute::<A, _>(auth, rng)?;
     trace.prepare(Query::from(vm.block_store()).clone())?;
-    trace.prove_execution::<A, _>(&format!("credits.aleo/{locator}"), rng)
+    trace.prove_execution::<A, _>(&format!("credits.aleo/{locator}"), VarunaVersion::V1, rng)
 }
 
 pub fn prove_fee<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
@@ -60,7 +61,7 @@ pub fn prove_fee<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
     // assemble the proof
     let (_, mut trace) = vm.process().read().execute::<A, _>(auth, rng)?;
     trace.prepare(Query::from(vm.block_store()).clone())?;
-    trace.prove_fee::<A, _>(rng)
+    trace.prove_fee::<A, _>(VarunaVersion::V1, rng)
 }
 
 pub fn public_transaction<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
