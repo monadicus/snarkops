@@ -39,6 +39,6 @@ function get_snarkos_rev() {
 
   # Read the lines '[workspace.dependencies.snarkvm]' to ^features greedily
   # Excluding the first line '[workspace.dependencies.snarkvm]' and the last line '^features'
-  SNARKVM_CARGO_DATA="$(echo "$SNARKOS_CARGO_TOML_DATA" | sed -nE '/\[workspace\.dependencies\.snarkvm\]/,/^features/ { /^features/!p }' | sed '1d')"
+  SNARKVM_CARGO_DATA="$(echo "$SNARKOS_CARGO_TOML_DATA" | sed -nE '/\[workspace\.dependencies\.snarkvm\]/,/^\x23?features/ { /^features/!p }' | sed '1d')"
 }
 
