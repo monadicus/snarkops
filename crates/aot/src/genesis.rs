@@ -347,7 +347,7 @@ impl<N: Network> Genesis<N> {
         let mut txs = Vec::with_capacity(4);
         for _ in 0..4 {
             let record_tx: Transaction<N> = public_transaction::<N, ConsensusMemory<_>, N::Circuit>(
-                "transfer_public",
+                "transfer_public_to_private",
                 &vm,
                 Address::try_from(&genesis_key)?,
                 0,
