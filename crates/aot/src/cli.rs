@@ -27,7 +27,7 @@ pub struct Cli<N: Network> {
     #[arg(long)]
     pub log: Option<PathBuf>,
     /// The verbosity level of the logs.
-    #[arg(long, default_value_t = 4)]
+    #[arg(long, default_value_t = 0)]
     pub verbosity: u8,
     #[cfg(feature = "node")]
     /// The optional loki url to send logs to.
@@ -111,8 +111,12 @@ pub fn make_env_filter(verbosity: u8) -> EnvFilter {
         filter
             .add_directive("snarkos_node_bft=trace".parse().unwrap())
             .add_directive("snarkos_node_bft::gateway=debug".parse().unwrap())
-    } else {
+    } else if verbosity >= 1 {
         filter.add_directive("snarkos_node_bft=debug".parse().unwrap())
+    } else {
+        filter
+            .add_directive("snarkos_node_bft=info".parse().unwrap())
+            .add_directive("snarkos_node_bft::gateway=info".parse().unwrap())
     };
 
     let filter = if verbosity >= 4 {

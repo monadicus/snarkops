@@ -213,7 +213,7 @@ impl<N: Network> Stores<N> {
             None => bail!("Failed to get the program ID for transaction '{transaction_id}'"),
         };
         // Retrieve the edition.
-        let edition = match db.get_edition(&program_id)? {
+        let edition = match db.get_edition_for_transaction(&transaction_id)? {
             Some(edition) => edition,
             None => bail!("Failed to locate the edition for program '{program_id}'"),
         };
@@ -227,8 +227,18 @@ impl<N: Network> Stores<N> {
 
         // Remove the program ID.
         db.id_map().remove(transaction_id)?;
+
         // Remove the edition.
-        db.edition_map().remove(&program_id)?;
+        db.id_edition_map().remove(transaction_id)?;
+        match edition == 0 {
+            // If the removed edition is 0, then remove the program ID from the latest edition map.
+            true => db.edition_map().remove(&program_id)?,
+            // Otherwise, decrement the edition.
+            // Note: This is safe because the VM enforces that the edition is always incremented.
+            false => db
+                .edition_map()
+                .insert(program_id, edition.saturating_sub(1))?,
+        }
 
         // Remove the reverse program ID.
         db.reverse_id_map().remove(&(program_id, edition))?;

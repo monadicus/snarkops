@@ -3,8 +3,11 @@ use anyhow::{Result, anyhow, bail};
 use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
 use snarkvm::ledger::{
-    query::Query,
-    store::{ConsensusStore, helpers::memory::ConsensusMemory},
+    query::{Query, QueryTrait},
+    store::{
+        ConsensusStore,
+        helpers::memory::{BlockMemory, ConsensusMemory},
+    },
 };
 use tracing::error;
 
@@ -68,16 +71,23 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
     query_raw: Option<String>,
     rng: &mut R,
 ) -> Result<Transaction<N>> {
+    let query = match query_raw.as_ref() {
+        Some(query) => {
+            let q = Query::<N, BlockMemory<N>>::from(query);
+            Some(Box::new(q) as Box<dyn QueryTrait<N>>)
+        }
+        None => None,
+    };
+
     // Execute the transaction.
     if let Some(ledger) = ledger {
-        let query = query_raw.map(Query::REST);
-
         match auth {
-            AuthBlob::Program { auth, fee_auth } => {
-                ledger
-                    .vm()
-                    .execute_authorization(auth.into(), fee_auth.map(Into::into), query, rng)
-            }
+            AuthBlob::Program { auth, fee_auth } => ledger.vm().execute_authorization(
+                auth.into(),
+                fee_auth.map(Into::into),
+                query.as_deref(),
+                rng,
+            ),
             AuthBlob::Deploy {
                 deployment,
                 owner,
@@ -87,15 +97,13 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
                     fee_auth
                         .map(Into::into)
                         .ok_or(anyhow!("expected fee for deployment"))?,
-                    query,
+                    query.as_deref(),
                     rng,
                 )?;
                 Ok(Transaction::from_deployment(owner, *deployment, fee)?)
             }
         }
     } else {
-        let query = query_raw.clone().map(Query::REST);
-
         let store = ConsensusStore::<N, ConsensusMemory<_>>::open(StorageMode::Production)?;
         let vm = MemVM::from(store)?;
 
@@ -113,7 +121,7 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
                     }
                 }
 
-                vm.execute_authorization(auth, fee_auth, query, rng)
+                vm.execute_authorization(auth, fee_auth, query.as_deref(), rng)
             }
             AuthBlob::Deploy {
                 deployment,
@@ -124,7 +132,7 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
 
                 let fee = vm.execute_fee_authorization(
                     fee_auth.ok_or(anyhow!("expected fee for deployment"))?,
-                    query,
+                    query.as_deref(),
                     rng,
                 )?;
                 Ok(Transaction::from_deployment(owner, *deployment, fee)?)
