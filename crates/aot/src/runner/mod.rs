@@ -195,21 +195,17 @@ impl<N: Network> Runner<N> {
                     storage_mode.clone(),
                     false,
                     false,
+                    None,
                     shutdown,
                 )
                 .await
                 .map_err(|e| e.context("create validator"))?
             }
-            NodeType::Prover => Node::new_prover(
-                node_ip,
-                account,
-                &self.peers,
-                genesis,
-                storage_mode.clone(),
-                shutdown,
-            )
-            .await
-            .map_err(|e| e.context("create prover"))?,
+            NodeType::Prover => {
+                Node::new_prover(node_ip, account, &self.peers, genesis, None, shutdown)
+                    .await
+                    .map_err(|e| e.context("create prover"))?
+            }
             NodeType::Client => Node::new_client(
                 node_ip,
                 Some(rest_ip),
@@ -220,6 +216,7 @@ impl<N: Network> Runner<N> {
                 None,
                 storage_mode.clone(),
                 false,
+                None,
                 shutdown,
             )
             .await

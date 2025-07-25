@@ -53,7 +53,7 @@ impl<N: Network> Stores<N> {
 
         // Retrieve the state root.
         let state_root = match db.state_root_map().get_confirmed(&block_height)? {
-            Some(state_root) => cow_to_copied!(state_root),
+            Some(state_root) => state_root,
             None => {
                 bail!(
                     "Failed to remove block: missing state root for block height '{block_height}'"
@@ -69,7 +69,7 @@ impl<N: Network> Stores<N> {
         };
         // Retrieve the solutions.
         let solutions = match db.solutions_map().get_confirmed(&block_hash)? {
-            Some(solutions) => cow_to_cloned!(solutions),
+            Some(solutions) => solutions,
             None => {
                 bail!(
                     "Failed to remove block: missing solutions for block '{block_height}' ('{block_hash}')"
@@ -186,14 +186,14 @@ impl<N: Network> Stores<N> {
 
         // Retrieve the transaction type.
         let transaction_type = match db.id_map().get_confirmed(transaction_id)? {
-            Some(transaction_type) => cow_to_copied!(transaction_type),
+            Some(transaction_type) => transaction_type,
             None => bail!("Failed to get the type for transaction '{transaction_id}'"),
         };
 
         // Remove the transaction type.
         db.id_map().remove(transaction_id)?;
         // Remove the transaction.
-        match transaction_type {
+        match transaction_type.as_ref() {
             // Remove the deployment transaction.
             TransactionType::Deploy => self.fast_deployment_remove(transaction_id)?,
             // Remove the execution transaction.
@@ -219,7 +219,7 @@ impl<N: Network> Stores<N> {
         };
         // Retrieve the program.
         let program = match db.program_map().get_confirmed(&(program_id, edition))? {
-            Some(program) => cow_to_cloned!(program),
+            Some(program) => program,
             None => {
                 bail!("Failed to locate program '{program_id}' for transaction '{transaction_id}'")
             }
@@ -267,8 +267,9 @@ impl<N: Network> Stores<N> {
         let db = &self.executions;
 
         // Retrieve the transition IDs and fee boolean.
-        let (transition_ids, has_fee) = match db.id_map().get_confirmed(transaction_id)? {
-            Some(ids) => cow_to_cloned!(ids),
+        let confirmed = db.id_map().get_confirmed(transaction_id)?;
+        let (transition_ids, has_fee) = match confirmed.as_deref() {
+            Some(ids) => ids,
             None => {
                 bail!("Failed to get the transition IDs for the transaction '{transaction_id}'")
             }
@@ -289,7 +290,7 @@ impl<N: Network> Stores<N> {
         db.inclusion_map().remove(transaction_id)?;
 
         // Remove the fee.
-        if has_fee {
+        if *has_fee {
             // Remove the fee.
             self.fast_fee_remove(transaction_id)?;
         }
@@ -301,8 +302,9 @@ impl<N: Network> Stores<N> {
         let db = &self.fees;
 
         // Retrieve the fee transition ID.
-        let (transition_id, _, _) = match db.fee_map().get_confirmed(transaction_id)? {
-            Some(fee_id) => cow_to_cloned!(fee_id),
+        let confirmed = db.fee_map().get_confirmed(transaction_id)?;
+        let (transition_id, _, _) = match confirmed.as_deref() {
+            Some(fee_id) => fee_id,
             None => {
                 bail!("Failed to locate the fee transition ID for transaction '{transaction_id}'")
             }
@@ -323,12 +325,12 @@ impl<N: Network> Stores<N> {
 
         // Retrieve the `tpk`.
         let tpk = match db.tpk_map().get_confirmed(transition_id)? {
-            Some(tpk) => cow_to_copied!(tpk),
+            Some(tpk) => tpk,
             None => return Ok(()),
         };
         // Retrieve the `tcm`.
         let tcm = match db.tcm_map().get_confirmed(transition_id)? {
-            Some(tcm) => cow_to_copied!(tcm),
+            Some(tcm) => tcm,
             None => return Ok(()),
         };
 

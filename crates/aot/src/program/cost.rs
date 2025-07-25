@@ -64,7 +64,7 @@ impl<N: Network> CostCommand<N> {
             estimate_cost(&process, &auth, !cost_v1)
         } else {
             let deployment = process.deploy::<N::Circuit, _>(&program, &mut rand::thread_rng())?;
-            Ok(deployment_cost(&deployment)?.0)
+            Ok(deployment_cost(&process, &deployment)?.0)
         }
     }
 }

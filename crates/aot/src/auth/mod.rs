@@ -132,6 +132,7 @@ impl<N: Network> AuthCommand<N> {
                 auth,
                 cost_v1,
             }) => {
+                let mut process = Process::load()?;
                 let cost = match auth.pick()? {
                     AuthBlob::Program { auth, .. } => {
                         let auth = auth.into();
@@ -139,7 +140,6 @@ impl<N: Network> AuthCommand<N> {
                         // load the programs the auth references into the process
                         // as cost estimation measures the size of values from within the auth's
                         // transitions
-                        let mut process = Process::load()?;
                         if let Some(query) = query.as_deref() {
                             let programs = query::get_programs_from_auth(&auth);
                             query::add_many_programs_to_process(&mut process, programs, query)?;
@@ -147,7 +147,10 @@ impl<N: Network> AuthCommand<N> {
 
                         estimate_cost(&process, &auth, !cost_v1)?
                     }
-                    AuthBlob::Deploy { deployment, .. } => deployment_cost(&deployment)?.0,
+                    AuthBlob::Deploy { deployment, .. } => {
+                        // TODO: not sure if this program needs to have its prereqs loaded
+                        deployment_cost(&process, &deployment)?.0
+                    }
                 };
                 println!("{cost}");
                 Ok(())
@@ -234,6 +237,8 @@ impl<N: Network> AuthCommand<N> {
                     return Ok(());
                 };
 
+                let process = Process::load()?;
+
                 // authorize the fee using the deployment's ID and estimated cost
                 let fee_auth = auth_fee::AuthorizeFee {
                     key: fee_key.as_key().unwrap_or(key),
@@ -242,7 +247,7 @@ impl<N: Network> AuthCommand<N> {
                     deployment: None,
                     query: None,
                     id: Some(deployment.to_deployment_id()?),
-                    cost: Some(deployment_cost(&deployment)?.0),
+                    cost: Some(deployment_cost(&process, &deployment)?.0),
                     seed,
                     cost_v1,
                 }

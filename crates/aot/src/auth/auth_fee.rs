@@ -59,10 +59,10 @@ pub struct AuthorizeFee<N: Network> {
 
 impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
+        let mut process = Process::load()?;
         let (id, base_fee) = match (self.auth, self.deployment, self.id, self.cost) {
             (Some(auth), None, None, None) => {
                 let auth = auth.into_inner();
-                let mut process = Process::load()?;
                 if let Some(query) = self.query.as_deref() {
                     let programs = query::get_programs_from_auth(&auth);
                     query::add_many_programs_to_process(&mut process, programs, query)?;
@@ -77,7 +77,7 @@ impl<N: Network> AuthorizeFee<N> {
                 let deployment = deployment.into_inner();
                 (
                     deployment.to_deployment_id()?,
-                    deployment_cost(&deployment)?.0,
+                    deployment_cost(&process, &deployment)?.0,
                 )
             }
             (None, None, Some(id), Some(cost)) => (id, cost),

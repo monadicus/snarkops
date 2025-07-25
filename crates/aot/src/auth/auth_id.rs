@@ -24,7 +24,7 @@ pub fn auth_tx_id<N: Network>(
     let fee = fee_auth.map(fee_from_auth).transpose()?;
 
     let tree = match fee {
-        Some(fee) => Transaction::transaction_tree(execute_tree, auth.len(), &fee)?,
+        Some(fee) => Transaction::transaction_tree(execute_tree, Some(&fee))?,
         None => execute_tree,
     };
 
@@ -41,7 +41,7 @@ pub fn deploy_tx_id<N: Network>(
     let fee = fee_auth.map(fee_from_auth).transpose()?;
 
     let tree = match fee {
-        Some(fee) => Transaction::transaction_tree(deployment_tree, deployment.len(), &fee)?,
+        Some(fee) => Transaction::transaction_tree(deployment_tree, Some(&fee))?,
         None => deployment_tree,
     };
 
