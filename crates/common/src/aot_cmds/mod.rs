@@ -7,6 +7,7 @@ use tokio::{
 
 pub mod error;
 pub use error::AotCmdError;
+use tracing::trace;
 
 use self::error::CommandError;
 use crate::{
@@ -72,7 +73,7 @@ impl AotCmd {
         query: Option<&String>,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
-        cost_v1: bool,
+        height: Option<u32>,
     ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
@@ -100,8 +101,8 @@ impl AotCmd {
             command.arg("--record").arg(fee_record);
         }
 
-        if cost_v1 {
-            command.arg("--cost-v1");
+        if let Some(height) = height {
+            command.arg("--height").arg(height.to_string());
         }
 
         command
@@ -125,7 +126,7 @@ impl AotCmd {
         query: Option<&String>,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
-        cost_v1: bool,
+        height: Option<u32>,
     ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
@@ -154,8 +155,8 @@ impl AotCmd {
             command.arg("--record").arg(fee_record);
         }
 
-        if cost_v1 {
-            command.arg("--cost-v1");
+        if let Some(height) = height {
+            command.arg("--height").arg(height.to_string());
         }
 
         command.arg("-");
@@ -212,7 +213,7 @@ impl AotCmd {
         authorization: &str,
         priority_fee: Option<u64>,
         fee_record: Option<&String>,
-        cost_v1: bool,
+        height: Option<u32>,
     ) -> Result<String, AotCmdError> {
         let mut command = Command::new(&self.bin);
         command
@@ -232,8 +233,8 @@ impl AotCmd {
             command.arg("--record").arg(fee_record);
         }
 
-        if cost_v1 {
-            command.arg("--cost-v1");
+        if let Some(height) = height {
+            command.arg("--height").arg(height.to_string());
         }
 
         Self::handle_output(
@@ -253,6 +254,7 @@ impl AotCmd {
             .arg("--broadcast")
             .arg("--query")
             .arg(query);
+        trace!("Executing transaction with aot: {:?}", command);
 
         match auth {
             Authorization::Program { auth, fee_auth } => {

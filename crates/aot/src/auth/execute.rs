@@ -73,7 +73,10 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
 ) -> Result<Transaction<N>> {
     let query = match query_raw.as_ref() {
         Some(query) => {
-            let q = Query::<N, BlockMemory<N>>::from(query);
+            let q = Query::<N, BlockMemory<N>>::try_from(format!(
+                "{query}{slash}",
+                slash = if query.ends_with('/') { "" } else { "/" }
+            ))?;
             Some(Box::new(q) as Box<dyn QueryTrait<N>>)
         }
         None => None,
@@ -165,7 +168,11 @@ impl<N: Network> Execute<N> {
         tracing::info!("broadcasting transaction...");
         println!("{}", serde_json::to_string(&tx)?);
         let response = reqwest::blocking::Client::new()
-            .post(format!("{}/{network}/transaction/broadcast", self.query))
+            .post(format!(
+                "{query}{slash}{network}/transaction/broadcast",
+                query = self.query,
+                slash = if self.query.ends_with('/') { "" } else { "/" }
+            ))
             .header("Content-Type", "application/json")
             .json(&tx)
             .send()?;

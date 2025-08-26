@@ -3,7 +3,7 @@ use clap::Args;
 use snarkvm::{console::program::Locator, synthesizer::Process};
 
 use super::{auth_fee::estimate_cost, query};
-use crate::{Authorization, Key, Network, Value};
+use crate::{Authorization, Key, Network, Value, program::cost::consensus_from_height};
 
 #[derive(Debug, Args)]
 pub struct AuthProgramOptions<N: Network> {
@@ -26,9 +26,10 @@ pub struct AuthorizeProgram<N: Network> {
     /// The seed to use for the authorization generation
     #[clap(long)]
     pub seed: Option<u64>,
-    /// Enable cost v1 for the transaction cost estimation (v2 by default)
-    #[clap(long, default_value_t = false)]
-    pub cost_v1: bool,
+    /// Allow dynamically determining the consensus version based on the
+    /// current block height
+    #[clap(long)]
+    pub height: Option<u32>,
 }
 
 impl<N: Network> AuthorizeProgram<N> {
@@ -53,8 +54,8 @@ impl<N: Network> AuthorizeProgram<N> {
                 self.options.inputs.iter(),
                 &mut super::rng_from_seed(self.seed),
             )?;
-
-        let cost = estimate_cost(&process, &auth, !self.cost_v1)?;
+        let consensus_version = consensus_from_height::<N>(self.height);
+        let cost = estimate_cost(&process, &auth, consensus_version)?;
 
         Ok((auth, cost))
     }
