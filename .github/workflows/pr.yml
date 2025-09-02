@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -42,7 +42,7 @@ jobs:
       agent: ${{ steps.filter.outputs.agent }}
       scli: ${{ steps.filter.outputs.scli }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: filter
         uses: dorny/paths-filter@v3
         with:
@@ -90,7 +90,7 @@ jobs:
           - { name: "snops-cli", package: "snops-cli", dir: "crates/cli" }
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 🥬 Use Mold Linker
         uses: rui314/setup-mold@v1
