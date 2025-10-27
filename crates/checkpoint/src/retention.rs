@@ -331,12 +331,12 @@ impl std::fmt::Display for RetentionSpan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RetentionSpan::Unlimited => write!(f, "U"),
-            RetentionSpan::Minute(value) => write!(f, "{}m", value),
-            RetentionSpan::Hour(value) => write!(f, "{}h", value),
-            RetentionSpan::Day(value) => write!(f, "{}D", value),
-            RetentionSpan::Week(value) => write!(f, "{}W", value),
-            RetentionSpan::Month(value) => write!(f, "{}M", value),
-            RetentionSpan::Year(value) => write!(f, "{}Y", value),
+            RetentionSpan::Minute(value) => write!(f, "{value}m"),
+            RetentionSpan::Hour(value) => write!(f, "{value}h"),
+            RetentionSpan::Day(value) => write!(f, "{value}D"),
+            RetentionSpan::Week(value) => write!(f, "{value}W"),
+            RetentionSpan::Month(value) => write!(f, "{value}M"),
+            RetentionSpan::Year(value) => write!(f, "{value}Y"),
         }
     }
 }
