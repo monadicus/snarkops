@@ -3,9 +3,10 @@
 
 use snarkos_node_metrics::{bft, blocks, consensus, router, tcp};
 
-pub const COUNTER_NAMES: [&str; 2] = [
+pub const COUNTER_NAMES: [&str; 3] = [
     bft::LEADERS_ELECTED,
-    consensus::STALE_UNCONFIRMED_TRANSMISSIONS,
+    consensus::STALE_UNCONFIRMED_TRANSACTIONS,
+    consensus::STALE_UNCONFIRMED_SOLUTIONS,
 ];
 
 pub const GAUGE_NAMES: [&str; 26] = [

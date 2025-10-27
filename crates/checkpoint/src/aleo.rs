@@ -13,7 +13,7 @@ pub use snarkvm::{
         store::{
             self, BlockStorage, CommitteeStorage, DeploymentStorage, ExecutionStorage, FeeStorage,
             FinalizeStorage, InputStorage, OutputStorage, TransactionStorage, TransactionType,
-            TransitionStorage, cow_to_cloned, cow_to_copied,
+            TransitionStorage,
             helpers::{Map, MapRead},
         },
     },

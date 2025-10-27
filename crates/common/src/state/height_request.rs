@@ -16,7 +16,7 @@ impl FromStr for HeightRequest {
                 } else if let Ok(span) = s.parse() {
                     Ok(HeightRequest::Checkpoint(span))
                 } else {
-                    Err(format!("invalid HeightRequest: {}", s))
+                    Err(format!("invalid HeightRequest: {s}"))
                 }
             }
         }

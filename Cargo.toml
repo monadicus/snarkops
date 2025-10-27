@@ -43,7 +43,12 @@ opt-level = 1
 
 [workspace.dependencies]
 aleo-std = "1.0.1"
-axum = { version = "0.7", default-features = false }
+axum = { version = "0.7", features = [
+	"json",
+	"query",
+	"tokio",
+	"http1",
+], default-features = false }
 # uncomment to enable #[debug_handler] for axum :^)
 # axum = { version = "0.7", features = ["macros"], default-features = false }
 anyhow = { version = "1", features = ["backtrace"] }
@@ -132,7 +137,7 @@ snops-common = { path = "./crates/common" }
 
 # snarkos-account = { path = "../snarkos/account" }
 # snarkos-node = { path = "../snarkos/node" }
-# snarkvm = { path = "../snarkvm", features = ["rocks"] }
+# snarkvm = { path = "../snarkvm", features = ["rocks", "circuit", "console"] }
 # snarkos-node-metrics = { path = "../snarkos/node/metrics" }
 
 ## Uncomment to use version-pinned dependencies
@@ -144,16 +149,17 @@ snops-common = { path = "./crates/common" }
 
 ## Comment to use version-pinned or local dependencies
 
-snarkos-account = { git = "https://github.com/ProvableHQ/snarkOS", rev = "c7390bd" }
-snarkos-node = { git = "https://github.com/ProvableHQ/snarkOS", rev = "c7390bd" }
-snarkos-node-metrics = { git = "https://github.com/ProvableHQ/snarkOS", rev = "c7390bd" }
+snarkos-account = { git = "https://github.com/ProvableHQ/snarkOS", rev = "01b5f9c" }
+snarkos-node = { git = "https://github.com/ProvableHQ/snarkOS", rev = "01b5f9c" }
+snarkos-node-metrics = { git = "https://github.com/ProvableHQ/snarkOS", rev = "01b5f9c" }
 [workspace.dependencies.snarkvm]
 ## The following anchors are used by the `update_snarkos_dep.sh` script.
 ## Everything in-between the anchors is copied from the snarkos Cargo.toml
 ## CODEGEN_START
 #path = "../snarkVM"
 git = "https://github.com/ProvableHQ/snarkVM.git"
-rev = "629cccc"
-version = "=1.6.0"
+rev = "78a69b703"
+#version = "=4.2.1"
 ## CODEGEN_END
-features = ["rocks"]
+default-features = false
+features = ["circuit", "rocks", "algorithms"]

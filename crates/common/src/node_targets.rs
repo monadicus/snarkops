@@ -239,7 +239,7 @@ impl fmt::Display for NodeTarget {
             match &self.ns {
                 NodeTargetNamespace::All => "@any".to_owned(),
                 NodeTargetNamespace::Local => "".to_owned(),
-                NodeTargetNamespace::Literal(ns) => format!("@{}", ns),
+                NodeTargetNamespace::Literal(ns) => format!("@{ns}"),
             }
         )
     }

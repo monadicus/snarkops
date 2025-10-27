@@ -6,7 +6,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use snarkvm::synthesizer::{Process, process::deployment_cost};
 
-use crate::{Key, Network};
+use crate::{Key, Network, program::cost::consensus_from_height};
 
 pub mod args;
 pub mod auth_deploy;
@@ -46,9 +46,10 @@ pub struct CostCommand<N: Network> {
     query: Option<String>,
     #[clap(flatten)]
     auth: AuthArgs<N>,
-    /// Enable cost v1 for the transaction cost estimation (v2 by default)
-    #[clap(long, default_value_t = false)]
-    pub cost_v1: bool,
+    /// Allow dynamically determining the consensus version based on the
+    /// current block height
+    #[clap(long)]
+    pub height: Option<u32>,
 }
 
 /// Authorize a program execution.
@@ -68,9 +69,10 @@ pub struct AuthProgramCommand<N: Network> {
     /// The seed to use for the authorization generation
     #[clap(long)]
     pub seed: Option<u64>,
-    /// Enable cost v1 for the transaction cost estimation (v2 by default)
-    #[clap(long, default_value_t = false)]
-    pub cost_v1: bool,
+    /// Allow dynamically determining the consensus version based on the
+    /// current block height
+    #[clap(long)]
+    pub height: Option<u32>,
 }
 
 /// Deploy a program to the network.
@@ -90,9 +92,10 @@ pub struct AuthDeployCommand<N: Network> {
     /// The seed to use for the authorization generation
     #[clap(long)]
     pub seed: Option<u64>,
-    /// Enable cost v1 for the transaction cost estimation (v2 by default)
-    #[clap(long, default_value_t = false)]
-    pub cost_v1: bool,
+    /// Allow dynamically determining the consensus version based on the
+    /// current block height
+    #[clap(long)]
+    pub height: Option<u32>,
 }
 
 impl<N: Network> AuthCommand<N> {
@@ -130,8 +133,10 @@ impl<N: Network> AuthCommand<N> {
             AuthCommand::Cost(CostCommand {
                 query,
                 auth,
-                cost_v1,
+                height,
             }) => {
+                let mut process = Process::load()?;
+                let consensus_version = consensus_from_height::<N>(height);
                 let cost = match auth.pick()? {
                     AuthBlob::Program { auth, .. } => {
                         let auth = auth.into();
@@ -139,15 +144,17 @@ impl<N: Network> AuthCommand<N> {
                         // load the programs the auth references into the process
                         // as cost estimation measures the size of values from within the auth's
                         // transitions
-                        let mut process = Process::load()?;
                         if let Some(query) = query.as_deref() {
                             let programs = query::get_programs_from_auth(&auth);
                             query::add_many_programs_to_process(&mut process, programs, query)?;
                         }
 
-                        estimate_cost(&process, &auth, !cost_v1)?
+                        estimate_cost(&process, &auth, consensus_version)?
                     }
-                    AuthBlob::Deploy { deployment, .. } => deployment_cost(&deployment)?.0,
+                    AuthBlob::Deploy { deployment, .. } => {
+                        // TODO: not sure if this program needs to have its prereqs loaded
+                        deployment_cost(&process, &deployment, consensus_version)?.0
+                    }
                 };
                 println!("{cost}");
                 Ok(())
@@ -159,7 +166,7 @@ impl<N: Network> AuthCommand<N> {
                 program_opts,
                 fee_opts,
                 seed,
-                cost_v1,
+                height,
             }) => {
                 let query = program_opts.query.clone();
 
@@ -168,7 +175,7 @@ impl<N: Network> AuthCommand<N> {
                     key: key.clone(),
                     options: program_opts,
                     seed,
-                    cost_v1,
+                    height,
                 }
                 .parse()?;
 
@@ -187,7 +194,7 @@ impl<N: Network> AuthCommand<N> {
                     id: Some(auth.to_execution_id()?),
                     cost: Some(cost),
                     seed,
-                    cost_v1,
+                    height,
                 }
                 .parse()?;
 
@@ -207,7 +214,7 @@ impl<N: Network> AuthCommand<N> {
                 deploy_opts,
                 fee_opts,
                 seed,
-                cost_v1,
+                height,
             }) => {
                 // authorize the deployment without a fee
                 let AuthBlob::Deploy {
@@ -234,6 +241,9 @@ impl<N: Network> AuthCommand<N> {
                     return Ok(());
                 };
 
+                let process = Process::load()?;
+                let consensus_version = consensus_from_height::<N>(height);
+
                 // authorize the fee using the deployment's ID and estimated cost
                 let fee_auth = auth_fee::AuthorizeFee {
                     key: fee_key.as_key().unwrap_or(key),
@@ -242,9 +252,9 @@ impl<N: Network> AuthCommand<N> {
                     deployment: None,
                     query: None,
                     id: Some(deployment.to_deployment_id()?),
-                    cost: Some(deployment_cost(&deployment)?.0),
+                    cost: Some(deployment_cost(&process, &deployment, consensus_version)?.0),
                     seed,
-                    cost_v1,
+                    height,
                 }
                 .parse()?
                 .map(Into::into);

@@ -2,7 +2,7 @@ use anyhow::{Result, ensure};
 use clap::Args;
 use clap_stdin::FileOrStdin;
 use snarkvm::{
-    prelude::{Identifier, Value},
+    prelude::{ConsensusVersion, Identifier, Value},
     synthesizer::{Process, Program, process::deployment_cost},
 };
 
@@ -25,9 +25,18 @@ pub struct CostCommand<N: Network> {
     /// Program inputs (eg. 1u64 5field)
     #[clap(num_args = 1, value_delimiter = ' ')]
     inputs: Vec<Value<N>>,
-    /// Enable cost v1 for the transaction cost estimation (v2 by default)
-    #[clap(long, default_value_t = false)]
-    pub cost_v1: bool,
+    /// Enable dynamic block height for the transaction cost estimation (latest
+    /// by default)
+    #[clap(long)]
+    pub height: Option<u32>,
+}
+
+pub fn consensus_from_height<N: Network>(height: Option<u32>) -> ConsensusVersion {
+    if let Some(height) = height {
+        N::CONSENSUS_VERSION(height).unwrap_or(ConsensusVersion::V1)
+    } else {
+        ConsensusVersion::latest()
+    }
 }
 
 impl<N: Network> CostCommand<N> {
@@ -37,12 +46,13 @@ impl<N: Network> CostCommand<N> {
             program,
             function,
             inputs,
-            cost_v1,
+            height,
         } = self;
 
         let program = program.contents()?;
         let mut process = Process::load()?;
         query::get_process_imports(&mut process, &program, query.as_deref())?;
+        let v = consensus_from_height::<N>(height);
 
         if let Some(function) = function {
             process.add_program(&program)?;
@@ -61,10 +71,10 @@ impl<N: Network> CostCommand<N> {
                     &mut rand::thread_rng(),
                 )?;
 
-            estimate_cost(&process, &auth, !cost_v1)
+            estimate_cost(&process, &auth, v)
         } else {
             let deployment = process.deploy::<N::Circuit, _>(&program, &mut rand::thread_rng())?;
-            Ok(deployment_cost(&deployment)?.0)
+            Ok(deployment_cost(&process, &deployment, v)?.0)
         }
     }
 }

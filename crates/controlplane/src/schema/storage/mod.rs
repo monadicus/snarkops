@@ -377,7 +377,7 @@ impl Document {
 
         if let Some(generation) = &self.generate {
             for (name, account) in &generation.accounts {
-                let path = base.join(format!("{}.json", name));
+                let path = base.join(format!("{name}.json"));
 
                 if !path.exists() {
                     info!("generating accounts for {name}");

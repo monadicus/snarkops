@@ -181,8 +181,11 @@ pub async fn execute_inner(
             query.as_ref(),
             priority_fee,
             fee_record.as_ref(),
-            // use cost_v1 when we are not using the native genesis
-            !env.storage.native_genesis,
+            if env.storage.native_genesis {
+                None
+            } else {
+                Some(cannon.proxy_latest_height().await?)
+            },
         )
         .await?;
 

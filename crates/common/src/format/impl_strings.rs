@@ -20,8 +20,7 @@ impl DataFormat for String {
         let read_len = reader.take(len as u64).read_to_string(&mut buf)?;
         if read_len != len {
             return Err(DataReadError::Custom(format!(
-                "string expected to read {} bytes, but read {}",
-                len, read_len
+                "string expected to read {len} bytes, but read {read_len}"
             )));
         }
         Ok(buf)

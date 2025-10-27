@@ -19,8 +19,8 @@ use snarkvm::{
 };
 
 use crate::{
-    Address, Block, CTRecord, Committee, DbLedger, MemVM, Network, NetworkId, PTRecord, PrivateKey,
-    Transaction, ViewKey, ledger::util::public_transaction,
+    Address, Block, Committee, DbLedger, MemVM, Network, NetworkId, PTRecord, PrivateKey,
+    Transaction, ledger::util::public_transaction,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -67,11 +67,6 @@ pub struct Genesis<N: Network> {
         default_value_t = 100_000_000
     )]
     pub additional_accounts_balance: u64,
-
-    /// If --additional-accounts is passed you can additionally add an amount to
-    /// give them in a record.
-    #[clap(long)]
-    pub additional_accounts_record_balance: Option<u64>,
 
     /// A place to write out the additionally generated accounts by
     /// --additional-accounts.
@@ -294,7 +289,7 @@ impl<N: Network> Genesis<N> {
 
         // Add additional accounts to the public balances
         type Accounts<N> = IndexMap<Address<N>, (PrivateKey<N>, u64, Option<PTRecord<N>>)>;
-        let mut accounts: Accounts<N> = (0..self.additional_accounts)
+        let accounts: Accounts<N> = (0..self.additional_accounts)
             .map(|_| {
                 // Repeatedly regenerate key/addresses, ensuring they are not in
                 // `bonded_balances`.
@@ -306,8 +301,7 @@ impl<N: Network> Genesis<N> {
                     }
                 };
 
-                let balance = self.additional_accounts_balance
-                    + self.additional_accounts_record_balance.unwrap_or(0);
+                let balance = self.additional_accounts_balance;
 
                 public_balances.insert(addr, balance);
                 Ok((addr, (key, balance, None)))
@@ -350,30 +344,17 @@ impl<N: Network> Genesis<N> {
         )?)?;
 
         // region: Genesis Records
-        let mut txs = Vec::with_capacity(accounts.len());
-        if let Some(record_balance) = self.additional_accounts_record_balance {
-            accounts = accounts
-                .into_iter()
-                .map(|(addr, (key, balance, _))| {
-                    let record_tx: Transaction<N> =
-                        public_transaction::<N, ConsensusMemory<_>, N::Circuit>(
-                            "transfer_public_to_private",
-                            &vm,
-                            addr,
-                            record_balance,
-                            key,
-                            None,
-                        )?;
-                    // Cannot fail because transfer_public_to_private always emits a
-                    // record.
-                    let record_enc: CTRecord<N> = record_tx.records().next().unwrap().1.clone();
-                    // Decrypt the record.
-                    let record = record_enc.decrypt(&ViewKey::try_from(key)?)?;
-
-                    txs.push(record_tx);
-                    Ok((addr, (key, balance, Some(record))))
-                })
-                .collect::<Result<_>>()?;
+        let mut txs = Vec::with_capacity(4);
+        for _ in 0..4 {
+            let record_tx: Transaction<N> = public_transaction::<N, ConsensusMemory<_>, N::Circuit>(
+                "transfer_public_to_private",
+                &vm,
+                Address::try_from(&genesis_key)?,
+                0,
+                genesis_key,
+                None,
+            )?;
+            txs.push(record_tx);
         }
 
         // endregion: Genesis Records

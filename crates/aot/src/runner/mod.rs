@@ -195,6 +195,7 @@ impl<N: Network> Runner<N> {
                     storage_mode.clone(),
                     false,
                     false,
+                    None,
                     shutdown,
                 )
                 .await
@@ -206,6 +207,7 @@ impl<N: Network> Runner<N> {
                 &self.peers,
                 genesis,
                 storage_mode.clone(),
+                None,
                 shutdown,
             )
             .await
@@ -220,6 +222,7 @@ impl<N: Network> Runner<N> {
                 None,
                 storage_mode.clone(),
                 false,
+                None,
                 shutdown,
             )
             .await

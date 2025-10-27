@@ -12,7 +12,7 @@ pub struct InternedId(lasso::Spur);
 impl InternedId {
     pub fn rand() -> Self {
         let id = rand::thread_rng().next_u32();
-        Self(INTERN.get_or_intern(format!("unknown-{}", id)))
+        Self(INTERN.get_or_intern(format!("unknown-{id}")))
     }
 
     pub fn into_inner(self) -> u32 {
@@ -36,7 +36,7 @@ impl Default for InternedId {
 
 impl std::cmp::PartialOrd for InternedId {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(std::convert::AsRef::<str>::as_ref(self).cmp(other.as_ref()))
+        Some(self.cmp(other))
     }
 }
 

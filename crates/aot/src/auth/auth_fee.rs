@@ -4,7 +4,7 @@ use clap_stdin::MaybeStdin;
 use rand::{CryptoRng, Rng};
 use snarkvm::{
     ledger::Deployment,
-    prelude::{Field, cost_in_microcredits_v1},
+    prelude::{ConsensusVersion, Field, cost_in_microcredits_v1, cost_in_microcredits_v3},
     synthesizer::{
         Process,
         process::{cost_in_microcredits_v2, deployment_cost},
@@ -14,7 +14,9 @@ use snarkvm::{
 
 use super::query;
 // use tracing::error;
-use crate::{Authorization, Key, Network, PTRecord, PrivateKey};
+use crate::{
+    Authorization, Key, Network, PTRecord, PrivateKey, program::cost::consensus_from_height,
+};
 
 /// The authorization arguments for a fee.
 #[derive(Debug, Args)]
@@ -52,17 +54,19 @@ pub struct AuthorizeFee<N: Network> {
     /// The seed to use for the authorization generation
     #[clap(long)]
     pub seed: Option<u64>,
-    /// Enable cost v1 for the transaction cost estimation (v2 by default)
-    #[clap(long, default_value_t = false)]
-    pub cost_v1: bool,
+    /// Allow dynamically determining the consensus version based on the
+    /// current block height
+    #[clap(long)]
+    pub height: Option<u32>,
 }
 
 impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
+        let mut process = Process::load()?;
+        let consensus_version = consensus_from_height::<N>(self.height);
         let (id, base_fee) = match (self.auth, self.deployment, self.id, self.cost) {
             (Some(auth), None, None, None) => {
                 let auth = auth.into_inner();
-                let mut process = Process::load()?;
                 if let Some(query) = self.query.as_deref() {
                     let programs = query::get_programs_from_auth(&auth);
                     query::add_many_programs_to_process(&mut process, programs, query)?;
@@ -70,14 +74,14 @@ impl<N: Network> AuthorizeFee<N> {
 
                 (
                     auth.to_execution_id()?,
-                    estimate_cost(&process, &auth, !self.cost_v1)?,
+                    estimate_cost(&process, &auth, consensus_version)?,
                 )
             }
             (None, Some(deployment), None, None) => {
                 let deployment = deployment.into_inner();
                 (
                     deployment.to_deployment_id()?,
-                    deployment_cost(&deployment)?.0,
+                    deployment_cost(&process, &deployment, consensus_version)?.0,
                 )
             }
             (None, None, Some(id), Some(cost)) => (id, cost),
@@ -136,7 +140,7 @@ pub fn fee_auth<N: Network>(
 pub fn estimate_cost<N: Network>(
     process: &Process<N>,
     func: &Authorization<N>,
-    use_cost_v2: bool,
+    consensus_version: ConsensusVersion,
 ) -> Result<u64> {
     let transitions = func.transitions();
 
@@ -181,17 +185,8 @@ pub fn estimate_cost<N: Network>(
 
         cost
     };
-    //execution.size_in_bytes().map_err(|e| e.to_string())?;
 
-    let finalize_cost = if use_cost_v2 {
-        // cost v2 uses the finalize cost of the first transition
-        let transition = transitions
-            .values()
-            .next()
-            .ok_or(anyhow!("No transitions"))?;
-        let stack = process.get_stack(transition.program_id())?;
-        cost_in_microcredits_v2(&stack, transition.function_name())?
-    } else {
+    let finalize_cost = if consensus_version == ConsensusVersion::V1 {
         // Compute the finalize cost in microcredits.
         let mut finalize_cost = 0u64;
 
@@ -211,6 +206,19 @@ pub fn estimate_cost<N: Network>(
         }
 
         finalize_cost
+    } else {
+        // cost v2 uses the finalize cost of the first transition
+        let transition = transitions
+            .values()
+            .next()
+            .ok_or(anyhow!("No transitions"))?;
+        let stack = process.get_stack(transition.program_id())?;
+
+        if consensus_version >= ConsensusVersion::V10 {
+            cost_in_microcredits_v3(&stack, transition.function_name())?
+        } else {
+            cost_in_microcredits_v2(&stack, transition.function_name())?
+        }
     };
 
     Ok(storage_cost + finalize_cost)

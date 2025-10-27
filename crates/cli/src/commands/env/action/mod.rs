@@ -240,7 +240,7 @@ impl Action {
                 inputs,
                 async_mode,
             } => {
-                let ep = format!("{url}/api/v1/env/{}/action/execute", env_id);
+                let ep = format!("{url}/api/v1/env/{env_id}/action/execute");
 
                 let (program, function) = locator
                     .split_once('/')
@@ -289,7 +289,7 @@ impl Action {
                 async_mode,
                 program,
             } => {
-                let ep = format!("{url}/api/v1/env/{}/action/deploy", env_id);
+                let ep = format!("{url}/api/v1/env/{env_id}/action/deploy");
 
                 let mut json = json!({
                     "program": program.contents()?,

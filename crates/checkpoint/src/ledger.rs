@@ -53,7 +53,7 @@ impl<N: Network> Stores<N> {
 
         // Retrieve the state root.
         let state_root = match db.state_root_map().get_confirmed(&block_height)? {
-            Some(state_root) => cow_to_copied!(state_root),
+            Some(state_root) => state_root,
             None => {
                 bail!(
                     "Failed to remove block: missing state root for block height '{block_height}'"
@@ -69,7 +69,7 @@ impl<N: Network> Stores<N> {
         };
         // Retrieve the solutions.
         let solutions = match db.solutions_map().get_confirmed(&block_hash)? {
-            Some(solutions) => cow_to_cloned!(solutions),
+            Some(solutions) => solutions,
             None => {
                 bail!(
                     "Failed to remove block: missing solutions for block '{block_height}' ('{block_hash}')"
@@ -186,14 +186,14 @@ impl<N: Network> Stores<N> {
 
         // Retrieve the transaction type.
         let transaction_type = match db.id_map().get_confirmed(transaction_id)? {
-            Some(transaction_type) => cow_to_copied!(transaction_type),
+            Some(transaction_type) => transaction_type,
             None => bail!("Failed to get the type for transaction '{transaction_id}'"),
         };
 
         // Remove the transaction type.
         db.id_map().remove(transaction_id)?;
         // Remove the transaction.
-        match transaction_type {
+        match transaction_type.as_ref() {
             // Remove the deployment transaction.
             TransactionType::Deploy => self.fast_deployment_remove(transaction_id)?,
             // Remove the execution transaction.
@@ -213,13 +213,13 @@ impl<N: Network> Stores<N> {
             None => bail!("Failed to get the program ID for transaction '{transaction_id}'"),
         };
         // Retrieve the edition.
-        let edition = match db.get_edition(&program_id)? {
+        let edition = match db.get_edition_for_transaction(transaction_id)? {
             Some(edition) => edition,
             None => bail!("Failed to locate the edition for program '{program_id}'"),
         };
         // Retrieve the program.
         let program = match db.program_map().get_confirmed(&(program_id, edition))? {
-            Some(program) => cow_to_cloned!(program),
+            Some(program) => program,
             None => {
                 bail!("Failed to locate program '{program_id}' for transaction '{transaction_id}'")
             }
@@ -227,8 +227,18 @@ impl<N: Network> Stores<N> {
 
         // Remove the program ID.
         db.id_map().remove(transaction_id)?;
+
         // Remove the edition.
-        db.edition_map().remove(&program_id)?;
+        db.id_edition_map().remove(transaction_id)?;
+        match edition == 0 {
+            // If the removed edition is 0, then remove the program ID from the latest edition map.
+            true => db.edition_map().remove(&program_id)?,
+            // Otherwise, decrement the edition.
+            // Note: This is safe because the VM enforces that the edition is always incremented.
+            false => db
+                .edition_map()
+                .insert(program_id, edition.saturating_sub(1))?,
+        }
 
         // Remove the reverse program ID.
         db.reverse_id_map().remove(&(program_id, edition))?;
@@ -257,8 +267,9 @@ impl<N: Network> Stores<N> {
         let db = &self.executions;
 
         // Retrieve the transition IDs and fee boolean.
-        let (transition_ids, has_fee) = match db.id_map().get_confirmed(transaction_id)? {
-            Some(ids) => cow_to_cloned!(ids),
+        let confirmed = db.id_map().get_confirmed(transaction_id)?;
+        let (transition_ids, has_fee) = match confirmed.as_deref() {
+            Some(ids) => ids,
             None => {
                 bail!("Failed to get the transition IDs for the transaction '{transaction_id}'")
             }
@@ -270,16 +281,16 @@ impl<N: Network> Stores<N> {
         // Remove the execution.
         for transition_id in transition_ids {
             // Remove the transition ID.
-            db.reverse_id_map().remove(&transition_id)?;
+            db.reverse_id_map().remove(transition_id)?;
             // Remove the transition.
-            self.fast_transition_remove(&transition_id)?;
+            self.fast_transition_remove(transition_id)?;
         }
 
         // Remove the global state root and proof.
         db.inclusion_map().remove(transaction_id)?;
 
         // Remove the fee.
-        if has_fee {
+        if *has_fee {
             // Remove the fee.
             self.fast_fee_remove(transaction_id)?;
         }
@@ -291,8 +302,9 @@ impl<N: Network> Stores<N> {
         let db = &self.fees;
 
         // Retrieve the fee transition ID.
-        let (transition_id, _, _) = match db.fee_map().get_confirmed(transaction_id)? {
-            Some(fee_id) => cow_to_cloned!(fee_id),
+        let confirmed = db.fee_map().get_confirmed(transaction_id)?;
+        let (transition_id, _, _) = match confirmed.as_deref() {
+            Some(fee_id) => fee_id,
             None => {
                 bail!("Failed to locate the fee transition ID for transaction '{transaction_id}'")
             }
@@ -300,10 +312,10 @@ impl<N: Network> Stores<N> {
 
         // Remove the fee.
         db.fee_map().remove(transaction_id)?;
-        db.reverse_fee_map().remove(&transition_id)?;
+        db.reverse_fee_map().remove(transition_id)?;
 
         // Remove the fee transition.
-        self.fast_transition_remove(&transition_id)?;
+        self.fast_transition_remove(transition_id)?;
 
         Ok(())
     }
@@ -313,12 +325,12 @@ impl<N: Network> Stores<N> {
 
         // Retrieve the `tpk`.
         let tpk = match db.tpk_map().get_confirmed(transition_id)? {
-            Some(tpk) => cow_to_copied!(tpk),
+            Some(tpk) => tpk,
             None => return Ok(()),
         };
         // Retrieve the `tcm`.
         let tcm = match db.tcm_map().get_confirmed(transition_id)? {
-            Some(tcm) => cow_to_copied!(tcm),
+            Some(tcm) => tcm,
             None => return Ok(()),
         };
 
