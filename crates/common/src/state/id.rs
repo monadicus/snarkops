@@ -36,7 +36,7 @@ impl Default for InternedId {
 
 impl std::cmp::PartialOrd for InternedId {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(std::convert::AsRef::<str>::as_ref(self).cmp(other.as_ref()))
+        Some(self.cmp(other))
     }
 }
 
