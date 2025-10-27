@@ -44,7 +44,7 @@ fn env_or_bin(name: &str, env: &str) -> BinaryEntry {
         source: source.clone(),
     };
 
-    if let Ok(size) = std::env::var(format!("{}_SIZE", env)) {
+    if let Ok(size) = std::env::var(format!("{env}_SIZE")) {
         entry.size =
             if size == "auto" {
                 match &source {
@@ -65,7 +65,7 @@ fn env_or_bin(name: &str, env: &str) -> BinaryEntry {
                 }))
             };
     }
-    if let Ok(sha256) = std::env::var(format!("{}_SHA256", env)) {
+    if let Ok(sha256) = std::env::var(format!("{env}_SHA256")) {
         if sha256 == "auto" {
             match &source {
                 BinarySource::Url(_) => {

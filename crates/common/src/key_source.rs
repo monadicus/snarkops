@@ -144,11 +144,11 @@ impl fmt::Display for KeySource {
                 KeySource::PublicKeyLiteral(key) => key.to_owned(),
                 KeySource::Committee(None) => "committee.$".to_owned(),
                 KeySource::Committee(Some(idx)) => {
-                    format!("committee.{}", idx)
+                    format!("committee.{idx}")
                 }
                 KeySource::Named(name, None) => format!("{}.{}", name, "$"),
                 KeySource::Named(name, Some(idx)) => {
-                    format!("{}.{}", name, idx)
+                    format!("{name}.{idx}")
                 }
             }
         )

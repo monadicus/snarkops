@@ -91,7 +91,7 @@ impl Display for EventFilter {
             EventFilter::AllOf(vec) => write!(f, "all-of({})", event_filter_vec(vec)),
             EventFilter::AnyOf(vec) => write!(f, "any-of({})", event_filter_vec(vec)),
             EventFilter::OneOf(vec) => write!(f, "one-of({})", event_filter_vec(vec)),
-            EventFilter::Not(event_filter) => write!(f, "not({})", event_filter),
+            EventFilter::Not(event_filter) => write!(f, "not({event_filter})"),
             EventFilter::AgentIs(id) => write!(f, "agent-is({id})"),
             EventFilter::HasAgent => write!(f, "has-agent"),
             EventFilter::EnvIs(id) => write!(f, "env-is({id})"),

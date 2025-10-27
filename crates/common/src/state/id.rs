@@ -12,7 +12,7 @@ pub struct InternedId(lasso::Spur);
 impl InternedId {
     pub fn rand() -> Self {
         let id = rand::thread_rng().next_u32();
-        Self(INTERN.get_or_intern(format!("unknown-{}", id)))
+        Self(INTERN.get_or_intern(format!("unknown-{id}")))
     }
 
     pub fn into_inner(self) -> u32 {

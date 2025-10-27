@@ -208,7 +208,7 @@ impl Display for EventKindFilter {
             TransactionConfirmed => "transaction-confirmed",
         };
 
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

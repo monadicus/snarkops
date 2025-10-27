@@ -79,7 +79,7 @@ impl Reconcile<(), ReconcileError> for AddressResolveReconciler {
             "Resolved new addrs: {}",
             new_addrs
                 .iter()
-                .map(|(id, addr)| format!("{}: {}", id, addr))
+                .map(|(id, addr)| format!("{id}: {addr}"))
                 .collect::<Vec<_>>()
                 .join(", ")
         );

@@ -213,7 +213,7 @@ impl<N: Network> Stores<N> {
             None => bail!("Failed to get the program ID for transaction '{transaction_id}'"),
         };
         // Retrieve the edition.
-        let edition = match db.get_edition_for_transaction(&transaction_id)? {
+        let edition = match db.get_edition_for_transaction(transaction_id)? {
             Some(edition) => edition,
             None => bail!("Failed to locate the edition for program '{program_id}'"),
         };
@@ -281,9 +281,9 @@ impl<N: Network> Stores<N> {
         // Remove the execution.
         for transition_id in transition_ids {
             // Remove the transition ID.
-            db.reverse_id_map().remove(&transition_id)?;
+            db.reverse_id_map().remove(transition_id)?;
             // Remove the transition.
-            self.fast_transition_remove(&transition_id)?;
+            self.fast_transition_remove(transition_id)?;
         }
 
         // Remove the global state root and proof.
@@ -312,10 +312,10 @@ impl<N: Network> Stores<N> {
 
         // Remove the fee.
         db.fee_map().remove(transaction_id)?;
-        db.reverse_fee_map().remove(&transition_id)?;
+        db.reverse_fee_map().remove(transition_id)?;
 
         // Remove the fee transition.
-        self.fast_transition_remove(&transition_id)?;
+        self.fast_transition_remove(transition_id)?;
 
         Ok(())
     }

@@ -110,7 +110,7 @@ pub enum BinarySource {
 impl Display for BinarySource {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            BinarySource::Url(url) => write!(f, "{}", url),
+            BinarySource::Url(url) => write!(f, "{url}"),
             BinarySource::Path(path) => write!(f, "{}", path.display()),
         }
     }
