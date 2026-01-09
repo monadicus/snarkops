@@ -353,6 +353,7 @@ impl<N: Network> Genesis<N> {
                 0,
                 genesis_key,
                 None,
+                snarkvm::prelude::ConsensusVersion::V1,
             )?;
             txs.push(record_tx);
         }

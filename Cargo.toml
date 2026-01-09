@@ -107,7 +107,7 @@ sled = "0.34"
 strum_macros = { version = "0.26", default-features = false }
 tarpc = { version = "0.34", features = ["tokio1", "serde1"] }
 thiserror = "2.0"
-tokio = { version = "1.41", default-features = false }
+tokio = { version = "1.48", default-features = false }
 tokio-tungstenite = { version = "0.24", features = [
 	"rustls-tls-native-roots",
 	"rustls-tls-webpki-roots",
@@ -149,17 +149,18 @@ snops-common = { path = "./crates/common" }
 
 ## Comment to use version-pinned or local dependencies
 
-snarkos-account = { git = "https://github.com/ProvableHQ/snarkOS", rev = "01b5f9c" }
-snarkos-node = { git = "https://github.com/ProvableHQ/snarkOS", rev = "01b5f9c" }
-snarkos-node-metrics = { git = "https://github.com/ProvableHQ/snarkOS", rev = "01b5f9c" }
+snarkos-account = { git = "https://github.com/ProvableHQ/snarkOS", rev = "1cc3944fe" }
+snarkos-node = { git = "https://github.com/ProvableHQ/snarkOS", rev = "1cc3944fe" }
+snarkos-node-metrics = { git = "https://github.com/ProvableHQ/snarkOS", rev = "1cc3944fe" }
+snarkos-utilities = { git = "https://github.com/ProvableHQ/snarkOS", rev = "1cc3944fe" }
 [workspace.dependencies.snarkvm]
 ## The following anchors are used by the `update_snarkos_dep.sh` script.
 ## Everything in-between the anchors is copied from the snarkos Cargo.toml
 ## CODEGEN_START
 #path = "../snarkVM"
 git = "https://github.com/ProvableHQ/snarkVM.git"
-rev = "78a69b703"
-#version = "=4.2.1"
+rev = "81f20ef2e"
+#version = "=4.4.0"
 ## CODEGEN_END
 default-features = false
 features = ["circuit", "rocks", "algorithms"]

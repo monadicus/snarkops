@@ -1,17 +1,19 @@
 use std::{
+    fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::PathBuf,
-    sync::{Arc, atomic::AtomicBool},
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use aleo_std::StorageMode;
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use clap::Args;
 use rpc::RpcClient;
 use snarkos_node::{
     Node,
     bft::helpers::{ProposalCache, proposal_cache_path},
 };
+use snarkos_utilities::{NodeDataDir, SignalHandler};
 use snarkvm::{
     ledger::store::{
         BlockStorage, CommitteeStorage,
@@ -22,6 +24,7 @@ use snarkvm::{
 };
 use snops_checkpoint::{CheckpointManager, RetentionPolicy};
 use snops_common::state::{NodeType, snarkos_status::SnarkOSStatus};
+use tracing::info;
 
 use crate::{Account, Address, DbLedger, Key, Network, cli::ReloadHandler};
 
@@ -39,6 +42,10 @@ pub struct Runner<N: Network> {
     /// The ledger from which to view a block.
     #[arg(required = true, short, long, default_value = "./ledger")]
     pub ledger: PathBuf,
+    /// The path to the node data directory, defaults to a sibling to the
+    /// ledger called `node-data`.
+    #[arg(long)]
+    pub node_data: Option<PathBuf>,
 
     /// The type of node to run: validator, prover, or client.
     #[arg(required = true, name = "type", short, long)]
@@ -143,13 +150,41 @@ impl<N: Network> Runner<N> {
             .transpose()?;
 
         let storage_mode = StorageMode::Custom(self.ledger.clone());
+        let node_data_dir = NodeDataDir::new(self.node_data.unwrap_or_else(|| {
+            // Append the `node-data` directory to the ledger path.
+            let mut ledger_dir = self.ledger.clone();
+            ledger_dir.pop();
+            ledger_dir.push("node-data");
+            ledger_dir
+        }));
+
+        // Ensure node data dir exists
+        fs::create_dir_all(node_data_dir.path()).with_context(|| {
+            format!(
+                "create node data directory {}",
+                node_data_dir.path().display()
+            )
+        })?;
+
+        Self::check_for_old_storage_format(&self.ledger, &node_data_dir)?;
 
         agent.status(SnarkOSStatus::LedgerLoading);
-        if let Err(e) = DbLedger::<N>::load(genesis.clone(), storage_mode.clone()) {
-            tracing::error!("aot failed to load ledger: {e:?}");
-            agent.status(SnarkOSStatus::LedgerFailure(e.to_string()));
-            // L in binary = 01001100 = 76
-            std::process::exit(76);
+
+        {
+            let genesis = genesis.clone();
+            let storage_mode = storage_mode.clone();
+            // The ledger loading must be blocking to avoid some race conditions with the
+            // node startup
+            // This is based on the `spawn_blocking!` macro in snarkos' codebase
+            if let Err(e) =
+                tokio::task::spawn_blocking(move || DbLedger::<N>::load(genesis, storage_mode))
+                    .await
+            {
+                tracing::error!("aot failed to load ledger: {e:?}");
+                agent.status(SnarkOSStatus::LedgerFailure(e.to_string()));
+                // L in binary = 01001100 = 76
+                std::process::exit(76);
+            }
         }
 
         // slight alterations to the normal `metrics::initialize_metrics` because of
@@ -177,11 +212,11 @@ impl<N: Network> Runner<N> {
                 ::snarkos_node_metrics::register_histogram(name);
             }
         }
-        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown = SignalHandler::new();
 
-        let _node = match self.node_type {
+        let node = match self.node_type {
             NodeType::Validator => {
-                Self::check_proposal_cache(account.address());
+                Self::check_proposal_cache(account.address(), &node_data_dir);
                 Node::new_validator(
                     node_ip,
                     Some(bft_ip),
@@ -193,10 +228,11 @@ impl<N: Network> Runner<N> {
                     genesis,
                     None,
                     storage_mode.clone(),
+                    node_data_dir,
                     false,
                     false,
                     None,
-                    shutdown,
+                    Arc::clone(&shutdown),
                 )
                 .await
                 .map_err(|e| e.context("create validator"))?
@@ -206,9 +242,10 @@ impl<N: Network> Runner<N> {
                 account,
                 &self.peers,
                 genesis,
-                storage_mode.clone(),
+                node_data_dir,
+                false,
                 None,
-                shutdown,
+                Arc::clone(&shutdown),
             )
             .await
             .map_err(|e| e.context("create prover"))?,
@@ -221,9 +258,10 @@ impl<N: Network> Runner<N> {
                 genesis,
                 None,
                 storage_mode.clone(),
+                node_data_dir,
                 false,
                 None,
-                shutdown,
+                Arc::clone(&shutdown),
             )
             .await
             .map_err(|e| e.context("create client"))?,
@@ -275,21 +313,21 @@ impl<N: Network> Runner<N> {
             });
         }
 
-        // snarkos will close itself if this is not here...
-        std::future::pending::<()>().await;
+        // Wait for graceful shutdown
+        node.wait_for_signals(&shutdown).await;
 
         Ok(())
     }
 
     /// Check the proposal cache for this address and remove it if it is
     /// invalid.
-    fn check_proposal_cache(addr: Address<N>) {
-        let proposal_cache_path = proposal_cache_path(N::ID, &StorageMode::Production);
+    fn check_proposal_cache(addr: Address<N>, node_data_dir: &NodeDataDir) {
+        let proposal_cache_path = proposal_cache_path(node_data_dir);
         if !proposal_cache_path.exists() {
             return;
         }
 
-        let Err(e) = ProposalCache::<N>::load(addr, &StorageMode::Production) else {
+        let Err(e) = ProposalCache::<N>::load(addr, node_data_dir) else {
             return;
         };
 
@@ -326,5 +364,31 @@ impl<N: Network> Runner<N> {
             .max_blocking_threads(max_tokio_blocking_threads)
             .build()
             .expect("Failed to initialize a runtime for the router")
+    }
+
+    /// Check if the node is still using the old storage format,
+    /// in which case we print an error and exit.
+    /// We detect this by checking if
+    /// - a peer-cache file exists inside the ledger directory,
+    /// - a current-proposal-cache file exists at the parent directory of the
+    ///   ledger directory
+    /// - a jwt_secret_*.txt file exists at the parent directory of the ledger
+    ///   directory
+    fn check_for_old_storage_format(ledger_dir: &Path, node_data_dir: &NodeDataDir) -> Result<()> {
+        use snarkos_utilities::node_data;
+
+        // Determine the old paths used for node configuration files.
+        let old_proposal_cache_path =
+            ledger_dir.join(node_data::legacy_current_proposal_cache_file(N::ID, None));
+
+        if old_proposal_cache_path.exists() {
+            let new_proposal_cache_path = node_data_dir.current_proposal_cache_path();
+            info!(
+                "Migrating node data file \"{old_proposal_cache_path:?}\" to \"{new_proposal_cache_path:?}\""
+            );
+            fs::rename(old_proposal_cache_path, new_proposal_cache_path)
+                .with_context(|| "Failed to migrate node data file")?;
+        }
+        Ok(())
     }
 }

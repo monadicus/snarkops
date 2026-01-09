@@ -11,7 +11,7 @@ use snarkvm::{
         types::{Address, Field, U64},
     },
     ledger::{Block, Execution, Fee, Ledger, Transaction, query::Query, store::ConsensusStorage},
-    prelude::{Network, execution_cost_v2},
+    prelude::{ConsensusVersion, Network, execution_cost},
     synthesizer::VM,
 };
 
@@ -71,6 +71,7 @@ pub fn public_transaction<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = 
     amount_microcredits: u64,
     private_key: PrivateKey<N>,
     private_key_fee: Option<PrivateKey<N>>,
+    consensus_version: ConsensusVersion,
 ) -> Result<Transaction<N>> {
     // let rng = &mut rand::thread_rng();
 
@@ -91,7 +92,7 @@ pub fn public_transaction<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = 
     )?;
 
     // compute fee for the execution
-    let (min_fee, _) = execution_cost_v2(&vm.process().read(), &execution)?;
+    let (min_fee, _) = execution_cost(&vm.process().read(), &execution, consensus_version)?;
 
     // proof for the fee, authorizing the execution
     let fee = prove_fee::<_, _, A>(vm, &private_key_fee, min_fee, execution.to_execution_id()?)?;
@@ -114,6 +115,7 @@ pub fn make_transaction_proof<N: Network, C: ConsensusStorage<N>, A: Aleo<Networ
         amount_microcredits,
         private_key,
         private_key_fee,
+        ConsensusVersion::V1,
     )
 }
 
@@ -133,6 +135,7 @@ pub fn _make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Al
         amounts.iter().sum(),
         private_key,
         private_key_fee,
+        ConsensusVersion::V1,
     )?;
 
     // fee key falls back to the private key
@@ -171,7 +174,8 @@ pub fn _make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Al
             )?;
 
             // compute fee for the execution
-            let (min_fee, _) = execution_cost_v2(&vm.process().read(), &execution)?;
+            let (min_fee, _) =
+                execution_cost(&vm.process().read(), &execution, ConsensusVersion::V1)?;
 
             // proof for the fee, authorizing the execution
             let fee =
