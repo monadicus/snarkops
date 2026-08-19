@@ -115,13 +115,9 @@ pub fn execute_local<R: Rng + CryptoRng, N: Network>(
                 let auth: Authorization<N> = auth.into();
                 let fee_auth: Option<Authorization<N>> = fee_auth.map(Into::into);
 
-                {
-                    let guard = vm.process();
-                    let process = &mut *guard.write();
-                    if let Some(query_raw) = query_raw.as_deref() {
-                        let programs = query::get_programs_from_auth(&auth);
-                        query::add_many_programs_to_process(process, programs, query_raw)?;
-                    }
+                if let Some(query_raw) = query_raw.as_deref() {
+                    let programs = query::get_programs_from_auth(&auth);
+                    query::add_many_programs_to_process(vm.process(), programs, query_raw)?;
                 }
 
                 vm.execute_authorization(auth, fee_auth, query.as_deref(), rng)

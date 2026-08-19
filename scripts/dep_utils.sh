@@ -37,8 +37,9 @@ function get_snarkos_rev() {
     exit 1
   fi
 
-  # Read the lines '[workspace.dependencies.snarkvm]' to '^default-features' greedily
-  # Excluding the first line '[workspace.dependencies.snarkvm]' and default-features
-  SNARKVM_CARGO_DATA="$(echo "$SNARKOS_CARGO_TOML_DATA" | sed -nE '/\[workspace\.dependencies\.snarkvm\]/,/^\default-features/ { /^default-features/!p }' | sed '1d')"
+  # Read the body of the '[workspace.dependencies.snarkvm]' table, stopping at the
+  # next table header ('^['). Drop the header line, the terminating header, any
+  # default-features/features lines (snops sets its own after CODEGEN_END), and blanks.
+  SNARKVM_CARGO_DATA="$(echo "$SNARKOS_CARGO_TOML_DATA" | sed -nE '/\[workspace\.dependencies\.snarkvm\]/,/^\[/p' | sed -E '1d; /^\[/d; /^default-features/d; /^features/d; /^[[:space:]]*$/d')"
 }
 

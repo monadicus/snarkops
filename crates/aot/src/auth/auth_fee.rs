@@ -4,10 +4,10 @@ use clap_stdin::MaybeStdin;
 use rand::{CryptoRng, Rng};
 use snarkvm::{
     ledger::Deployment,
-    prelude::{ConsensusVersion, Field, cost_in_microcredits_v1, cost_in_microcredits_v3},
+    prelude::{ConsensusVersion, Field},
     synthesizer::{
         Process,
-        process::{cost_in_microcredits_v2, deployment_cost},
+        process::{minimum_cost_in_microcredits_v1, minimum_cost_in_microcredits_v2, minimum_cost_in_microcredits_v3, deployment_cost},
     },
     utilities::ToBytes,
 };
@@ -62,14 +62,14 @@ pub struct AuthorizeFee<N: Network> {
 
 impl<N: Network> AuthorizeFee<N> {
     pub fn parse(self) -> Result<Option<Authorization<N>>> {
-        let mut process = Process::load()?;
+        let process = Process::load()?;
         let consensus_version = consensus_from_height::<N>(self.height);
         let (id, base_fee) = match (self.auth, self.deployment, self.id, self.cost) {
             (Some(auth), None, None, None) => {
                 let auth = auth.into_inner();
                 if let Some(query) = self.query.as_deref() {
                     let programs = query::get_programs_from_auth(&auth);
-                    query::add_many_programs_to_process(&mut process, programs, query)?;
+                    query::add_many_programs_to_process(&process, programs, query)?;
                 }
 
                 (
@@ -195,7 +195,7 @@ pub fn estimate_cost<N: Network>(
             // Retrieve the function name, program id, and program.
             let function_name = *transition.function_name();
             let stack = process.get_stack(transition.program_id())?;
-            let cost = cost_in_microcredits_v1(&stack, &function_name)?;
+            let cost = minimum_cost_in_microcredits_v1(&stack, &function_name)?;
 
             // Accumulate the finalize cost.
             if let Some(cost) = finalize_cost.checked_add(cost) {
@@ -215,9 +215,9 @@ pub fn estimate_cost<N: Network>(
         let stack = process.get_stack(transition.program_id())?;
 
         if consensus_version >= ConsensusVersion::V10 {
-            cost_in_microcredits_v3(&stack, transition.function_name())?
+            minimum_cost_in_microcredits_v3(&stack, transition.function_name())?
         } else {
-            cost_in_microcredits_v2(&stack, transition.function_name())?
+            minimum_cost_in_microcredits_v2(&stack, transition.function_name())?
         }
     };
 

@@ -1,6 +1,7 @@
 use std::{io, path::PathBuf, sync::Arc};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use snarkos_utilities::SignalHandler;
 
 use crate::{
     CheckpointContent, CheckpointHeader, ROUND_KEY,
@@ -107,10 +108,11 @@ impl<N: Network> Checkpoint<N> {
 
         let height = stores.committee.current_height().map_err(ReadLedger)?;
         let my_height = self.height();
+        let shutdown = SignalHandler::new(None);
 
         // the act of creating this ledger service with a "max_gc_rounds" set to 0
         // should clear all BFT documents
-        let ledger_service = Arc::new(CoreLedgerService::new(ledger.clone(), Default::default()));
+        let ledger_service = Arc::new(CoreLedgerService::new(ledger.clone(), shutdown));
         Storage::new(ledger_service, Arc::new(BFTMemoryService::new()), 0);
 
         // TODO: parallel and test out of order removal by moving the guts of these

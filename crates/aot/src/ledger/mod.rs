@@ -84,7 +84,7 @@ impl<N: Network> Ledger<N> {
                     execute.auth.pick()?,
                     Some(&ledger),
                     None,
-                    &mut rand::thread_rng(),
+                    &mut rand::rng(),
                 )?;
                 println!("{}", serde_json::to_string(&tx)?);
                 Ok(())

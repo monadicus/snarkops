@@ -35,8 +35,8 @@ impl<N: Network> AuthorizeDeploy<N> {
     pub fn parse(self) -> Result<AuthBlob<N>> {
         // get the program from the file (or stdin)
         let program = self.options.program.clone().contents()?;
-        let mut process = Process::load()?;
-        query::get_process_imports(&mut process, &program, self.options.query.as_deref())?;
+        let process = Process::load()?;
+        query::get_process_imports(&process, &program, self.options.query.as_deref())?;
 
         let deployment =
             process.deploy::<N::Circuit, _>(&program, &mut super::rng_from_seed(self.seed))?;

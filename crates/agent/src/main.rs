@@ -7,6 +7,7 @@ mod net;
 mod reconcile;
 mod rpc;
 mod server;
+mod signals;
 mod state;
 mod transfers;
 
@@ -18,13 +19,11 @@ use std::{
 
 use clap::Parser;
 use cli::Cli;
-use futures_util::stream::{FuturesUnordered, StreamExt};
 use log::init_logging;
 use reconcile::agent::{AgentStateReconciler, AgentStateReconcilerContext};
 use snops_common::{db::Database, util::OpaqueDebug};
 use tokio::{
     select,
-    signal::unix::{Signal, SignalKind, signal},
     sync::{RwLock, mpsc},
 };
 use tracing::{error, info};
@@ -133,7 +132,7 @@ async fn main() {
     });
 
     // Get the interrupt signals to break the stream connection
-    let mut interrupt = Signals::term_or_interrupt();
+    let mut interrupt = signals::term_or_interrupt();
 
     let state2 = Arc::clone(&state);
     tokio::spawn(async move {
@@ -167,32 +166,6 @@ async fn main() {
     if let Some(process) = root.context.process.as_mut() {
         process.graceful_shutdown().await;
         info!("Agent has shut down gracefully");
-    }
-}
-
-struct Signals {
-    signals: Vec<Signal>,
-}
-
-impl Signals {
-    fn new(kinds: &[SignalKind]) -> Self {
-        Self {
-            signals: kinds.iter().map(|k| signal(*k).unwrap()).collect(),
-        }
-    }
-
-    pub fn term_or_interrupt() -> Self {
-        Self::new(&[SignalKind::terminate(), SignalKind::interrupt()])
-    }
-
-    async fn recv_any(&mut self) {
-        let mut futs = FuturesUnordered::new();
-
-        for sig in self.signals.iter_mut() {
-            futs.push(sig.recv());
-        }
-
-        futs.next().await;
     }
 }
 

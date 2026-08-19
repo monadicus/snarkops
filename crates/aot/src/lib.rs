@@ -152,6 +152,6 @@ pub type Block<N> = snarkvm::ledger::Block<N>;
 pub type Committee<N> = snarkvm::ledger::committee::Committee<N>;
 
 pub fn gen_private_key<N: Network>() -> anyhow::Result<PrivateKey<N>> {
-    let mut rng = ChaChaRng::from_entropy();
+    let mut rng = ChaChaRng::from_rng(&mut rand::rng());
     PrivateKey::new(&mut rng)
 }

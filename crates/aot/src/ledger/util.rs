@@ -1,6 +1,6 @@
 use aleo_std::StorageMode;
 use anyhow::bail;
-use rand::{SeedableRng, thread_rng};
+use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use snarkvm::{
     algorithms::snark::varuna::VarunaVersion,
@@ -11,7 +11,7 @@ use snarkvm::{
         types::{Address, Field, U64},
     },
     ledger::{Block, Execution, Fee, Ledger, Transaction, query::Query, store::ConsensusStorage},
-    prelude::{Network, execution_cost_v2},
+    prelude::{ConsensusVersion, Network, execution_cost},
     synthesizer::VM,
 };
 
@@ -30,7 +30,7 @@ pub fn prove_credits<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
     private_key: PrivateKey<N>,
     inputs: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = impl TryInto<Value<N>>>>,
 ) -> Result<Execution<N>> {
-    let rng = &mut rand::thread_rng();
+    let rng = &mut rand::rng();
 
     // authorize the transfer execution
     let auth = vm.authorize(
@@ -42,7 +42,7 @@ pub fn prove_credits<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
     )?;
 
     // assemble the proof
-    let (_, mut trace) = vm.process().read().execute::<A, _>(auth, rng)?;
+    let (_, mut trace) = vm.process().execute::<A, _>(auth, rng)?;
     trace.prepare(&Query::from(vm.block_store()).clone())?;
     trace.prove_execution::<A, _>(&format!("credits.aleo/{locator}"), VarunaVersion::V1, rng)
 }
@@ -53,13 +53,13 @@ pub fn prove_fee<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(
     min_fee: u64,
     execution_id: Field<N>,
 ) -> Result<Fee<N>> {
-    let rng = &mut rand::thread_rng();
+    let rng = &mut rand::rng();
 
     // authorize the fee execution
     let auth = vm.authorize_fee_public(private_key, min_fee, 0, execution_id, rng)?;
 
     // assemble the proof
-    let (_, mut trace) = vm.process().read().execute::<A, _>(auth, rng)?;
+    let (_, mut trace) = vm.process().execute::<A, _>(auth, rng)?;
     trace.prepare(&Query::from(vm.block_store()).clone())?;
     trace.prove_fee::<A, _>(VarunaVersion::V1, rng)
 }
@@ -71,8 +71,9 @@ pub fn public_transaction<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = 
     amount_microcredits: u64,
     private_key: PrivateKey<N>,
     private_key_fee: Option<PrivateKey<N>>,
+    consensus_version: ConsensusVersion,
 ) -> Result<Transaction<N>> {
-    // let rng = &mut rand::thread_rng();
+    // let rng = &mut rand::rng();
 
     // let query = Query::from(vm.block_store());
 
@@ -91,7 +92,7 @@ pub fn public_transaction<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = 
     )?;
 
     // compute fee for the execution
-    let (min_fee, _) = execution_cost_v2(&vm.process().read(), &execution)?;
+    let (min_fee, _) = execution_cost(vm.process(), &execution, consensus_version)?;
 
     // proof for the fee, authorizing the execution
     let fee = prove_fee::<_, _, A>(vm, &private_key_fee, min_fee, execution.to_execution_id()?)?;
@@ -114,6 +115,7 @@ pub fn make_transaction_proof<N: Network, C: ConsensusStorage<N>, A: Aleo<Networ
         amount_microcredits,
         private_key,
         private_key_fee,
+        ConsensusVersion::V1,
     )
 }
 
@@ -133,6 +135,7 @@ pub fn _make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Al
         amounts.iter().sum(),
         private_key,
         private_key_fee,
+        ConsensusVersion::V1,
     )?;
 
     // fee key falls back to the private key
@@ -143,7 +146,7 @@ pub fn _make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Al
     // Decrypt the record
     let record = record_enc.decrypt(&ViewKey::try_from(private_key)?)?;
 
-    let mut rng = ChaChaRng::from_rng(thread_rng())?;
+    let mut rng = ChaChaRng::from_rng(&mut rand::rng());
 
     let target_block = ledger.prepare_advance_to_next_beacon_block(
         &private_key,
@@ -171,7 +174,8 @@ pub fn _make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Al
             )?;
 
             // compute fee for the execution
-            let (min_fee, _) = execution_cost_v2(&vm.process().read(), &execution)?;
+            let (min_fee, _) =
+                execution_cost(vm.process(), &execution, ConsensusVersion::V1)?;
 
             // proof for the fee, authorizing the execution
             let fee =

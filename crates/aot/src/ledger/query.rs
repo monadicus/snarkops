@@ -172,7 +172,7 @@ impl<N: Network> LedgerQuery<N> {
 
         if let Err(e) = state
             .ledger
-            .check_next_block(&payload, &mut rand::thread_rng())
+            .check_next_block(&payload, &mut rand::rng())
         {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
