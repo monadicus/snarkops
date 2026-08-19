@@ -108,7 +108,7 @@ impl<N: Network> Checkpoint<N> {
 
         let height = stores.committee.current_height().map_err(ReadLedger)?;
         let my_height = self.height();
-        let shutdown = SignalHandler::new();
+        let shutdown = SignalHandler::new(None);
 
         // the act of creating this ledger service with a "max_gc_rounds" set to 0
         // should clear all BFT documents

@@ -37,13 +37,13 @@ impl<N: Network> AuthorizeProgram<N> {
     pub fn parse(self) -> Result<(Authorization<N>, u64)> {
         let private_key = self.key.try_get()?;
 
-        let mut process = Process::load()?;
+        let process = Process::load()?;
         match (self.options.query, self.options.locator.program_id()) {
             (_, id) if *id == N::credits() => {}
             (None, id) => {
                 bail!("Query required to authorize non-credits program {}", id);
             }
-            (Some(query), id) => query::load_program(&mut process, *id, &query)?,
+            (Some(query), id) => query::load_program(&process, *id, &query)?,
         };
 
         let auth = process

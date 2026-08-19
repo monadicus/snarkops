@@ -50,12 +50,12 @@ impl<N: Network> CostCommand<N> {
         } = self;
 
         let program = program.contents()?;
-        let mut process = Process::load()?;
-        query::get_process_imports(&mut process, &program, query.as_deref())?;
+        let process = Process::load()?;
+        query::get_process_imports(&process, &program, query.as_deref())?;
         let v = consensus_from_height::<N>(height);
 
         if let Some(function) = function {
-            process.add_program(&program)?;
+            process.lock().add_program(&program)?;
             ensure!(
                 program.functions().contains_key(&function),
                 "Function {} not found in program",
@@ -65,15 +65,15 @@ impl<N: Network> CostCommand<N> {
             let auth = process
                 .get_stack(program.id())?
                 .authorize::<N::Circuit, _>(
-                    &PrivateKey::new(&mut rand::thread_rng())?,
+                    &PrivateKey::new(&mut rand::rng())?,
                     function,
                     inputs.iter(),
-                    &mut rand::thread_rng(),
+                    &mut rand::rng(),
                 )?;
 
             estimate_cost(&process, &auth, v)
         } else {
-            let deployment = process.deploy::<N::Circuit, _>(&program, &mut rand::thread_rng())?;
+            let deployment = process.deploy::<N::Circuit, _>(&program, &mut rand::rng())?;
             Ok(deployment_cost(&process, &deployment, v)?.0)
         }
     }

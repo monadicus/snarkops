@@ -15,7 +15,7 @@ pub fn fetch_program<N: Network>(id: ProgramID<N>, query: &str) -> Result<Progra
 
 /// Walks the program's imports and fetches them all.
 pub fn load_program<N: Network>(
-    process: &mut Process<N>,
+    process: &Process<N>,
     program_id: ProgramID<N>,
     query: &str,
 ) -> Result<()> {
@@ -32,7 +32,7 @@ pub fn load_program<N: Network>(
     }
 
     if !process.contains_program(program.id()) {
-        process.add_program(&program)?;
+        process.lock().add_program(&program)?;
     }
 
     Ok(())
@@ -73,7 +73,7 @@ pub fn get_imports<N: Network>(
 }
 
 pub fn get_process_imports<N: Network>(
-    process: &mut Process<N>,
+    process: &Process<N>,
     program: &Program<N>,
     query: Option<&str>,
 ) -> Result<()> {
@@ -83,14 +83,14 @@ pub fn get_process_imports<N: Network>(
         .unwrap_or_default();
 
     for (_, import) in imports {
-        process.add_stack(Stack::new(process, &import)?);
+        process.lock().add_stack(Stack::new(process, &import)?);
     }
 
     Ok(())
 }
 
 pub fn add_program_to_process<N: Network>(
-    process: &mut Process<N>,
+    process: &Process<N>,
     program_id: ProgramID<N>,
     query: &str,
 ) -> Result<()> {
@@ -103,13 +103,13 @@ pub fn add_program_to_process<N: Network>(
         .map_err(|e| anyhow!("failed to fetch program {program_id}: {e:?}"))?;
 
     get_process_imports(process, &program, Some(query))?;
-    process.add_program(&program)?;
+    process.lock().add_program(&program)?;
 
     Ok(())
 }
 
 pub fn add_many_programs_to_process<N: Network>(
-    process: &mut Process<N>,
+    process: &Process<N>,
     programs: Vec<ProgramID<N>>,
     query: &str,
 ) -> Result<()> {

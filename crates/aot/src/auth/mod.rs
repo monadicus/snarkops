@@ -20,7 +20,7 @@ pub fn rng_from_seed(seed: Option<u64>) -> ChaChaRng {
     if let Some(seed) = seed {
         ChaChaRng::seed_from_u64(seed)
     } else {
-        ChaChaRng::from_entropy()
+        ChaChaRng::from_rng(&mut rand::rng())
     }
 }
 

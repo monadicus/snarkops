@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use rand::RngCore;
+
 use serde::de::Error;
 
 use super::INTERNED_ID_REGEX;
@@ -11,7 +11,7 @@ pub struct InternedId(lasso::Spur);
 
 impl InternedId {
     pub fn rand() -> Self {
-        let id = rand::thread_rng().next_u32();
+        let id = rand::random::<u32>();
         Self(INTERN.get_or_intern(format!("unknown-{id}")))
     }
 

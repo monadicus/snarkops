@@ -11,7 +11,7 @@ use clap::Args;
 use rpc::RpcClient;
 use snarkos_node::{
     Node,
-    bft::helpers::{ProposalCache, proposal_cache_path},
+    bft::helpers::ProposalCache,
 };
 use snarkos_utilities::{NodeDataDir, SignalHandler};
 use snarkvm::{
@@ -212,7 +212,7 @@ impl<N: Network> Runner<N> {
                 ::snarkos_node_metrics::register_histogram(name);
             }
         }
-        let shutdown = SignalHandler::new();
+        let shutdown = SignalHandler::new(None);
 
         let node = match self.node_type {
             NodeType::Validator => {
@@ -230,7 +230,10 @@ impl<N: Network> Runner<N> {
                     storage_mode.clone(),
                     node_data_dir,
                     false,
+                    None,
                     false,
+                    None,
+                    &[],
                     None,
                     Arc::clone(&shutdown),
                 )
@@ -261,10 +264,12 @@ impl<N: Network> Runner<N> {
                 node_data_dir,
                 false,
                 None,
+                None,
+                &[],
                 Arc::clone(&shutdown),
             )
             .await
-            .map_err(|e| e.context("create client"))?,
+            .map_err(|e| e.context("create client"))?
         };
 
         // only monitor block updates if we have a checkpoint manager or agent status
@@ -322,7 +327,7 @@ impl<N: Network> Runner<N> {
     /// Check the proposal cache for this address and remove it if it is
     /// invalid.
     fn check_proposal_cache(addr: Address<N>, node_data_dir: &NodeDataDir) {
-        let proposal_cache_path = proposal_cache_path(node_data_dir);
+        let proposal_cache_path = node_data_dir.current_proposal_cache_path();
         if !proposal_cache_path.exists() {
             return;
         }
