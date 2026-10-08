@@ -215,7 +215,11 @@ pub fn estimate_cost<N: Network>(
         let stack = process.get_stack(transition.program_id())?;
 
         if consensus_version >= ConsensusVersion::V10 {
-            minimum_cost_in_microcredits_v3(&stack, transition.function_name())?
+            minimum_cost_in_microcredits_v3(
+                &stack,
+                transition.function_name(),
+                Some(consensus_version),
+            )?
         } else {
             minimum_cost_in_microcredits_v2(&stack, transition.function_name())?
         }

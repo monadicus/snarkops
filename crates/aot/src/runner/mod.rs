@@ -12,12 +12,16 @@ use rpc::RpcClient;
 use snarkos_node::{
     Node,
     bft::helpers::ProposalCache,
+    rest::RestVerificationLimits,
 };
 use snarkos_utilities::{NodeDataDir, SignalHandler};
 use snarkvm::{
     ledger::store::{
         BlockStorage, CommitteeStorage,
-        helpers::rocksdb::{BlockDB, CommitteeDB},
+        helpers::{
+            memory::ConsensusMemory,
+            rocksdb::{BlockDB, CommitteeDB},
+        },
     },
     prelude::Block,
     utilities::FromBytes,
@@ -149,7 +153,7 @@ impl<N: Network> Runner<N> {
             .map(|p| CheckpointManager::load(self.ledger.clone(), p))
             .transpose()?;
 
-        let storage_mode = StorageMode::Custom(self.ledger.clone());
+        let storage_mode = StorageMode::Custom(self.ledger.clone(), None);
         let node_data_dir = NodeDataDir::new(self.node_data.unwrap_or_else(|| {
             // Append the `node-data` directory to the ledger path.
             let mut ledger_dir = self.ledger.clone();
@@ -213,6 +217,8 @@ impl<N: Network> Runner<N> {
             }
         }
         let shutdown = SignalHandler::new(None);
+        // snarkOS's CLI defaults these limits to the protocol maximums.
+        let rest_verification_limits = RestVerificationLimits::max::<N, ConsensusMemory<N>>();
 
         let node = match self.node_type {
             NodeType::Validator => {
@@ -222,6 +228,9 @@ impl<N: Network> Runner<N> {
                     Some(bft_ip),
                     Some(rest_ip),
                     self.rest_rps,
+                    rest_verification_limits,
+                    None,
+                    false,
                     account,
                     &self.peers,
                     &self.validators,
@@ -233,7 +242,6 @@ impl<N: Network> Runner<N> {
                     None,
                     false,
                     None,
-                    &[],
                     None,
                     Arc::clone(&shutdown),
                 )
@@ -256,6 +264,9 @@ impl<N: Network> Runner<N> {
                 node_ip,
                 Some(rest_ip),
                 self.rest_rps,
+                rest_verification_limits,
+                None,
+                false,
                 account,
                 &self.peers,
                 genesis,
@@ -265,7 +276,6 @@ impl<N: Network> Runner<N> {
                 false,
                 None,
                 None,
-                &[],
                 Arc::clone(&shutdown),
             )
             .await

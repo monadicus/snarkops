@@ -21,7 +21,7 @@ pub fn open_ledger<N: Network, C: ConsensusStorage<N>>(
     genesis_block: Block<N>,
     ledger_path: PathBuf,
 ) -> Result<Ledger<N, C>> {
-    Ledger::load(genesis_block, StorageMode::Custom(ledger_path))
+    Ledger::load(genesis_block, StorageMode::Custom(ledger_path, None))
 }
 
 pub fn prove_credits<N: Network, C: ConsensusStorage<N>, A: Aleo<Network = N>>(

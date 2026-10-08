@@ -82,7 +82,7 @@ impl CheckpointManager {
 
         use crate::aleo::*;
 
-        let blocks = BlockDB::<N>::open(StorageMode::Custom(self.storage_path.clone()))
+        let blocks = BlockDB::<N>::open(StorageMode::Custom(self.storage_path.clone(), None))
             .map_err(StorageOpenError)?;
 
         let mut rejected = vec![];

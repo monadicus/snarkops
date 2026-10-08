@@ -58,7 +58,7 @@ impl Truncate {
         ledger_path: PathBuf,
         checkpoint_path: PathBuf,
     ) -> Result<()> {
-        let storage_mode = StorageMode::Custom(ledger_path.clone());
+        let storage_mode = StorageMode::Custom(ledger_path.clone(), None);
 
         // open the ledger
         let ledger = DbLedger::<N>::load(genesis.clone(), storage_mode.clone())?;

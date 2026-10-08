@@ -41,8 +41,8 @@ impl CheckpointHeader {
         use crate::aleo::*;
 
         let commitee =
-            CommitteeDB::<N>::open(StorageMode::Custom(path.clone())).map_err(OpenLedger)?;
-        let blocks = BlockDB::<N>::open(StorageMode::Custom(path)).map_err(OpenLedger)?;
+            CommitteeDB::<N>::open(StorageMode::Custom(path.clone(), None)).map_err(OpenLedger)?;
+        let blocks = BlockDB::<N>::open(StorageMode::Custom(path, None)).map_err(OpenLedger)?;
 
         let height = commitee.current_height().map_err(ReadLedger)?;
         let Some(block_hash): Option<BlockHash<N>> =
