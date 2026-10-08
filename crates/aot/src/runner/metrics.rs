@@ -35,7 +35,7 @@ pub const GAUGE_NAMES: [&str; 26] = [
     router::CONNECTED,
     router::CANDIDATE,
     router::RESTRICTED,
-    tcp::TCP_TASKS,
+    tcp::QUEUED_INBOUND_MESSAGES,
 ];
 
 pub const HISTOGRAM_NAMES: [&str; 3] = [

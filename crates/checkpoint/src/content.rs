@@ -25,7 +25,7 @@ impl<N: Network> CheckpointContent<N> {
     pub fn read_ledger(path: PathBuf) -> Result<Self, Error> {
         use Error::*;
 
-        let finalize = FinalizeDB::open(StorageMode::Custom(path)).map_err(OpenLedger)?;
+        let finalize = FinalizeDB::open(StorageMode::Custom(path, None)).map_err(OpenLedger)?;
         // let timestamp = blocks.
 
         let key_values = finalize

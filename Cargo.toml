@@ -149,18 +149,18 @@ snops-common = { path = "./crates/common" }
 
 ## Comment to use version-pinned or local dependencies
 
-snarkos-account = { git = "https://github.com/ProvableHQ/snarkOS", rev = "bcf2852" }
-snarkos-node = { git = "https://github.com/ProvableHQ/snarkOS", rev = "bcf2852" }
-snarkos-node-metrics = { git = "https://github.com/ProvableHQ/snarkOS", rev = "bcf2852" }
-snarkos-utilities = { git = "https://github.com/ProvableHQ/snarkOS", rev = "bcf2852" }
+snarkos-account = { git = "https://github.com/ProvableHQ/snarkOS", rev = "32476b5" }
+snarkos-node = { git = "https://github.com/ProvableHQ/snarkOS", rev = "32476b5" }
+snarkos-node-metrics = { git = "https://github.com/ProvableHQ/snarkOS", rev = "32476b5" }
+snarkos-utilities = { git = "https://github.com/ProvableHQ/snarkOS", rev = "32476b5" }
 [workspace.dependencies.snarkvm]
 ## The following anchors are used by the `update_snarkos_dep.sh` script.
 ## Everything in-between the anchors is copied from the snarkos Cargo.toml
 ## CODEGEN_START
 #path = "../snarkVM"
-#git = "https://github.com/ProvableHQ/snarkVM.git"
-#rev = "bf63306" #4.9.1
-version = "=4.9.1"
+git = "https://github.com/ProvableHQ/snarkVM.git"
+rev = "532d8fdf7" #test_net_v4120
+#version = "=4.12.0"
 ## CODEGEN_END
 default-features = false
 features = ["circuit", "rocks", "algorithms"]

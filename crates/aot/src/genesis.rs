@@ -486,7 +486,7 @@ impl<N: Network> Genesis<N> {
 
         // Initialize the ledger if a path was given.
         if let Some(ledger) = self.ledger {
-            DbLedger::load(block.to_owned(), StorageMode::Custom(ledger.to_owned()))?;
+            DbLedger::load(block.to_owned(), StorageMode::Custom(ledger.to_owned(), None))?;
             println!(
                 "Initialized a ledger at {}.",
                 ledger.display().to_string().yellow()
