@@ -99,7 +99,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: ${{ env.NIGHTLY_TOOLCHAIN }}
-          components: rustc-codegen-cranelift-preview clippy
+          components: clippy
 
       - name: 🫙 Cache
         uses: Swatinem/rust-cache@v2
@@ -127,8 +127,6 @@ jobs:
 
       - name: 🧪 Test ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'snops' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
-        env:
-          RUSTFLAGS: ${{ (matrix.crate.name == 'aot' || matrix.crate.name == 'checkpoint' || matrix.crate.name == 'common' || matrix.crate.name == 'snops') && '-Zcodegen-backend=cranelift' || '' }}
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} nextest run -p ${{ matrix.crate.package }} --verbose --fail-fast --all-features --no-tests=warn
 
       - name: 🚯 Unused Deps ${{ matrix.crate.name }}
@@ -146,6 +144,4 @@ jobs:
 
       - name: 📋 Clippy ${{ matrix.crate.name }}
         if: always() && ${{ env.TOP_TOML == 'true' || (matrix.crate.name == 'aot' && env.AOT == 'true') || (matrix.crate.name == 'checkpoint' && env.CHECKPOINT == 'true') || (matrix.crate.name == 'common' && env.COMMON == 'true') || (matrix.crate.name == 'snops' && env.CONTROL_PLANE == 'true') || (matrix.crate.name == 'agent' && env.AGENT == 'true') || (matrix.crate.name == 'scli' && env.SCLI == 'true') }}
-        env:
-          RUSTFLAGS: ${{ (matrix.crate.name == 'aot' || matrix.crate.name == 'checkpoint' || matrix.crate.name == 'common' || matrix.crate.name == 'snops') && '-Zcodegen-backend=cranelift' || '' }}
         run: cargo +${{ env.NIGHTLY_TOOLCHAIN }} clippy -p ${{ matrix.crate.package }} --all-targets --locked -- -D warnings
