@@ -7,7 +7,10 @@ use snarkvm::{
     prelude::{ConsensusVersion, Field},
     synthesizer::{
         Process,
-        process::{minimum_cost_in_microcredits_v1, minimum_cost_in_microcredits_v2, minimum_cost_in_microcredits_v3, deployment_cost},
+        process::{
+            deployment_cost, minimum_cost_in_microcredits_v1, minimum_cost_in_microcredits_v2,
+            minimum_cost_in_microcredits_v3,
+        },
     },
     utilities::ToBytes,
 };

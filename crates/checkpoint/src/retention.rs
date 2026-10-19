@@ -46,8 +46,8 @@ impl RetentionPolicy {
         // amount of time since the last checkpoint
         let delta = new_time.signed_duration_since(last_time);
 
-        // if the time since the last checkpoint is greater than the minimum delta
-        // the policy indicates a new checkpoint should be created
+        // if the time since the last checkpoint is greater than the minimum
+        // delta the policy indicates a new checkpoint should be created
         delta >= keep
     }
 
@@ -63,8 +63,8 @@ impl RetentionPolicy {
         now: DateTime<Utc>,
         times: Vec<&DateTime<Utc>>,
     ) -> Vec<DateTime<Utc>> {
-        // if the policy is empty, we should technically reject ALL checkpoints but
-        // for safety we will not reject any
+        // if the policy is empty, we should technically reject ALL checkpoints
+        // but for safety we will not reject any
         if self.rules.is_empty() || times.is_empty() {
             return Vec::new();
         }
@@ -74,11 +74,13 @@ impl RetentionPolicy {
         // ALGORITHM
         // 1. walk backwards through rules and times
         // 2. keep track of the last kept time for each rule
-        // 3. if the last kept time is outside the duration of the current rule reject
-        //    the last kept time and promote the next time to the last kept time
-        // 4. if the current rule does not encompass both times move to the next rule
-        // 5. if difference between last kept time and current time is smaller than the
-        //    keep time, reject it
+        // 3. if the last kept time is outside the duration of the current rule
+        //    reject the last kept time and promote the next time to the last
+        //    kept time
+        // 4. if the current rule does not encompass both times move to the next
+        //    rule
+        // 5. if difference between last kept time and current time is smaller
+        //    than the keep time, reject it
         // 6. if the time was not rejected, it becomes the new last kept time
 
         // TODO: this is bugged atm - it's keeping the last checkpoint
@@ -102,8 +104,8 @@ impl RetentionPolicy {
             let delta = now.signed_duration_since(time);
             let last_delta = now.signed_duration_since(last_kept);
 
-            // step 3 - if the last time is outside the duration of the current rule, reject
-            // it
+            // step 3 - if the last time is outside the duration of the current
+            // rule, reject it
             match curr_rule.duration.as_delta() {
                 Some(duration) if last_delta > duration => {
                     /* println!(
@@ -122,11 +124,13 @@ impl RetentionPolicy {
 
             // check if we should move to the next rule
             while let Some(RetentionRule { duration, .. }) = rules.peek() {
-                // if both rules have the same duration, continue to the next rule
-                // this is another case of configuration mishaps
+                // if both rules have the same duration, continue to the next
+                // rule this is another case of configuration
+                // mishaps
                 //
-                // additionallly, if the second to last rule is unlimited, continue to the next
-                // rule you should not be writing policies with multiple
+                // additionallly, if the second to last rule is unlimited,
+                // continue to the next rule you should not be
+                // writing policies with multiple
                 // unlimited rules
                 if &curr_rule.duration == duration || duration == &RetentionSpan::Unlimited {
                     curr_rule = rules.next().unwrap();
@@ -134,15 +138,16 @@ impl RetentionPolicy {
                 }
 
                 if let Some(next_duration) = duration.as_delta() {
-                    // step 4 - if the current rule does not encompass both times, move to the next
-                    // rule
+                    // step 4 - if the current rule does not encompass both
+                    // times, move to the next rule
 
                     // continue because both times are within the current rule
                     if delta >= next_duration && last_delta >= next_duration {
                         break;
                     }
 
-                    // update the last step time if the current time is within the next duration
+                    // update the last step time if the current time is within
+                    // the next duration
                     if delta < next_duration {
                         last_kept = time;
                         times.next();
@@ -173,7 +178,8 @@ impl RetentionPolicy {
                 continue;
             }
 
-            // step 6 - if the time was not rejected, it becomes the new last kept time
+            // step 6 - if the time was not rejected, it becomes the new last
+            // kept time
             /* println!(
                 "OK {curr_rule}: {last_kept} - {time} ({}) >= {}",
                 last_kept.signed_duration_since(time).num_seconds() / 60,

@@ -152,8 +152,8 @@ impl LoadedStorage {
             .map(|(k, v)| (*k, v.with_api_path(self.network, self.id, *k)))
             .collect();
 
-        // insert the default binary source information (so agents have a way to compare
-        // shasums and file size)
+        // insert the default binary source information (so agents have a way to
+        // compare shasums and file size)
         binaries
             .entry(InternedId::default())
             .or_insert(DEFAULT_AOT_BINARY.with_api_path(
@@ -223,14 +223,14 @@ impl LoadedStorage {
     ) -> Result<(InternedId, &BinaryEntry), StorageError> {
         let compute_id = InternedId::compute_id();
 
-        // if the binary id is "compute" and there is no "compute" binary override in
-        // the map, then we should use the default binary
+        // if the binary id is "compute" and there is no "compute" binary
+        // override in the map, then we should use the default binary
         if id == compute_id && !binaries.contains_key(&compute_id) {
             id = InternedId::default();
         }
 
-        // if the binary id is the default binary id and there is no default binary
-        // override in the map,
+        // if the binary id is the default binary id and there is no default
+        // binary override in the map,
         if id == InternedId::default() && !binaries.contains_key(&InternedId::default()) {
             // then we should use the default AOT binary
             return Ok((id, &DEFAULT_AOT_BINARY));
@@ -268,7 +268,8 @@ impl LoadedStorage {
         download_path.push("binaries");
         download_path.push(id_str);
 
-        // if the file already exists, ensure that it is the correct size and sha256
+        // if the file already exists, ensure that it is the correct size and
+        // sha256
         if download_path.exists() {
             let perms = download_path
                 .metadata()
@@ -366,25 +367,27 @@ impl LoadedStorage {
         // check if the binary sha256 matches the expected sha256
         let sha256 = format!("{:x}", digest.finalize());
         if let Some(bin_sha256) = bin.sha256.as_ref()
-            && bin_sha256.to_lowercase() != sha256 {
-                return Err(StorageError::BinarySha256Mismatch(
-                    id,
-                    download_path,
-                    bin_sha256.clone(),
-                    sha256,
-                ));
-            }
+            && bin_sha256.to_lowercase() != sha256
+        {
+            return Err(StorageError::BinarySha256Mismatch(
+                id,
+                download_path,
+                bin_sha256.clone(),
+                sha256,
+            ));
+        }
 
         // check if the binary size matches the expected size
         if let Some(bin_size) = bin.size
-            && bin_size != size {
-                return Err(StorageError::BinarySizeMismatch(
-                    id,
-                    download_path,
-                    bin_size,
-                    size,
-                ));
-            }
+            && bin_size != size
+        {
+            return Err(StorageError::BinarySizeMismatch(
+                id,
+                download_path,
+                bin_size,
+                size,
+            ));
+        }
 
         info!(
             "downloaded binary {storage_id}.{id_str} to {} ({size} bytes)",

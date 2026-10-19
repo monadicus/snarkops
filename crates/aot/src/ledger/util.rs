@@ -174,8 +174,7 @@ pub fn _make_transaction_proof_private<N: Network, C: ConsensusStorage<N>, A: Al
             )?;
 
             // compute fee for the execution
-            let (min_fee, _) =
-                execution_cost(vm.process(), &execution, ConsensusVersion::V1)?;
+            let (min_fee, _) = execution_cost(vm.process(), &execution, ConsensusVersion::V1)?;
 
             // proof for the fee, authorizing the execution
             let fee =

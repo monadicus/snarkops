@@ -142,7 +142,8 @@ impl CannonInstance {
     ) -> (DashMap<Arc<String>, TransactionTracker>, AtomicU64) {
         let transactions = DashMap::new();
 
-        // Restore the received transaction count (empty string key for tx_index)
+        // Restore the received transaction count (empty string key for
+        // tx_index)
         let received_txs =
             match state
                 .db
@@ -165,8 +166,8 @@ impl CannonInstance {
             }
         };
 
-        // Walk through the statuses and restore the transactions (every transaction has
-        // a status)
+        // Walk through the statuses and restore the transactions (every
+        // transaction has a status)
         for (key, status) in statuses {
             // Ensure the transaction has an index
             let index = match state.db.tx_index.restore(&key) {
@@ -198,9 +199,9 @@ impl CannonInstance {
                 }
             };
 
-            // Restore the transaction, if it exists. If there is an issue restoring the
-            // transaction, it is possible to re-execute the authorization when
-            // present.
+            // Restore the transaction, if it exists. If there is an issue
+            // restoring the transaction, it is possible to
+            // re-execute the authorization when present.
             let transaction = match state.db.tx_blobs.restore(&key) {
                 Ok(tx) => tx.map(Arc::new),
                 Err(e) => {
@@ -351,9 +352,10 @@ impl CannonInstance {
             QueryTarget::Node(target) => {
                 // shortcut to cached state root if the target is all nodes
                 if target.is_all()
-                    && let Some(info) = self.global_state.get_env_block_info(env_id) {
-                        return Ok(info.state_root);
-                    }
+                    && let Some(info) = self.global_state.get_env_block_info(env_id)
+                {
+                    return Ok(info.state_root);
+                }
 
                 Ok(self
                     .global_state
@@ -380,9 +382,10 @@ impl CannonInstance {
             QueryTarget::Node(target) => {
                 // shortcut to cached state root if the target is all nodes
                 if target.is_all()
-                    && let Some(info) = self.global_state.get_env_block_info(env_id) {
-                        return Ok(info.height);
-                    }
+                    && let Some(info) = self.global_state.get_env_block_info(env_id)
+                {
+                    return Ok(info.height);
+                }
 
                 Ok(self
                     .global_state
@@ -403,23 +406,25 @@ impl CannonInstance {
 
         // if the transaction is in the cache, it has already been broadcasted
         if let Some(cache) = self.global_state.env_network_cache.get(&self.env_id)
-            && cache.has_transaction(&tx_id) {
-                if let Err(e) = TransactionTracker::delete(&self.global_state, &key) {
-                    error!(
-                        "cannon {}.{} failed to delete {tx_id} (in proxy_broadcast): {e:?}",
-                        self.env_id, self.id
-                    );
-                }
-                return Err(CannonError::TransactionAlreadyExists(
-                    self.id,
-                    tx_id.to_string(),
-                ));
+            && cache.has_transaction(&tx_id)
+        {
+            if let Err(e) = TransactionTracker::delete(&self.global_state, &key) {
+                error!(
+                    "cannon {}.{} failed to delete {tx_id} (in proxy_broadcast): {e:?}",
+                    self.env_id, self.id
+                );
             }
+            return Err(CannonError::TransactionAlreadyExists(
+                self.id,
+                tx_id.to_string(),
+            ));
+        }
 
         // prevent already queued transactions from being re-broadcasted
         let tracker = match self.transactions.get(&tx_id).as_deref().cloned() {
             Some(mut tx) => {
-                // if we receive a transaction that is not executing, it is a duplicate
+                // if we receive a transaction that is not executing, it is a
+                // duplicate
                 if !matches!(tx.status, TransactionSendState::Executing(_)) {
                     return Err(CannonError::TransactionAlreadyExists(
                         self.id,
@@ -434,7 +439,8 @@ impl CannonInstance {
                         self.env_id, self.id
                     );
                 }
-                // update the status to pending broadcast, and write the transaction
+                // update the status to pending broadcast, and write the
+                // transaction
                 tx.status = TransactionSendState::Unsent;
                 tx.transaction = Some(Arc::new(body));
                 tx

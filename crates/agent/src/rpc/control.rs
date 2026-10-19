@@ -232,10 +232,11 @@ impl AgentService for AgentRpcServer {
     ) -> Result<String, AgentError> {
         info!("Executing authorization for {env_id}...");
 
-        // TODO: maybe in the env config store a branch label for the binary so it won't
-        // be put in storage and won't overwrite itself
+        // TODO: maybe in the env config store a branch label for the binary so
+        // it won't be put in storage and won't overwrite itself
 
-        // TODO: compute agents wiping out env info when alternating environments
+        // TODO: compute agents wiping out env info when alternating
+        // environments
         let info = self
             .state
             .get_env_info(env_id)

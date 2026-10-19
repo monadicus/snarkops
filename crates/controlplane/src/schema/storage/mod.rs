@@ -149,8 +149,9 @@ impl Document {
         // add the prepared storage to the storage map
 
         if state.storage.contains_key(&(network, id)) {
-            // TODO: we probably don't want to warn here. instead, it would be nice to
-            // hash/checksum the storage to compare it with the conflicting storage
+            // TODO: we probably don't want to warn here. instead, it would be
+            // nice to hash/checksum the storage to compare it with
+            // the conflicting storage
             warn!("a storage with the id {id} has already been prepared");
         }
 
@@ -159,8 +160,9 @@ impl Document {
 
         let mut native_genesis = false;
 
-        // TODO: The dir can be made by a previous run and the aot stuff can fail
-        // i.e an empty/incomplete directory can exist and we should check those
+        // TODO: The dir can be made by a previous run and the aot stuff can
+        // fail i.e an empty/incomplete directory can exist and we
+        // should check those
         let mut exists = matches!(tokio::fs::try_exists(&base).await, Ok(true));
 
         // warn if an existing block/ledger already exists
@@ -301,7 +303,8 @@ impl Document {
                         }
                     }
 
-                    // generate committee commissions based on the generation params
+                    // generate committee commissions based on the generation
+                    // params
                     match &genesis.commissions {
                         GenesisCommissions::Generated { bonded_commission } => {
                             if let Some(bonded_commission) = bonded_commission {

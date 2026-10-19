@@ -160,8 +160,8 @@ impl Reconcile<bool, ReconcileError> for FileReconciler {
                             .requeue_after(Duration::from_secs(60)));
                     }
 
-                    // if the failure is older than 60 seconds, remove the pending transfer and
-                    // start over.
+                    // if the failure is older than 60 seconds, remove the
+                    // pending transfer and start over.
                     occupied_entry.remove();
                     return Ok(ReconcileStatus::empty()
                         .add_scope("file/interrupt/restart")
@@ -251,7 +251,8 @@ impl Reconcile<bool, ReconcileError> for FileReconciler {
         })
         .abort_handle();
 
-        // update the transfer with the handle (so it can be canceled if necessary)
+        // update the transfer with the handle (so it can be canceled if
+        // necessary)
         if let Err(e) = self
             .state
             .transfer_tx
@@ -266,7 +267,8 @@ impl Reconcile<bool, ReconcileError> for FileReconciler {
             self.dst.display()
         );
 
-        // transfer is pending - requeue after 1 second with the pending condition
+        // transfer is pending - requeue after 1 second with the pending
+        // condition
         Ok(ReconcileStatus::empty()
             .add_condition(ReconcileCondition::PendingTransfer {
                 source: self.src.to_string(),

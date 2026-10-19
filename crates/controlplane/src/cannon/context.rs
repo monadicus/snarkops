@@ -145,7 +145,8 @@ impl ExecutionContext {
         }
     }
 
-    // write the transaction status to the store and update the transaction tracker
+    // write the transaction status to the store and update the transaction
+    // tracker
     pub fn write_tx_status(&self, tx_id: &Arc<String>, status: TransactionSendState) {
         let key = (self.env_id, self.id, tx_id.to_owned());
         if let Some(mut tx) = self.transactions.get_mut(tx_id) {
@@ -198,7 +199,8 @@ impl ExecutionContext {
                 Ok(())
             }
             Err(e) => {
-                // reset the transaction status to authorized so it can be re-executed
+                // reset the transaction status to authorized so it can be
+                // re-executed
                 self.write_tx_status(&tx_id, TransactionSendState::Authorized);
                 TransactionEvent::ExecuteFailed(e.to_string())
                     .with_cannon_ctx(self, tx_id.clone())
@@ -275,7 +277,8 @@ impl ExecutionContext {
 
             let network = self.network;
 
-            // update the transaction status and increment the broadcast attempts
+            // update the transaction status and increment the broadcast
+            // attempts
             let update_status = |agent: Option<AgentId>| {
                 self.write_tx_status(
                     &tx_id,
@@ -344,7 +347,8 @@ impl ExecutionContext {
                         Ok(req) => {
                             let status = req.status();
                             if !status.is_success() {
-                                // transaction already exists in the ledger but we'll confirm it
+                                // transaction already exists in the ledger but
+                                // we'll confirm it
                                 // anyway
                                 if status.is_server_error()
                                     && req

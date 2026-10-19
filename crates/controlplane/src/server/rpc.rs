@@ -161,8 +161,8 @@ impl ControlService for ControlRpcServer {
             return;
         }
 
-        // If the block has the transaction or the block is not recent, ignore this
-        // block
+        // If the block has the transaction or the block is not recent, ignore
+        // this block
         if !self.state.env_network_cache.get(&env_id).is_some_and(|c| {
             !c.has_transactions_for_block(&info.block_hash) && c.is_recent_block(height)
         }) {

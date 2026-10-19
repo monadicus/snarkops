@@ -75,7 +75,8 @@ impl GlobalState {
         prometheus: Option<PrometheusClient>,
         log_level_handler: ReloadHandler,
     ) -> Result<Arc<Self>, StartError> {
-        // Load storage meta from persistence, then read the storage data from FS
+        // Load storage meta from persistence, then read the storage data from
+        // FS
         let storage_meta = db.storage.read_all();
         let storage = StorageMap::default();
         for ((network, id), meta) in storage_meta {
@@ -313,8 +314,8 @@ impl GlobalState {
         let route_str = route.to_string();
         let prefix = snarkos_request::route_prefix_check(&route_str);
 
-        // walk through the nodes (lazily sorted by a score) until we find one that
-        // responds
+        // walk through the nodes (lazily sorted by a score) until we find one
+        // that responds
         for (_, info, agent_id, addr) in query_nodes.into_iter().sorted_by(|a, b| a.0.cmp(&b.0)) {
             // if this route is a route with block info that we already track,
             // we can return the info from the agent's status directly
@@ -327,17 +328,19 @@ impl GlobalState {
                 };
             }
 
-            // attempt to make a request through the client via RPC if this is an agent
+            // attempt to make a request through the client via RPC if this is
+            // an agent
             if let Some(agent_id) = agent_id
-                && let Some(client) = self.get_client(agent_id) {
-                    match client.snarkos_get::<T>(&route).await {
-                        Ok(res) => return Ok(res),
-                        Err(e) => {
-                            tracing::error!("env {env_id} agent {agent_id} request failed: {e}");
-                            continue;
-                        }
+                && let Some(client) = self.get_client(agent_id)
+            {
+                match client.snarkos_get::<T>(&route).await {
+                    Ok(res) => return Ok(res),
+                    Err(e) => {
+                        tracing::error!("env {env_id} agent {agent_id} request failed: {e}");
+                        continue;
                     }
                 }
+            }
 
             // if we have an address, we can try to make a request via REST
             let Some(addr) = addr else {

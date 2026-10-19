@@ -251,7 +251,8 @@ impl Agent {
         changed
     }
 
-    // Gets the bft port of the agent. Assumes the agent is ready, returns 0 if not.
+    // Gets the bft port of the agent. Assumes the agent is ready, returns 0 if
+    // not.
     pub fn bft_port(&self) -> u16 {
         self.ports.as_ref().map(|p| p.bft).unwrap_or_default()
     }

@@ -124,13 +124,15 @@ impl AgentStateReconciler {
         let mut err_backoff = 0;
 
         // The first reconcile is scheduled for 5 seconds after startup.
-        // Connecting to the controlplane will likely trigger a reconcile sooner.
+        // Connecting to the controlplane will likely trigger a reconcile
+        // sooner.
         let mut next_reconcile_at = Instant::now() + Duration::from_secs(5);
         let mut next_opts = ReconcileOptions::default();
 
         // Repeated reconcile loop
         loop {
-            // Await for the next reconcile, allowing for it to be moved up sooner
+            // Await for the next reconcile, allowing for it to be moved up
+            // sooner
             loop {
                 select! {
                     // Replace the next_reconcile_at with the soonest reconcile time
@@ -146,15 +148,16 @@ impl AgentStateReconciler {
 
             // Drain the reconcile request queue
             while reconcile_requests.try_recv().is_ok() {}
-            // Schedule the next reconcile for 1 minute (to periodically check if the node
-            // went offline)
+            // Schedule the next reconcile for 1 minute (to periodically check
+            // if the node went offline)
             next_reconcile_at = Instant::now() + Duration::from_secs(60);
 
             // Update the reconciler with the latest agent state
             // This prevents the agent state from changing during reconciliation
             self.agent_state = self.state.get_agent_state().await;
 
-            // Clear the env info if refetch_info is set to force it to be fetched again
+            // Clear the env info if refetch_info is set to force it to be
+            // fetched again
             if next_opts.refetch_info {
                 self.state.set_env_info(None).await;
             }
@@ -177,7 +180,8 @@ impl AgentStateReconciler {
             trace!("Reconciling agent state...");
             let res = self.reconcile().await;
 
-            // If this reconcile was triggered by a reconcile request, post the status
+            // If this reconcile was triggered by a reconcile request, post the
+            // status
             if let Some(client) = self.state.get_ws_client().await {
                 let node_is_started = self
                     .state
@@ -307,7 +311,8 @@ impl AgentStateReconciler {
             .get(&node.binary.unwrap_or_default())
             .unwrap_or(&default_binary);
 
-        // Check if the binary this node is running is different from the one in storage
+        // Check if the binary this node is running is different from the one in
+        // storage
         if self.context.process.as_ref().is_some_and(|p| {
             target_binary
                 .sha256
@@ -318,7 +323,8 @@ impl AgentStateReconciler {
             return true;
         }
 
-        // Check if the binary this node is running is different from the one in storage
+        // Check if the binary this node is running is different from the one in
+        // storage
         if self
             .context
             .transfers
@@ -345,8 +351,8 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
 
         let env_info = self.state.get_env_info(*env_id).await?;
 
-        // If the node should be torn down because a configuration changed, we need to
-        // gracefully shut down the node.
+        // If the node should be torn down because a configuration changed, we
+        // need to gracefully shut down the node.
         if self.is_shutdown_pending(node, &env_info) {
             self.context.shutdown_pending = true;
             // Unwrap safety - is_shutdown_pending ensures the process exists.
@@ -370,8 +376,8 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
         let node_arc = Arc::new(*node.clone());
 
         // Resolve the addresses of the peers and validators
-        // This is run before the process is started, as the agent can sometimes have
-        // new addresses that need to be resolved.
+        // This is run before the process is started, as the agent can sometimes
+        // have new addresses that need to be resolved.
         reconcile!(
             address_resolve,
             AddressResolveReconciler {
@@ -392,8 +398,8 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
                     .add_scope("agent_state/exited"));
             }
 
-            // Accumulate all the fields that are used to derive the command that starts
-            // the node.
+            // Accumulate all the fields that are used to derive the command
+            // that starts the node.
             let command = NodeCommand::new(
                 Arc::clone(&self.state),
                 node_arc,
@@ -429,10 +435,10 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
                 return Ok(rec.add_scope(format!("agent_state/node/{}", node_status.label())));
             }
 
-            // If the node is not online, the process is still running, but the node
-            // has not connected to the controlplane.
-            // This can happen if the node is still syncing, or if the controlplane
-            // is not reachable.
+            // If the node is not online, the process is still running, but the
+            // node has not connected to the controlplane.
+            // This can happen if the node is still syncing, or if the
+            // controlplane is not reachable.
             return Ok(ReconcileStatus::empty()
                 .requeue_after(Duration::from_secs(1))
                 .add_condition(ReconcileCondition::PendingStartup)
@@ -458,8 +464,9 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
         );
 
         // Initialize the transfers context with the current status
-        // This happens after the StorageVersionReconciler as storage_version within
-        // env_state will be guaranteed to match the remote env after it succeeds.
+        // This happens after the StorageVersionReconciler as storage_version
+        // within env_state will be guaranteed to match the remote env
+        // after it succeeds.
         if self.context.transfers.is_none() {
             let env_state = EnvState::from(env_info.as_ref());
             if let Err(e) = self.state.db.set_env_state(Some(&env_state)) {
@@ -506,8 +513,8 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
             }
         );
 
-        // TODO: if possible, use the NodeCommand as configuration for a node service to
-        // allow running the node outside of the agent
+        // TODO: if possible, use the NodeCommand as configuration for a node
+        // service to allow running the node outside of the agent
 
         info!("Starting node process");
         let command = NodeCommand::new(

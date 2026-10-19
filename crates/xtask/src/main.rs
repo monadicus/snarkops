@@ -79,15 +79,15 @@ impl Build {
             cmd
         };
 
-        // if cranelift is enabled we need to set the env var, and also specify the
-        // target
+        // if cranelift is enabled we need to set the env var, and also specify
+        // the target
         let mut env_flags = self.linker.as_ref().to_string();
         let cmd = if self.cranelift {
             // -C panic=abort
             env_flags.push_str(" -C lto=no -Zlocation-detail=none -Zcodegen-backend=cranelift -C target-cpu=native");
             // This is broken >.<
-            // // if cranelift is enabled, and the target is not AOT, we can pass additional
-            // // flags
+            // // if cranelift is enabled, and the target is not AOT, we can
+            // pass additional // flags
             // if !matches!(self.target, BuildTarget::Aot) {
             //     env_flags.push_str(
             //         " -Zbuild-std=std,panic_abort

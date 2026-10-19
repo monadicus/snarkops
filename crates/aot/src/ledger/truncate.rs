@@ -155,7 +155,8 @@ impl Replay {
 
                         db_ledger.advance_to_next_block(&block)?;
 
-                        // if checkpoints are enabled, check if this block should be added
+                        // if checkpoints are enabled, check if this block
+                        // should be added
                         if let Some(manager) = manager.as_mut() {
                             manager.poll::<N>()?;
                         }

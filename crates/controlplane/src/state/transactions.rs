@@ -193,8 +193,9 @@ fn get_pending_transactions(state: &GlobalState) -> Vec<((EnvId, CannonId), Pend
                         }
 
                         // When the block height changes, queue a confirm.
-                        // This feature is only available for sinks with a target (should be
-                        // unreachable either way)
+                        // This feature is only available for sinks with a
+                        // target (should be unreachable
+                        // either way)
                         if cannon.sink.target.is_some() {
                             to_confirm.push(((tx_id.clone(), height), tx.index));
                         }

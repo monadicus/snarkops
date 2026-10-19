@@ -67,8 +67,8 @@ impl Reconcile<(), ReconcileError> for AddressResolveReconciler {
         );
 
         // Resolve the addresses
-        // TODO: turn this into a background process so the reconcile operation can run
-        // instantly
+        // TODO: turn this into a background process so the reconcile operation
+        // can run instantly
         let new_addrs = client
             .resolve_addrs(context::current(), unresolved_addrs)
             .await

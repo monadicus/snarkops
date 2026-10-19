@@ -61,8 +61,8 @@ const UPDATE_AGE_INDIFFERENCE: u32 = 5;
 impl LatestBlockInfo {
     /// Ranking function for block info to sort competing nodes by "freshness"
     pub fn score(&self, now: &DateTime<Utc>) -> u32 {
-        // a score from 3600 to 0 based on the age of the block (3600 = block this
-        // second)
+        // a score from 3600 to 0 based on the age of the block (3600 = block
+        // this second)
         let block_age_score =
             if let Some(block_time) = DateTime::from_timestamp(self.block_timestamp, 0) {
                 // the number of seconds since the block was created
@@ -81,7 +81,8 @@ impl LatestBlockInfo {
             .num_seconds()
             .clamp(0, MAX_UPDATE_AGE as i64);
         // a score from 60 to 0 based on the age of the update (60 = update this
-        // second). Ignore the top 5 seconds for indifference between "fresh" agents
+        // second). Ignore the top 5 seconds for indifference between "fresh"
+        // agents
         let update_age_score = MAX_UPDATE_AGE
             .saturating_sub(update_age as u32)
             .clamp(0, MAX_UPDATE_AGE - UPDATE_AGE_INDIFFERENCE);
