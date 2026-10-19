@@ -95,6 +95,10 @@ jobs:
       - name: 🥬 Use Mold Linker
         uses: rui314/setup-mold@v1
 
+      # rocksdb's bindgen (clang-sys) needs libclang, which the runner image lacks
+      - name: ☁️ Install libclang
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev
+
       - name: ☁️ Install Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
