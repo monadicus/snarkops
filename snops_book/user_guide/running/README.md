@@ -9,7 +9,7 @@ The two binaries that need to be deployed are:
 - [Agent(s)](./AGENT.md)
 	- You will likely want more than one instance of an agent.
 
-The last binary that needs to be compiled is the `snarkos-aot` binary, that wraps around [snarkOS](https://github.com/AleoNet/snarkOS) importing it as a library.
+The last binary that needs to be compiled is the `snarkos-aot` binary, that wraps around [snarkOS](https://github.com/aleo-labs-protocol/snarkOS) importing it as a library.
 
 Additionally you can enable [metrics and logging](./METRICS_AND_LOGGING.md), to better track all information in `snops`:
 - Logs from control plane.

@@ -15,7 +15,7 @@ function get_snarkos_rev() {
   local target_label=${1:-staging}
 
   # Look for ref/tags/$target_label or ref/heads/$target_label
-  local refs="$(git ls-remote --heads --tags https://github.com/ProvableHQ/snarkOS.git 2>/dev/null | grep -E "refs/(heads|tags)/$target_label")"
+  local refs="$(git ls-remote --heads --tags https://github.com/aleo-labs-protocol/snarkOS.git 2>/dev/null | grep -E "refs/(heads|tags)/$target_label")"
 
   if [ -z "$refs" ]; then
     errecho "${RED}>>${NC} No tags or branch '$target_label' found"
@@ -26,8 +26,8 @@ function get_snarkos_rev() {
   IFS=$'\t' read -r SNARKOS_COMMIT_HASH SNARKOS_REF_ID <<< "$refs"
 
   # Get snarkOS rev from Cargo.toml
-  local cargo_toml_url="https://raw.githubusercontent.com/ProvableHQ/snarkOS/$SNARKOS_REF_ID/Cargo.toml"
-  SNARKOS_CARGO_TOML_DATA="$(curl -fksSL "$cargo_toml_url" -o-)"
+  local cargo_toml_url="https://raw.githubusercontent.com/aleo-labs-protocol/snarkOS/$SNARKOS_REF_ID/Cargo.toml"
+  SNARKOS_CARGO_TOML_DATA="$(curl -fsSL "$cargo_toml_url" -o-)"
   SNARKVM_REV="$(echo "$SNARKOS_CARGO_TOML_DATA" | sed -nE 's/#?rev = "([^"]+)"/\1/p')"
   # truncate the rev to 7 characters
   SNARKOS_REV="${SNARKOS_COMMIT_HASH:0:7}"
