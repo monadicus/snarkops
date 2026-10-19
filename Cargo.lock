@@ -5661,7 +5661,6 @@ dependencies = [
  "clap",
  "dashmap",
  "futures",
- "futures-util",
  "http 1.5.0",
  "httpdate",
  "indexmap 2.14.0",

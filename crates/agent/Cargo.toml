@@ -22,7 +22,6 @@ chrono.workspace = true
 clap.workspace = true
 dashmap.workspace = true
 futures.workspace = true
-futures-util.workspace = true
 http.workspace = true
 httpdate.workspace = true
 indexmap.workspace = true
