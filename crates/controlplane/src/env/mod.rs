@@ -332,9 +332,9 @@ impl Environment {
                         node_states.remove(&key);
                     });
 
-                    node_peers.extend(incoming_peers.into_iter());
-                    node_states.extend(incoming_states.into_iter());
-                    node_states.extend(updated_states.into_iter());
+                    node_peers.extend(incoming_peers);
+                    node_states.extend(incoming_states);
+                    node_states.extend(updated_states);
                 }
 
                 _ => warn!("ignored unimplemented document type"),

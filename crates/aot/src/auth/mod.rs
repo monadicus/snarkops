@@ -135,7 +135,7 @@ impl<N: Network> AuthCommand<N> {
                 auth,
                 height,
             }) => {
-                let mut process = Process::load()?;
+                let process = Process::load()?;
                 let consensus_version = consensus_from_height::<N>(height);
                 let cost = match auth.pick()? {
                     AuthBlob::Program { auth, .. } => {
@@ -146,7 +146,7 @@ impl<N: Network> AuthCommand<N> {
                         // transitions
                         if let Some(query) = query.as_deref() {
                             let programs = query::get_programs_from_auth(&auth);
-                            query::add_many_programs_to_process(&mut process, programs, query)?;
+                            query::add_many_programs_to_process(&process, programs, query)?;
                         }
 
                         estimate_cost(&process, &auth, consensus_version)?

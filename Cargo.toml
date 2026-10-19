@@ -15,7 +15,7 @@ authors = []
 edition = "2024"
 homepage = "https://github.com/monadicus/snarkops"
 license = "MIT"
-rust-version = "1.85.0"
+rust-version = "1.96.0"
 
 [profile.dev]
 codegen-units = 512

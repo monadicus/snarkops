@@ -350,11 +350,10 @@ impl CannonInstance {
             }
             QueryTarget::Node(target) => {
                 // shortcut to cached state root if the target is all nodes
-                if target.is_all() {
-                    if let Some(info) = self.global_state.get_env_block_info(env_id) {
+                if target.is_all()
+                    && let Some(info) = self.global_state.get_env_block_info(env_id) {
                         return Ok(info.state_root);
                     }
-                }
 
                 Ok(self
                     .global_state
@@ -380,11 +379,10 @@ impl CannonInstance {
             }
             QueryTarget::Node(target) => {
                 // shortcut to cached state root if the target is all nodes
-                if target.is_all() {
-                    if let Some(info) = self.global_state.get_env_block_info(env_id) {
+                if target.is_all()
+                    && let Some(info) = self.global_state.get_env_block_info(env_id) {
                         return Ok(info.height);
                     }
-                }
 
                 Ok(self
                     .global_state
@@ -404,8 +402,8 @@ impl CannonInstance {
         let key = (self.env_id, self.id, Arc::clone(&tx_id));
 
         // if the transaction is in the cache, it has already been broadcasted
-        if let Some(cache) = self.global_state.env_network_cache.get(&self.env_id) {
-            if cache.has_transaction(&tx_id) {
+        if let Some(cache) = self.global_state.env_network_cache.get(&self.env_id)
+            && cache.has_transaction(&tx_id) {
                 if let Err(e) = TransactionTracker::delete(&self.global_state, &key) {
                     error!(
                         "cannon {}.{} failed to delete {tx_id} (in proxy_broadcast): {e:?}",
@@ -417,7 +415,6 @@ impl CannonInstance {
                     tx_id.to_string(),
                 ));
             }
-        }
 
         // prevent already queued transactions from being re-broadcasted
         let tracker = match self.transactions.get(&tx_id).as_deref().cloned() {

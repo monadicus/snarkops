@@ -104,10 +104,10 @@ impl CheckpointManager {
 
         let count = rejected.len();
         for time in rejected {
-            if let Some((_header, path)) = self.checkpoints.remove(&time) {
-                if let Err(err) = fs::remove_file(&path) {
-                    error!("error deleting incompatible checkpoint {path:?}: {err}");
-                }
+            if let Some((_header, path)) = self.checkpoints.remove(&time)
+                && let Err(err) = fs::remove_file(&path)
+            {
+                error!("error deleting incompatible checkpoint {path:?}: {err}");
             }
         }
 
@@ -224,7 +224,7 @@ impl CheckpointManager {
     pub fn nearest_with_height(&self, height: u32) -> Option<&(CheckpointHeader, PathBuf)> {
         self.checkpoints()
             .sorted_by(|(a, _), (b, _)| b.block_height.cmp(&a.block_height))
-            .find(|(c, _)| (c.block_height <= height))
+            .find(|(c, _)| c.block_height <= height)
     }
 
     /// Find the nearest checkpoint with a timestamp less than or equal to the
@@ -238,7 +238,7 @@ impl CheckpointManager {
     pub fn nearest_with_timestamp(&self, timestamp: i64) -> Option<&(CheckpointHeader, PathBuf)> {
         self.checkpoints()
             .sorted_by(|(a, _), (b, _)| b.timestamp.cmp(&a.timestamp))
-            .find(|(c, _)| (c.timestamp <= timestamp))
+            .find(|(c, _)| c.timestamp <= timestamp)
     }
 }
 

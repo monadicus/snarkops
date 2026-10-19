@@ -71,7 +71,7 @@ impl Reconcile<(), ReconcileError> for BinaryReconciler<'_> {
         let src = match &target_binary.source {
             BinarySource::Url(url) => url.clone(),
             BinarySource::Path(path) => {
-                let url = format!("{}{}", &state.endpoint, path.display());
+                let url = format!("{}{}", state.endpoint, path.display());
                 url.parse::<reqwest::Url>()
                     .map_err(|e| ReconcileError::UrlParseError(url, e.to_string()))?
             }

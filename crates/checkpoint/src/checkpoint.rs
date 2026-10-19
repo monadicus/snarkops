@@ -113,7 +113,7 @@ impl<N: Network> Checkpoint<N> {
         // the act of creating this ledger service with a "max_gc_rounds" set to 0
         // should clear all BFT documents
         let ledger_service = Arc::new(CoreLedgerService::new(ledger.clone(), shutdown));
-        Storage::new(ledger_service, Arc::new(BFTMemoryService::new()), 0);
+        Storage::new(ledger_service, Arc::new(BFTMemoryService::new()), 0).map_err(RemoveDocument)?;
 
         // TODO: parallel and test out of order removal by moving the guts of these
         // functions out of the "atomic writes"

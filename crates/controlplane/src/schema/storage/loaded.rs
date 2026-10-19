@@ -99,7 +99,7 @@ impl LoadedStorage {
             KeySource::Committee(None) => self
                 .committee
                 .values()
-                .choose(&mut rand::thread_rng())
+                .choose(&mut rand::rng())
                 .cloned()
                 .into(),
             KeySource::Named(name, Some(i)) => self
@@ -110,7 +110,7 @@ impl LoadedStorage {
             KeySource::Named(name, None) => self
                 .accounts
                 .get(name)
-                .and_then(|a| a.values().choose(&mut rand::thread_rng()).cloned())
+                .and_then(|a| a.values().choose(&mut rand::rng()).cloned())
                 .into(),
         }
     }
@@ -129,7 +129,7 @@ impl LoadedStorage {
             KeySource::Committee(None) => self
                 .committee
                 .keys()
-                .choose(&mut rand::thread_rng())
+                .choose(&mut rand::rng())
                 .cloned()
                 .into(),
             KeySource::Named(name, Some(i)) => self
@@ -140,7 +140,7 @@ impl LoadedStorage {
             KeySource::Named(name, None) => self
                 .accounts
                 .get(name)
-                .and_then(|a| a.keys().choose(&mut rand::thread_rng()).cloned())
+                .and_then(|a| a.keys().choose(&mut rand::rng()).cloned())
                 .into(),
         }
     }
@@ -365,8 +365,8 @@ impl LoadedStorage {
 
         // check if the binary sha256 matches the expected sha256
         let sha256 = format!("{:x}", digest.finalize());
-        if let Some(bin_sha256) = bin.sha256.as_ref() {
-            if bin_sha256.to_lowercase() != sha256 {
+        if let Some(bin_sha256) = bin.sha256.as_ref()
+            && bin_sha256.to_lowercase() != sha256 {
                 return Err(StorageError::BinarySha256Mismatch(
                     id,
                     download_path,
@@ -374,11 +374,10 @@ impl LoadedStorage {
                     sha256,
                 ));
             }
-        }
 
         // check if the binary size matches the expected size
-        if let Some(bin_size) = bin.size {
-            if bin_size != size {
+        if let Some(bin_size) = bin.size
+            && bin_size != size {
                 return Err(StorageError::BinarySizeMismatch(
                     id,
                     download_path,
@@ -386,7 +385,6 @@ impl LoadedStorage {
                     size,
                 ));
             }
-        }
 
         info!(
             "downloaded binary {storage_id}.{id_str} to {} ({size} bytes)",

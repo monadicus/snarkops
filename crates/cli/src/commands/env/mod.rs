@@ -308,7 +308,7 @@ pub async fn post_and_wait(url: &str, req: RequestBuilder, env_id: EnvId) -> Res
     let filter = node_map
         .values()
         .copied()
-        .fold(!Unfiltered, |id, filter| (id | AgentIs(filter)));
+        .fold(!Unfiltered, |id, filter| id | AgentIs(filter));
 
     while let Some(event) = events.next().await? {
         // Ensure the event is based on the response

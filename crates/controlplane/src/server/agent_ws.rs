@@ -96,12 +96,11 @@ async fn handle_socket(
         })
         .filter(|claims| {
             // ensure the id is correct
-            if let Some(id) = query.id {
-                if claims.id != id {
+            if let Some(id) = query.id
+                && claims.id != id {
                     warn!("connecting agent specified an id different than the claim");
                     return false;
                 }
-            }
 
             true
         });

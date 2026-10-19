@@ -316,10 +316,10 @@ impl<N: Network> Runner<N> {
 
                         agent.post_block(height, &blocks);
 
-                        if let Some(manager) = &mut manager {
-                            if let Err(e) = manager.poll::<N>() {
-                                tracing::error!("backup loop error: {e:?}");
-                            }
+                        if let Some(manager) = &mut manager
+                            && let Err(e) = manager.poll::<N>()
+                        {
+                            tracing::error!("backup loop error: {e:?}");
                         }
                     }
 

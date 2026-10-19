@@ -88,14 +88,14 @@ impl Display for BinaryEntry {
                 .as_deref()
                 .unwrap_or("not set")
         )?;
-        if let BinarySource::Path(path) = &self.source {
-            if let Ok(time) = path.metadata().and_then(|m| m.modified()) {
-                writeln!(
-                    f,
-                    "last modified: {}",
-                    DateTime::<Utc>::from(time).naive_local()
-                )?;
-            }
+        if let BinarySource::Path(path) = &self.source
+            && let Ok(time) = path.metadata().and_then(|m| m.modified())
+        {
+            writeln!(
+                f,
+                "last modified: {}",
+                DateTime::<Utc>::from(time).naive_local()
+            )?;
         }
         Ok(())
     }

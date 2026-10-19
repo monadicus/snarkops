@@ -442,10 +442,10 @@ impl<N: Network> Stores<N> {
             db.reverse_id_map().remove(&output_id)?;
 
             // If the output is a record, remove the record nonce.
-            if let Some(record) = db.record_map().get_confirmed(&output_id)? {
-                if let Some(record) = &record.1 {
-                    db.record_nonce_map().remove(record.nonce())?;
-                }
+            if let Some(record) = db.record_map().get_confirmed(&output_id)?
+                && let Some(record) = &record.1
+            {
+                db.record_nonce_map().remove(record.nonce())?;
             }
 
             // Remove the output.
