@@ -21,8 +21,8 @@ impl DataFormat for PackedUint {
     const LATEST_HEADER: Self::Header = ();
 
     fn write_data<W: Write>(&self, writer: &mut W) -> Result<usize, DataWriteError> {
-        // count number of leading zeroes and calculate the number of bytes needed
-        // to store the non-zero bits
+        // count number of leading zeroes and calculate the number of bytes
+        // needed to store the non-zero bits
         let zeroes = self.0.leading_zeros();
         let num_bytes = 8u8.saturating_sub((zeroes / 8) as u8);
 

@@ -41,8 +41,8 @@ impl<N: Network> Stores<N> {
         self.fast_committee_remove(height)
     }
 
-    // The following functions are effectively gutted versions of the snarkvm ledger
-    // removal functions that do not have any atomic locks
+    // The following functions are effectively gutted versions of the snarkvm
+    // ledger removal functions that do not have any atomic locks
 
     fn fast_block_remove(&self, block_height: u32) -> Result<()> {
         let db = &self.blocks;
@@ -85,7 +85,8 @@ impl<N: Network> Stores<N> {
         let aborted_transaction_ids =
             (db.get_block_aborted_transaction_ids(&block_hash)?).unwrap_or_default();
 
-        // Retrieve the rejected transaction IDs, and the deployment or execution ID.
+        // Retrieve the rejected transaction IDs, and the deployment or
+        // execution ID.
         let rejected_transaction_ids_and_deployment_or_execution_id =
             match db.get_block_transactions(&block_hash)? {
                 Some(transactions) => transactions
@@ -442,10 +443,10 @@ impl<N: Network> Stores<N> {
             db.reverse_id_map().remove(&output_id)?;
 
             // If the output is a record, remove the record nonce.
-            if let Some(record) = db.record_map().get_confirmed(&output_id)? {
-                if let Some(record) = &record.1 {
-                    db.record_nonce_map().remove(record.nonce())?;
-                }
+            if let Some(record) = db.record_map().get_confirmed(&output_id)?
+                && let Some(record) = &record.1
+            {
+                db.record_nonce_map().remove(record.nonce())?;
             }
 
             // Remove the output.

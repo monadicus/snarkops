@@ -81,9 +81,9 @@ impl AgentMapping {
 
         let arc = self.claim.upgrade()?;
         // 2 because the agent owns arc, and this would be the second
-        // there is a slim chance that two nodes could claim the same agent. if we run
-        // into this we can add an AtomicBool to the mapping to determine if the
-        // agent is claimed by the node on this thread
+        // there is a slim chance that two nodes could claim the same agent. if
+        // we run into this we can add an AtomicBool to the mapping to
+        // determine if the agent is claimed by the node on this thread
         (Arc::strong_count(&arc) == 2).then_some(arc)
     }
 
@@ -210,8 +210,8 @@ pub fn pair_with_nodes(
     // handle the nodes that want specific agents first
     let agent_map = agents.iter().map(|a| (a.id, a)).collect::<HashMap<_, _>>();
 
-    // walk through all the nodes that want specific agents and attempt to pair them
-    // with an agent
+    // walk through all the nodes that want specific agents and attempt to pair
+    // them with an agent
     want_ids.into_par_iter().for_each(|(key, id)| {
         // ensure the agent exists
         let Some(agent) = agent_map.get(&id) else {

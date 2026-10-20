@@ -125,8 +125,8 @@ impl Environment {
 
         let (mut node_peers, mut node_states) = match prev_env {
             Some(ref env) => {
-                // reuse certain elements from the previous environment with the same
-                // name
+                // reuse certain elements from the previous environment with the
+                // same name
                 (env.node_peers.clone(), env.node_states.clone())
             }
             _ => (Default::default(), Default::default()),
@@ -213,8 +213,10 @@ impl Environment {
                                 *key = key.with_index(i);
                             }
 
-                            // Skip delegating nodes that are already present in the node map
-                            // Agents are able to determine what updates need to be applied
+                            // Skip delegating nodes that are already present in
+                            // the node map
+                            // Agents are able to determine what updates need to
+                            // be applied
                             // based on their resolved node states.
                             if node_peers.contains_left(&node_key) {
                                 info!("{env_id}: updating node {node_key}");
@@ -231,7 +233,8 @@ impl Environment {
                         }
                     }
 
-                    // list of nodes that will be removed after applying this document
+                    // list of nodes that will be removed after applying this
+                    // document
                     let nodes_to_remove = node_peers
                         .iter()
                         .filter_map(|(k, v)| match v {
@@ -248,8 +251,9 @@ impl Environment {
                         info!("{env_id}: removing node {key}");
                     }
 
-                    // list of agents that are now free because their nodes are no longer
-                    // going to be part of the environment
+                    // list of agents that are now free because their nodes are
+                    // no longer going to be part of the
+                    // environment
                     let mut removed_agents = node_peers
                         .iter()
                         .filter_map(|(key, mode)| match (mode, agent_keys.contains(key)) {
@@ -258,13 +262,15 @@ impl Environment {
                         })
                         .collect::<IndexSet<_>>();
 
-                    // this also contains a "busy" that atomically prevents multiple
-                    // environment prepares from delegating the same agents as well
-                    // as preventing two nodes from claiming the same agent
+                    // this also contains a "busy" that atomically prevents
+                    // multiple environment prepares from
+                    // delegating the same agents as well as
+                    // preventing two nodes from claiming the same agent
                     let mut free_agents = get_agent_mappings(BusyMode::Env, &state, &labels);
 
-                    // Additionally, include agents that are on nodes that are no longer
-                    // part of this environment in the list of free agents so they can
+                    // Additionally, include agents that are on nodes that are
+                    // no longer part of this environment in
+                    // the list of free agents so they can
                     // be redelegated into the same environment
                     free_agents.extend(
                         removed_agents
@@ -272,8 +278,9 @@ impl Environment {
                             .filter_map(|id| AgentMapping::from_agent_id(*id, &state, &labels)),
                     );
 
-                    // ensure the "busy" is in scope until the initial reconcile completes and
-                    // locks the agents into a non-inventory state
+                    // ensure the "busy" is in scope until the initial reconcile
+                    // completes and locks the agents into a
+                    // non-inventory state
                     let _busy: Vec<_> =
                         match pair_with_nodes(free_agents, &incoming_states, &labels) {
                             Ok(pairs) => pairs,
@@ -298,8 +305,9 @@ impl Environment {
                     for (key, node) in &incoming_peers {
                         info!("node {key}: {node}");
 
-                        // all re-allocated potentially removed agents are removed
-                        // from the agents that will need to be inventoried
+                        // all re-allocated potentially removed agents are
+                        // removed from the agents that
+                        // will need to be inventoried
                         match node {
                             EnvPeer::Internal(agent) if removed_agents.contains(agent) => {
                                 removed_agents.swap_remove(agent);
@@ -308,7 +316,8 @@ impl Environment {
                         }
                     }
 
-                    // all removed agents that were not recycled are pending inventory
+                    // all removed agents that were not recycled are pending
+                    // inventory
                     agents_to_inventory.extend(removed_agents);
 
                     // append external nodes to the node map
@@ -332,9 +341,9 @@ impl Environment {
                         node_states.remove(&key);
                     });
 
-                    node_peers.extend(incoming_peers.into_iter());
-                    node_states.extend(incoming_states.into_iter());
-                    node_states.extend(updated_states.into_iter());
+                    node_peers.extend(incoming_peers);
+                    node_states.extend(incoming_states);
+                    node_states.extend(updated_states);
                 }
 
                 _ => warn!("ignored unimplemented document type"),
@@ -401,7 +410,8 @@ impl Environment {
                 "{env_id}: inventorying {} spare agents...",
                 agents_to_inventory.len()
             );
-            // reconcile agents that are freed up from the delta between environments
+            // reconcile agents that are freed up from the delta between
+            // environments
             state
                 .update_agent_states(
                     agents_to_inventory
@@ -446,8 +456,8 @@ impl Environment {
 
             let mut next_state = self.resolve_node_state(state, agent_id, key, node);
 
-            // determine if this reconcile will reset the agent's height (and potentially
-            // trigger a ledger wipe)
+            // determine if this reconcile will reset the agent's height (and
+            // potentially trigger a ledger wipe)
             match agent.state() {
                 // new environment -> reset height
                 AgentState::Node(old_env, _) if *old_env != self.id => {}
@@ -645,7 +655,8 @@ impl Environment {
                 // Lookup agent and get current state
                 let agent_id = self.get_agent_by_key(ent.key())?;
 
-                // If the port didn't change, we're not updating the agents' states
+                // If the port didn't change, we're not updating the agents'
+                // states
                 if !is_port_change {
                     return Some((agent_id, None));
                 }
@@ -811,7 +822,8 @@ pub fn prepare_cannons(
             sink,
         )?;
 
-        // instanced cannons receive the fired count from the previous environment
+        // instanced cannons receive the fired count from the previous
+        // environment
         if let Some(prev_cannon) = prev_env.as_ref().and_then(|e| e.cannons.get(&name)) {
             instance.fired_txs = prev_cannon.fired_txs.clone();
         }

@@ -80,11 +80,11 @@ impl FromStr for KeySource {
     type Err = KeySourceError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // use KeySource::Literal(String) when the string is 59 characters long and
-        // starts with "APrivateKey1zkp" use KeySource::Commitee(Option<usize>)
-        // when the string is "committee.0" or "committee.$"
-        // use KeySource::Named(String, Option<usize>) when the string is "\w+.0" or
-        // "\w+.$"
+        // use KeySource::Literal(String) when the string is 59 characters long
+        // and starts with "APrivateKey1zkp" use
+        // KeySource::Commitee(Option<usize>) when the string is
+        // "committee.0" or "committee.$" use KeySource::Named(String,
+        // Option<usize>) when the string is "\w+.0" or "\w+.$"
 
         if s == "local" {
             return Ok(KeySource::Local);

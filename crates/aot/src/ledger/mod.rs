@@ -80,12 +80,8 @@ impl<N: Network> Ledger<N> {
             Commands::Truncate(truncate) => truncate.parse::<N>(genesis_block, ledger),
             Commands::Execute(execute) => {
                 let ledger = util::open_ledger(genesis_block, ledger)?;
-                let tx = execute_local(
-                    execute.auth.pick()?,
-                    Some(&ledger),
-                    None,
-                    &mut rand::rng(),
-                )?;
+                let tx =
+                    execute_local(execute.auth.pick()?, Some(&ledger), None, &mut rand::rng())?;
                 println!("{}", serde_json::to_string(&tx)?);
                 Ok(())
             }

@@ -135,24 +135,26 @@ impl<N: Network> AuthCommand<N> {
                 auth,
                 height,
             }) => {
-                let mut process = Process::load()?;
+                let process = Process::load()?;
                 let consensus_version = consensus_from_height::<N>(height);
                 let cost = match auth.pick()? {
                     AuthBlob::Program { auth, .. } => {
                         let auth = auth.into();
 
-                        // load the programs the auth references into the process
-                        // as cost estimation measures the size of values from within the auth's
+                        // load the programs the auth references into the
+                        // process as cost estimation
+                        // measures the size of values from within the auth's
                         // transitions
                         if let Some(query) = query.as_deref() {
                             let programs = query::get_programs_from_auth(&auth);
-                            query::add_many_programs_to_process(&mut process, programs, query)?;
+                            query::add_many_programs_to_process(&process, programs, query)?;
                         }
 
                         estimate_cost(&process, &auth, consensus_version)?
                     }
                     AuthBlob::Deploy { deployment, .. } => {
-                        // TODO: not sure if this program needs to have its prereqs loaded
+                        // TODO: not sure if this program needs to have its
+                        // prereqs loaded
                         deployment_cost(&process, &deployment, consensus_version)?.0
                     }
                 };
@@ -184,7 +186,8 @@ impl<N: Network> AuthCommand<N> {
                     return Ok(());
                 };
 
-                // authorize the fee using the authorization's execution ID and estimated cost
+                // authorize the fee using the authorization's execution ID and
+                // estimated cost
                 let fee_auth = auth_fee::AuthorizeFee {
                     key: fee_key.as_key().unwrap_or(key),
                     auth: None,
@@ -244,7 +247,8 @@ impl<N: Network> AuthCommand<N> {
                 let process = Process::load()?;
                 let consensus_version = consensus_from_height::<N>(height);
 
-                // authorize the fee using the deployment's ID and estimated cost
+                // authorize the fee using the deployment's ID and estimated
+                // cost
                 let fee_auth = auth_fee::AuthorizeFee {
                     key: fee_key.as_key().unwrap_or(key),
                     auth: None,

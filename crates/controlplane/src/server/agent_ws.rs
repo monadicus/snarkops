@@ -96,18 +96,19 @@ async fn handle_socket(
         })
         .filter(|claims| {
             // ensure the id is correct
-            if let Some(id) = query.id {
-                if claims.id != id {
-                    warn!("connecting agent specified an id different than the claim");
-                    return false;
-                }
+            if let Some(id) = query.id
+                && claims.id != id
+            {
+                warn!("connecting agent specified an id different than the claim");
+                return false;
             }
 
             true
         });
 
-    // TODO: the client should provide us with some information about itself (num
-    // cpus, etc.) before we categorize it and add it as an agent to the agent pool
+    // TODO: the client should provide us with some information about itself
+    // (num cpus, etc.) before we categorize it and add it as an agent to
+    // the agent pool
 
     // set up the RPC channels
     let (client_response_in, client_transport, mut client_request_out) = RpcTransport::new();
@@ -216,8 +217,8 @@ async fn handle_socket(
         (id, handshake)
     };
 
-    // Handshake with the client in a separate task because we don't want to hold up
-    // pool insertion
+    // Handshake with the client in a separate task because we don't want to
+    // hold up pool insertion
     let state2 = Arc::clone(&state);
     let client2 = client.clone();
     tokio::spawn(async move {
@@ -264,7 +265,8 @@ async fn handle_socket(
         }
         let Some(env_id) = agent.env() else { return };
 
-        // Prevent mutable agent from being held over the network address update RPC
+        // Prevent mutable agent from being held over the network address update
+        // RPC
         drop(agent);
 
         let Some(env) = state2.get_env(env_id) else {

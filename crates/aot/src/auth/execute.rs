@@ -52,8 +52,8 @@ pub fn execute_remote<N: Network>(api_url: &str, auth: AuthBlob<N>) -> Result<()
         .json(&auth)
         .send()?;
 
-    // TODO: this can properly return the transaction once snops auth proxy monitors
-    // tx ids
+    // TODO: this can properly return the transaction once snops auth proxy
+    // monitors tx ids
 
     // Ensure the response is successful.
     match response.status().is_success() {

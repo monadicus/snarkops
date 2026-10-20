@@ -19,11 +19,11 @@ pub fn get_internal_addrs() -> Result<Vec<IpAddr>> {
             // ignore link-local addresses
             // https://en.wikipedia.org/wiki/Link-local_address
             // these addrs are about as useful as their v4 counterpart
-            if let IpAddr::V6(v6) = ip {
-                if (v6.segments()[0] & 0xffc0) == 0xfe80 {
-                    info!("Skipping link-local iface {name}: {ip:?}");
-                    return None;
-                }
+            if let IpAddr::V6(v6) = ip
+                && (v6.segments()[0] & 0xffc0) == 0xfe80
+            {
+                info!("Skipping link-local iface {name}: {ip:?}");
+                return None;
             }
             info!("Using iface {name}: {ip:?}");
             Some(ip)

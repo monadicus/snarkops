@@ -7,7 +7,7 @@ use std::{
 use fixedbitset::FixedBitSet;
 use indexmap::IndexSet;
 use jwt::SignWithKey;
-use rand::{Rng, SeedableRng};
+use rand::RngExt;
 use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use snops_common::{
@@ -58,7 +58,7 @@ impl Agent {
             env_claim: Arc::new(Busy),
             claims: Claims {
                 id,
-                nonce: ChaChaRng::from_entropy().r#gen(),
+                nonce: rand::make_rng::<ChaChaRng>().random(),
             },
             connection: AgentConnection::Online(rpc),
             state: Default::default(),
@@ -251,7 +251,8 @@ impl Agent {
         changed
     }
 
-    // Gets the bft port of the agent. Assumes the agent is ready, returns 0 if not.
+    // Gets the bft port of the agent. Assumes the agent is ready, returns 0 if
+    // not.
     pub fn bft_port(&self) -> u16 {
         self.ports.as_ref().map(|p| p.bft).unwrap_or_default()
     }

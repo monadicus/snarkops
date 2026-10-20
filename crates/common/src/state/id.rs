@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-
 use serde::de::Error;
 
 use super::INTERNED_ID_REGEX;

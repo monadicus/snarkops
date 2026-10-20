@@ -20,8 +20,8 @@ impl Events {
         if self.tx.receiver_count() == 0 {
             return;
         }
-        // The only way this can fail is a receiver was dropped between the above check
-        // and this call...
+        // The only way this can fail is a receiver was dropped between the
+        // above check and this call...
         let _ = self.tx.send(Arc::new(event));
     }
 

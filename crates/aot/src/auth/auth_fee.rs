@@ -1,13 +1,16 @@
 use anyhow::{Ok, Result, anyhow, bail};
 use clap::Args;
 use clap_stdin::MaybeStdin;
-use rand::{CryptoRng, Rng};
+use rand::CryptoRng;
 use snarkvm::{
     ledger::Deployment,
     prelude::{ConsensusVersion, Field},
     synthesizer::{
         Process,
-        process::{minimum_cost_in_microcredits_v1, minimum_cost_in_microcredits_v2, minimum_cost_in_microcredits_v3, deployment_cost},
+        process::{
+            deployment_cost, minimum_cost_in_microcredits_v1, minimum_cost_in_microcredits_v2,
+            minimum_cost_in_microcredits_v3,
+        },
     },
     utilities::ToBytes,
 };
@@ -106,7 +109,7 @@ pub fn fee_auth<N: Network>(
     base_fee_in_microcredits: u64,
     private_key: PrivateKey<N>,
     priority_fee_in_microcredits: u64,
-    rng: &mut (impl Rng + CryptoRng),
+    rng: &mut impl CryptoRng,
     record: Option<PTRecord<N>>,
 ) -> Result<Option<Authorization<N>>> {
     if base_fee_in_microcredits == 0 && priority_fee_in_microcredits == 0 {

@@ -202,7 +202,8 @@ mod test {
         let value = Test { a: 42 };
         let mut writer = Vec::new();
 
-        // two bytes are written because the header is 1 byte and the content is 1 byte
+        // two bytes are written because the header is 1 byte and the content is
+        // 1 byte
         assert_eq!(write_dataformat(&mut writer, &value)?, 2);
         assert_eq!(writer, [1u8, 42u8]);
 

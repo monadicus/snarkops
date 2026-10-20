@@ -4298,7 +4298,7 @@ checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
 [[package]]
 name = "snarkos-account"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "colored 3.1.1",
  "snarkvm",
@@ -4351,7 +4351,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "aleo-std",
  "anyhow",
@@ -4390,7 +4390,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-bft"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "aleo-std",
  "anyhow",
@@ -4427,7 +4427,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-bft-events"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4444,7 +4444,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-bft-ledger-service"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4463,7 +4463,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-bft-storage-service"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "aleo-std",
  "anyhow",
@@ -4477,7 +4477,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-cdn"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4497,7 +4497,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-consensus"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "aleo-std",
  "anyhow",
@@ -4521,7 +4521,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-metrics"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "built",
  "metrics",
@@ -4537,7 +4537,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-network"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "built",
@@ -4558,7 +4558,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-rest"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "aleo-std",
  "anyhow",
@@ -4594,7 +4594,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-router"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4625,7 +4625,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-router-messages"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "bytes",
  "snarkos-node-bft-events",
@@ -4640,7 +4640,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-sync"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "futures",
@@ -4663,7 +4663,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-sync-communication-service"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "async-trait",
  "tokio",
@@ -4672,7 +4672,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-sync-locators"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "indexmap 2.14.0",
@@ -4684,7 +4684,7 @@ dependencies = [
 [[package]]
 name = "snarkos-node-tcp"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4702,7 +4702,7 @@ dependencies = [
 [[package]]
 name = "snarkos-utilities"
 version = "4.12.0"
-source = "git+https://github.com/ProvableHQ/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
+source = "git+https://github.com/aleo-labs-protocol/snarkOS?rev=32476b5#32476b519ef9e2be9aa869dcaffef69b6fc104fe"
 dependencies = [
  "anyhow",
  "parking_lot 0.12.5",
@@ -5661,7 +5661,6 @@ dependencies = [
  "clap",
  "dashmap",
  "futures",
- "futures-util",
  "http 1.5.0",
  "httpdate",
  "indexmap 2.14.0",

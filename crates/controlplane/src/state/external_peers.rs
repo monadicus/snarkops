@@ -30,8 +30,9 @@ type PendingBlockRequests = HashMap<(EnvId, NetworkId), HashMap<ABlockHash, Bloc
 /// cache with the new data.
 pub async fn block_info_task(state: Arc<GlobalState>) {
     loop {
-        // Get applicable external peers. This is unfiltered as all block info can be
-        // expected to be out of date before the next time this loop is run.
+        // Get applicable external peers. This is unfiltered as all block info
+        // can be expected to be out of date before the next time this
+        // loop is run.
         let external_rest_peers = get_all_external_peers(&state);
 
         // channel to measure the success of peer requests
@@ -80,20 +81,21 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
                 continue;
             };
 
-            // Go through each peer for an env if they were responsive with the block hash
-            // request (flatten)
+            // Go through each peer for an env if they were responsive with the
+            // block hash request (flatten)
             for (key, addr, (hash, height)) in peers_and_hashes.into_iter().flatten() {
-                // update the peer's block info if it is different than the peer's current info
+                // update the peer's block info if it is different than the
+                // peer's current info
                 cache.update_peer_info_for_hash(&key, &hash);
 
-                // prevent re-requesting the list of transactions for a block that
-                // is already cached
+                // prevent re-requesting the list of transactions for a block
+                // that is already cached
                 if cache.block_to_transaction.contains_key(&hash) {
                     continue;
                 }
 
-                // prevent making a request on a peer that is probably syncing (way out of date
-                // height)
+                // prevent making a request on a peer that is probably syncing
+                // (way out of date height)
                 if cache.latest.as_ref().is_some_and(|i|
                         // peer's height outside the max block range
                         i.height.saturating_sub(MAX_BLOCK_RANGE) >= height
@@ -129,8 +131,8 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
             }
         }
 
-        // fetch the missing block info from agents if possible (fallback on external
-        // peers), then update the cache with the peer data
+        // fetch the missing block info from agents if possible (fallback on
+        // external peers), then update the cache with the peer data
         let block_request_tasks = future::join_all(blocks_pending_request.into_iter().map(
             |((env, network), requests)| {
                 // highest height of all requests
@@ -139,8 +141,8 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
                     .map(|BlockRequestPeers { height, .. }| *height)
                     .max()
                     .unwrap();
-                // list of agents that could fulfil this request (rather than making slow rest &
-                // deserialize requests)
+                // list of agents that could fulfil this request (rather than
+                // making slow rest & deserialize requests)
                 let agents = Arc::new(online_agents_above_height(&state, env, max_height));
                 let req_ok_tx = req_ok_tx.clone();
 
@@ -164,7 +166,8 @@ pub async fn block_info_task(state: Arc<GlobalState>) {
                                         return Some((res, keys));
                                     }
 
-                                    // if agents failed, fallback on external peers
+                                    // if agents failed, fallback on external
+                                    // peers
                                     let mut failures = 0u8;
                                     for (key, addr) in peers {
                                         if let Some(res) =

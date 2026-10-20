@@ -145,26 +145,26 @@ pub async fn check_binary(
         bail!("downloading binary returned 404");
     };
 
-    if let Some(bin_sha256) = &binary.sha256 {
-        if sha256 != bin_sha256.to_ascii_lowercase() {
-            bail!(
-                "binary sha256 mismatch for {}: expected {}, found {}",
-                path.display(),
-                bin_sha256,
-                sha256
-            );
-        }
+    if let Some(bin_sha256) = &binary.sha256
+        && sha256 != bin_sha256.to_ascii_lowercase()
+    {
+        bail!(
+            "binary sha256 mismatch for {}: expected {}, found {}",
+            path.display(),
+            bin_sha256,
+            sha256
+        );
     }
 
-    if let Some(bin_size) = binary.size {
-        if size != bin_size {
-            bail!(
-                "binary size mismatch for {}: expected {}, found {}",
-                path.display(),
-                bin_size,
-                size
-            );
-        }
+    if let Some(bin_size) = binary.size
+        && size != bin_size
+    {
+        bail!(
+            "binary size mismatch for {}: expected {}, found {}",
+            path.display(),
+            bin_size,
+            size
+        );
     }
 
     // ensure the permissions are set for execution

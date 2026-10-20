@@ -535,8 +535,9 @@ async fn find_agents(
                 }
             };
 
-            // if all is specified we don't care about whether an agent's connection
-            // if include_offline is true we also get both online and offline agents.
+            // if all is specified we don't care about whether an agent's
+            // connection if include_offline is true we also get
+            // both online and offline agents.
             let connected_match = payload.all || payload.include_offline || agent.is_connected();
 
             mask_matches && env_matches && connected_match

@@ -87,7 +87,8 @@ impl GenAccounts {
                 if let Some(vanity) = &vanity {
                     loop {
                         let found_vanity = (0..65536).into_par_iter().find_map_any(|_| {
-                            let key = PrivateKey::new(&mut ChaChaRng::from_rng(&mut rand::rng())).unwrap();
+                            let key = PrivateKey::new(&mut ChaChaRng::from_rng(&mut rand::rng()))
+                                .unwrap();
                             let addr = Address::try_from(&key).unwrap();
                             let has_vanity = Err(true)
                                 == ToBytes::to_bytes_le(&addr)

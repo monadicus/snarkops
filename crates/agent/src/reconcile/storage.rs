@@ -61,8 +61,8 @@ impl Reconcile<(), ReconcileError> for BinaryReconciler<'_> {
             **ok_at = None;
         }
 
-        // If the binary has not changed and has not expired, we can skip the binary
-        // reconciler
+        // If the binary has not changed and has not expired, we can skip the
+        // binary reconciler
         if !binary_has_changed && ok_at.is_some() {
             return Ok(ReconcileStatus::default());
         }
@@ -71,7 +71,7 @@ impl Reconcile<(), ReconcileError> for BinaryReconciler<'_> {
         let src = match &target_binary.source {
             BinarySource::Url(url) => url.clone(),
             BinarySource::Path(path) => {
-                let url = format!("{}{}", &state.endpoint, path.display());
+                let url = format!("{}{}", state.endpoint, path.display());
                 url.parse::<reqwest::Url>()
                     .map_err(|e| ReconcileError::UrlParseError(url, e.to_string()))?
             }
@@ -231,8 +231,8 @@ impl LedgerReconciler<'_> {
         let ledger_path = untar_base.join(ledger_dir);
 
         // If there's a retention policy, load the checkpoint manager
-        // this is so we can wipe all leftover checkpoints for non-persisted storage
-        // after resets or new environments
+        // this is so we can wipe all leftover checkpoints for non-persisted
+        // storage after resets or new environments
         let manager = self
             .env_info
             .storage
@@ -331,8 +331,8 @@ impl Reconcile<(), ReconcileError> for LedgerReconciler<'_> {
 
         let ledger_path = self.ledger_path();
 
-        // Ledger reconcile behavior is different depending on whether the storage is
-        // persistent.
+        // Ledger reconcile behavior is different depending on whether the
+        // storage is persistent.
         let is_persist = env_info.storage.persist;
 
         // Defaulting the initial height allows the reconciler to treat
@@ -355,14 +355,16 @@ impl Reconcile<(), ReconcileError> for LedgerReconciler<'_> {
             .reconcile()
             .await?;
 
-        // If there is no pending height, check if there should be a pending height
+        // If there is no pending height, check if there should be a pending
+        // height
         if self.pending_height.is_none() {
             // target height has been realized
             if last_height == target_height {
                 return Ok(ReconcileStatus::default());
             }
 
-            // If the target height is the top, we can skip the ledger reconciler
+            // If the target height is the top, we can skip the ledger
+            // reconciler
             if target_height.1.is_top() {
                 *self.last_height = Some(target_height);
                 if let Err(e) = self.state.db.set_last_height(Some(target_height)) {
@@ -381,19 +383,20 @@ impl Reconcile<(), ReconcileError> for LedgerReconciler<'_> {
                     error!("failed to save last height to db: {e}");
                 }
 
-                // Ledger operation is complete... immediately requeue because the ledger was
-                // wiped
+                // Ledger operation is complete... immediately requeue because
+                // the ledger was wiped
                 return Ok(ReconcileStatus::default()
                     .add_scope("ledger/wipe")
                     .requeue_after(Duration::ZERO));
             }
 
-            // Target height is guaranteed to be different, not top, and not 0, which means
-            // it's up to the retention policies
+            // Target height is guaranteed to be different, not top, and not 0,
+            // which means it's up to the retention policies
 
             // TODO: implement a heightrequest that downloads a remote ledger
             // TODO: ledger URL handling here instead of retention policy
-            // TODO: ledger downloading would enter a new code path that downloads a new one
+            // TODO: ledger downloading would enter a new code path that
+            // downloads a new one
 
             // Find the checkpoint for the reconciler's target height
             let checkpoint = self.find_checkpoint()?;
@@ -412,8 +415,9 @@ impl Reconcile<(), ReconcileError> for LedgerReconciler<'_> {
         }
 
         let Some(modify_handle) = self.modify_handle.as_ref() else {
-            // This should be an unreachable condition, but may not be unreachable
-            // when more complex ledger operations are implemented
+            // This should be an unreachable condition, but may not be
+            // unreachable when more complex ledger operations are
+            // implemented
             error!("modify handle missing for pending height");
             *self.pending_height = None;
             return Ok(ReconcileStatus::empty()
@@ -463,8 +467,8 @@ impl Reconcile<(), ReconcileError> for LedgerReconciler<'_> {
             }
         };
 
-        // Modification is complete. The last height is change dhwen the modification
-        // succeeds (above)
+        // Modification is complete. The last height is change dhwen the
+        // modification succeeds (above)
         *self.pending_height = None;
         *self.modify_handle = None;
 

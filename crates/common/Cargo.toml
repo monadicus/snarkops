@@ -28,7 +28,7 @@ indexmap = { workspace = true, features = ["std", "serde"] }
 lasso.workspace = true
 lazy_static.workspace = true
 paste.workspace = true
-rand.workspace = true
+rand = { workspace = true, features = ["thread_rng"] }
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -9,11 +9,7 @@ use aleo_std::StorageMode;
 use anyhow::{Context, Result, anyhow};
 use clap::Args;
 use rpc::RpcClient;
-use snarkos_node::{
-    Node,
-    bft::helpers::ProposalCache,
-    rest::RestVerificationLimits,
-};
+use snarkos_node::{Node, bft::helpers::ProposalCache, rest::RestVerificationLimits};
 use snarkos_utilities::{NodeDataDir, SignalHandler};
 use snarkvm::{
     ledger::store::{
@@ -177,8 +173,8 @@ impl<N: Network> Runner<N> {
         {
             let genesis = genesis.clone();
             let storage_mode = storage_mode.clone();
-            // The ledger loading must be blocking to avoid some race conditions with the
-            // node startup
+            // The ledger loading must be blocking to avoid some race conditions
+            // with the node startup
             // This is based on the `spawn_blocking!` macro in snarkos' codebase
             if let Err(e) =
                 tokio::task::spawn_blocking(move || DbLedger::<N>::load(genesis, storage_mode))
@@ -191,8 +187,8 @@ impl<N: Network> Runner<N> {
             }
         }
 
-        // slight alterations to the normal `metrics::initialize_metrics` because of
-        // visibility issues
+        // slight alterations to the normal `metrics::initialize_metrics`
+        // because of visibility issues
         {
             // Build the Prometheus exporter.
             if let Err(e) = metrics_exporter_prometheus::PrometheusBuilder::new()
@@ -279,11 +275,11 @@ impl<N: Network> Runner<N> {
                 Arc::clone(&shutdown),
             )
             .await
-            .map_err(|e| e.context("create client"))?
+            .map_err(|e| e.context("create client"))?,
         };
 
-        // only monitor block updates if we have a checkpoint manager or agent status
-        // API
+        // only monitor block updates if we have a checkpoint manager or agent
+        // status API
         if manager.is_some() || agent.is_enabled() {
             // if we have a checkpoint manager, cull incompatible checkpoints
             if let Some(manager) = &mut manager {
@@ -295,7 +291,8 @@ impl<N: Network> Runner<N> {
             // copy the block db to the agent's rpc server
             agent.set_block_db(blocks.clone());
 
-            // check for height changes and poll the manager when a new block comes in
+            // check for height changes and poll the manager when a new block
+            // comes in
             let mut last_height = committee.current_height()?;
 
             // emit the initial block status
@@ -316,10 +313,10 @@ impl<N: Network> Runner<N> {
 
                         agent.post_block(height, &blocks);
 
-                        if let Some(manager) = &mut manager {
-                            if let Err(e) = manager.poll::<N>() {
-                                tracing::error!("backup loop error: {e:?}");
-                            }
+                        if let Some(manager) = &mut manager
+                            && let Err(e) = manager.poll::<N>()
+                        {
+                            tracing::error!("backup loop error: {e:?}");
                         }
                     }
 
@@ -357,10 +354,11 @@ impl<N: Network> Runner<N> {
         // Retrieve the number of cores.
         let num_cores = num_cpus::get();
 
-        // Initialize the number of tokio worker threads, max tokio blocking threads,
-        // and rayon cores. Note: We intentionally set the number of tokio
-        // worker threads and number of rayon cores to be more than the number
-        // of physical cores, because the node is expected to be I/O-bound.
+        // Initialize the number of tokio worker threads, max tokio blocking
+        // threads, and rayon cores. Note: We intentionally set the
+        // number of tokio worker threads and number of rayon cores to
+        // be more than the number of physical cores, because the node
+        // is expected to be I/O-bound.
         let (num_tokio_worker_threads, max_tokio_blocking_threads, num_rayon_cores_global) =
             (2 * num_cores, 512, num_cores);
 

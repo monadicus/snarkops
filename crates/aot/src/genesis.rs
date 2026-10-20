@@ -323,8 +323,8 @@ impl<N: Network> Genesis<N> {
             }
         }
 
-        // Check if the sum of committee stakes and public balances equals the total
-        // starting supply.
+        // Check if the sum of committee stakes and public balances equals the
+        // total starting supply.
         let public_balances_sum: u64 = public_balances.values().sum();
         if committee.total_stake() + public_balances_sum != N::STARTING_SUPPLY {
             println!(
@@ -486,7 +486,10 @@ impl<N: Network> Genesis<N> {
 
         // Initialize the ledger if a path was given.
         if let Some(ledger) = self.ledger {
-            DbLedger::load(block.to_owned(), StorageMode::Custom(ledger.to_owned(), None))?;
+            DbLedger::load(
+                block.to_owned(),
+                StorageMode::Custom(ledger.to_owned(), None),
+            )?;
             println!(
                 "Initialized a ledger at {}.",
                 ledger.display().to_string().yellow()
