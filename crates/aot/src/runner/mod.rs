@@ -239,6 +239,9 @@ impl<N: Network> Runner<N> {
                     false,
                     None,
                     None,
+                    // proposal_spent_limit_multiplier: snarkOS's CLI default, which
+                    // leaves the batch spend limit unchanged.
+                    1,
                     Arc::clone(&shutdown),
                 )
                 .await
