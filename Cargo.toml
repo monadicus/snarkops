@@ -92,7 +92,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 	"http2",
 ] }
 # Must match snarkos/vm's rocksdb (librocksdb-sys is a `links` crate, only one version allowed)
-rocksdb = { version = "0.24", default-features = false }
+rocksdb = { version = "0.25", default-features = false }
 rustls = { version = "0.23.15", features = ["ring"] }
 semver = { version = "1.0", features = ["serde"] }
 serde = { version = "1", default-features = false, features = [
@@ -149,10 +149,10 @@ snops-common = { path = "./crates/common" }
 
 ## Comment to use version-pinned or local dependencies
 
-snarkos-account = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "85f3026" }
-snarkos-node = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "85f3026" }
-snarkos-node-metrics = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "85f3026" }
-snarkos-utilities = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "85f3026" }
+snarkos-account = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "81ab34e" }
+snarkos-node = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "81ab34e" }
+snarkos-node-metrics = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "81ab34e" }
+snarkos-utilities = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "81ab34e" }
 [workspace.dependencies.snarkvm]
 ## The following anchors are used by the `update_snarkos_dep.sh` script.
 ## Everything in-between the anchors is copied from the snarkos Cargo.toml
@@ -160,9 +160,9 @@ snarkos-utilities = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev
 ## URL (even a redirect to the same repo) as a second copy of snarkvm.
 ## CODEGEN_START
 #path = "../snarkVM"
-git = "https://github.com/ProvableHQ/snarkVM.git"
-rev = "6b2efd047" #main_net_v4121
-#version = "=4.12.0"
+git = "https://github.com/aleo-labs-protocol/snarkVM.git"
+rev = "8d4ca1b931845c2c0655e2f65be86e7d95813638" #v4.13.0-rc.1
+#version = "=4.13.0"
 ## CODEGEN_END
 default-features = false
 features = ["circuit", "rocks", "algorithms"]
