@@ -29,11 +29,15 @@ function get_snarkos_rev() {
   local cargo_toml_url="https://raw.githubusercontent.com/aleo-labs-protocol/snarkOS/$SNARKOS_REF_ID/Cargo.toml"
   SNARKOS_CARGO_TOML_DATA="$(curl -fsSL "$cargo_toml_url" -o-)"
   SNARKVM_REV="$(echo "$SNARKOS_CARGO_TOML_DATA" | sed -nE 's/#?rev = "([^"]+)"/\1/p')"
+  # Release tags may pin snarkVM from crates.io (`version = "=X.Y.Z"`) instead of a git rev.
+  if [ -z "$SNARKVM_REV" ]; then
+    SNARKVM_REV="$(echo "$SNARKOS_CARGO_TOML_DATA" | sed -nE '/\[workspace\.dependencies\.snarkvm\]/,/^\[/s/^version = "([^"]+)"/\1/p')"
+  fi
   # truncate the rev to 7 characters
   SNARKOS_REV="${SNARKOS_COMMIT_HASH:0:7}"
 
   if [ -z "$SNARKVM_REV" ]; then
-    errecho "${RED}>>${NC} Could not find snarkVM rev in Cargo.toml for $SNARKOS_REF_ID"
+    errecho "${RED}>>${NC} Could not find snarkVM rev or version in Cargo.toml for $SNARKOS_REF_ID"
     exit 1
   fi
 
