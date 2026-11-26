@@ -542,4 +542,3 @@ impl Reconcile<(), ReconcileError> for AgentStateReconciler {
 // TODO: support ledger.aleo.network snapshots:
 // https://ledger.aleo.network/mainnet/snapshot/latest.txt
 // https://ledger.aleo.network/testnet/snapshot/latest.txt
-// https://ledger.aleo.network/canarynet/snapshot/latest.txt
