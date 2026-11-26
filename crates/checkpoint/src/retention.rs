@@ -74,11 +74,13 @@ impl RetentionPolicy {
         // ALGORITHM
         // 1. walk backwards through rules and times
         // 2. keep track of the last kept time for each rule
-        // 3. if the last kept time is outside the duration of the current rule reject
-        //    the last kept time and promote the next time to the last kept time
-        // 4. if the current rule does not encompass both times move to the next rule
-        // 5. if difference between last kept time and current time is smaller than the
-        //    keep time, reject it
+        // 3. if the last kept time is outside the duration of the current rule
+        //    reject the last kept time and promote the next time to the last
+        //    kept time
+        // 4. if the current rule does not encompass both times move to the next
+        //    rule
+        // 5. if difference between last kept time and current time is smaller
+        //    than the keep time, reject it
         // 6. if the time was not rejected, it becomes the new last kept time
 
         // TODO: this is bugged atm - it's keeping the last checkpoint
