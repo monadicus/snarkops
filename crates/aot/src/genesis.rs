@@ -1,6 +1,5 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
-use aleo_std::StorageMode;
 use anyhow::{Result, anyhow, ensure};
 use clap::Parser;
 use colored::Colorize;
@@ -8,6 +7,7 @@ use indexmap::IndexMap;
 use rand::{CryptoRng, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use serde::{Serialize, de::DeserializeOwned};
+use snarkvm::ledger::store::StorageMode;
 use snarkvm::{
     ledger::{
         Header, Ratify, Solutions,

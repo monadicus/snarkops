@@ -1,8 +1,47 @@
-pub use aleo_std::StorageMode;
+use std::collections::{HashMap, HashSet};
+
+use indexmap::IndexSet;
 pub use snarkos_node::bft::{
-    helpers::Storage, ledger_service::CoreLedgerService, storage_service::BFTMemoryService,
+    helpers::Storage, ledger_service::CoreLedgerService, storage_service::StorageService,
 };
+use snarkvm::ledger::narwhal::{Transmission, TransmissionID};
+pub use snarkvm::ledger::store::StorageMode;
+use snarkvm::prelude::Field;
 pub use snarkvm::prelude::Network;
+
+/// A BFT transmission store that holds nothing.
+///
+/// snarkOS only builds its in-memory store with `test-helpers`, which also
+/// turns on `snarkvm/test-helpers`. Checkpoint rewinds only need a fresh, empty
+/// store that is dropped straight after `Storage::new`, so this stands in for
+/// it.
+#[derive(Debug, Default)]
+pub struct EmptyTransmissionStore;
+
+impl<N: Network> StorageService<N> for EmptyTransmissionStore {
+    fn contains_retrievable_transmission(&self, _: TransmissionID<N>) -> bool {
+        false
+    }
+
+    fn contains_aborted_transmission(&self, _: TransmissionID<N>) -> bool {
+        false
+    }
+
+    fn get_transmission(&self, _: TransmissionID<N>) -> Option<Transmission<N>> {
+        None
+    }
+
+    fn insert_transmissions(
+        &self,
+        _: Field<N>,
+        _: IndexSet<TransmissionID<N>>,
+        _: HashSet<TransmissionID<N>>,
+        _: HashMap<TransmissionID<N>, Transmission<N>>,
+    ) {
+    }
+
+    fn remove_transmissions(&self, _: &Field<N>, _: &IndexSet<TransmissionID<N>>) {}
+}
 use snarkvm::{
     console::program,
     ledger::{Ledger, store::helpers::rocksdb},

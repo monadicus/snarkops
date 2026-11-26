@@ -1,7 +1,7 @@
-use aleo_std::StorageMode;
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, ValueEnum};
 use rand::{CryptoRng, Rng};
+use snarkvm::ledger::store::StorageMode;
 use snarkvm::ledger::{
     query::{Query, QueryTrait},
     store::{

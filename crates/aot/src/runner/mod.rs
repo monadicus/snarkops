@@ -5,12 +5,12 @@ use std::{
     sync::Arc,
 };
 
-use aleo_std::StorageMode;
 use anyhow::{Context, Result, anyhow};
 use clap::Args;
 use rpc::RpcClient;
 use snarkos_node::{Node, bft::helpers::ProposalCache, rest::RestVerificationLimits};
 use snarkos_utilities::{NodeDataDir, SignalHandler};
+use snarkvm::ledger::store::StorageMode;
 use snarkvm::{
     ledger::store::{
         BlockStorage, CommitteeStorage,
