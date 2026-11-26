@@ -11,11 +11,11 @@ rust-version.workspace = true
 
 [features]
 default = []
-write = ["snarkvm", "snarkos-node", "aleo-std", "anyhow", "snarkos-utilities"]
+write = ["snarkvm", "snarkos-node", "indexmap", "anyhow", "snarkos-utilities"]
 serde = ["dep:serde"]
 
 [dependencies]
-aleo-std = { workspace = true, optional = true }
+indexmap = { workspace = true, optional = true, features = ["std"] }
 anyhow = { workspace = true, optional = true }
 chrono.workspace = true
 glob.workspace = true

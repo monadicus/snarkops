@@ -1,12 +1,12 @@
 use std::{os::fd::AsRawFd, path::PathBuf};
 
-use aleo_std::StorageMode;
 use anyhow::{Result, bail, ensure};
 use clap::{Args, Parser};
 use nix::{
     sys::wait::waitpid,
     unistd::{self, ForkResult},
 };
+use snarkvm::ledger::store::StorageMode;
 use snarkvm::{
     console::program::Network,
     ledger::Block,

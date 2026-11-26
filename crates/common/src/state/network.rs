@@ -8,8 +8,9 @@ use crate::format::DataFormat;
 pub enum NetworkId {
     #[default]
     Mainnet,
+    /// snarkVM 5.0 removed the canary network, so `canary` is read as testnet.
+    #[serde(alias = "canary")]
     Testnet,
-    Canary,
 }
 
 impl std::str::FromStr for NetworkId {
@@ -18,8 +19,7 @@ impl std::str::FromStr for NetworkId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "mainnet" => Ok(Self::Mainnet),
-            "testnet" => Ok(Self::Testnet),
-            "canary" => Ok(Self::Canary),
+            "testnet" | "canary" => Ok(Self::Testnet),
             _ => Err("Invalid network ID"),
         }
     }
@@ -30,7 +30,6 @@ impl std::fmt::Display for NetworkId {
         match self {
             Self::Mainnet => write!(f, "mainnet"),
             Self::Testnet => write!(f, "testnet"),
-            Self::Canary => write!(f, "canary"),
         }
     }
 }
@@ -46,7 +45,6 @@ impl DataFormat for NetworkId {
         match self {
             Self::Mainnet => 0u8.write_data(writer),
             Self::Testnet => 1u8.write_data(writer),
-            Self::Canary => 2u8.write_data(writer),
         }
     }
 
@@ -64,8 +62,8 @@ impl DataFormat for NetworkId {
 
         match u8::read_data(reader, &())? {
             0 => Ok(Self::Mainnet),
-            1 => Ok(Self::Testnet),
-            2 => Ok(Self::Canary),
+            // 2 was canary, which snarkVM 5.0 removed; read it as testnet.
+            1 | 2 => Ok(Self::Testnet),
             n => Err(crate::format::DataReadError::Custom(format!(
                 "Invalid network ID: {n}"
             ))),

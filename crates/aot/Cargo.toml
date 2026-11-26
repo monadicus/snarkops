@@ -30,7 +30,6 @@ clipages = ["snops-common/clipages"]
 mangen = ["snops-common/mangen"]
 
 [dependencies]
-aleo-std.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 bincode.workspace = true

@@ -159,8 +159,9 @@ Aleo programs as well as interact with snarkOS ledgers.
 Build `snarkos-aot` with: `cargo xtask build aot`.
 The compiled binary can be found in `target/release-big/snarkos-aot`.
 
-Use the `NETWORK` environment variable to specify `mainnet` (default),
-`testnet`, or `canary`.
+Use the `NETWORK` environment variable to specify `mainnet` (default)
+or `testnet`. `canary` is still accepted as an alias for `testnet`, since
+snarkVM 5.0 removed the canary network.
 
 To select a custom snarkOS branch/tag for source, run `./scripts/update_snarkos_dep.sh v3.3.1`. Be warned - sometimes there are breaking changes!
 

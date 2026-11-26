@@ -15,9 +15,9 @@ pub use key::Key;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use snarkvm::{
-    circuit::{Aleo, AleoCanaryV0, AleoTestnetV0, AleoV0},
+    circuit::{Aleo, AleoTestnetV0, AleoV0},
     console::{
-        network::{CanaryV0, MainnetV0, TestnetV0},
+        network::{MainnetV0, TestnetV0},
         program::Network as NetworkTrait,
     },
     ledger::{
@@ -31,7 +31,6 @@ use snarkvm::{
 pub enum NetworkId {
     Mainnet,
     Testnet,
-    Canary,
 }
 
 impl std::str::FromStr for NetworkId {
@@ -40,8 +39,8 @@ impl std::str::FromStr for NetworkId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "mainnet" => Ok(Self::Mainnet),
-            "testnet" => Ok(Self::Testnet),
-            "canary" => Ok(Self::Canary),
+            // snarkVM 5.0 removed the canary network; older agents may still send it.
+            "testnet" | "canary" => Ok(Self::Testnet),
             _ => Err("Invalid network ID"),
         }
     }
@@ -52,7 +51,6 @@ impl std::fmt::Display for NetworkId {
         match self {
             Self::Mainnet => write!(f, "mainnet"),
             Self::Testnet => write!(f, "testnet"),
-            Self::Canary => write!(f, "canary"),
         }
     }
 }
@@ -62,7 +60,6 @@ impl From<NetworkId> for u16 {
         match id {
             NetworkId::Mainnet => <MainnetV0 as NetworkTrait>::ID,
             NetworkId::Testnet => <TestnetV0 as NetworkTrait>::ID,
-            NetworkId::Canary => <CanaryV0 as NetworkTrait>::ID,
         }
     }
 }
@@ -72,7 +69,6 @@ impl NetworkId {
         match N::ID {
             <MainnetV0 as NetworkTrait>::ID => Self::Mainnet,
             <TestnetV0 as NetworkTrait>::ID => Self::Testnet,
-            <CanaryV0 as NetworkTrait>::ID => Self::Canary,
             _ => unreachable!(),
         }
     }
@@ -108,7 +104,6 @@ macro_rules! network_to_circuit {
 
 network_to_circuit!(MainnetV0 = AleoV0);
 network_to_circuit!(TestnetV0 = AleoTestnetV0);
-network_to_circuit!(CanaryV0 = AleoCanaryV0);
 
 // The db.
 pub type Db<N> = ConsensusDB<N>;

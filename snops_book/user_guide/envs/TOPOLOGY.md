@@ -29,7 +29,8 @@ You can specify one of:
 
 - `mainnet`
 - `testnet`
-- `canary`
+
+snarkVM 5.0 removed the canary network. `canary` is still accepted, as an alias for `testnet`.
 
 ### description
 

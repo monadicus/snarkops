@@ -42,7 +42,6 @@ lto = "thin"
 opt-level = 1
 
 [workspace.dependencies]
-aleo-std = "1.0.1"
 axum = { version = "0.7", features = [
 	"json",
 	"query",
@@ -79,7 +78,7 @@ lazysort = "0.2"
 lazy_static = "1.5"
 lasso = { version = "0.7", features = ["multi-threaded"] }
 local-ip-address = "0.6"
-metrics-exporter-prometheus = { version = "0.13", default-features = false }
+metrics-exporter-prometheus = { version = "0.18", default-features = false, features = ["http-listener"] }
 nix = { version = "0.29", features = ["process"] }
 num_cpus = "1.16"
 paste = "1.0"
@@ -92,7 +91,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 	"http2",
 ] }
 # Must match snarkos/vm's rocksdb (librocksdb-sys is a `links` crate, only one version allowed)
-rocksdb = { version = "0.24", default-features = false }
+rocksdb = { version = "0.25", default-features = false }
 rustls = { version = "0.23.15", features = ["ring"] }
 semver = { version = "1.0", features = ["serde"] }
 serde = { version = "1", default-features = false, features = [
@@ -149,10 +148,10 @@ snops-common = { path = "./crates/common" }
 
 ## Comment to use version-pinned or local dependencies
 
-snarkos-account = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "85f3026" }
-snarkos-node = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "85f3026" }
-snarkos-node-metrics = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "85f3026" }
-snarkos-utilities = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "85f3026" }
+snarkos-account = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "99eec12" }
+snarkos-node = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "99eec12" }
+snarkos-node-metrics = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "99eec12" }
+snarkos-utilities = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev = "99eec12" }
 [workspace.dependencies.snarkvm]
 ## The following anchors are used by the `update_snarkos_dep.sh` script.
 ## Everything in-between the anchors is copied from the snarkos Cargo.toml
@@ -160,9 +159,9 @@ snarkos-utilities = { git = "https://github.com/aleo-labs-protocol/snarkOS", rev
 ## URL (even a redirect to the same repo) as a second copy of snarkvm.
 ## CODEGEN_START
 #path = "../snarkVM"
-git = "https://github.com/ProvableHQ/snarkVM.git"
-rev = "6b2efd047" #main_net_v4121
-#version = "=4.12.0"
+git = "https://github.com/aleo-labs-protocol/snarkVM.git"
+rev = "d861c38292224e104577985872610389afd6102a" #v5.0.0-rc.1
+#version = "=5.0.0"
 ## CODEGEN_END
 default-features = false
 features = ["circuit", "rocks", "algorithms"]

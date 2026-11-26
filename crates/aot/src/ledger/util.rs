@@ -1,7 +1,7 @@
-use aleo_std::StorageMode;
 use anyhow::bail;
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
+use snarkvm::ledger::store::StorageMode;
 use snarkvm::{
     algorithms::snark::varuna::VarunaVersion,
     circuit::Aleo,
